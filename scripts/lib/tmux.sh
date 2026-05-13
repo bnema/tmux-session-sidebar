@@ -93,7 +93,7 @@ sidebar_list_sessions() {
       is_current=""
     fi
     printf '%s\t%s\t%s\t%s\n' "$name" "$attached" "$windows" "$is_current"
-  done < <(tmux list-sessions -F '#{session_name}\t#{?session_attached,attached,detached}\t#{session_windows}' 2>/dev/null)
+  done < <(tmux list-sessions -F '#{session_name}	#{?session_attached,attached,detached}	#{session_windows}' 2>/dev/null)
 }
 
 sidebar_session_exists() {
