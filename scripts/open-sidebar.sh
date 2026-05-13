@@ -25,11 +25,9 @@ quoted_script=""
 printf -v quoted_script '%q' "$SCRIPT_DIR/sidebar.sh"
 
 sidebar_cmd=""
-printf -v sidebar_cmd '%s --client %q --source-window %q --source-pane %q --source-path %q' \
+printf -v sidebar_cmd '%s --client %q --source-path %q' \
   "$quoted_script" \
   "$client_name" \
-  "$source_window_id" \
-  "$source_pane_id" \
   "$source_path"
 
 new_pane_id="$(tmux split-window -P -F '#{pane_id}' -t "$source_pane_id" -hb -l "$width" -c "$source_path" "$sidebar_cmd")" || exit 1

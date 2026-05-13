@@ -5,26 +5,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
 source "$SCRIPT_DIR/lib/tmux.sh"
 
 client_name=""
-source_window_id=""
-source_pane_id=""
 source_path=""
+
+require_arg() {
+  local flag="$1"
+  local value="${2:-}"
+  if [ -z "$value" ]; then
+    echo "tmux-session-sidebar: missing value for $flag" >&2
+    exit 1
+  fi
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --client)
-      client_name="${2:-}"
-      shift 2
-      ;;
-    --source-window)
-      source_window_id="${2:-}"
-      shift 2
-      ;;
-    --source-pane)
-      source_pane_id="${2:-}"
+      require_arg "$1" "${2:-}"
+      client_name="$2"
       shift 2
       ;;
     --source-path)
-      source_path="${2:-}"
+      require_arg "$1" "${2:-}"
+      source_path="$2"
       shift 2
       ;;
     *)
@@ -51,7 +52,7 @@ render_session_lines() {
 }
 
 run_fzf_browser() {
-  local output key selection session_name
+  local output key selection session_name close_after_switch
 
   output="$({
     render_session_lines
@@ -66,9 +67,21 @@ run_fzf_browser() {
   key="$(printf '%s\n' "$output" | sed -n '1p')"
   selection="$(printf '%s\n' "$output" | sed -n '2p')"
 
-  if [ "$key" = "esc" ] || [ -z "$selection" ]; then
-    return 1
-  fi
+  case "$key" in
+    esc)
+      return 1
+      ;;
+    "")
+      ;;
+    *)
+      if [ -z "$selection" ]; then
+        selection="$key"
+        key=""
+      fi
+      ;;
+  esac
+
+  [ -n "$selection" ] || return 1
 
   session_name="${selection%%$'\t'*}"
   [ -n "$session_name" ] || return 1
@@ -77,14 +90,17 @@ run_fzf_browser() {
     --client "$client_name" \
     --session "$session_name" \
     --sidebar-pane "$sidebar_pane_id"
+
+  close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch on)"
+  [ "$close_after_switch" != "on" ]
 }
 
 run_fallback_browser() {
-  local lines line choice selected_line session_name index
+  local lines line choice selected_line session_name index close_after_switch
   lines="$(render_session_lines)"
   [ -n "$lines" ] || return 1
 
-  printf 'tmux session sidebar\n\n' >&2
+  printf 'tmux session sidebar (%s)\n\n' "$source_path" >&2
   index=0
   while IFS= read -r line; do
     [ -z "$line" ] && continue
@@ -118,18 +134,24 @@ EOF
     --client "$client_name" \
     --session "$session_name" \
     --sidebar-pane "$sidebar_pane_id"
+
+  close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch on)"
+  [ "$close_after_switch" != "on" ]
 }
 
 main() {
   local use_fzf
-  use_fzf="$(sidebar_get_option @session-sidebar-use-fzf on)"
 
-  if [ "$use_fzf" != "off" ] && command -v fzf >/dev/null 2>&1; then
-    run_fzf_browser || exit 0
-    exit 0
-  fi
+  while :; do
+    use_fzf="$(sidebar_get_option @session-sidebar-use-fzf on)"
 
-  run_fallback_browser || exit 0
+    if [ "$use_fzf" != "off" ] && command -v fzf >/dev/null 2>&1; then
+      run_fzf_browser || exit 0
+      continue
+    fi
+
+    run_fallback_browser || exit 0
+  done
 }
 
 main
