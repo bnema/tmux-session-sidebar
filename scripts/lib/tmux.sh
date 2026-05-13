@@ -75,7 +75,7 @@ sidebar_current_session() {
 sidebar_list_sessions() {
   # Usage: sidebar_list_sessions [CLIENT]
   # Prints tab-separated lines: NAME\tATTACHED_STATE\tWINDOW_COUNT\tIS_CURRENT
-  local client current_session line name attached windows is_current
+  local client current_session name attached windows is_current
   client="${1:-}"
   current_session=""
 

@@ -3,11 +3,25 @@
 # Sourceable with no side effects. Sources tmux.sh relative to this file.
 
 # Source tmux helpers from the same directory
-SIDEBAR_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
-if [ -f "$SIDEBAR_LIB_DIR/tmux.sh" ]; then
-  # shellcheck source=/dev/null
-  source "$SIDEBAR_LIB_DIR/tmux.sh"
+_sidebar_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || {
+  echo "tmux-session-sidebar: unable to locate script directory" >&2
+  if (return 0 2>/dev/null); then
+    return 1
+  else
+    exit 1
+  fi
+}
+if [ ! -f "$_sidebar_lib_dir/tmux.sh" ]; then
+  echo "tmux-session-sidebar: missing tmux helper library: $_sidebar_lib_dir/tmux.sh" >&2
+  if (return 0 2>/dev/null); then
+    return 1
+  else
+    exit 1
+  fi
 fi
+# shellcheck source=/dev/null
+source "$_sidebar_lib_dir/tmux.sh"
+unset _sidebar_lib_dir
 
 sidebar_project_roots() {
   # Usage: sidebar_project_roots
