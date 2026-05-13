@@ -51,16 +51,67 @@ render_session_lines() {
   done
 }
 
+session_from_selection() {
+  local selection="$1"
+  printf '%s' "${selection%%$'\t'*}"
+}
+
+session_from_index() {
+  local lines="$1"
+  local choice="$2"
+  local selected_line
+
+  selected_line="$(printf '%s\n' "$lines" | sed -n "${choice}p")"
+  [ -n "$selected_line" ] || return 1
+  session_from_selection "$selected_line"
+}
+
+current_session_name() {
+  sidebar_current_session "$client_name"
+}
+
+post_switch_should_continue() {
+  local close_after_switch
+  close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch on)"
+  [ "$close_after_switch" != "on" ]
+}
+
+prompt_session_target() {
+  local lines="$1"
+  local prompt="$2"
+  local default_session selected_session choice
+
+  default_session="$(current_session_name)"
+  printf '%s [Enter=current: %s]: ' "$prompt" "$default_session" >&2
+  read -r choice || return 1
+
+  if [ -z "$choice" ]; then
+    printf '%s' "$default_session"
+    return 0
+  fi
+
+  if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
+    echo 'tmux-session-sidebar: invalid selection' >&2
+    return 1
+  fi
+
+  selected_session="$(session_from_index "$lines" "$choice")" || {
+    echo 'tmux-session-sidebar: invalid selection' >&2
+    return 1
+  }
+  printf '%s' "$selected_session"
+}
+
 run_fzf_browser() {
-  local output key selection session_name close_after_switch
+  local output key selection session_name
 
   output="$({
     render_session_lines
   } | fzf \
     --delimiter=$'\t' \
     --with-nth=1,2,3,4 \
-    --expect=esc \
-    --header='Enter: switch  Esc: close' \
+    --expect=esc,alt-n,alt-a,alt-r,alt-x \
+    --header='Enter: switch  Alt+n: project  Alt+a: adhoc  Alt+r: rename  Alt+x: kill  Esc: close' \
     --prompt='session> ' \
     --height=40%)" || return 1
 
@@ -70,6 +121,28 @@ run_fzf_browser() {
   case "$key" in
     esc)
       return 1
+      ;;
+    alt-n)
+      if "$SCRIPT_DIR/actions/create-project-session.sh" \
+        --client "$client_name" \
+        --sidebar-pane "$sidebar_pane_id" \
+        --source-path "$source_path"; then
+        post_switch_should_continue
+        return
+      fi
+      return 0
+      ;;
+    alt-a)
+      if "$SCRIPT_DIR/actions/create-adhoc-session.sh" \
+        --client "$client_name" \
+        --sidebar-pane "$sidebar_pane_id" \
+        --source-path "$source_path"; then
+        post_switch_should_continue
+        return
+      fi
+      return 0
+      ;;
+    alt-r|alt-x)
       ;;
     "")
       ;;
@@ -81,22 +154,38 @@ run_fzf_browser() {
       ;;
   esac
 
-  [ -n "$selection" ] || return 1
-
-  session_name="${selection%%$'\t'*}"
+  if [ -n "$selection" ]; then
+    session_name="$(session_from_selection "$selection")"
+  else
+    session_name="$(current_session_name)"
+  fi
   [ -n "$session_name" ] || return 1
 
-  "$SCRIPT_DIR/actions/switch-session.sh" \
-    --client "$client_name" \
-    --session "$session_name" \
-    --sidebar-pane "$sidebar_pane_id"
-
-  close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch on)"
-  [ "$close_after_switch" != "on" ]
+  case "$key" in
+    alt-r)
+      "$SCRIPT_DIR/actions/rename-session.sh" \
+        --client "$client_name" \
+        --session "$session_name" || true
+      return 0
+      ;;
+    alt-x)
+      "$SCRIPT_DIR/actions/kill-session.sh" \
+        --client "$client_name" \
+        --session "$session_name" || true
+      return 0
+      ;;
+    *)
+      "$SCRIPT_DIR/actions/switch-session.sh" \
+        --client "$client_name" \
+        --session "$session_name" \
+        --sidebar-pane "$sidebar_pane_id" || return 0
+      post_switch_should_continue
+      ;;
+  esac
 }
 
 run_fallback_browser() {
-  local lines line choice selected_line session_name index close_after_switch
+  local lines line choice session_name index
   lines="$(render_session_lines)"
   [ -n "$lines" ] || return 1
 
@@ -110,33 +199,64 @@ run_fallback_browser() {
 $lines
 EOF
 
-  printf '\nSelect session number or q to close: ' >&2
+  printf '\n[number]=switch [n]=project [a]=adhoc [r]=rename [x]=kill [q]=close: ' >&2
   read -r choice
   case "$choice" in
     q|Q|"")
       return 1
       ;;
+    n|N)
+      if "$SCRIPT_DIR/actions/create-project-session.sh" \
+        --client "$client_name" \
+        --sidebar-pane "$sidebar_pane_id" \
+        --source-path "$source_path"; then
+        post_switch_should_continue
+        return
+      fi
+      return 0
+      ;;
+    a|A)
+      if "$SCRIPT_DIR/actions/create-adhoc-session.sh" \
+        --client "$client_name" \
+        --sidebar-pane "$sidebar_pane_id" \
+        --source-path "$source_path"; then
+        post_switch_should_continue
+        return
+      fi
+      return 0
+      ;;
+    r|R)
+      session_name="$(prompt_session_target "$lines" 'Rename session number')" || return 0
+      "$SCRIPT_DIR/actions/rename-session.sh" \
+        --client "$client_name" \
+        --session "$session_name" || true
+      return 0
+      ;;
+    x|X)
+      session_name="$(prompt_session_target "$lines" 'Kill session number')" || return 0
+      "$SCRIPT_DIR/actions/kill-session.sh" \
+        --client "$client_name" \
+        --session "$session_name" || true
+      return 0
+      ;;
   esac
 
   if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
     echo 'tmux-session-sidebar: invalid selection' >&2
-    return 1
+    return 0
   fi
 
-  selected_line="$(printf '%s\n' "$lines" | sed -n "${choice}p")"
-  [ -n "$selected_line" ] || {
+  session_name="$(session_from_index "$lines" "$choice")" || {
     echo 'tmux-session-sidebar: invalid selection' >&2
-    return 1
+    return 0
   }
 
-  session_name="${selected_line%%$'\t'*}"
   "$SCRIPT_DIR/actions/switch-session.sh" \
     --client "$client_name" \
     --session "$session_name" \
-    --sidebar-pane "$sidebar_pane_id"
+    --sidebar-pane "$sidebar_pane_id" || return 0
 
-  close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch on)"
-  [ "$close_after_switch" != "on" ]
+  post_switch_should_continue
 }
 
 main() {

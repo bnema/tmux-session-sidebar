@@ -6,7 +6,7 @@ source "$SCRIPT_DIR/../lib/tmux.sh"
 
 client_name=""
 session_name=""
-sidebar_pane_id=""
+confirm=""
 
 require_arg() {
   local flag="$1"
@@ -29,9 +29,9 @@ while [ $# -gt 0 ]; do
       session_name="$2"
       shift 2
       ;;
-    --sidebar-pane)
+    --confirm)
       require_arg "$1" "${2:-}"
-      sidebar_pane_id="$2"
+      confirm="$2"
       shift 2
       ;;
     *)
@@ -42,20 +42,34 @@ while [ $# -gt 0 ]; do
 done
 
 client_name="$(sidebar_current_client "$client_name")" || exit 1
-[ -n "$session_name" ] || {
-  echo 'tmux-session-sidebar: missing session name' >&2
-  exit 1
-}
+if [ -z "$session_name" ]; then
+  session_name="$(sidebar_current_session "$client_name")" || exit 1
+fi
 
 if ! sidebar_session_exists "$session_name"; then
   tmux display-message "tmux-session-sidebar: session '$session_name' does not exist"
   exit 1
 fi
 
-close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch on)"
-
-tmux switch-client -c "$client_name" -t "$session_name" || exit 1
-
-if [ "$close_after_switch" = "on" ] && [ -n "$sidebar_pane_id" ]; then
-  tmux kill-pane -t "$sidebar_pane_id" 2>/dev/null || true
+session_count="$(tmux list-sessions 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$session_count" -le 1 ]; then
+  tmux display-message 'tmux-session-sidebar: refusing to kill the last remaining session'
+  exit 1
 fi
+
+if [ -z "$confirm" ]; then
+  printf 'Kill session %s? [y/N]: ' "$session_name" >&2
+  read -r confirm || exit 1
+fi
+
+case "$confirm" in
+  y|Y|yes|YES)
+    ;;
+  *)
+    tmux display-message "tmux-session-sidebar: kill cancelled"
+    exit 1
+    ;;
+esac
+
+tmux kill-session -t "$session_name" || exit 1
+tmux display-message "tmux-session-sidebar: killed session $session_name"
