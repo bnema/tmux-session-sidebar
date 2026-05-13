@@ -161,6 +161,10 @@ For rename and kill in fallback mode, pressing `Enter` at the session-number pro
 - `on`: after a successful switch, the sidebar pane is closed.
 - `off`: after a successful switch, the old sidebar pane remains alive in the old session. This does **not** create a global cross-session sidebar.
 
+### Zoomed windows
+
+If you trigger the sidebar from a zoomed pane, tmux first unzooms the pane and then opens the sidebar. This is native tmux zoom/unzoom behavior. The plugin does not add custom zoom restoration logic in v1.
+
 ## Troubleshooting
 
 ### Nothing happens when I press `prefix + B`

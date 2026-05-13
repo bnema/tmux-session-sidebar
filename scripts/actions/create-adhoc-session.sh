@@ -76,7 +76,8 @@ if sidebar_session_exists "$session_name"; then
 fi
 
 tmux new-session -d -s "$session_name" -c "$source_path" || exit 1
-tmux set-option -t "$session_name" @session-sidebar-kind adhoc
+session_target="$(sidebar_session_target "$session_name")" || exit 1
+tmux set-option -t "$session_target" @session-sidebar-kind adhoc
 tmux display-message "tmux-session-sidebar: created ad-hoc session $session_name"
 
 exec "$SCRIPT_DIR/switch-session.sh" "${switch_args[@]}"

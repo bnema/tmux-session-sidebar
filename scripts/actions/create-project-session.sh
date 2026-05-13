@@ -90,8 +90,9 @@ if sidebar_session_exists "$session_name"; then
 fi
 
 tmux new-session -d -s "$session_name" -c "$project_path" || exit 1
-tmux set-option -t "$session_name" @session-sidebar-kind project
-tmux set-option -t "$session_name" @session-sidebar-project-path "$project_path"
+session_target="$(sidebar_session_target "$session_name")" || exit 1
+tmux set-option -t "$session_target" @session-sidebar-kind project
+tmux set-option -t "$session_target" @session-sidebar-project-path "$project_path"
 tmux display-message "tmux-session-sidebar: created project session $session_name"
 
 exec "$SCRIPT_DIR/switch-session.sh" "${switch_args[@]}"

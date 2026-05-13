@@ -104,10 +104,12 @@ sidebar_session_exists() {
 
 sidebar_session_target() {
   # Usage: sidebar_session_target NAME
-  # Prints =NAME for exact session targeting, bypassing window/pane ambiguity.
+  # Returns a validated session target string for tmux session-scoped commands.
+  # Session names are already normalized and validated elsewhere, so a plain
+  # quoted session name is the most compatible target form here.
   local name="$1"
   [ -z "$name" ] && return 1
-  printf '=%s' "$name"
+  printf '%s' "$name"
 }
 
 sidebar_existing_sidebar_pane() {

@@ -68,5 +68,7 @@ if sidebar_session_exists "$new_name"; then
   exit 1
 fi
 
-tmux rename-session -t "$session_name" "$new_name" || exit 1
+session_target="$(sidebar_session_target "$session_name")" || exit 1
+
+tmux rename-session -t "$session_target" "$new_name" || exit 1
 tmux display-message "tmux-session-sidebar: renamed $session_name to $new_name"

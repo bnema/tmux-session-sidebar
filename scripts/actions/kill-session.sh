@@ -71,5 +71,7 @@ case "$confirm" in
     ;;
 esac
 
-tmux kill-session -t "$session_name" || exit 1
+session_target="$(sidebar_session_target "$session_name")" || exit 1
+
+tmux kill-session -t "$session_target" || exit 1
 tmux display-message "tmux-session-sidebar: killed session $session_name"

@@ -53,8 +53,9 @@ if ! sidebar_session_exists "$session_name"; then
 fi
 
 close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch on)"
+session_target="$(sidebar_session_target "$session_name")" || exit 1
 
-tmux switch-client -c "$client_name" -t "$session_name" || exit 1
+tmux switch-client -c "$client_name" -t "$session_target" || exit 1
 
 if [ "$close_after_switch" = "on" ] && [ -n "$sidebar_pane_id" ]; then
   tmux kill-pane -t "$sidebar_pane_id" 2>/dev/null || true
