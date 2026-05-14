@@ -193,13 +193,13 @@ prompt_session_target() {
 run_fzf_browser() {
   local output key selection session_name header_line
 
-  header_line="Enter: switch  Alt+n: project  Alt+a: adhoc  Alt+r: rename  Alt+x: kill  Alt+h: numbers ($(numbered_sessions_status_label))  Esc: close"
+  header_line="Enter: switch  Alt+n: project  Alt+g: git repo  Alt+a: adhoc  Alt+r: rename  Alt+x: kill  Alt+h: numbers ($(numbered_sessions_status_label))  Esc: close"
   output="$({
     render_session_entries
   } | "$FZF_BIN" \
     --delimiter=$'\t' \
     --with-nth=2 \
-    --expect=esc,alt-n,alt-a,alt-r,alt-x,alt-h \
+    --expect=esc,alt-n,alt-g,alt-a,alt-r,alt-x,alt-h \
     --header="$header_line" \
     --prompt='session> ' \
     --height=100%)" || return 1
@@ -213,6 +213,18 @@ run_fzf_browser() {
       ;;
     alt-n)
       if "$SCRIPT_DIR/actions/create-project-session.sh" \
+        --client "$client_name" \
+        --sidebar-pane "$sidebar_pane_id" \
+        --source-path "$source_path"; then
+        if should_close_after_switch; then
+          return 1
+        fi
+        return 0
+      fi
+      return 0
+      ;;
+    alt-g)
+      if "$SCRIPT_DIR/actions/create-current-git-project-session.sh" \
         --client "$client_name" \
         --sidebar-pane "$sidebar_pane_id" \
         --source-path "$source_path"; then
@@ -307,7 +319,7 @@ EOF
     printf '  (no visible sessions)\n' >&2
   fi
 
-  printf '\n[number]=switch [n]=project [a]=adhoc [r]=rename [x]=kill [h]=numbers [q]=close: ' >&2
+  printf '\n[number]=switch [n]=project [g]=git repo [a]=adhoc [r]=rename [x]=kill [h]=numbers [q]=close: ' >&2
   if ! read -r choice; then
     return 1
   fi
@@ -321,6 +333,18 @@ EOF
       ;;
     n|N)
       if "$SCRIPT_DIR/actions/create-project-session.sh" \
+        --client "$client_name" \
+        --sidebar-pane "$sidebar_pane_id" \
+        --source-path "$source_path"; then
+        if should_close_after_switch; then
+          return 1
+        fi
+        return 0
+      fi
+      return 0
+      ;;
+    g|G)
+      if "$SCRIPT_DIR/actions/create-current-git-project-session.sh" \
         --client "$client_name" \
         --sidebar-pane "$sidebar_pane_id" \
         --source-path "$source_path"; then

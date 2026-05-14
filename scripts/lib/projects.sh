@@ -44,6 +44,7 @@ SED_BIN="$(sidebar_require_command sed)" || _sidebar_return_or_exit 1
 FIND_BIN="$(sidebar_require_command find)" || _sidebar_return_or_exit 1
 SORT_BIN="$(sidebar_require_command sort)" || _sidebar_return_or_exit 1
 MKTEMP_BIN="$(sidebar_require_command mktemp)" || _sidebar_return_or_exit 1
+GIT_BIN="$(command -v git 2>/dev/null || true)"
 REALPATH_BIN="$(command -v realpath 2>/dev/null || true)"
 READLINK_BIN="$(command -v readlink 2>/dev/null || true)"
 
@@ -111,6 +112,21 @@ sidebar_derive_session_name() {
   fi
 
   printf '%s\n' "$name"
+}
+
+sidebar_git_project_root() {
+  # Usage: sidebar_git_project_root PATH
+  # Prints the enclosing git repository root for PATH, if any.
+  local path="$1"
+  local git_root=""
+
+  [ -n "$path" ] || return 1
+  [ -n "$GIT_BIN" ] || return 1
+
+  git_root="$("$GIT_BIN" -C "$path" rev-parse --show-toplevel 2>/dev/null || true)"
+  [ -n "$git_root" ] || return 1
+
+  sidebar_resolve_directory "$git_root"
 }
 
 sidebar_shorten_home_path() {
