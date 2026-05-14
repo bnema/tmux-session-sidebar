@@ -91,8 +91,6 @@ set -g @session-sidebar-close-after-switch 'on'
 
 - `prefix + b` opens or closes the left sidebar in the current window.
 
-If you are upgrading from an older local checkout that used `B`, set `@session-sidebar-key` explicitly to `b` or restart the tmux server so the new default takes effect.
-
 The sidebar is a real tmux pane, not a global overlay. If the current window already has pane splits, the sidebar still opens as a full-height left pane for the whole window. If you switch sessions and `@session-sidebar-close-after-switch` is `on`, the pane closes and can be reopened in the new session.
 
 ### Session browser

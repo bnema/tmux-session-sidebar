@@ -32,20 +32,13 @@ main() {
   set_default @session-sidebar-use-fzf         on
   set_default @session-sidebar-close-after-switch  on
 
-  local sidebar_key previous_key legacy_key quoted_script
+  local sidebar_key previous_key quoted_script
   sidebar_key="$(tmux show-options -gvq @session-sidebar-key)"
   previous_key="$(tmux show-options -gvq @session-sidebar-bound-key 2>/dev/null || true)"
-  legacy_key=""
   printf -v quoted_script '%q' "$SCRIPTS_DIR/open-sidebar.sh"
 
   if [ -n "$previous_key" ] && [ "$previous_key" != "$sidebar_key" ]; then
     unbind_plugin_binding "$previous_key"
-  elif [ -z "$previous_key" ] && [ "$sidebar_key" != "B" ]; then
-    legacy_key="B"
-  fi
-
-  if [ -n "$legacy_key" ]; then
-    unbind_plugin_binding "$legacy_key"
   fi
 
   tmux bind-key -T prefix "$sidebar_key" \
