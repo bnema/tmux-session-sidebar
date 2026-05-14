@@ -18,8 +18,10 @@ It lets you switch sessions in the same tmux client, create project-backed sessi
 Add this to `~/.tmux.conf`:
 
 ```tmux
-set -g @plugin 'brice/tmux-session-sidebar'
+set -g @plugin 'OWNER/tmux-session-sidebar'
 ```
+
+Replace `OWNER` with the GitHub user or organization that hosts the plugin.
 
 Keep TPM itself loaded at the bottom of the file:
 
@@ -27,15 +29,23 @@ Keep TPM itself loaded at the bottom of the file:
 run '~/.tmux/plugins/tpm/tpm'
 ```
 
-Then press `prefix + I` inside tmux.
+Then reload tmux or press `prefix + I` inside tmux.
 
 ### Manual install
 
+Clone the repository into the standard TPM plugin directory:
+
 ```bash
-git clone https://github.com/brice/tmux-session-sidebar ~/.tmux/plugins/tmux-session-sidebar
+git clone https://github.com/OWNER/tmux-session-sidebar ~/.tmux/plugins/tmux-session-sidebar
 ```
 
-Add this to `~/.tmux.conf`:
+Or install a specific release tag:
+
+```bash
+git clone --branch v0.1.0 --depth 1 https://github.com/OWNER/tmux-session-sidebar ~/.tmux/plugins/tmux-session-sidebar
+```
+
+Then add this to `~/.tmux.conf`:
 
 ```tmux
 run-shell ~/.tmux/plugins/tmux-session-sidebar/tmux-session-sidebar.tmux
