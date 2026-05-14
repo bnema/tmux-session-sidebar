@@ -41,10 +41,11 @@ main() {
   set_default @session-sidebar-use-fzf         on
   set_default @session-sidebar-close-after-switch  on
 
-  local sidebar_key previous_key quoted_script
+  local sidebar_key previous_key quoted_script quoted_quick_script slot
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"
   previous_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-bound-key 2>/dev/null || true)"
   printf -v quoted_script '%q' "$SCRIPTS_DIR/open-sidebar.sh"
+  printf -v quoted_quick_script '%q' "$SCRIPTS_DIR/actions/quick-switch-session.sh"
 
   if [ -n "$previous_key" ] && [ "$previous_key" != "$sidebar_key" ]; then
     unbind_plugin_binding "$previous_key"
@@ -53,6 +54,13 @@ main() {
   "$TMUX_BIN" bind-key -T prefix "$sidebar_key" \
     run-shell "$quoted_script #{q:client_name} #{q:window_id} #{q:pane_id} #{q:pane_current_path}"
   "$TMUX_BIN" set-option -gq @session-sidebar-bound-key "$sidebar_key"
+
+  for slot in 1 2 3 4 5 6 7 8 9; do
+    "$TMUX_BIN" bind-key -n "C-$slot" \
+      run-shell "$quoted_quick_script --client #{q:client_name} --index $slot"
+  done
+  "$TMUX_BIN" bind-key -n C-0 \
+    run-shell "$quoted_quick_script --client #{q:client_name} --index 10"
 }
 
 main "$@"

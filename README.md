@@ -106,6 +106,15 @@ Each row shows:
 
 Purely numeric session names are hidden by default to reduce noise. Toggle them on or off from the sidebar when needed.
 
+### Global quick-switch keys
+
+These work without opening the sidebar:
+
+- `Ctrl+1` through `Ctrl+9` switch to visible sessions 1 through 9
+- `Ctrl+0` switches to visible session 10
+
+The quick-switch order matches the sidebar's default visible session list, so purely numeric session names are skipped unless you switch to them some other way.
+
 ### Keys in `fzf` mode
 
 These keys are used when `fzf` is available and `@session-sidebar-use-fzf` is not `off`.

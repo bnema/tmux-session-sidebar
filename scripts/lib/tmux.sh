@@ -133,6 +133,52 @@ sidebar_list_sessions() {
   done < <("$TMUX_BIN" list-sessions -F '#{session_name}	#{?session_attached,attached,detached}	#{session_windows}' 2>/dev/null)
 }
 
+sidebar_session_is_numeric() {
+  # Usage: sidebar_session_is_numeric NAME
+  local name="$1"
+  [[ "$name" =~ ^[0-9]+$ ]]
+}
+
+sidebar_list_visible_sessions() {
+  # Usage: sidebar_list_visible_sessions [CLIENT] [SHOW_NUMBERED]
+  # Prints the sidebar-visible session rows using the default filtering model.
+  local client="${1:-}"
+  local show_numbered="${2:-off}"
+  local session_name attached_state window_count is_current
+
+  while IFS=$'\t' read -r session_name attached_state window_count is_current; do
+    [ -z "$session_name" ] && continue
+    if [ "$show_numbered" != "on" ] && sidebar_session_is_numeric "$session_name"; then
+      continue
+    fi
+    printf '%s\t%s\t%s\t%s\n' "$session_name" "$attached_state" "$window_count" "$is_current"
+  done < <(sidebar_list_sessions "$client")
+}
+
+sidebar_visible_session_name_at_index() {
+  # Usage: sidebar_visible_session_name_at_index CLIENT INDEX [SHOW_NUMBERED]
+  local client="$1"
+  local index="$2"
+  local show_numbered="${3:-off}"
+  local current=0
+  local session_name attached_state window_count is_current
+
+  if ! [[ "$index" =~ ^[0-9]+$ ]] || [ "$index" -le 0 ]; then
+    return 1
+  fi
+
+  while IFS=$'\t' read -r session_name attached_state window_count is_current; do
+    [ -z "$session_name" ] && continue
+    current=$((current + 1))
+    if [ "$current" -eq "$index" ]; then
+      printf '%s' "$session_name"
+      return 0
+    fi
+  done < <(sidebar_list_visible_sessions "$client" "$show_numbered")
+
+  return 1
+}
+
 sidebar_session_exists() {
   # Usage: sidebar_session_exists NAME
   local name="$1"

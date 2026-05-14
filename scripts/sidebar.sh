@@ -123,11 +123,8 @@ render_session_entries() {
     usable_width=12
   fi
 
-  sidebar_list_sessions "$client_name" | while IFS=$'\t' read -r session_name attached_state window_count is_current; do
+  sidebar_list_visible_sessions "$client_name" "$show_numbered_sessions" | while IFS=$'\t' read -r session_name attached_state window_count is_current; do
     [ -z "$session_name" ] && continue
-    if [ "$show_numbered_sessions" != "on" ] && [[ "$session_name" =~ ^[0-9]+$ ]]; then
-      continue
-    fi
     label="$(render_session_label "$session_name" "$attached_state" "$window_count" "$is_current" "$usable_width")"
     printf '%s\t%s\n' "$session_name" "$label"
   done
