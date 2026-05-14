@@ -132,7 +132,7 @@ These keys are used when `fzf` is available and `@session-sidebar-use-fzf` is no
 | Key | Action |
 | --- | --- |
 | `Enter` | Switch to the selected session |
-| `Alt+n` | Create or switch to a project session |
+| `Alt+n` | Open the project picker and create or switch to a project session |
 | `Alt+a` | Create or switch to an ad-hoc session |
 | `Alt+r` | Rename the selected session |
 | `Alt+x` | Kill the selected session |
@@ -166,7 +166,9 @@ For rename and kill in fallback mode, pressing `Enter` at the session-number pro
 ### Project session creation
 
 - The plugin lists one directory level under each configured project root.
+- In `fzf` mode, `Alt+n` opens the project picker in a tmux popup so long project lists stay readable.
 - Configured project roots may be symlinked paths; the plugin resolves them before listing projects.
+- The picker shows the project name first, with its parent path as context.
 - The default session name is derived from the project directory basename.
 - Names are normalized to a tmux-safe form.
 - If the derived name already exists, the plugin switches to that session instead of creating a suffixed variant.

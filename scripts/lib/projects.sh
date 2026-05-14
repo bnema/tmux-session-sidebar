@@ -43,6 +43,7 @@ TR_BIN="$(sidebar_require_command tr)" || _sidebar_return_or_exit 1
 SED_BIN="$(sidebar_require_command sed)" || _sidebar_return_or_exit 1
 FIND_BIN="$(sidebar_require_command find)" || _sidebar_return_or_exit 1
 SORT_BIN="$(sidebar_require_command sort)" || _sidebar_return_or_exit 1
+MKTEMP_BIN="$(sidebar_require_command mktemp)" || _sidebar_return_or_exit 1
 REALPATH_BIN="$(command -v realpath 2>/dev/null || true)"
 READLINK_BIN="$(command -v readlink 2>/dev/null || true)"
 
@@ -112,12 +113,139 @@ sidebar_derive_session_name() {
   printf '%s\n' "$name"
 }
 
+sidebar_shorten_home_path() {
+  local path="$1"
+  case "$path" in
+    "$HOME")
+      printf '~'
+      ;;
+    "$HOME"/*)
+      printf '%s/%s' '~' "${path#"$HOME"/}"
+      ;;
+    *)
+      printf '%s' "$path"
+      ;;
+  esac
+}
+
+sidebar_render_project_entry() {
+  local project_path="$1"
+  local project_name parent_dir parent_display
+
+  project_name="$("$BASENAME_BIN" "$project_path")"
+  parent_dir="${project_path%/*}"
+  if [ "$parent_dir" = "$project_path" ]; then
+    parent_dir='.'
+  fi
+  parent_display="$(sidebar_shorten_home_path "$parent_dir")"
+
+  printf '%s\t%s\t[%s]\n' "$project_path" "$project_name" "$parent_display"
+}
+
+sidebar_render_project_entries() {
+  local project_path
+  while IFS= read -r project_path; do
+    [ -z "$project_path" ] && continue
+    sidebar_render_project_entry "$project_path"
+  done < <(sidebar_list_projects)
+}
+
+sidebar_project_path_from_selection() {
+  local selection="$1"
+  printf '%s' "${selection%%$'\t'*}"
+}
+
+sidebar_project_display_from_selection() {
+  local selection="$1"
+  local display=""
+
+  if [[ "$selection" != *$'\t'* ]]; then
+    printf '%s' "$selection"
+    return 0
+  fi
+
+  display="${selection#*$'\t'}"
+  display="${display//$'\t'/  }"
+  printf '%s' "$display"
+}
+
+sidebar_pick_project_fzf() {
+  local fzf_cmd="$1"
+  local entries selected
+
+  entries="$(sidebar_render_project_entries)"
+  if [ -z "$entries" ]; then
+    echo "tmux-session-sidebar: no projects found in configured roots" >&2
+    return 1
+  fi
+
+  selected="$(printf '%s\n' "$entries" | "$fzf_cmd" \
+    --delimiter=$'\t' \
+    --with-nth=2,3 \
+    --prompt='project> ' \
+    --header='Enter: create session  Esc: cancel' \
+    --height=100%)" || return 1
+
+  sidebar_project_path_from_selection "$selected"
+}
+
+sidebar_project_picker_popup_script() {
+  local popup_script
+  popup_script="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)/pick-project-popup.sh" || return 1
+  printf '%s' "$popup_script"
+}
+
+sidebar_tmux_supports_popups() {
+  "$TMUX_BIN" list-commands display-popup >/dev/null 2>&1
+}
+
+sidebar_pick_project_popup() {
+  local client_name="$1"
+  local start_dir="${2:-}"
+  local output_file popup_script selected
+
+  [ -n "$client_name" ] || return 1
+
+  popup_script="$(sidebar_project_picker_popup_script)" || return 1
+  [ -x "$popup_script" ] || return 1
+
+  output_file="$("$MKTEMP_BIN" "${TMPDIR:-/tmp}/tmux-session-sidebar-project.XXXXXX")" || return 1
+
+  if [ -z "$start_dir" ] || [ ! -d "$start_dir" ]; then
+    start_dir="$HOME"
+  fi
+
+  if ! "$TMUX_BIN" display-popup \
+    -c "$client_name" \
+    -d "$start_dir" \
+    -E \
+    -w '80%' \
+    -h '80%' \
+    -T 'Project session' \
+    "$popup_script" --output-file "$output_file"; then
+    rm -f "$output_file"
+    return 1
+  fi
+
+  selected=''
+  if [ -r "$output_file" ]; then
+    selected="$(<"$output_file")"
+  fi
+  rm -f "$output_file"
+
+  [ -n "$selected" ] || return 1
+  printf '%s' "$selected"
+}
+
 sidebar_pick_project() {
-  # Usage: sidebar_pick_project
+  # Usage: sidebar_pick_project [CLIENT] [START_DIR]
   # Presents the project list to the user and writes the selected path to stdout.
-  # Uses fzf when available and @session-sidebar-use-fzf is not off;
-  # otherwise falls back to a simple numbered menu on stderr, selection on stdout.
-  local use_fzf projects selected choice line fzf_cmd
+  # Uses fzf when available and @session-sidebar-use-fzf is not off; when a tmux
+  # client is available, the fzf project picker runs in a popup for readability.
+  # Otherwise it falls back to inline fzf or a simple numbered menu.
+  local client_name="${1:-}"
+  local start_dir="${2:-}"
+  local use_fzf projects choice line fzf_cmd popup_script
   local -a lines=()
   local i=0
 
@@ -131,16 +259,21 @@ sidebar_pick_project() {
   fi
 
   if [ "$use_fzf" != "off" ] && [ -n "$fzf_cmd" ]; then
-    selected="$(printf '%s\n' "$projects" | "$fzf_cmd" --prompt='project> ' --height=100%)" || return 1
-    printf '%s' "$selected"
+    if [ -n "$client_name" ] && sidebar_tmux_supports_popups && popup_script="$(sidebar_project_picker_popup_script 2>/dev/null || true)" && [ -x "$popup_script" ]; then
+      sidebar_pick_project_popup "$client_name" "$start_dir" || return 1
+      return 0
+    fi
+
+    sidebar_pick_project_fzf "$fzf_cmd"
     return 0
   fi
 
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     i=$((i + 1))
+    line="$(sidebar_render_project_entry "$line")"
     lines+=("$line")
-    printf '%3d) %s\n' "$i" "$line" >&2
+    printf '%3d) %s\n' "$i" "$(sidebar_project_display_from_selection "$line")" >&2
   done <<< "$projects"
 
   [ "$i" -gt 0 ] || return 1
@@ -151,7 +284,7 @@ sidebar_pick_project() {
     return 1
   fi
   if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$i" ]; then
-    printf '%s' "${lines[$((choice - 1))]}"
+    sidebar_project_path_from_selection "${lines[$((choice - 1))]}"
     return 0
   fi
 

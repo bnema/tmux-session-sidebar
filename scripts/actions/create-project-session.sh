@@ -55,7 +55,7 @@ client_name="$(sidebar_current_client "$client_name")" || exit 1
 source_path="$(sidebar_current_path "$source_path")" || exit 1
 
 if [ -z "$project_path" ]; then
-  project_path="$(sidebar_pick_project)" || exit 1
+  project_path="$(sidebar_pick_project "$client_name" "$source_path")" || exit 1
 fi
 
 if [ ! -d "$project_path" ]; then
