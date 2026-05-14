@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+DIRNAME_BIN="$(command -v dirname 2>/dev/null || true)"
+PWD_BIN="$(command -v pwd 2>/dev/null || true)"
+[ -n "$DIRNAME_BIN" ] || { echo 'tmux-session-sidebar: dirname not found' >&2; exit 1; }
+[ -n "$PWD_BIN" ] || { echo 'tmux-session-sidebar: pwd not found' >&2; exit 1; }
+SCRIPT_DIR="$(cd "$($DIRNAME_BIN "${BASH_SOURCE[0]}")" && "$PWD_BIN")" || exit 1
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/../lib/tmux.sh"
 
 client_name=""
 session_name=""
 sidebar_pane_id=""
-
-require_arg() {
-  local flag="$1"
-  local value="${2:-}"
-  if [ -z "$value" ]; then
-    echo "tmux-session-sidebar: missing value for $flag" >&2
-    exit 1
-  fi
-}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -47,16 +43,20 @@ client_name="$(sidebar_current_client "$client_name")" || exit 1
   exit 1
 }
 
+if ! sidebar_validate_session_name "$session_name"; then
+  exit 1
+fi
+
 if ! sidebar_session_exists "$session_name"; then
-  tmux display-message "tmux-session-sidebar: session '$session_name' does not exist"
+  "$TMUX_BIN" display-message "tmux-session-sidebar: session '$session_name' does not exist"
   exit 1
 fi
 
 close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch on)"
 session_target="$(sidebar_session_target "$session_name")" || exit 1
 
-tmux switch-client -c "$client_name" -t "$session_target" || exit 1
+"$TMUX_BIN" switch-client -c "$client_name" -t "$session_target"
 
 if [ "$close_after_switch" = "on" ] && [ -n "$sidebar_pane_id" ]; then
-  tmux kill-pane -t "$sidebar_pane_id" 2>/dev/null || true
+  "$TMUX_BIN" kill-pane -t "$sidebar_pane_id" 2>/dev/null || true
 fi

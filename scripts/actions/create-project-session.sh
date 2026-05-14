@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+DIRNAME_BIN="$(command -v dirname 2>/dev/null || true)"
+PWD_BIN="$(command -v pwd 2>/dev/null || true)"
+[ -n "$DIRNAME_BIN" ] || { echo 'tmux-session-sidebar: dirname not found' >&2; exit 1; }
+[ -n "$PWD_BIN" ] || { echo 'tmux-session-sidebar: pwd not found' >&2; exit 1; }
+SCRIPT_DIR="$(cd "$($DIRNAME_BIN "${BASH_SOURCE[0]}")" && "$PWD_BIN")" || exit 1
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/../lib/tmux.sh"
 # shellcheck source=/dev/null
@@ -11,15 +16,6 @@ sidebar_pane_id=""
 project_path=""
 session_name=""
 source_path=""
-
-require_arg() {
-  local flag="$1"
-  local value="${2:-}"
-  if [ -z "$value" ]; then
-    echo "tmux-session-sidebar: missing value for $flag" >&2
-    exit 1
-  fi
-}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -63,7 +59,7 @@ if [ -z "$project_path" ]; then
 fi
 
 if [ ! -d "$project_path" ]; then
-  tmux display-message "tmux-session-sidebar: project path not found: $project_path"
+  "$TMUX_BIN" display-message "tmux-session-sidebar: project path not found: $project_path"
   exit 1
 fi
 
@@ -72,7 +68,7 @@ if [ -z "$session_name" ]; then
 fi
 
 if ! validation_msg="$(sidebar_validate_session_name "$session_name" 2>&1 >/dev/null)"; then
-  tmux display-message "tmux-session-sidebar: ${validation_msg:-invalid session name: $session_name}"
+  "$TMUX_BIN" display-message "tmux-session-sidebar: ${validation_msg:-invalid session name: $session_name}"
   exit 1
 fi
 
@@ -85,14 +81,14 @@ if [ -n "$sidebar_pane_id" ]; then
 fi
 
 if sidebar_session_exists "$session_name"; then
-  tmux display-message "tmux-session-sidebar: switched to existing session $session_name"
+  "$TMUX_BIN" display-message "tmux-session-sidebar: switched to existing session $session_name"
   exec "$SCRIPT_DIR/switch-session.sh" "${switch_args[@]}"
 fi
 
-tmux new-session -d -s "$session_name" -c "$project_path" || exit 1
+"$TMUX_BIN" new-session -d -s "$session_name" -c "$project_path"
 session_target="$(sidebar_session_target "$session_name")" || exit 1
-tmux set-option -t "$session_target" @session-sidebar-kind project
-tmux set-option -t "$session_target" @session-sidebar-project-path "$project_path"
-tmux display-message "tmux-session-sidebar: created project session $session_name"
+"$TMUX_BIN" set-option -t "$session_target" @session-sidebar-kind project
+"$TMUX_BIN" set-option -t "$session_target" @session-sidebar-project-path "$project_path"
+"$TMUX_BIN" display-message "tmux-session-sidebar: created project session $session_name"
 
 exec "$SCRIPT_DIR/switch-session.sh" "${switch_args[@]}"

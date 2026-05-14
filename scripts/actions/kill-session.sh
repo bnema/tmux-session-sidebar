@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+DIRNAME_BIN="$(command -v dirname 2>/dev/null || true)"
+PWD_BIN="$(command -v pwd 2>/dev/null || true)"
+[ -n "$DIRNAME_BIN" ] || { echo 'tmux-session-sidebar: dirname not found' >&2; exit 1; }
+[ -n "$PWD_BIN" ] || { echo 'tmux-session-sidebar: pwd not found' >&2; exit 1; }
+SCRIPT_DIR="$(cd "$($DIRNAME_BIN "${BASH_SOURCE[0]}")" && "$PWD_BIN")" || exit 1
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/../lib/tmux.sh"
 
 client_name=""
 session_name=""
 confirm=""
-
-require_arg() {
-  local flag="$1"
-  local value="${2:-}"
-  if [ -z "$value" ]; then
-    echo "tmux-session-sidebar: missing value for $flag" >&2
-    exit 1
-  fi
-}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -47,14 +43,14 @@ if [ -z "$session_name" ]; then
 fi
 
 if ! sidebar_session_exists "$session_name"; then
-  tmux display-message "tmux-session-sidebar: session '$session_name' does not exist"
+  "$TMUX_BIN" display-message "tmux-session-sidebar: session '$session_name' does not exist"
   exit 1
 fi
 
-mapfile -t sessions < <(tmux list-sessions 2>/dev/null)
+mapfile -t sessions < <("$TMUX_BIN" list-sessions 2>/dev/null)
 session_count="${#sessions[@]}"
 if [ "$session_count" -le 1 ]; then
-  tmux display-message 'tmux-session-sidebar: refusing to kill the last remaining session'
+  "$TMUX_BIN" display-message 'tmux-session-sidebar: refusing to kill the last remaining session'
   exit 1
 fi
 
@@ -75,12 +71,12 @@ case "$confirm" in
   y|Y|yes|YES)
     ;;
   *)
-    tmux display-message "tmux-session-sidebar: kill cancelled"
+    "$TMUX_BIN" display-message "tmux-session-sidebar: kill cancelled"
     exit 1
     ;;
 esac
 
 session_target="$(sidebar_session_target "$session_name")" || exit 1
 
-tmux kill-session -t "$session_target" || exit 1
-tmux display-message "tmux-session-sidebar: killed session $session_name"
+"$TMUX_BIN" kill-session -t "$session_target"
+"$TMUX_BIN" display-message "tmux-session-sidebar: killed session $session_name"

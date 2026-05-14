@@ -15,5 +15,17 @@ install:
 	@echo "Then reload tmux or press prefix + I."
 
 uninstall:
-	@rm -rf "$(TARGET_DIR)"
+	@[ -n "$(TARGET_DIR)" ] || { echo "Error: TARGET_DIR is empty" >&2; exit 1; }
+	@[ "$(TARGET_DIR)" != "/" ] || { echo "Error: refusing to remove /" >&2; exit 1; }
+	@[ "$(TARGET_DIR)" != "." ] || { echo "Error: refusing to remove ." >&2; exit 1; }
+	@[ "$(TARGET_DIR)" != ".." ] || { echo "Error: refusing to remove .." >&2; exit 1; }
+	@resolved_tpm_dir=$$(realpath -m "$(TPM_DIR)" 2>/dev/null || readlink -f "$(TPM_DIR)" 2>/dev/null || printf '%s' "$(TPM_DIR)"); \
+	target_parent_dir=$$(dirname -- "$(TARGET_DIR)"); \
+	resolved_target_parent=$$(realpath -m "$$target_parent_dir" 2>/dev/null || readlink -f "$$target_parent_dir" 2>/dev/null || printf '%s' "$$target_parent_dir"); \
+	case "$$resolved_target_parent" in "$$resolved_tpm_dir"|"$$resolved_tpm_dir"/*) ;; *) echo "Error: refusing to remove unsafe target $(TARGET_DIR)" >&2; exit 1 ;; esac
+	@if [ -e "$(TARGET_DIR)" ] && [ ! -L "$(TARGET_DIR)" ]; then \
+		echo "Error: refusing to remove non-symlink target $(TARGET_DIR)" >&2; \
+		exit 1; \
+	fi
+	@find "$(TARGET_DIR)" -maxdepth 0 -type l -exec rm -f -- {} \; 2>/dev/null || true
 	@echo "Removed $(TARGET_DIR)"

@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+DIRNAME_BIN="$(command -v dirname 2>/dev/null || true)"
+PWD_BIN="$(command -v pwd 2>/dev/null || true)"
+[ -n "$DIRNAME_BIN" ] || { echo 'tmux-session-sidebar: dirname not found' >&2; exit 1; }
+[ -n "$PWD_BIN" ] || { echo 'tmux-session-sidebar: pwd not found' >&2; exit 1; }
+SCRIPT_DIR="$(cd "$($DIRNAME_BIN "${BASH_SOURCE[0]}")" && "$PWD_BIN")" || exit 1
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/lib/tmux.sh"
+SED_BIN="$(sidebar_require_command sed)" || exit 1
+FZF_BIN="$(command -v fzf 2>/dev/null || true)"
 
 client_name=""
 source_path=""
-
-require_arg() {
-  local flag="$1"
-  local value="${2:-}"
-  if [ -z "$value" ]; then
-    echo "tmux-session-sidebar: missing value for $flag" >&2
-    exit 1
-  fi
-}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -38,11 +36,11 @@ done
 client_name="$(sidebar_current_client "$client_name")" || exit 1
 sidebar_pane_id="$(sidebar_current_pane_id)" || exit 1
 
-tmux set-option -p -t "$sidebar_pane_id" @session-sidebar-pane 1
+"$TMUX_BIN" set-option -p -t "$sidebar_pane_id" @session-sidebar-pane 1
 
 sidebar_pane_width() {
   local width
-  width="$(tmux display-message -p -t "$sidebar_pane_id" '#{pane_width}' 2>/dev/null || true)"
+  width="$("$TMUX_BIN" display-message -p -t "$sidebar_pane_id" '#{pane_width}' 2>/dev/null || true)"
   case "$width" in
     ''|*[!0-9]*) width=30 ;;
   esac
@@ -134,7 +132,7 @@ session_from_index() {
   local choice="$2"
   local selected_line
 
-  selected_line="$(printf '%s\n' "$lines" | sed -n "${choice}p")"
+  selected_line="$(printf '%s\n' "$lines" | "$SED_BIN" -n "${choice}p")"
   [ -n "$selected_line" ] || return 1
   session_from_selection "$selected_line"
 }
@@ -180,7 +178,7 @@ run_fzf_browser() {
 
   output="$({
     render_session_entries
-  } | fzf \
+  } | "$FZF_BIN" \
     --delimiter=$'\t' \
     --with-nth=2 \
     --expect=esc,alt-n,alt-a,alt-r,alt-x \
@@ -188,8 +186,8 @@ run_fzf_browser() {
     --prompt='session> ' \
     --height=100%)" || return 1
 
-  key="$(printf '%s\n' "$output" | sed -n '1p')"
-  selection="$(printf '%s\n' "$output" | sed -n '2p')"
+  key="$(printf '%s\n' "$output" | "$SED_BIN" -n '1p')"
+  selection="$(printf '%s\n' "$output" | "$SED_BIN" -n '2p')"
 
   case "$key" in
     esc)
@@ -358,7 +356,7 @@ main() {
   while :; do
     use_fzf="$(sidebar_get_option @session-sidebar-use-fzf on)"
 
-    if [ "$use_fzf" != "off" ] && command -v fzf >/dev/null 2>&1; then
+    if [ "$use_fzf" != "off" ] && [ -n "$FZF_BIN" ]; then
       run_fzf_browser || exit 0
       continue
     fi

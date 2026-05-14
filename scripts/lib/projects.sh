@@ -1,9 +1,22 @@
 #!/usr/bin/env bash
+# Strict mode is intentionally not enabled here because this file is sourced by
+# other scripts and must not silently change the caller's shell options.
 # tmux-session-sidebar — shared project helpers
 # Sourceable with no side effects. Sources tmux.sh relative to this file.
 
+DIRNAME_BIN="$(command -v dirname 2>/dev/null || true)"
+PWD_BIN="$(command -v pwd 2>/dev/null || true)"
+if [ -z "$DIRNAME_BIN" ] || [ -z "$PWD_BIN" ]; then
+  echo "tmux-session-sidebar: unable to resolve dirname/pwd" >&2
+  if (return 0 2>/dev/null); then
+    return 1
+  else
+    exit 1
+  fi
+fi
+
 # Source tmux helpers from the same directory
-_sidebar_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || {
+_sidebar_lib_dir="$(cd "$($DIRNAME_BIN "${BASH_SOURCE[0]}")" && "$PWD_BIN")" || {
   echo "tmux-session-sidebar: unable to locate script directory" >&2
   if (return 0 2>/dev/null); then
     return 1
@@ -22,6 +35,14 @@ fi
 # shellcheck source=/dev/null
 source "$_sidebar_lib_dir/tmux.sh"
 unset _sidebar_lib_dir
+unset DIRNAME_BIN
+unset PWD_BIN
+
+BASENAME_BIN="$(sidebar_require_command basename)" || _sidebar_return_or_exit 1
+TR_BIN="$(sidebar_require_command tr)" || _sidebar_return_or_exit 1
+SED_BIN="$(sidebar_require_command sed)" || _sidebar_return_or_exit 1
+FIND_BIN="$(sidebar_require_command find)" || _sidebar_return_or_exit 1
+SORT_BIN="$(sidebar_require_command sort)" || _sidebar_return_or_exit 1
 
 sidebar_project_roots() {
   # Usage: sidebar_project_roots
@@ -45,9 +66,9 @@ sidebar_list_projects() {
   while IFS= read -r root; do
     [ -z "$root" ] && continue
     if [ -d "$root" ]; then
-      find -L "$root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null
+      "$FIND_BIN" "$root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null
     fi
-  done < <(sidebar_project_roots) | sort -u
+  done < <(sidebar_project_roots) | "$SORT_BIN" -u
 }
 
 sidebar_derive_session_name() {
@@ -59,22 +80,13 @@ sidebar_derive_session_name() {
     return 0
   fi
 
-  name="$(basename "$path")"
+  name="$("$BASENAME_BIN" "$path")"
 
   # Normalize to lowercase
-  name="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+  name="$(printf '%s' "$name" | "$TR_BIN" '[:upper:]' '[:lower:]')"
 
-  # Replace anything not lowercase alphanumeric, underscore, or dash with underscore
-  name="$(printf '%s' "$name" | sed 's/[^a-z0-9_-]/_/g')"
-
-  # Collapse repeated underscores and dashes
-  name="$(printf '%s' "$name" | sed -E 's/_{2,}/_/g; s/-{2,}/-/g')"
-
-  # Remove leading punctuation (dots, dashes, underscores)
-  name="$(printf '%s' "$name" | sed -E 's/^[._-]+//')"
-
-  # Remove trailing punctuation
-  name="$(printf '%s' "$name" | sed -E 's/[._-]+$//')"
+  # Normalize, collapse, and trim in one pass.
+  name="$(printf '%s' "$name" | "$SED_BIN" -E 's/[^a-z0-9_-]/_/g; s/_{2,}/_/g; s/-{2,}/-/g; s/^[._-]+//; s/[._-]+$//')"
 
   # Fallback if name is empty after normalization
   if [ -z "$name" ]; then
@@ -89,15 +101,12 @@ sidebar_pick_project() {
   # Presents the project list to the user and writes the selected path to stdout.
   # Uses fzf when available and @session-sidebar-use-fzf is not off;
   # otherwise falls back to a simple numbered menu on stderr, selection on stdout.
-  local use_fzf fzf_available projects selected choice line
+  local use_fzf projects selected choice line fzf_cmd
   local -a lines=()
   local i=0
 
   use_fzf="$(sidebar_get_option @session-sidebar-use-fzf on)"
-  fzf_available=false
-  if command -v fzf >/dev/null 2>&1; then
-    fzf_available=true
-  fi
+  fzf_cmd="$(command -v fzf 2>/dev/null || true)"
 
   projects="$(sidebar_list_projects)"
   if [ -z "$projects" ]; then
@@ -105,8 +114,8 @@ sidebar_pick_project() {
     return 1
   fi
 
-  if [ "$use_fzf" != "off" ] && $fzf_available; then
-    selected="$(printf '%s\n' "$projects" | fzf --prompt='project> ' --height=40%)" || return 1
+  if [ "$use_fzf" != "off" ] && [ -n "$fzf_cmd" ]; then
+    selected="$(printf '%s\n' "$projects" | "$fzf_cmd" --prompt='project> ' --height=40%)" || return 1
     printf '%s' "$selected"
     return 0
   fi
