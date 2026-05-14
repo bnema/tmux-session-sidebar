@@ -71,8 +71,8 @@ if [ -z "$session_name" ]; then
   session_name="$(sidebar_derive_session_name "$project_path")"
 fi
 
-if ! sidebar_validate_session_name "$session_name" >/dev/null 2>&1; then
-  tmux display-message "tmux-session-sidebar: invalid session name: $session_name"
+if ! validation_msg="$(sidebar_validate_session_name "$session_name" 2>&1 >/dev/null)"; then
+  tmux display-message "tmux-session-sidebar: ${validation_msg:-invalid session name: $session_name}"
   exit 1
 fi
 

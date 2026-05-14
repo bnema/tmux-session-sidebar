@@ -53,12 +53,20 @@ client_name="$(sidebar_current_client "$client_name")" || exit 1
 source_path="$(sidebar_current_path "$source_path")" || exit 1
 
 if [ -z "$session_name" ]; then
+  if [ ! -t 0 ]; then
+    echo 'tmux-session-sidebar: interactive input required for ad-hoc session creation; use --name' >&2
+    exit 1
+  fi
+
   printf 'New ad-hoc session name: ' >&2
-  read -r session_name || exit 1
+  if ! read -r session_name; then
+    echo 'tmux-session-sidebar: failed to read ad-hoc session name; use --name' >&2
+    exit 1
+  fi
 fi
 
-if ! sidebar_validate_session_name "$session_name" >/dev/null 2>&1; then
-  tmux display-message "tmux-session-sidebar: invalid session name: $session_name"
+if ! validation_msg="$(sidebar_validate_session_name "$session_name" 2>&1 >/dev/null)"; then
+  tmux display-message "tmux-session-sidebar: ${validation_msg:-invalid session name: $session_name}"
   exit 1
 fi
 

@@ -28,7 +28,7 @@ sidebar_project_roots() {
   # Prints existing project root directories, one per line.
   local roots raw_roots root
   raw_roots="$(sidebar_get_option @session-sidebar-project-roots "$HOME/projects")"
-  IFS=':' read -r -a roots <<< "$raw_roots"
+  readarray -d ':' -t roots <<< "$raw_roots:"
   for root in "${roots[@]}"; do
     [ -z "$root" ] && continue
     if [ -d "$root" ]; then
@@ -64,8 +64,8 @@ sidebar_derive_session_name() {
   # Normalize to lowercase
   name="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
 
-  # Replace anything not alphanumeric or dash with underscore
-  name="$(printf '%s' "$name" | sed 's/[^A-Za-z0-9-]/_/g')"
+  # Replace anything not lowercase alphanumeric, underscore, or dash with underscore
+  name="$(printf '%s' "$name" | sed 's/[^a-z0-9_-]/_/g')"
 
   # Collapse repeated underscores and dashes
   name="$(printf '%s' "$name" | sed -E 's/_{2,}/_/g; s/-{2,}/-/g')"
@@ -82,22 +82,6 @@ sidebar_derive_session_name() {
   fi
 
   printf '%s\n' "$name"
-}
-
-sidebar_validate_session_name() {
-  # Usage: sidebar_validate_session_name NAME
-  # Returns 0 if the name is valid for a tmux session, nonzero otherwise.
-  # Valid characters: A-Z a-z 0-9 _ -
-  local name="$1"
-  if [ -z "$name" ]; then
-    echo "tmux-session-sidebar: session name must not be empty" >&2
-    return 1
-  fi
-  if ! [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]]; then
-    echo "tmux-session-sidebar: session name contains invalid characters: $name" >&2
-    return 1
-  fi
-  return 0
 }
 
 sidebar_pick_project() {
@@ -137,7 +121,10 @@ sidebar_pick_project() {
   [ "$i" -gt 0 ] || return 1
 
   printf '\nSelect project number [1-%d]: ' "$i" >&2
-  read -r choice
+  if ! read -r choice; then
+    echo 'tmux-session-sidebar: project selection cancelled' >&2
+    return 1
+  fi
   if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$i" ]; then
     printf '%s' "${lines[$((choice - 1))]}"
     return 0

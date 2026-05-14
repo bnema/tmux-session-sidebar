@@ -102,6 +102,22 @@ sidebar_session_exists() {
   [ -n "$name" ] && tmux has-session -t "=$name" 2>/dev/null
 }
 
+sidebar_validate_session_name() {
+  # Usage: sidebar_validate_session_name NAME
+  # Returns 0 if the name is valid for a tmux session, nonzero otherwise.
+  # Valid characters: A-Z a-z 0-9 _ -
+  local name="$1"
+  if [ -z "$name" ]; then
+    echo "tmux-session-sidebar: session name must not be empty" >&2
+    return 1
+  fi
+  if ! [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    echo "tmux-session-sidebar: session name contains invalid characters: $name" >&2
+    return 1
+  fi
+  return 0
+}
+
 sidebar_session_target() {
   # Usage: sidebar_session_target NAME
   # Returns a validated session target string for tmux session-scoped commands.

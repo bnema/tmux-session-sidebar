@@ -51,15 +51,24 @@ if ! sidebar_session_exists "$session_name"; then
   exit 1
 fi
 
-session_count="$(tmux list-sessions 2>/dev/null | wc -l | tr -d ' ')"
+mapfile -t sessions < <(tmux list-sessions 2>/dev/null)
+session_count="${#sessions[@]}"
 if [ "$session_count" -le 1 ]; then
   tmux display-message 'tmux-session-sidebar: refusing to kill the last remaining session'
   exit 1
 fi
 
 if [ -z "$confirm" ]; then
+  if [ ! -t 0 ]; then
+    echo 'tmux-session-sidebar: interactive input required for kill confirmation; use --confirm' >&2
+    exit 1
+  fi
+
   printf 'Kill session %s? [y/N]: ' "$session_name" >&2
-  read -r confirm || exit 1
+  if ! read -r confirm; then
+    echo 'tmux-session-sidebar: failed to read kill confirmation; use --confirm' >&2
+    exit 1
+  fi
 fi
 
 case "$confirm" in

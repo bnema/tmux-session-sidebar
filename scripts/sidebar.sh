@@ -143,10 +143,10 @@ current_session_name() {
   sidebar_current_session "$client_name"
 }
 
-post_switch_should_continue() {
+should_close_after_switch() {
   local close_after_switch
   close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch on)"
-  [ "$close_after_switch" != "on" ]
+  [ "$close_after_switch" = "on" ]
 }
 
 prompt_session_target() {
@@ -200,8 +200,10 @@ run_fzf_browser() {
         --client "$client_name" \
         --sidebar-pane "$sidebar_pane_id" \
         --source-path "$source_path"; then
-        post_switch_should_continue
-        return
+        if should_close_after_switch; then
+          return 1
+        fi
+        return 0
       fi
       return 0
       ;;
@@ -210,8 +212,10 @@ run_fzf_browser() {
         --client "$client_name" \
         --sidebar-pane "$sidebar_pane_id" \
         --source-path "$source_path"; then
-        post_switch_should_continue
-        return
+        if should_close_after_switch; then
+          return 1
+        fi
+        return 0
       fi
       return 0
       ;;
@@ -252,7 +256,10 @@ run_fzf_browser() {
         --client "$client_name" \
         --session "$session_name" \
         --sidebar-pane "$sidebar_pane_id" || return 0
-      post_switch_should_continue
+      if should_close_after_switch; then
+        return 1
+      fi
+      return 0
       ;;
   esac
 }
@@ -262,7 +269,11 @@ run_fallback_browser() {
   lines="$(render_session_entries)"
   [ -n "$lines" ] || return 1
 
-  printf 'tmux session sidebar (%s)\n\n' "$source_path" >&2
+  if [ -n "$source_path" ]; then
+    printf 'tmux session sidebar (%s)\n\n' "$source_path" >&2
+  else
+    printf 'tmux session sidebar\n\n' >&2
+  fi
   index=0
   while IFS= read -r line; do
     [ -z "$line" ] && continue
@@ -273,7 +284,9 @@ $lines
 EOF
 
   printf '\n[number]=switch [n]=project [a]=adhoc [r]=rename [x]=kill [q]=close: ' >&2
-  read -r choice
+  if ! read -r choice; then
+    return 1
+  fi
   case "$choice" in
     q|Q|"")
       return 1
@@ -283,8 +296,10 @@ EOF
         --client "$client_name" \
         --sidebar-pane "$sidebar_pane_id" \
         --source-path "$source_path"; then
-        post_switch_should_continue
-        return
+        if should_close_after_switch; then
+          return 1
+        fi
+        return 0
       fi
       return 0
       ;;
@@ -293,8 +308,10 @@ EOF
         --client "$client_name" \
         --sidebar-pane "$sidebar_pane_id" \
         --source-path "$source_path"; then
-        post_switch_should_continue
-        return
+        if should_close_after_switch; then
+          return 1
+        fi
+        return 0
       fi
       return 0
       ;;
@@ -329,7 +346,10 @@ EOF
     --session "$session_name" \
     --sidebar-pane "$sidebar_pane_id" || return 0
 
-  post_switch_should_continue
+  if should_close_after_switch; then
+    return 1
+  fi
+  return 0
 }
 
 main() {

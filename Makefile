@@ -1,4 +1,5 @@
 PLUGIN_NAME ?= tmux-session-sidebar
+PLUGIN_REPO ?= your-github-user/$(PLUGIN_NAME)
 TPM_DIR ?= $(HOME)/.tmux/plugins
 TARGET_DIR ?= $(TPM_DIR)/$(PLUGIN_NAME)
 
@@ -9,7 +10,7 @@ install:
 	@ln -sfn "$(CURDIR)" "$(TARGET_DIR)"
 	@echo "Installed $(PLUGIN_NAME) -> $(TARGET_DIR)"
 	@echo "If needed, add this to ~/.tmux.conf:"
-	@echo "  set -g @plugin 'brice/$(PLUGIN_NAME)'"
+	@echo "  set -g @plugin '$(PLUGIN_REPO)'"
 	@echo "  run '~/.tmux/plugins/tpm/tpm'"
 	@echo "Then reload tmux or press prefix + I."
 
