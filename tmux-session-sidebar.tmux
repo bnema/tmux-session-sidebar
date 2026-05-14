@@ -36,7 +36,7 @@ unbind_plugin_binding() {
 
 main() {
   set_default @session-sidebar-key             b
-  set_default @session-sidebar-width           30%
+  set_default @session-sidebar-width           20
   set_default @session-sidebar-project-roots   "$HOME/projects"
   set_default @session-sidebar-use-fzf         on
   set_default @session-sidebar-close-after-switch  on

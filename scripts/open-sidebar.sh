@@ -28,7 +28,7 @@ if [ -n "$existing_pane" ]; then
   exit 0
 fi
 
-width="$(sidebar_get_option @session-sidebar-width "30%")"
+width="$(sidebar_get_option @session-sidebar-width 20)"
 
 quoted_script=""
 printf -v quoted_script '%q' "$SCRIPT_DIR/sidebar.sh"

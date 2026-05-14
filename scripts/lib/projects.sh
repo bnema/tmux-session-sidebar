@@ -131,7 +131,7 @@ sidebar_pick_project() {
   fi
 
   if [ "$use_fzf" != "off" ] && [ -n "$fzf_cmd" ]; then
-    selected="$(printf '%s\n' "$projects" | "$fzf_cmd" --prompt='project> ' --height=40%)" || return 1
+    selected="$(printf '%s\n' "$projects" | "$fzf_cmd" --prompt='project> ' --height=100%)" || return 1
     printf '%s' "$selected"
     return 0
   fi

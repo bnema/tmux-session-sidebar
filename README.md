@@ -70,7 +70,7 @@ Configure the plugin with tmux user options in `~/.tmux.conf`.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `@session-sidebar-key` | `b` | Key used after the tmux prefix to toggle the sidebar |
-| `@session-sidebar-width` | `30%` | Width passed to the left split |
+| `@session-sidebar-width` | `20` | Width passed to the left split; defaults to a fixed column count |
 | `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated roots searched for project sessions |
 | `@session-sidebar-use-fzf` | `on` | Use `fzf` when it is installed |
 | `@session-sidebar-close-after-switch` | `on` | Close the sidebar pane after a successful session switch |
@@ -79,7 +79,7 @@ Example:
 
 ```tmux
 set -g @session-sidebar-key 'b'
-set -g @session-sidebar-width '25%'
+set -g @session-sidebar-width '20'
 set -g @session-sidebar-project-roots "$HOME/projects:$HOME/dev/projects"
 set -g @session-sidebar-use-fzf 'on'
 set -g @session-sidebar-close-after-switch 'on'
@@ -92,6 +92,8 @@ set -g @session-sidebar-close-after-switch 'on'
 - `prefix + b` opens or closes the left sidebar in the current window.
 
 The sidebar is a real tmux pane, not a global overlay. If the current window already has pane splits, the sidebar still opens as a full-height left pane for the whole window. If you switch sessions and `@session-sidebar-close-after-switch` is `on`, the pane closes and can be reopened in the new session.
+
+The sidebar browser still fills the pane height. The default width is now a fixed column count instead of a percentage, though tmux-style percentage values still work if you set them explicitly.
 
 ### Session browser
 
