@@ -102,6 +102,8 @@ Each row shows:
 - attached or detached state
 - window count
 
+Purely numeric session names are hidden by default to reduce noise. Toggle them on or off from the sidebar when needed.
+
 ### Keys in `fzf` mode
 
 These keys are used when `fzf` is available and `@session-sidebar-use-fzf` is not `off`.
@@ -113,6 +115,7 @@ These keys are used when `fzf` is available and `@session-sidebar-use-fzf` is no
 | `Alt+a` | Create or switch to an ad-hoc session |
 | `Alt+r` | Rename the selected session |
 | `Alt+x` | Kill the selected session |
+| `Alt+h` | Show or hide purely numeric session names |
 | `Esc` | Close the sidebar |
 
 The modified `Alt+...` bindings are intentional. They keep plain letters available for fuzzy search instead of stealing them as commands.
@@ -132,6 +135,7 @@ Prompt actions:
 - `a` create or switch to an ad-hoc session
 - `r` rename a session
 - `x` kill a session
+- `h` show or hide purely numeric session names
 - `q` close the sidebar
 
 For rename and kill in fallback mode, pressing `Enter` at the session-number prompt targets the current session.
@@ -141,6 +145,7 @@ For rename and kill in fallback mode, pressing `Enter` at the session-number pro
 ### Project session creation
 
 - The plugin lists one directory level under each configured project root.
+- Configured project roots may be symlinked paths; the plugin resolves them before listing projects.
 - The default session name is derived from the project directory basename.
 - Names are normalized to a tmux-safe form.
 - If the derived name already exists, the plugin switches to that session instead of creating a suffixed variant.

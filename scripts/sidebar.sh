@@ -13,6 +13,7 @@ FZF_BIN="$(command -v fzf 2>/dev/null || true)"
 
 client_name=""
 source_path=""
+show_numbered_sessions="off"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -98,6 +99,22 @@ render_session_label() {
   printf '%s%s%s' "$prefix" "$rendered_name" "$meta"
 }
 
+toggle_numbered_sessions() {
+  if [ "$show_numbered_sessions" = "on" ]; then
+    show_numbered_sessions="off"
+  else
+    show_numbered_sessions="on"
+  fi
+}
+
+numbered_sessions_status_label() {
+  if [ "$show_numbered_sessions" = "on" ]; then
+    printf 'shown'
+  else
+    printf 'hidden'
+  fi
+}
+
 render_session_entries() {
   local pane_width usable_width label
   pane_width="$(sidebar_pane_width)"
@@ -108,6 +125,9 @@ render_session_entries() {
 
   sidebar_list_sessions "$client_name" | while IFS=$'\t' read -r session_name attached_state window_count is_current; do
     [ -z "$session_name" ] && continue
+    if [ "$show_numbered_sessions" != "on" ] && [[ "$session_name" =~ ^[0-9]+$ ]]; then
+      continue
+    fi
     label="$(render_session_label "$session_name" "$attached_state" "$window_count" "$is_current" "$usable_width")"
     printf '%s\t%s\n' "$session_name" "$label"
   done
@@ -174,15 +194,16 @@ prompt_session_target() {
 }
 
 run_fzf_browser() {
-  local output key selection session_name
+  local output key selection session_name header_line
 
+  header_line="Enter: switch  Alt+n: project  Alt+a: adhoc  Alt+r: rename  Alt+x: kill  Alt+h: numbers ($(numbered_sessions_status_label))  Esc: close"
   output="$({
     render_session_entries
   } | "$FZF_BIN" \
     --delimiter=$'\t' \
     --with-nth=2 \
-    --expect=esc,alt-n,alt-a,alt-r,alt-x \
-    --header='Enter: switch  Alt+n: project  Alt+a: adhoc  Alt+r: rename  Alt+x: kill  Esc: close' \
+    --expect=esc,alt-n,alt-a,alt-r,alt-x,alt-h \
+    --header="$header_line" \
     --prompt='session> ' \
     --height=100%)" || return 1
 
@@ -215,6 +236,10 @@ run_fzf_browser() {
         fi
         return 0
       fi
+      return 0
+      ;;
+    alt-h)
+      toggle_numbered_sessions
       return 0
       ;;
     alt-r|alt-x)
@@ -265,13 +290,13 @@ run_fzf_browser() {
 run_fallback_browser() {
   local lines line choice session_name index
   lines="$(render_session_entries)"
-  [ -n "$lines" ] || return 1
 
   if [ -n "$source_path" ]; then
-    printf 'tmux session sidebar (%s)\n\n' "$source_path" >&2
+    printf 'tmux session sidebar (%s)\n' "$source_path" >&2
   else
-    printf 'tmux session sidebar\n\n' >&2
+    printf 'tmux session sidebar\n' >&2
   fi
+  printf 'numbered sessions: %s\n\n' "$(numbered_sessions_status_label)" >&2
   index=0
   while IFS= read -r line; do
     [ -z "$line" ] && continue
@@ -281,13 +306,21 @@ run_fallback_browser() {
 $lines
 EOF
 
-  printf '\n[number]=switch [n]=project [a]=adhoc [r]=rename [x]=kill [q]=close: ' >&2
+  if [ "$index" -eq 0 ]; then
+    printf '  (no visible sessions)\n' >&2
+  fi
+
+  printf '\n[number]=switch [n]=project [a]=adhoc [r]=rename [x]=kill [h]=numbers [q]=close: ' >&2
   if ! read -r choice; then
     return 1
   fi
   case "$choice" in
     q|Q|"")
       return 1
+      ;;
+    h|H)
+      toggle_numbered_sessions
+      return 0
       ;;
     n|N)
       if "$SCRIPT_DIR/actions/create-project-session.sh" \

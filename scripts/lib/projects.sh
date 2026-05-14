@@ -43,17 +43,33 @@ TR_BIN="$(sidebar_require_command tr)" || _sidebar_return_or_exit 1
 SED_BIN="$(sidebar_require_command sed)" || _sidebar_return_or_exit 1
 FIND_BIN="$(sidebar_require_command find)" || _sidebar_return_or_exit 1
 SORT_BIN="$(sidebar_require_command sort)" || _sidebar_return_or_exit 1
+REALPATH_BIN="$(command -v realpath 2>/dev/null || true)"
+READLINK_BIN="$(command -v readlink 2>/dev/null || true)"
+
+sidebar_resolve_directory() {
+  local path="$1"
+  if [ -n "$REALPATH_BIN" ]; then
+    "$REALPATH_BIN" "$path" 2>/dev/null && return 0
+  fi
+  if [ -n "$READLINK_BIN" ]; then
+    "$READLINK_BIN" -f "$path" 2>/dev/null && return 0
+  fi
+  printf '%s\n' "$path"
+}
 
 sidebar_project_roots() {
   # Usage: sidebar_project_roots
   # Prints existing project root directories, one per line.
-  local roots raw_roots root
+  local roots raw_roots root resolved_root
   raw_roots="$(sidebar_get_option @session-sidebar-project-roots "$HOME/projects")"
   readarray -d ':' -t roots <<< "$raw_roots:"
   for root in "${roots[@]}"; do
     [ -z "$root" ] && continue
     if [ -d "$root" ]; then
-      printf '%s\n' "$root"
+      resolved_root="$(sidebar_resolve_directory "$root")"
+      if [ -d "$resolved_root" ]; then
+        printf '%s\n' "$resolved_root"
+      fi
     fi
   done
 }
