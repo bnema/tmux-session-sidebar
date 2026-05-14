@@ -10,6 +10,21 @@ set_default() {
   fi
 }
 
+binding_belongs_to_plugin() {
+  local key="$1" binding
+  [ -z "$key" ] && return 1
+  binding="$(tmux list-keys -T prefix "$key" 2>/dev/null || true)"
+  [ -n "$binding" ] && printf '%s\n' "$binding" | grep -Fq "$SCRIPTS_DIR/open-sidebar.sh"
+}
+
+unbind_plugin_binding() {
+  local key="$1"
+  [ -z "$key" ] && return 0
+  if binding_belongs_to_plugin "$key"; then
+    tmux unbind-key -T prefix "$key" 2>/dev/null || true
+  fi
+}
+
 main() {
   set_default @session-sidebar-key             b
   set_default @session-sidebar-width           30%
@@ -17,13 +32,20 @@ main() {
   set_default @session-sidebar-use-fzf         on
   set_default @session-sidebar-close-after-switch  on
 
-  local sidebar_key previous_key quoted_script
+  local sidebar_key previous_key legacy_key quoted_script
   sidebar_key="$(tmux show-options -gvq @session-sidebar-key)"
   previous_key="$(tmux show-options -gvq @session-sidebar-bound-key 2>/dev/null || true)"
+  legacy_key=""
   printf -v quoted_script '%q' "$SCRIPTS_DIR/open-sidebar.sh"
 
   if [ -n "$previous_key" ] && [ "$previous_key" != "$sidebar_key" ]; then
-    tmux unbind-key -T prefix "$previous_key" 2>/dev/null || true
+    unbind_plugin_binding "$previous_key"
+  elif [ -z "$previous_key" ] && [ "$sidebar_key" != "B" ]; then
+    legacy_key="B"
+  fi
+
+  if [ -n "$legacy_key" ]; then
+    unbind_plugin_binding "$legacy_key"
   fi
 
   tmux bind-key -T prefix "$sidebar_key" \
