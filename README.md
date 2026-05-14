@@ -69,7 +69,7 @@ Configure the plugin with tmux user options in `~/.tmux.conf`.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `@session-sidebar-key` | `B` | Key used after the tmux prefix to toggle the sidebar |
+| `@session-sidebar-key` | `b` | Key used after the tmux prefix to toggle the sidebar |
 | `@session-sidebar-width` | `30%` | Width passed to the left split |
 | `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated roots searched for project sessions |
 | `@session-sidebar-use-fzf` | `on` | Use `fzf` when it is installed |
@@ -78,7 +78,7 @@ Configure the plugin with tmux user options in `~/.tmux.conf`.
 Example:
 
 ```tmux
-set -g @session-sidebar-key 'B'
+set -g @session-sidebar-key 'b'
 set -g @session-sidebar-width '25%'
 set -g @session-sidebar-project-roots "$HOME/projects:$HOME/dev/projects"
 set -g @session-sidebar-use-fzf 'on'
@@ -89,7 +89,9 @@ set -g @session-sidebar-close-after-switch 'on'
 
 ### Open the sidebar
 
-- `prefix + B` opens or closes the left sidebar in the current window.
+- `prefix + b` opens or closes the left sidebar in the current window.
+
+If you are upgrading from an older local checkout that used `B`, set `@session-sidebar-key` explicitly to `b` or restart the tmux server so the new default takes effect.
 
 The sidebar is a real tmux pane, not a global overlay. If you switch sessions and `@session-sidebar-close-after-switch` is `on`, the pane closes and can be reopened in the new session.
 
@@ -167,12 +169,12 @@ If you trigger the sidebar from a zoomed pane, tmux first unzooms the pane and t
 
 ## Troubleshooting
 
-### Nothing happens when I press `prefix + B`
+### Nothing happens when I press `prefix + b`
 
 Check that the plugin is loaded:
 
 ```bash
-tmux list-keys -T prefix B
+tmux list-keys -T prefix b
 ```
 
 You should see a `run-shell` binding for `scripts/open-sidebar.sh`.
@@ -187,7 +189,7 @@ set -g @session-sidebar-use-fzf 'off'
 
 ### I switched sessions and the sidebar disappeared
 
-That is expected when `@session-sidebar-close-after-switch` is `on`. Reopen it with `prefix + B` in the new session.
+That is expected when `@session-sidebar-close-after-switch` is `on`. Reopen it with `prefix + b` in the new session.
 
 ### I switched sessions and the old sidebar stayed behind
 

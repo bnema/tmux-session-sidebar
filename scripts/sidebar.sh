@@ -40,20 +40,93 @@ sidebar_pane_id="$(sidebar_current_pane_id)" || exit 1
 
 tmux set-option -p -t "$sidebar_pane_id" @session-sidebar-pane 1
 
-render_session_lines() {
+sidebar_pane_width() {
+  local width
+  width="$(tmux display-message -p -t "$sidebar_pane_id" '#{pane_width}' 2>/dev/null || true)"
+  case "$width" in
+    ''|*[!0-9]*) width=30 ;;
+  esac
+  printf '%s' "$width"
+}
+
+truncate_label() {
+  local text="$1"
+  local max_width="$2"
+
+  if [ "${#text}" -le "$max_width" ]; then
+    printf '%s' "$text"
+    return 0
+  fi
+
+  if [ "$max_width" -le 3 ]; then
+    printf '%s' "${text:0:max_width}"
+    return 0
+  fi
+
+  printf '%s...' "${text:0:$((max_width - 3))}"
+}
+
+render_session_label() {
+  local session_name="$1"
+  local attached_state="$2"
+  local window_count="$3"
+  local is_current="$4"
+  local pane_width="$5"
+  local prefix state_code meta name_width rendered_name
+
+  prefix="  "
+  if [ "$is_current" = "current" ]; then
+    prefix="* "
+  fi
+
+  state_code="D"
+  if [ "$attached_state" = "attached" ]; then
+    state_code="A"
+  fi
+
+  meta=" [$state_code:${window_count}w]"
+  name_width=$((pane_width - ${#prefix} - ${#meta} - 1))
+
+  if [ "$name_width" -lt 8 ]; then
+    meta=" [$state_code]"
+    name_width=$((pane_width - ${#prefix} - ${#meta} - 1))
+  fi
+
+  if [ "$name_width" -lt 4 ]; then
+    name_width=4
+  fi
+
+  rendered_name="$(truncate_label "$session_name" "$name_width")"
+  printf '%s%s%s' "$prefix" "$rendered_name" "$meta"
+}
+
+render_session_entries() {
+  local pane_width usable_width label
+  pane_width="$(sidebar_pane_width)"
+  usable_width=$((pane_width - 4))
+  if [ "$usable_width" -lt 12 ]; then
+    usable_width=12
+  fi
+
   sidebar_list_sessions "$client_name" | while IFS=$'\t' read -r session_name attached_state window_count is_current; do
     [ -z "$session_name" ] && continue
-    marker=" "
-    if [ "$is_current" = "current" ]; then
-      marker="*"
-    fi
-    printf '%s\t%s\t%s\t%s\n' "$session_name" "$marker" "$attached_state" "$window_count"
+    label="$(render_session_label "$session_name" "$attached_state" "$window_count" "$is_current" "$usable_width")"
+    printf '%s\t%s\n' "$session_name" "$label"
   done
 }
 
 session_from_selection() {
   local selection="$1"
   printf '%s' "${selection%%$'\t'*}"
+}
+
+display_from_selection() {
+  local selection="$1"
+  if [[ "$selection" == *$'\t'* ]]; then
+    printf '%s' "${selection#*$'\t'}"
+  else
+    printf '%s' "$selection"
+  fi
 }
 
 session_from_index() {
@@ -106,14 +179,14 @@ run_fzf_browser() {
   local output key selection session_name
 
   output="$({
-    render_session_lines
+    render_session_entries
   } | fzf \
     --delimiter=$'\t' \
-    --with-nth=1,2,3,4 \
+    --with-nth=2 \
     --expect=esc,alt-n,alt-a,alt-r,alt-x \
     --header='Enter: switch  Alt+n: project  Alt+a: adhoc  Alt+r: rename  Alt+x: kill  Esc: close' \
     --prompt='session> ' \
-    --height=40%)" || return 1
+    --height=100%)" || return 1
 
   key="$(printf '%s\n' "$output" | sed -n '1p')"
   selection="$(printf '%s\n' "$output" | sed -n '2p')"
@@ -186,7 +259,7 @@ run_fzf_browser() {
 
 run_fallback_browser() {
   local lines line choice session_name index
-  lines="$(render_session_lines)"
+  lines="$(render_session_entries)"
   [ -n "$lines" ] || return 1
 
   printf 'tmux session sidebar (%s)\n\n' "$source_path" >&2
@@ -194,7 +267,7 @@ run_fallback_browser() {
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     index=$((index + 1))
-    printf '%3d) %s\n' "$index" "$line" >&2
+    printf '%3d) %s\n' "$index" "$(display_from_selection "$line")" >&2
   done <<EOF
 $lines
 EOF

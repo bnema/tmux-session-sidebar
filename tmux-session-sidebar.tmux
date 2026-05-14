@@ -11,18 +11,24 @@ set_default() {
 }
 
 main() {
-  set_default @session-sidebar-key             B
+  set_default @session-sidebar-key             b
   set_default @session-sidebar-width           30%
   set_default @session-sidebar-project-roots   "$HOME/projects"
   set_default @session-sidebar-use-fzf         on
   set_default @session-sidebar-close-after-switch  on
 
-  local sidebar_key quoted_script
+  local sidebar_key previous_key quoted_script
   sidebar_key="$(tmux show-options -gvq @session-sidebar-key)"
+  previous_key="$(tmux show-options -gvq @session-sidebar-bound-key 2>/dev/null || true)"
   printf -v quoted_script '%q' "$SCRIPTS_DIR/open-sidebar.sh"
+
+  if [ -n "$previous_key" ] && [ "$previous_key" != "$sidebar_key" ]; then
+    tmux unbind-key -T prefix "$previous_key" 2>/dev/null || true
+  fi
 
   tmux bind-key -T prefix "$sidebar_key" \
     run-shell "$quoted_script #{q:client_name} #{q:window_id} #{q:pane_id} #{q:pane_current_path}"
+  tmux set-option -gq @session-sidebar-bound-key "$sidebar_key"
 }
 
 main "$@"
