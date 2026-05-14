@@ -58,5 +58,9 @@ session_target="$(sidebar_session_target "$session_name")" || exit 1
 "$TMUX_BIN" switch-client -c "$client_name" -t "$session_target"
 
 if [ "$close_after_switch" = "on" ] && [ -n "$sidebar_pane_id" ]; then
+  sidebar_window_id="$(sidebar_pane_window_id "$sidebar_pane_id" 2>/dev/null || true)"
   "$TMUX_BIN" kill-pane -t "$sidebar_pane_id" 2>/dev/null || true
+  if [ -n "$sidebar_window_id" ]; then
+    sidebar_window_restore_layout "$sidebar_window_id" || true
+  fi
 fi

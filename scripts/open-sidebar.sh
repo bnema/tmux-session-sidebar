@@ -25,10 +25,13 @@ fi
 existing_pane="$(sidebar_existing_sidebar_pane "$source_window_id")"
 if [ -n "$existing_pane" ]; then
   "$TMUX_BIN" kill-pane -t "$existing_pane"
+  sidebar_window_restore_layout "$source_window_id" || true
   exit 0
 fi
 
 width="$(sidebar_get_option @session-sidebar-width 20)"
+
+sidebar_window_save_layout "$source_window_id" || true
 
 quoted_script=""
 printf -v quoted_script '%q' "$SCRIPT_DIR/sidebar.sh"

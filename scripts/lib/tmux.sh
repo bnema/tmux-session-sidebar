@@ -221,3 +221,38 @@ sidebar_existing_sidebar_pane() {
   "$TMUX_BIN" list-panes -t "$window_id" -F '#{pane_id}	#{@session-sidebar-pane}' 2>/dev/null |
     "$AWK_BIN" -F $'\t' "$awk_program"
 }
+
+sidebar_pane_window_id() {
+  # Usage: sidebar_pane_window_id PANE_ID
+  local pane_id="$1"
+  [ -z "$pane_id" ] && return 1
+  "$TMUX_BIN" display-message -p -t "$pane_id" '#{window_id}' 2>/dev/null
+}
+
+sidebar_window_saved_layout() {
+  # Usage: sidebar_window_saved_layout WINDOW_ID
+  local window_id="$1"
+  [ -z "$window_id" ] && return 1
+  "$TMUX_BIN" show-options -w -v -t "$window_id" @session-sidebar-window-layout 2>/dev/null || true
+}
+
+sidebar_window_save_layout() {
+  # Usage: sidebar_window_save_layout WINDOW_ID
+  local window_id="$1"
+  local layout=""
+  [ -z "$window_id" ] && return 1
+  layout="$("$TMUX_BIN" display-message -p -t "$window_id" '#{window_layout}' 2>/dev/null || true)"
+  [ -n "$layout" ] || return 1
+  "$TMUX_BIN" set-option -wq -t "$window_id" @session-sidebar-window-layout "$layout"
+}
+
+sidebar_window_restore_layout() {
+  # Usage: sidebar_window_restore_layout WINDOW_ID
+  local window_id="$1"
+  local layout=""
+  [ -z "$window_id" ] && return 1
+  layout="$(sidebar_window_saved_layout "$window_id")"
+  [ -n "$layout" ] || return 1
+  "$TMUX_BIN" select-layout -t "$window_id" "$layout" >/dev/null 2>&1 || true
+  "$TMUX_BIN" set-option -wu -t "$window_id" @session-sidebar-window-layout >/dev/null 2>&1 || true
+}
