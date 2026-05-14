@@ -1,5 +1,5 @@
 PLUGIN_NAME ?= tmux-session-sidebar
-PLUGIN_REPO ?= your-github-user/$(PLUGIN_NAME)
+PLUGIN_REPO ?= bnema/$(PLUGIN_NAME)
 TPM_DIR ?= $(HOME)/.tmux/plugins
 TARGET_DIR ?= $(TPM_DIR)/$(PLUGIN_NAME)
 
