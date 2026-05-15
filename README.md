@@ -141,7 +141,9 @@ These keys are used when `fzf` is available and `@session-sidebar-use-fzf` is no
 
 | Key | Action |
 | --- | --- |
-| `Enter` | Switch to the selected session |
+| `j` / `k` | Move down or up in browse mode |
+| `/` | Enter search mode |
+| `Enter` | In search mode: apply the filter and return to browse mode. In browse mode: switch to the selected session |
 | `Alt+n` | Open the project picker and create or switch to a project session |
 | `Alt+g` | Create or switch to a project session from the current pane's git repo root |
 | `Alt+a` | Create or switch to an ad-hoc session |
@@ -150,7 +152,7 @@ These keys are used when `fzf` is available and `@session-sidebar-use-fzf` is no
 | `Alt+h` | Show or hide purely numeric session names |
 | `Esc` | Close the sidebar |
 
-The modified `Alt+...` bindings are intentional. They keep plain letters available for fuzzy search instead of stealing them as commands.
+The sidebar now starts in browse mode, so fuzzy search is inactive until you press `/`. After you press `Enter` in search mode, the current filter stays applied and the sidebar returns to browse mode.
 
 ### Keys in fallback mode
 
@@ -209,7 +211,9 @@ For rename and kill in fallback mode, pressing `Enter` at the session-number pro
 - Lifetime visit counts are intentionally **not** used, so a session only stays hot if it is part of your recent working set.
 - Default half-life is `8` hours via `@session-sidebar-heat-half-life-hours`.
 - Sessions unseen for `24` hours fade to gray by default via `@session-sidebar-heat-stale-hours`.
-- In `fzf` mode, the sidebar lazily refreshes heat colors every `300` seconds by default via `@session-sidebar-heat-refresh-seconds`.
+- Plugin-driven session switches trigger an immediate sidebar rerender, so current-session markers and heat colors update without waiting for the periodic refresh.
+- Manual `tmux switch-client` session changes also trigger the same refresh through a tmux `client-session-changed` hook.
+- In `fzf` mode, the sidebar also lazily refreshes heat colors every `300` seconds by default via `@session-sidebar-heat-refresh-seconds`.
 - Colors degrade gracefully by terminal capability: RGB when available, then 256-color, then basic colors, then plain text.
 
 ### Zoomed windows

@@ -79,6 +79,36 @@ sidebar_set_session_option() {
   "$TMUX_BIN" set-option -q -t "$session" "$option" "$value"
 }
 
+sidebar_get_pane_option() {
+  # Usage: sidebar_get_pane_option PANE OPTION [DEFAULT]
+  local pane_id="$1" option="$2" default_value="${3:-}"
+  local value=""
+  [ -n "$pane_id" ] || {
+    printf '%s' "$default_value"
+    return 0
+  }
+  value="$("$TMUX_BIN" show-options -p -t "$pane_id" -vq "$option" 2>/dev/null)" || true
+  if [ -n "$value" ]; then
+    printf '%s' "$value"
+  else
+    printf '%s' "$default_value"
+  fi
+}
+
+sidebar_set_pane_option() {
+  # Usage: sidebar_set_pane_option PANE OPTION VALUE
+  local pane_id="$1" option="$2" value="$3"
+  [ -n "$pane_id" ] || return 1
+  "$TMUX_BIN" set-option -p -q -t "$pane_id" "$option" "$value"
+}
+
+sidebar_unset_pane_option() {
+  # Usage: sidebar_unset_pane_option PANE OPTION
+  local pane_id="$1" option="$2"
+  [ -n "$pane_id" ] || return 1
+  "$TMUX_BIN" set-option -p -u -q -t "$pane_id" "$option" >/dev/null 2>&1 || true
+}
+
 sidebar_now_epoch() {
   # Usage: sidebar_now_epoch
   local now="${SESSION_SIDEBAR_NOW:-}"
@@ -412,6 +442,14 @@ sidebar_existing_sidebar_pane() {
   local awk_program="\$2 == 1 { print \$1; exit }"
   [ -z "$window_id" ] && return 0
   "$TMUX_BIN" list-panes -t "$window_id" -F '#{pane_id}	#{@session-sidebar-pane}' 2>/dev/null |
+    "$AWK_BIN" -F $'\t' "$awk_program"
+}
+
+sidebar_list_sidebar_panes() {
+  # Usage: sidebar_list_sidebar_panes
+  # Prints pane ids for panes marked as sidebar panes.
+  local awk_program="\$2 == 1 { print \$1 }"
+  "$TMUX_BIN" list-panes -a -F '#{pane_id}	#{@session-sidebar-pane}' 2>/dev/null |
     "$AWK_BIN" -F $'\t' "$awk_program"
 }
 

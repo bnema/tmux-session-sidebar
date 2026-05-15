@@ -41,6 +41,7 @@ if [ "$call_count" -eq 1 ]; then
   printf 'alt-h\n'
 else
   cat > "$TEST_SIDEBAR_INPUT_SECOND"
+  sleep 2
   printf 'esc\n'
 fi
 EOF
@@ -74,6 +75,13 @@ alpha_window_id="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-windows -t '=alp
 
 sidebar_cmd="$(printf '%q ' env PATH="$fake_bin:$PATH" SESSION_SIDEBAR_FZF_LISTEN=off TEST_FZF_CALLS="$fzf_calls" TEST_SIDEBAR_INPUT_FIRST="$sidebar_input_first" TEST_SIDEBAR_INPUT_SECOND="$sidebar_input_second" "$REPO_DIR/scripts/sidebar.sh" --client "$client_name" --source-path "$work_dir")"
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" split-window -d -t "$alpha_window_id" -hbf -l 40 "$sidebar_cmd" >/dev/null
+sidebar_pane_id=""
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+  sidebar_pane_id="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-panes -a -F '#{pane_id} #{@session-sidebar-pane}' | awk '$2 == 1 { print $1; exit }')"
+  [ -n "$sidebar_pane_id" ] && break
+  sleep 0.2
+done
+[ -n "$sidebar_pane_id" ] || { echo 'no sidebar pane found' >&2; exit 1; }
 
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
   call_count="$(cat "$fzf_calls" 2>/dev/null || printf '0')"
@@ -163,6 +171,12 @@ grep -Fqx $'zeta\t  [0] zeta' "$sidebar_input_second" || {
   echo 'expected zeta to keep quick-switch badge [0] when numeric sessions are shown' >&2
   printf 'sidebar input after Alt+h:\n' >&2
   cat "$sidebar_input_second" >&2
+  exit 1
+}
+
+show_numbered_state="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" show-options -p -t "$sidebar_pane_id" -vq @session-sidebar-show-numbered-sessions)"
+[ "$show_numbered_state" = 'on' ] || {
+  echo "expected sidebar pane to persist numbered-session visibility state as on, got: ${show_numbered_state:-<empty>}" >&2
   exit 1
 }
 

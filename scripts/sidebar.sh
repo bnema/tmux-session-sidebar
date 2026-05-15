@@ -32,6 +32,7 @@ fi
 client_name=""
 source_path=""
 show_numbered_sessions="off"
+active_filter=""
 render_entries_only="off"
 refresh_loop_mode="off"
 refresh_socket=""
@@ -53,6 +54,11 @@ while [ $# -gt 0 ]; do
     --show-numbered-sessions)
       require_arg "$1" "${2:-}"
       show_numbered_sessions="$2"
+      shift 2
+      ;;
+    --active-filter)
+      require_arg "$1" "${2:-}"
+      active_filter="$2"
       shift 2
       ;;
     --sidebar-pane)
@@ -93,6 +99,35 @@ if [ "$render_entries_only" != "on" ] && [ "$refresh_loop_mode" != "on" ]; then
   fi
   "$TMUX_BIN" set-option -p -t "$sidebar_pane_id" @session-sidebar-pane 1
 fi
+
+persist_sidebar_refresh_state() {
+  [ -n "$sidebar_pane_id" ] || return 0
+  sidebar_set_pane_option "$sidebar_pane_id" @session-sidebar-client "$client_name"
+  sidebar_set_pane_option "$sidebar_pane_id" @session-sidebar-show-numbered-sessions "$show_numbered_sessions"
+  if [ -n "$active_filter" ]; then
+    sidebar_set_pane_option "$sidebar_pane_id" @session-sidebar-active-filter "$active_filter"
+  else
+    sidebar_unset_pane_option "$sidebar_pane_id" @session-sidebar-active-filter
+  fi
+  if [ -n "$source_path" ]; then
+    sidebar_set_pane_option "$sidebar_pane_id" @session-sidebar-source-path "$source_path"
+  else
+    sidebar_unset_pane_option "$sidebar_pane_id" @session-sidebar-source-path
+  fi
+}
+
+persist_sidebar_refresh_socket() {
+  local socket_path="${1:-}"
+  [ -n "$sidebar_pane_id" ] || return 0
+  if [ -n "$socket_path" ]; then
+    sidebar_set_pane_option "$sidebar_pane_id" @session-sidebar-refresh-socket "$socket_path"
+  else
+    sidebar_unset_pane_option "$sidebar_pane_id" @session-sidebar-refresh-socket
+  fi
+}
+
+persist_sidebar_refresh_state
+persist_sidebar_refresh_socket ""
 
 quote_args() {
   local quoted="" arg
@@ -302,6 +337,7 @@ toggle_numbered_sessions() {
   else
     show_numbered_sessions="on"
   fi
+  persist_sidebar_refresh_state
 }
 
 numbered_sessions_status_label() {
@@ -339,9 +375,24 @@ render_session_entries() {
   done
 }
 
+filtered_session_entries() {
+  if [ -z "$active_filter" ]; then
+    render_session_entries
+    return 0
+  fi
+
+  render_session_entries | "$FZF_BIN" \
+    --filter "$active_filter" \
+    --delimiter=$'\t' \
+    --with-nth=2 || true
+}
+
 render_entries_command() {
   local args
   args=("$SCRIPT_DIR/sidebar.sh" --client "$client_name" --show-numbered-sessions "$show_numbered_sessions")
+  if [ -n "$active_filter" ]; then
+    args+=(--active-filter "$active_filter")
+  fi
   if [ -n "$source_path" ]; then
     args+=(--source-path "$source_path")
   fi
@@ -466,65 +517,12 @@ prompt_session_target() {
   printf '%s' "$selected_session"
 }
 
-run_fzf_browser() {
-  local output key selection session_name header_line refresh_dir refresh_seconds tab_delimiter refresh_loop_pid
-  local -a fzf_args
-
-  header_line="Enter: switch  Alt+n: project  Alt+g: git repo  Alt+a: adhoc  Alt+r: rename  Alt+x: kill  Alt+h: numbers ($(numbered_sessions_status_label))  Esc: close"
-  tab_delimiter=$'\t'
-  fzf_args=(
-    "--ansi"
-    "--delimiter=$tab_delimiter"
-    "--with-nth=2"
-    "--expect=esc,alt-n,alt-g,alt-a,alt-r,alt-x,alt-h"
-    "--header=$header_line"
-    "--prompt=session> "
-    "--height=100%"
-  )
-
-  refresh_dir=""
-  if should_use_fzf_refresh_loop; then
-    refresh_dir="$("$MKTEMP_BIN" -d "${TMPDIR:-/tmp}/tmux-session-sidebar-fzf.XXXXXX")" || refresh_dir=""
-    if [ -n "$refresh_dir" ]; then
-      refresh_socket="$refresh_dir/fzf.sock"
-      refresh_seconds="$(sidebar_heat_refresh_seconds)"
-      fzf_args+=(
-        "--track"
-        "--id-nth=1"
-        "--listen" "$refresh_socket"
-      )
-      refresh_loop_pid="$(start_fzf_refresh_loop "$refresh_seconds")"
-    fi
-  fi
-
-  output="$({
-    render_session_entries
-  } | "$FZF_BIN" "${fzf_args[@]}")" || {
-    if [ -n "${refresh_loop_pid:-}" ]; then
-      kill "$refresh_loop_pid" 2>/dev/null || true
-      wait "$refresh_loop_pid" 2>/dev/null || true
-    fi
-    if [ -n "$refresh_dir" ]; then
-      rm -rf "$refresh_dir"
-    fi
-    return 1
-  }
-
-  if [ -n "${refresh_loop_pid:-}" ]; then
-    kill "$refresh_loop_pid" 2>/dev/null || true
-    wait "$refresh_loop_pid" 2>/dev/null || true
-  fi
-  if [ -n "$refresh_dir" ]; then
-    rm -rf "$refresh_dir"
-  fi
-
-  key="$(printf '%s\n' "$output" | "$SED_BIN" -n '1p')"
-  selection="$(printf '%s\n' "$output" | "$SED_BIN" -n '2p')"
+handle_fzf_action() {
+  local key="$1"
+  local selection="$2"
+  local session_name
 
   case "$key" in
-    esc)
-      return 1
-      ;;
     alt-n)
       if "$SCRIPT_DIR/actions/create-project-session.sh" \
         --client "$client_name" \
@@ -565,16 +563,6 @@ run_fzf_browser() {
       toggle_numbered_sessions
       return 0
       ;;
-    alt-r|alt-x)
-      ;;
-    "")
-      ;;
-    *)
-      if [ -z "$selection" ]; then
-        selection="$key"
-        key=""
-      fi
-      ;;
   esac
 
   if [ -n "$selection" ]; then
@@ -608,6 +596,139 @@ run_fzf_browser() {
       return 0
       ;;
   esac
+}
+
+run_fzf_browser() {
+  local output key query selection header_line refresh_dir refresh_seconds tab_delimiter refresh_loop_pid
+  local browse_prompt search_prompt mode status
+  local -a fzf_args
+
+  browse_prompt='session> '
+  search_prompt='filter> '
+  header_line="j/k: move  /: filter  Enter: switch/apply  Esc: close filter/close sidebar  Alt+n: project  Alt+g: git repo  Alt+a: adhoc  Alt+r: rename  Alt+x: kill  Alt+h: numbers ($(numbered_sessions_status_label))"
+  tab_delimiter=$'\t'
+  mode='browse'
+
+  while :; do
+    persist_sidebar_refresh_state
+    refresh_dir=''
+    refresh_loop_pid=''
+    output=''
+    status=0
+
+    if [ "$mode" = 'browse' ]; then
+      fzf_args=(
+        "--ansi"
+        "--disabled"
+        "--no-input"
+        "--delimiter=$tab_delimiter"
+        "--with-nth=2"
+        "--expect=alt-n,alt-g,alt-a,alt-r,alt-x,alt-h,/"
+        "--header=$header_line"
+        "--prompt=$browse_prompt"
+        "--height=100%"
+        "--bind" "j:down"
+        "--bind" "k:up"
+      )
+
+      if should_use_fzf_refresh_loop; then
+        refresh_dir="$("$MKTEMP_BIN" -d "${TMPDIR:-/tmp}/tmux-session-sidebar-fzf.XXXXXX")" || refresh_dir=''
+        if [ -n "$refresh_dir" ]; then
+          refresh_socket="$refresh_dir/fzf.sock"
+          persist_sidebar_refresh_socket "$refresh_socket"
+          refresh_seconds="$(sidebar_heat_refresh_seconds)"
+          fzf_args+=(
+            "--track"
+            "--id-nth=1"
+            "--listen" "$refresh_socket"
+          )
+          refresh_loop_pid="$(start_fzf_refresh_loop "$refresh_seconds")"
+        fi
+      fi
+
+      output="$({
+        filtered_session_entries
+      } | "$FZF_BIN" "${fzf_args[@]}")" || status=$?
+    else
+      persist_sidebar_refresh_socket ''
+      fzf_args=(
+        "--ansi"
+        "--delimiter=$tab_delimiter"
+        "--with-nth=2"
+        "--print-query"
+        "--expect=esc,alt-n,alt-g,alt-a,alt-r,alt-x,alt-h"
+        "--header=$header_line"
+        "--prompt=$search_prompt"
+        "--query=$active_filter"
+        "--height=100%"
+        "--bind" "enter:accept-or-print-query"
+      )
+
+      output="$({
+        render_session_entries
+      } | "$FZF_BIN" "${fzf_args[@]}")" || status=$?
+    fi
+
+    if [ -n "$refresh_loop_pid" ]; then
+      kill "$refresh_loop_pid" 2>/dev/null || true
+      wait "$refresh_loop_pid" 2>/dev/null || true
+    fi
+    persist_sidebar_refresh_socket ''
+    if [ -n "$refresh_dir" ]; then
+      rm -rf "$refresh_dir"
+    fi
+
+    if [ "$mode" = 'browse' ]; then
+      [ "$status" -eq 0 ] || return 1
+      key="$(printf '%s\n' "$output" | "$SED_BIN" -n '1p')"
+      selection="$(printf '%s\n' "$output" | "$SED_BIN" -n '2p')"
+
+      case "$key" in
+        /)
+          mode='search'
+          continue
+          ;;
+        alt-*)
+          handle_fzf_action "$key" "$selection"
+          return $?
+          ;;
+        '')
+          [ -n "$selection" ] || return 1
+          handle_fzf_action '' "$selection"
+          return $?
+          ;;
+        *)
+          return 1
+          ;;
+      esac
+    fi
+
+    key="$(printf '%s\n' "$output" | "$SED_BIN" -n '2p')"
+    query="$(printf '%s\n' "$output" | "$SED_BIN" -n '1p')"
+    selection="$(printf '%s\n' "$output" | "$SED_BIN" -n '3p')"
+
+    [ "$status" -eq 0 ] || return 1
+
+    case "$key" in
+      '')
+        active_filter="$query"
+        mode='browse'
+        continue
+        ;;
+      esc)
+        active_filter=''
+        mode='browse'
+        continue
+        ;;
+      alt-*)
+        handle_fzf_action "$key" "$selection"
+        return $?
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  done
 }
 
 run_fallback_browser() {

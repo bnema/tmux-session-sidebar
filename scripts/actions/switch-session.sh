@@ -62,6 +62,7 @@ if [ -n "$previous_session_name" ] && [ "$previous_session_name" != "$session_na
   sidebar_sync_session_heat "$previous_session_name" >/dev/null || true
 fi
 sidebar_sync_session_heat "$session_name" >/dev/null || true
+"$SCRIPT_DIR/refresh-sidebars.sh" >/dev/null 2>&1 || true
 
 if [ "$close_after_switch" = "on" ] && [ -n "$sidebar_pane_id" ]; then
   sidebar_window_id="$(sidebar_pane_window_id "$sidebar_pane_id" 2>/dev/null || true)"

@@ -35,8 +35,9 @@ unbind_plugin_binding() {
 }
 
 install_heat_hooks() {
-  local quoted_sync_script
+  local quoted_sync_script quoted_refresh_script
   printf -v quoted_sync_script '%q' "$SCRIPTS_DIR/actions/sync-session-heat.sh"
+  printf -v quoted_refresh_script '%q' "$SCRIPTS_DIR/actions/refresh-sidebars.sh"
 
   "$TMUX_BIN" set-hook -g client-attached[9701] \
     "run-shell \"$quoted_sync_script --session #{q:session_name}\""
@@ -44,6 +45,8 @@ install_heat_hooks() {
     "run-shell \"$quoted_sync_script --session #{q:session_name}\""
   "$TMUX_BIN" set-hook -g client-session-changed[9703] \
     "run-shell \"$quoted_sync_script --session #{q:client_last_session} --session #{q:session_name}\""
+  "$TMUX_BIN" set-hook -g client-session-changed[9704] \
+    "run-shell \"$quoted_refresh_script\""
 }
 
 main() {
