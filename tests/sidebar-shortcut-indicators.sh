@@ -41,7 +41,7 @@ if [ "$call_count" -eq 1 ]; then
   printf 'alt-h\n'
 else
   cat > "$TEST_SIDEBAR_INPUT_SECOND"
-  sleep 2
+  sleep 0.5
   printf 'esc\n'
 fi
 EOF
@@ -88,7 +88,6 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
   first_lines="$(if [ -f "$sidebar_input_first" ]; then wc -l < "$sidebar_input_first"; else printf '0'; fi)"
   second_lines="$(if [ -f "$sidebar_input_second" ]; then wc -l < "$sidebar_input_second"; else printf '0'; fi)"
   if [ "$call_count" = '2' ] && [ "$first_lines" -ge 10 ] && [ "$second_lines" -ge 11 ]; then
-    sleep 0.2
     break
   fi
   sleep 0.2

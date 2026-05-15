@@ -11,6 +11,7 @@ work_dir="$(mktemp -d)"
 fake_bin="$work_dir/bin"
 curl_calls="$work_dir/curl-calls.txt"
 curl_count="$work_dir/curl-count.txt"
+refresh_socket="$work_dir/tss-refresh.sock"
 mkdir -p "$fake_bin"
 
 cleanup() {
@@ -43,7 +44,7 @@ chmod +x "$fake_bin/curl"
 
 env -u TMUX PATH="$fake_bin:$PATH" TEST_CURL_CALLS="$curl_calls" TEST_CURL_COUNT="$curl_count" "$REPO_DIR/scripts/sidebar.sh" \
   --fzf-refresh-loop \
-  --socket /tmp/tss-refresh.sock \
+  --socket "$refresh_socket" \
   --interval 1 \
   --client fake-client \
   --source-path "$work_dir" \
@@ -55,13 +56,13 @@ env -u TMUX PATH="$fake_bin:$PATH" TEST_CURL_CALLS="$curl_calls" TEST_CURL_COUNT
 }
 
 call_count="$(wc -l < "$curl_calls")"
-[ "$call_count" -ge 2 ] || {
-  echo 'expected refresh loop to continue after a successful curl response and stop on a later failure' >&2
+[ "$call_count" -ge 2 ] && [ "$call_count" -le 3 ] || {
+  echo "expected refresh loop to stop after curl failure (2-3 calls), got $call_count calls" >&2
   cat "$curl_calls" >&2
   exit 1
 }
 
-grep -Fq -- '--unix-socket /tmp/tss-refresh.sock http -d reload-sync(' "$curl_calls" || {
+grep -Fq -- "--unix-socket $refresh_socket http -d reload-sync(" "$curl_calls" || {
   echo 'expected curl call to target the fzf unix socket with reload-sync payload' >&2
   cat "$curl_calls" >&2
   exit 1

@@ -4,9 +4,11 @@ set -euo pipefail
 DIRNAME_BIN="$(command -v dirname 2>/dev/null || true)"
 PWD_BIN="$(command -v pwd 2>/dev/null || true)"
 REAL_TMUX_BIN="$(command -v tmux 2>/dev/null || true)"
+FZF_BIN="$(command -v fzf 2>/dev/null || true)"
 [ -n "$DIRNAME_BIN" ] || { echo 'dirname not found' >&2; exit 1; }
 [ -n "$PWD_BIN" ] || { echo 'pwd not found' >&2; exit 1; }
 [ -n "$REAL_TMUX_BIN" ] || { echo 'tmux not found' >&2; exit 1; }
+[ -n "$FZF_BIN" ] || { echo 'fzf not found' >&2; exit 1; }
 REPO_DIR="$(cd "$($DIRNAME_BIN "${BASH_SOURCE[0]}")/.." && "$PWD_BIN")" || exit 1
 
 work_dir="$(mktemp -d)"
@@ -50,8 +52,15 @@ sidebar_pane_id="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" split-window -P -F '#
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -g @session-sidebar-heat-colors off
 output="$(env -u TMUX PATH="$fake_bin:$PATH" "$REPO_DIR/scripts/sidebar.sh" --client "$client_name" --sidebar-pane "$sidebar_pane_id" --render-entries)"
 
-grep -Fqx $'averyverylongsessionname	* [1] averyve...' <<<"$output" || {
-  echo 'expected render-only refresh mode to preserve the real sidebar pane width' >&2
+grep -Fq 'averyverylongsessionname' <<<"$output" || {
+  echo 'expected render-only refresh mode to include the full session name in the hidden id column' >&2
+  printf 'output:\n%s\n' "$output" >&2
+  exit 1
+}
+
+max_label_width="$(printf '%s\n' "$output" | awk -F '\t' 'length($2) > max { max = length($2) } END { print max + 0 }')"
+[ "$max_label_width" -le 20 ] || {
+  echo "expected rendered sidebar labels to stay within pane width 20, got width $max_label_width" >&2
   printf 'output:\n%s\n' "$output" >&2
   exit 1
 }

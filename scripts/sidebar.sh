@@ -603,6 +603,19 @@ run_fzf_browser() {
   local browse_prompt search_prompt mode status
   local -a fzf_args
 
+  cleanup_refresh_resources() {
+    if [ -n "${refresh_loop_pid:-}" ]; then
+      kill "$refresh_loop_pid" 2>/dev/null || true
+      wait "$refresh_loop_pid" 2>/dev/null || true
+      refresh_loop_pid=''
+    fi
+    persist_sidebar_refresh_socket ''
+    if [ -n "$refresh_dir" ]; then
+      rm -rf "$refresh_dir"
+      refresh_dir=''
+    fi
+  }
+
   browse_prompt='session> '
   search_prompt='filter> '
   header_line="j/k: move  /: filter  Enter: switch/apply  Esc: close filter/close sidebar  Alt+n: project  Alt+g: git repo  Alt+a: adhoc  Alt+r: rename  Alt+x: kill  Alt+h: numbers ($(numbered_sessions_status_label))"
@@ -615,6 +628,7 @@ run_fzf_browser() {
     refresh_loop_pid=''
     output=''
     status=0
+    trap cleanup_refresh_resources EXIT INT TERM
 
     if [ "$mode" = 'browse' ]; then
       fzf_args=(
@@ -669,19 +683,16 @@ run_fzf_browser() {
       } | "$FZF_BIN" "${fzf_args[@]}")" || status=$?
     fi
 
-    if [ -n "$refresh_loop_pid" ]; then
-      kill "$refresh_loop_pid" 2>/dev/null || true
-      wait "$refresh_loop_pid" 2>/dev/null || true
-    fi
-    persist_sidebar_refresh_socket ''
-    if [ -n "$refresh_dir" ]; then
-      rm -rf "$refresh_dir"
-    fi
+    cleanup_refresh_resources
+    trap - EXIT INT TERM
 
     if [ "$mode" = 'browse' ]; then
-      [ "$status" -eq 0 ] || return 1
       key="$(printf '%s\n' "$output" | "$SED_BIN" -n '1p')"
       selection="$(printf '%s\n' "$output" | "$SED_BIN" -n '2p')"
+
+      if [ "$status" -ne 0 ] && [ -z "$key" ] && [ -z "$selection" ]; then
+        return 1
+      fi
 
       case "$key" in
         /)
@@ -707,10 +718,13 @@ run_fzf_browser() {
     query="$(printf '%s\n' "$output" | "$SED_BIN" -n '1p')"
     selection="$(printf '%s\n' "$output" | "$SED_BIN" -n '3p')"
 
-    [ "$status" -eq 0 ] || return 1
+    if [ "$status" -ne 0 ] && [ -z "$key" ] && [ -z "$query" ] && [ -z "$selection" ]; then
+      return 1
+    fi
 
     case "$key" in
       '')
+        [ "$status" -eq 0 ] || return 1
         active_filter="$query"
         mode='browse'
         continue

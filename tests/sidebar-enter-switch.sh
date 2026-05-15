@@ -25,6 +25,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
+wait_for_sidebar_ready() {
+  local pane_id="$1"
+  local current_command
+
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25; do
+    current_command="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" display-message -p -t "$pane_id" '#{pane_current_command}' 2>/dev/null || true)"
+    case "$current_command" in
+      ''|tmux) ;;
+      *) return 0 ;;
+    esac
+    sleep 0.2
+  done
+  return 1
+}
+
 env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s alpha 'sleep 9999'
 env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s beta 'sleep 9999'
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -g @session-sidebar-heat-colors off
@@ -45,7 +60,11 @@ alpha_window_id="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-windows -t '=alp
 sidebar_cmd="$(printf '%q ' "$REPO_DIR/scripts/sidebar.sh" --client "$client_name" --source-path "$work_dir" --active-filter beta)"
 sidebar_pane_id="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" split-window -P -F '#{pane_id}' -t "$alpha_window_id" -hbf -l 40 "$sidebar_cmd")"
 
-sleep 1
+wait_for_sidebar_ready "$sidebar_pane_id" || {
+  echo 'expected sidebar pane to finish starting before pressing Enter' >&2
+  exit 1
+}
+sleep 0.5
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" send-keys -t "$sidebar_pane_id" Enter
 
 for _ in 1 2 3 4 5 6 7 8 9 10; do

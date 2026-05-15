@@ -61,7 +61,16 @@ env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -t gamma @session-sidebar-hea
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -t gamma @session-sidebar-heat-attached-count 0
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -t gamma @session-sidebar-last-seen-at 999900000
 
-output="$(env -u TMUX PATH="$fake_bin:$PATH" SESSION_SIDEBAR_NOW=1000003600 SESSION_SIDEBAR_COLOR_CAPABILITY=256 "$REPO_DIR/scripts/sidebar.sh" --client "$client_name" --source-path "$work_dir" --render-entries)"
+output="$(
+  env -u TMUX \
+    PATH="$fake_bin:$PATH" \
+    SESSION_SIDEBAR_NOW=1000003600 \
+    SESSION_SIDEBAR_COLOR_CAPABILITY=256 \
+    "$REPO_DIR/scripts/sidebar.sh" \
+      --client "$client_name" \
+      --source-path "$work_dir" \
+      --render-entries
+)"
 
 printf '%s\n' "$output" | grep -Fqx $'alpha\t\033[1;38;5;121m* [1] alpha\033[0m' || {
   echo 'expected current alpha session to render in the hottest current-session color' >&2
