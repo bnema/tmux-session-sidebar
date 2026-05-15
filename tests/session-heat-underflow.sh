@@ -31,6 +31,11 @@ stderr="$(cat "$stderr_file")"
   exit 1
 }
 
+[[ -n "$output" && "$output" =~ ^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$ ]] || {
+  echo "expected numeric heat output, got: ${output:-<empty>}" >&2
+  exit 1
+}
+
 awk -v value="$output" 'BEGIN { exit !(value >= 0 && value <= 0.000001) }' || {
   echo "expected sufficiently old detached heat to decay to ~0, got: ${output:-<empty>}" >&2
   exit 1
