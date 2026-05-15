@@ -620,7 +620,7 @@ handle_fzf_action() {
 
 run_fzf_browser() {
   local output key query selection header_line refresh_dir refresh_seconds tab_delimiter refresh_loop_pid
-  local browse_prompt search_prompt mode status
+  local browse_prompt search_prompt mode status original_exit_trap original_exit_handler
   local -a fzf_args
 
   cleanup_refresh_resources() {
@@ -636,6 +636,33 @@ run_fzf_browser() {
     fi
   }
 
+  capture_existing_exit_trap() {
+    local prefix suffix
+    original_exit_trap="$(trap -p EXIT || true)"
+    original_exit_handler=''
+    [ -n "$original_exit_trap" ] || return 0
+    prefix=$'trap -- \''
+    suffix=$'\' EXIT'
+    original_exit_handler="${original_exit_trap#$prefix}"
+    original_exit_handler="${original_exit_handler%$suffix}"
+  }
+
+  run_fzf_browser_exit_trap() {
+    cleanup_refresh_resources
+    if [ -n "$original_exit_handler" ]; then
+      eval "$original_exit_handler"
+    fi
+  }
+
+  restore_fzf_browser_exit_trap() {
+    trap - INT TERM
+    if [ -n "$original_exit_trap" ]; then
+      eval "$original_exit_trap"
+    else
+      trap - EXIT
+    fi
+  }
+
   browse_prompt='session> '
   search_prompt='filter> '
   header_line="j/k: move  /: filter  Enter: switch/apply  Esc: close filter/close sidebar  Alt+n: project  Alt+g: git repo  Alt+a: adhoc  Alt+r: rename  Alt+x: kill  Alt+h: numbers ($(numbered_sessions_status_label))"
@@ -648,7 +675,9 @@ run_fzf_browser() {
     refresh_loop_pid=''
     output=''
     status=0
-    trap cleanup_refresh_resources EXIT INT TERM
+    capture_existing_exit_trap
+    trap run_fzf_browser_exit_trap EXIT
+    trap cleanup_refresh_resources INT TERM
 
     if [ "$mode" = 'browse' ]; then
       fzf_args=(
@@ -704,7 +733,7 @@ run_fzf_browser() {
     fi
 
     cleanup_refresh_resources
-    trap - EXIT INT TERM
+    restore_fzf_browser_exit_trap
 
     if [ "$mode" = 'browse' ]; then
       key="$(printf '%s\n' "$output" | "$SED_BIN" -n '1p')"

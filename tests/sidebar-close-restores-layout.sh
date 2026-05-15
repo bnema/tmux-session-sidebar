@@ -93,7 +93,16 @@ if env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-panes -t "$window_id" -F '#{pane
   exit 1
 fi
 
-actual_layout="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" display-message -p -t "$window_id" '#{window_layout}')"
+actual_layout=''
+for _ in 1 2 3 4 5 6 7 8 9 10 \
+         11 12 13 14 15 16 17 18 19 20; do
+  actual_layout="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" display-message -p -t "$window_id" '#{window_layout}')"
+  if [ "$actual_layout" = "$expected_layout" ]; then
+    break
+  fi
+  sleep 0.1
+done
+
 [ "$actual_layout" = "$expected_layout" ] || {
   echo 'expected closing the sidebar to restore the original pane layout' >&2
   printf 'expected: %s\n' "$expected_layout" >&2
