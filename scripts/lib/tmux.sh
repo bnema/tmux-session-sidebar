@@ -119,6 +119,27 @@ sidebar_heat_refresh_seconds() {
   esac
 }
 
+sidebar_heat_max_score() {
+  # Usage: sidebar_heat_max_score
+  # Cap persisted heat so long-lived attached sessions do not store arbitrarily
+  # large scores between refreshes or session switches.
+  sidebar_heat_stale_seconds
+}
+
+sidebar_clamp_heat_score() {
+  # Usage: sidebar_clamp_heat_score SCORE MAX_SCORE
+  local score="$1" max_score="$2"
+  "$AWK_BIN" -v score="$score" -v max_score="$max_score" '
+    BEGIN {
+      if (score !~ /^-?[0-9]+([.][0-9]+)?$/) score = 0;
+      if (max_score !~ /^[0-9]+([.][0-9]+)?$/ || max_score <= 0) max_score = 86400;
+      if (score < 0) score = 0;
+      if (score > max_score) score = max_score;
+      printf "%.6f", score;
+    }
+  '
+}
+
 sidebar_session_attached_count() {
   # Usage: sidebar_session_attached_count SESSION
   local session="$1"
@@ -158,9 +179,11 @@ sidebar_heat_score_after_interval() {
 sidebar_sync_session_heat() {
   # Usage: sidebar_sync_session_heat SESSION
   # Updates persisted recent-dwell heat state using the current session_attached count.
+  # Attached sessions grow linearly between sync points, then decay exponentially;
+  # the persisted score is capped to avoid runaway values after very long runs.
   # Prints tab-separated SCORE\tLAST_SEEN_AT\tATTACHED_COUNT.
   local session="$1"
-  local now actual_attached last_updated stored_score stored_attached elapsed half_life_seconds last_seen_at new_score
+  local now actual_attached last_updated stored_score stored_attached elapsed half_life_seconds last_seen_at new_score max_score
 
   [ -n "$session" ] || return 0
   sidebar_session_exists "$session" || return 0
@@ -198,6 +221,8 @@ sidebar_sync_session_heat() {
 
   half_life_seconds="$(sidebar_heat_half_life_seconds)"
   new_score="$(sidebar_heat_score_after_interval "$stored_score" "$elapsed" "$stored_attached" "$half_life_seconds")"
+  max_score="$(sidebar_heat_max_score)"
+  new_score="$(sidebar_clamp_heat_score "$new_score" "$max_score")"
   last_seen_at="$(sidebar_get_session_option "$session" @session-sidebar-last-seen-at '')"
   if [ "$stored_attached" -gt 0 ] || [ "$actual_attached" -gt 0 ]; then
     last_seen_at="$now"

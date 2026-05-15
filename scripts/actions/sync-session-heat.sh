@@ -34,12 +34,10 @@ if [ "$sync_all" = "on" ]; then
   sidebar_sync_all_session_heat >/dev/null || true
 fi
 
-seen="|"
+declare -A seen_map=()
 for session_name in "${sessions[@]}"; do
   [ -n "$session_name" ] || continue
-  case "$seen" in
-    *"|$session_name|"*) continue ;;
-  esac
-  seen="$seen$session_name|"
+  [ -n "${seen_map[$session_name]:-}" ] && continue
+  seen_map[$session_name]=1
   sidebar_sync_session_heat "$session_name" >/dev/null || true
 done

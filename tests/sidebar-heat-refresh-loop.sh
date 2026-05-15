@@ -10,6 +10,7 @@ REPO_DIR="$(cd "$($DIRNAME_BIN "${BASH_SOURCE[0]}")/.." && "$PWD_BIN")" || exit 
 work_dir="$(mktemp -d)"
 fake_bin="$work_dir/bin"
 curl_calls="$work_dir/curl-calls.txt"
+curl_count="$work_dir/curl-count.txt"
 mkdir -p "$fake_bin"
 
 cleanup() {
@@ -23,14 +24,24 @@ exit 0
 EOF
 chmod +x "$fake_bin/sleep"
 
-cat >"$fake_bin/curl" <<EOF
+cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >> "$curl_calls"
+count=0
+if [ -f "$TEST_CURL_COUNT" ]; then
+  count="$(cat "$TEST_CURL_COUNT")"
+fi
+count=$((count + 1))
+printf '%s' "$count" > "$TEST_CURL_COUNT"
+printf '%s\n' "$*" >> "$TEST_CURL_CALLS"
+if [ "$count" -eq 1 ]; then
+  printf 'ok\n'
+  exit 0
+fi
 exit 1
 EOF
 chmod +x "$fake_bin/curl"
 
-env -u TMUX PATH="$fake_bin:$PATH" "$REPO_DIR/scripts/sidebar.sh" \
+env -u TMUX PATH="$fake_bin:$PATH" TEST_CURL_CALLS="$curl_calls" TEST_CURL_COUNT="$curl_count" "$REPO_DIR/scripts/sidebar.sh" \
   --fzf-refresh-loop \
   --socket /tmp/tss-refresh.sock \
   --interval 1 \
@@ -40,6 +51,13 @@ env -u TMUX PATH="$fake_bin:$PATH" "$REPO_DIR/scripts/sidebar.sh" \
 
 [ -s "$curl_calls" ] || {
   echo 'expected refresh loop to post at least one reload command' >&2
+  exit 1
+}
+
+call_count="$(wc -l < "$curl_calls")"
+[ "$call_count" -ge 2 ] || {
+  echo 'expected refresh loop to continue after a successful curl response and stop on a later failure' >&2
+  cat "$curl_calls" >&2
   exit 1
 }
 

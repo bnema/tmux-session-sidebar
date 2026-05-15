@@ -18,6 +18,9 @@ trap cleanup EXIT
 # shellcheck source=/dev/null
 source "$REPO_DIR/scripts/lib/tmux.sh"
 
+# Exercise sidebar_heat_score_after_interval with an intentionally extreme
+# detached-session decay interval: seed score 10, elapsed 432000000 seconds
+# (~5000 days), attached count 0, and 8-hour half-life 28800 seconds.
 sidebar_heat_score_after_interval 10 432000000 0 28800 >"$stdout_file" 2>"$stderr_file"
 output="$(cat "$stdout_file")"
 stderr="$(cat "$stderr_file")"

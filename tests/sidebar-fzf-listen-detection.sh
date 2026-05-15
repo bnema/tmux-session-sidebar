@@ -4,9 +4,13 @@ set -euo pipefail
 DIRNAME_BIN="$(command -v dirname 2>/dev/null || true)"
 PWD_BIN="$(command -v pwd 2>/dev/null || true)"
 REAL_TMUX_BIN="$(command -v tmux 2>/dev/null || true)"
+SCRIPT_BIN="$(command -v script 2>/dev/null || true)"
+MKTEMP_BIN="$(command -v mktemp 2>/dev/null || true)"
 [ -n "$DIRNAME_BIN" ] || { echo 'dirname not found' >&2; exit 1; }
 [ -n "$PWD_BIN" ] || { echo 'pwd not found' >&2; exit 1; }
 [ -n "$REAL_TMUX_BIN" ] || { echo 'tmux not found' >&2; exit 1; }
+[ -n "$SCRIPT_BIN" ] || { echo 'script not found' >&2; exit 1; }
+[ -n "$MKTEMP_BIN" ] || { echo 'mktemp not found' >&2; exit 1; }
 REPO_DIR="$(cd "$($DIRNAME_BIN "${BASH_SOURCE[0]}")/.." && "$PWD_BIN")" || exit 1
 
 run_case() {
@@ -15,7 +19,7 @@ run_case() {
   local expect_listen="$3"
   local work_dir sock fake_bin client_log args_log helper_log client_pid client_name alpha_window_id sidebar_cmd
 
-  work_dir="$(mktemp -d)"
+  work_dir="$("$MKTEMP_BIN" -d)"
   sock="tss_test_sidebar_fzf_listen_${case_name}_$$"
   fake_bin="$work_dir/bin"
   client_log="$work_dir/client.log"
@@ -56,8 +60,8 @@ EOF
   chmod +x "$fake_bin/curl"
 
   env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s alpha 'sleep 9999'
-  env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s beta 'sleep 9999'
-  script -q -c "env -u TMUX TERM=xterm-256color tmux -L $sock attach-session -t alpha" "$client_log" >/dev/null 2>&1 &
+  env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s beta 'sleep 9999'
+  "$SCRIPT_BIN" -q -c "env -u TMUX TERM=xterm-256color tmux -L \"$sock\" attach-session -t alpha" "$client_log" >/dev/null 2>&1 &
   client_pid=$!
 
   client_name=""

@@ -47,16 +47,16 @@ EOF
 chmod +x "$fake_bin/fzf"
 
 env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s alpha 'sleep 9999'
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s beta 'sleep 9999'
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s gamma 'sleep 9999'
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s delta 'sleep 9999'
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s epsilon 'sleep 9999'
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s zeta 'sleep 9999'
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s eta 'sleep 9999'
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s theta 'sleep 9999'
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s iota 'sleep 9999'
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s kappa 'sleep 9999'
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s 123 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s beta 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s gamma 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s delta 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s epsilon 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s zeta 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s eta 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s theta 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s iota 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s kappa 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s 123 'sleep 9999'
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -g @session-sidebar-heat-colors off
 script -q -c "env -u TMUX TERM=xterm-256color tmux -L $sock attach-session -t alpha" "$client_log" >/dev/null 2>&1 &
 client_pid=$!
