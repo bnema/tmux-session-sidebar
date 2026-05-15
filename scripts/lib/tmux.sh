@@ -30,6 +30,9 @@ fi
 if [ -z "${AWK_BIN:-}" ]; then
   AWK_BIN="$(sidebar_require_command awk)" || _sidebar_return_or_exit 1
 fi
+if [ -z "${DATE_BIN:-}" ]; then
+  DATE_BIN="$(sidebar_require_command date)" || _sidebar_return_or_exit 1
+fi
 
 require_arg() {
   local flag="$1"
@@ -51,6 +54,226 @@ sidebar_get_option() {
   else
     printf '%s' "$default_value"
   fi
+}
+
+sidebar_get_session_option() {
+  # Usage: sidebar_get_session_option SESSION OPTION [DEFAULT]
+  local session="$1" option="$2" default_value="${3:-}"
+  local value=""
+  [ -n "$session" ] || {
+    printf '%s' "$default_value"
+    return 0
+  }
+  value="$("$TMUX_BIN" show-options -t "$session" -vq "$option" 2>/dev/null)" || true
+  if [ -n "$value" ]; then
+    printf '%s' "$value"
+  else
+    printf '%s' "$default_value"
+  fi
+}
+
+sidebar_set_session_option() {
+  # Usage: sidebar_set_session_option SESSION OPTION VALUE
+  local session="$1" option="$2" value="$3"
+  [ -n "$session" ] || return 1
+  "$TMUX_BIN" set-option -q -t "$session" "$option" "$value"
+}
+
+sidebar_get_pane_option() {
+  # Usage: sidebar_get_pane_option PANE OPTION [DEFAULT]
+  local pane_id="$1" option="$2" default_value="${3:-}"
+  local value=""
+  [ -n "$pane_id" ] || {
+    printf '%s' "$default_value"
+    return 0
+  }
+  value="$("$TMUX_BIN" show-options -p -t "$pane_id" -vq "$option" 2>/dev/null)" || true
+  if [ -n "$value" ]; then
+    printf '%s' "$value"
+  else
+    printf '%s' "$default_value"
+  fi
+}
+
+sidebar_set_pane_option() {
+  # Usage: sidebar_set_pane_option PANE OPTION VALUE
+  local pane_id="$1" option="$2" value="$3"
+  [ -n "$pane_id" ] || return 1
+  "$TMUX_BIN" set-option -p -q -t "$pane_id" "$option" "$value"
+}
+
+sidebar_unset_pane_option() {
+  # Usage: sidebar_unset_pane_option PANE OPTION
+  local pane_id="$1" option="$2"
+  [ -n "$pane_id" ] || return 1
+  "$TMUX_BIN" set-option -p -u -q -t "$pane_id" "$option" >/dev/null 2>&1 || true
+}
+
+sidebar_now_epoch() {
+  # Usage: sidebar_now_epoch
+  local now="${SESSION_SIDEBAR_NOW:-}"
+  case "$now" in
+    ''|*[!0-9]*) "$DATE_BIN" +%s ;;
+    *) printf '%s' "$now" ;;
+  esac
+}
+
+sidebar_option_seconds() {
+  # Usage: sidebar_option_seconds OPTION DEFAULT_HOURS
+  local option="$1" default_hours="$2" raw_value seconds
+  raw_value="$(sidebar_get_option "$option" "$default_hours")"
+  case "$raw_value" in
+    ''|*[!0-9]*) raw_value="$default_hours" ;;
+  esac
+  seconds=$((raw_value * 3600))
+  if [ "$seconds" -le 0 ]; then
+    seconds=$((default_hours * 3600))
+  fi
+  printf '%s' "$seconds"
+}
+
+sidebar_heat_half_life_seconds() {
+  sidebar_option_seconds @session-sidebar-heat-half-life-hours 8
+}
+
+sidebar_heat_stale_seconds() {
+  sidebar_option_seconds @session-sidebar-heat-stale-hours 24
+}
+
+sidebar_heat_refresh_seconds() {
+  local raw_value
+  raw_value="$(sidebar_get_option @session-sidebar-heat-refresh-seconds 300)"
+  case "$raw_value" in
+    ''|*[!0-9]*) printf '300' ;;
+    *) printf '%s' "$raw_value" ;;
+  esac
+}
+
+sidebar_heat_max_score() {
+  # Usage: sidebar_heat_max_score
+  # Cap persisted heat so long-lived attached sessions do not store arbitrarily
+  # large scores between refreshes or session switches.
+  sidebar_heat_stale_seconds
+}
+
+sidebar_clamp_heat_score() {
+  # Usage: sidebar_clamp_heat_score SCORE MAX_SCORE
+  local score="$1" max_score="$2"
+  "$AWK_BIN" -v score="$score" -v max_score="$max_score" '
+    BEGIN {
+      if (score !~ /^-?[0-9]+([.][0-9]+)?$/) score = 0;
+      if (max_score !~ /^[0-9]+([.][0-9]+)?$/ || max_score <= 0) max_score = 86400;
+      if (score < 0) score = 0;
+      if (score > max_score) score = max_score;
+      printf "%.6f", score;
+    }
+  '
+}
+
+sidebar_session_attached_count() {
+  # Usage: sidebar_session_attached_count SESSION
+  local session="$1"
+  local value="0"
+  [ -n "$session" ] || {
+    printf '0'
+    return 0
+  }
+  value="$("$TMUX_BIN" display-message -p -t "$session" '#{session_attached}' 2>/dev/null || true)"
+  case "$value" in
+    ''|*[!0-9]*) value=0 ;;
+  esac
+  printf '%s' "$value"
+}
+
+sidebar_heat_score_after_interval() {
+  # Usage: sidebar_heat_score_after_interval SCORE ELAPSED_SECONDS ATTACHED_COUNT HALF_LIFE_SECONDS
+  local score="$1" elapsed="$2" attached_count="$3" half_life_seconds="$4"
+  "$AWK_BIN" -v score="$score" -v elapsed="$elapsed" -v attached_count="$attached_count" -v half_life_seconds="$half_life_seconds" '
+    BEGIN {
+      if (score !~ /^-?[0-9]+([.][0-9]+)?$/) score = 0;
+      if (elapsed !~ /^[0-9]+$/) elapsed = 0;
+      if (attached_count !~ /^[0-9]+$/) attached_count = 0;
+      if (half_life_seconds !~ /^[0-9]+$/ || half_life_seconds <= 0) half_life_seconds = 28800;
+      activity_weight = (attached_count > 0 ? 1 : 0);
+      exponent = log(0.5) * elapsed / half_life_seconds;
+      if (exponent < -700) {
+        decay = 0;
+      } else {
+        decay = exp(exponent);
+      }
+      printf "%.6f", (score * decay) + (elapsed * activity_weight);
+    }
+  '
+}
+
+sidebar_sync_session_heat() {
+  # Usage: sidebar_sync_session_heat SESSION
+  # Updates persisted recent-dwell heat state using the current session_attached count.
+  # Attached sessions grow linearly between sync points, then decay exponentially;
+  # the persisted score is capped to avoid runaway values after very long runs.
+  # Prints tab-separated SCORE\tLAST_SEEN_AT\tATTACHED_COUNT.
+  local session="$1"
+  local now actual_attached last_updated stored_score stored_attached elapsed half_life_seconds last_seen_at new_score max_score
+
+  [ -n "$session" ] || return 0
+  sidebar_session_exists "$session" || return 0
+
+  now="$(sidebar_now_epoch)"
+  actual_attached="$(sidebar_session_attached_count "$session")"
+  last_updated="$(sidebar_get_session_option "$session" @session-sidebar-heat-updated-at '')"
+
+  case "$last_updated" in
+    ''|*[!0-9]*)
+      sidebar_set_session_option "$session" @session-sidebar-heat-score 0
+      sidebar_set_session_option "$session" @session-sidebar-heat-updated-at "$now"
+      sidebar_set_session_option "$session" @session-sidebar-heat-attached-count "$actual_attached"
+      if [ "$actual_attached" -gt 0 ]; then
+        sidebar_set_session_option "$session" @session-sidebar-last-seen-at "$now"
+        last_seen_at="$now"
+      else
+        last_seen_at="$(sidebar_get_session_option "$session" @session-sidebar-last-seen-at '')"
+      fi
+      printf '0\t%s\t%s\n' "$last_seen_at" "$actual_attached"
+      return 0
+      ;;
+  esac
+
+  stored_score="$(sidebar_get_session_option "$session" @session-sidebar-heat-score 0)"
+  stored_attached="$(sidebar_get_session_option "$session" @session-sidebar-heat-attached-count "$actual_attached")"
+  case "$stored_attached" in
+    ''|*[!0-9]*) stored_attached="$actual_attached" ;;
+  esac
+
+  elapsed=$((now - last_updated))
+  if [ "$elapsed" -lt 0 ]; then
+    elapsed=0
+  fi
+
+  half_life_seconds="$(sidebar_heat_half_life_seconds)"
+  new_score="$(sidebar_heat_score_after_interval "$stored_score" "$elapsed" "$stored_attached" "$half_life_seconds")"
+  max_score="$(sidebar_heat_max_score)"
+  new_score="$(sidebar_clamp_heat_score "$new_score" "$max_score")"
+  last_seen_at="$(sidebar_get_session_option "$session" @session-sidebar-last-seen-at '')"
+  if [ "$stored_attached" -gt 0 ] || [ "$actual_attached" -gt 0 ]; then
+    last_seen_at="$now"
+    sidebar_set_session_option "$session" @session-sidebar-last-seen-at "$last_seen_at"
+  fi
+
+  sidebar_set_session_option "$session" @session-sidebar-heat-score "$new_score"
+  sidebar_set_session_option "$session" @session-sidebar-heat-updated-at "$now"
+  sidebar_set_session_option "$session" @session-sidebar-heat-attached-count "$actual_attached"
+
+  printf '%s\t%s\t%s\n' "$new_score" "$last_seen_at" "$actual_attached"
+}
+
+sidebar_sync_all_session_heat() {
+  # Usage: sidebar_sync_all_session_heat [CLIENT]
+  local client="${1:-}"
+  local session_name attached_state window_count is_current
+  while IFS=$'\t' read -r session_name attached_state window_count is_current; do
+    [ -n "$session_name" ] || continue
+    sidebar_sync_session_heat "$session_name" >/dev/null || true
+  done < <(sidebar_list_sessions "$client")
 }
 
 sidebar_current_client() {
@@ -219,6 +442,14 @@ sidebar_existing_sidebar_pane() {
   local awk_program="\$2 == 1 { print \$1; exit }"
   [ -z "$window_id" ] && return 0
   "$TMUX_BIN" list-panes -t "$window_id" -F '#{pane_id}	#{@session-sidebar-pane}' 2>/dev/null |
+    "$AWK_BIN" -F $'\t' "$awk_program"
+}
+
+sidebar_list_sidebar_panes() {
+  # Usage: sidebar_list_sidebar_panes
+  # Prints pane ids for panes marked as sidebar panes.
+  local awk_program="\$2 == 1 { print \$1 }"
+  "$TMUX_BIN" list-panes -a -F '#{pane_id}	#{@session-sidebar-pane}' 2>/dev/null |
     "$AWK_BIN" -F $'\t' "$awk_program"
 }
 

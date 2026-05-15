@@ -36,7 +36,7 @@ awk 'NR == 2 { print; found = 1; exit } END { if (!found && NR >= 1) print $0 }'
 EOF
 chmod +x "$fake_bin/fzf"
 
-env -u TMUX PATH="$fake_bin:$PATH" tmux -L "$sock" new-session -d -s alpha "sleep 9999"
+env -u TMUX PATH="$fake_bin:$PATH" tmux -f /dev/null -L "$sock" new-session -d -s alpha "sleep 9999"
 script -q -c "env -u TMUX PATH='$fake_bin:$PATH' TERM=xterm-256color tmux -L $sock attach-session -t alpha" "$client_log" >/dev/null 2>&1 &
 client_pid=$!
 sleep 1

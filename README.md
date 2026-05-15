@@ -84,6 +84,10 @@ Configure the plugin with tmux user options in `~/.tmux.conf`.
 | `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated roots searched for project sessions |
 | `@session-sidebar-use-fzf` | `on` | Use `fzf` when it is installed |
 | `@session-sidebar-close-after-switch` | `off` | Close the sidebar pane after a successful session switch |
+| `@session-sidebar-heat-colors` | `on` | Color session rows by recent working-set heat; set to `off` to disable heat colors and periodic heat refresh |
+| `@session-sidebar-heat-half-life-hours` | `8` | Heat decay half-life in hours for recent dwell time |
+| `@session-sidebar-heat-stale-hours` | `24` | Fade a session to gray after it has not been seen for this many hours |
+| `@session-sidebar-heat-refresh-seconds` | `300` | Lazy refresh interval for `fzf` sidebar heat colors |
 
 Example:
 
@@ -93,6 +97,11 @@ set -g @session-sidebar-width '20'
 set -g @session-sidebar-project-roots "$HOME/projects:$HOME/dev/projects"
 set -g @session-sidebar-use-fzf 'on'
 set -g @session-sidebar-close-after-switch 'off'
+set -g @session-sidebar-heat-colors 'on'
+# set -g @session-sidebar-heat-colors 'off'  # disable heat colors and periodic heat refresh
+set -g @session-sidebar-heat-half-life-hours '8'
+set -g @session-sidebar-heat-stale-hours '24'
+set -g @session-sidebar-heat-refresh-seconds '300'
 ```
 
 ## Usage
@@ -112,8 +121,11 @@ Each row shows:
 - session name
 - quick-switch badge (`[1]` … `[9]`, then `[0]` for the 10th quick-switchable session)
 - current-session marker (`*`)
+- optional heat color based on your recent working set
 
 Purely numeric session names are hidden by default to reduce noise. Toggle them on or off from the sidebar when needed.
+
+With heat colors enabled, the current session is brightest green, then hot, warm, and cool sessions fade through progressively darker greens. Sessions you have not seen for more than `@session-sidebar-heat-stale-hours` move to the stale bucket and fade to gray. The score is based on recent dwell time with decay, not lifetime visit counts.
 
 ### Global quick-switch keys
 
@@ -130,7 +142,9 @@ These keys are used when `fzf` is available and `@session-sidebar-use-fzf` is no
 
 | Key | Action |
 | --- | --- |
-| `Enter` | Switch to the selected session |
+| `j` / `k` | Move down or up in browse mode |
+| `/` | Enter search mode |
+| `Enter` | Apply filter (search mode) or switch session (browse mode) |
 | `Alt+n` | Open the project picker and create or switch to a project session |
 | `Alt+g` | Create or switch to a project session from the current pane's git repo root |
 | `Alt+a` | Create or switch to an ad-hoc session |
@@ -139,7 +153,7 @@ These keys are used when `fzf` is available and `@session-sidebar-use-fzf` is no
 | `Alt+h` | Show or hide purely numeric session names |
 | `Esc` | Close the sidebar |
 
-The modified `Alt+...` bindings are intentional. They keep plain letters available for fuzzy search instead of stealing them as commands.
+The sidebar now starts in browse mode, so fuzzy search is inactive until you press `/`. After you press `Enter` in search mode, the current filter stays applied and the sidebar returns to browse mode.
 
 ### Keys in fallback mode
 
@@ -192,6 +206,19 @@ For rename and kill in fallback mode, pressing `Enter` at the session-number pro
 - `on`: after a successful switch, the sidebar pane is closed.
 - If you already had an older version loaded in a running tmux server, unset this option or restart the tmux server to pick up the new default.
 
+### Session heat colors
+
+- Heat is tracked from recent dwell time while a session is attached, then decays over time.
+- The five heat buckets are `current`, `hot`, `warm`, `cool`, and `stale`: the current session is brightest green, hot/warm/cool fade through progressively darker greens, and stale sessions turn gray after `@session-sidebar-heat-stale-hours`.
+- Lifetime visit counts are intentionally **not** used, so a session only stays hot if it is part of your recent working set.
+- Default half-life is `8` hours via `@session-sidebar-heat-half-life-hours`.
+- Sessions unseen for `24` hours fade to gray by default via `@session-sidebar-heat-stale-hours`.
+- Set `@session-sidebar-heat-colors` to `off` if you prefer simpler output or want to avoid the periodic heat-refresh overhead.
+- Plugin-driven session switches trigger an immediate sidebar rerender, so current-session markers and heat colors update without waiting for the periodic refresh.
+- Manual `tmux switch-client` session changes also trigger the same refresh through a tmux `client-session-changed` hook.
+- In `fzf` mode, the sidebar also lazily refreshes heat colors every `300` seconds by default via `@session-sidebar-heat-refresh-seconds`.
+- Colors degrade gracefully by terminal capability: RGB when available, then 256-color, then basic colors, then plain text.
+
 ### Zoomed windows
 
 If you trigger the sidebar from a zoomed pane, tmux first unzooms the pane and then opens the sidebar. This is native tmux zoom/unzoom behavior. The plugin does not add custom zoom restoration logic in v1.
@@ -223,6 +250,16 @@ That is expected when `@session-sidebar-close-after-switch` is `on`. Reopen it w
 ### I switched sessions and the old sidebar stayed behind
 
 That is the default behavior. When `@session-sidebar-close-after-switch` is `off`, the pane stays in the old session; it is not a global sidebar.
+
+### I want simpler output or less periodic refresh work
+
+Set:
+
+```tmux
+set -g @session-sidebar-heat-colors 'off'
+```
+
+This disables heat coloring and the periodic heat-refresh work that supports it.
 
 ### My configured project roots are ignored
 
