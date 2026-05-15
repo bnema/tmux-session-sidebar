@@ -83,7 +83,7 @@ Configure the plugin with tmux user options in `~/.tmux.conf`.
 | `@session-sidebar-width` | `20` | Width passed to the left split; defaults to a fixed column count |
 | `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated roots searched for project sessions |
 | `@session-sidebar-use-fzf` | `on` | Use `fzf` when it is installed |
-| `@session-sidebar-close-after-switch` | `on` | Close the sidebar pane after a successful session switch |
+| `@session-sidebar-close-after-switch` | `off` | Close the sidebar pane after a successful session switch |
 
 Example:
 
@@ -92,7 +92,7 @@ set -g @session-sidebar-key 'b'
 set -g @session-sidebar-width '20'
 set -g @session-sidebar-project-roots "$HOME/projects:$HOME/dev/projects"
 set -g @session-sidebar-use-fzf 'on'
-set -g @session-sidebar-close-after-switch 'on'
+set -g @session-sidebar-close-after-switch 'off'
 ```
 
 ## Usage
@@ -101,7 +101,7 @@ set -g @session-sidebar-close-after-switch 'on'
 
 - `prefix + b` opens or closes the left sidebar in the current window.
 
-The sidebar is a real tmux pane, not a global overlay. If the current window already has pane splits, the sidebar still opens as a full-height left pane for the whole window. If you switch sessions and `@session-sidebar-close-after-switch` is `on`, the pane closes and can be reopened in the new session.
+The sidebar is a real tmux pane, not a global overlay. If the current window already has pane splits, the sidebar still opens as a full-height left pane for the whole window. By default it stays open in the old session after a switch. If you set `@session-sidebar-close-after-switch` to `on`, the pane closes and can be reopened in the new session.
 
 The sidebar browser still fills the pane height. The default width is now a fixed column count instead of a percentage, though tmux-style percentage values still work if you set them explicitly.
 
@@ -110,9 +110,8 @@ The sidebar browser still fills the pane height. The default width is now a fixe
 Each row shows:
 
 - session name
+- quick-switch badge (`[1]` … `[9]`, then `[0]` for the 10th quick-switchable session)
 - current-session marker (`*`)
-- attached or detached state
-- window count
 
 Purely numeric session names are hidden by default to reduce noise. Toggle them on or off from the sidebar when needed.
 
@@ -123,7 +122,7 @@ These work without opening the sidebar:
 - `Ctrl+1` through `Ctrl+9` switch to visible sessions 1 through 9
 - `Ctrl+0` switches to visible session 10
 
-The quick-switch order matches the sidebar's default visible session list, so purely numeric session names are skipped unless you switch to them some other way.
+The quick-switch order matches the sidebar's default visible session list, so purely numeric session names are skipped unless you switch to them some other way. The sidebar shows this mapping with `[1]` through `[9]` and `[0]` badges beside the first 10 quick-switchable sessions.
 
 ### Keys in `fzf` mode
 
@@ -189,8 +188,9 @@ For rename and kill in fallback mode, pressing `Enter` at the session-number pro
 
 ### `@session-sidebar-close-after-switch`
 
+- Default `off`: after a successful switch, the old sidebar pane remains alive in the old session. This does **not** create a global cross-session sidebar.
 - `on`: after a successful switch, the sidebar pane is closed.
-- `off`: after a successful switch, the old sidebar pane remains alive in the old session. This does **not** create a global cross-session sidebar.
+- If you already had an older version loaded in a running tmux server, unset this option or restart the tmux server to pick up the new default.
 
 ### Zoomed windows
 
@@ -222,7 +222,7 @@ That is expected when `@session-sidebar-close-after-switch` is `on`. Reopen it w
 
 ### I switched sessions and the old sidebar stayed behind
 
-That is expected when `@session-sidebar-close-after-switch` is `off`. The pane stays in the old session; it is not a global sidebar.
+That is the default behavior. When `@session-sidebar-close-after-switch` is `off`, the pane stays in the old session; it is not a global sidebar.
 
 ### My configured project roots are ignored
 

@@ -39,7 +39,7 @@ main() {
   set_default @session-sidebar-width           20
   set_default @session-sidebar-project-roots   "$HOME/projects"
   set_default @session-sidebar-use-fzf         on
-  set_default @session-sidebar-close-after-switch  on
+  set_default @session-sidebar-close-after-switch  off
 
   local sidebar_key previous_key quoted_script quoted_quick_script slot
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"

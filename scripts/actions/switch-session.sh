@@ -52,7 +52,7 @@ if ! sidebar_session_exists "$session_name"; then
   exit 1
 fi
 
-close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch on)"
+close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch off)"
 session_target="$(sidebar_session_target "$session_name")" || exit 1
 
 "$TMUX_BIN" switch-client -c "$client_name" -t "$session_target"

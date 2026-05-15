@@ -65,38 +65,41 @@ truncate_label() {
   printf '%s...' "${text:0:$((max_width - 3))}"
 }
 
+quick_switch_badge() {
+  local index="$1"
+
+  case "$index" in
+    1|2|3|4|5|6|7|8|9)
+      printf '[%s] ' "$index"
+      ;;
+    10)
+      printf '[0] '
+      ;;
+    *)
+      printf '    '
+      ;;
+  esac
+}
+
 render_session_label() {
   local session_name="$1"
-  local attached_state="$2"
-  local window_count="$3"
-  local is_current="$4"
-  local pane_width="$5"
-  local prefix state_code meta name_width rendered_name
+  local is_current="$2"
+  local quick_switch_label="$3"
+  local pane_width="$4"
+  local prefix name_width rendered_name
 
   prefix="  "
   if [ "$is_current" = "current" ]; then
     prefix="* "
   fi
 
-  state_code="D"
-  if [ "$attached_state" = "attached" ]; then
-    state_code="A"
-  fi
-
-  meta=" [$state_code:${window_count}w]"
-  name_width=$((pane_width - ${#prefix} - ${#meta} - 1))
-
-  if [ "$name_width" -lt 8 ]; then
-    meta=" [$state_code]"
-    name_width=$((pane_width - ${#prefix} - ${#meta} - 1))
-  fi
-
+  name_width=$((pane_width - ${#prefix} - ${#quick_switch_label}))
   if [ "$name_width" -lt 4 ]; then
     name_width=4
   fi
 
   rendered_name="$(truncate_label "$session_name" "$name_width")"
-  printf '%s%s%s' "$prefix" "$rendered_name" "$meta"
+  printf '%s%s%s' "$prefix" "$quick_switch_label" "$rendered_name"
 }
 
 toggle_numbered_sessions() {
@@ -116,16 +119,23 @@ numbered_sessions_status_label() {
 }
 
 render_session_entries() {
-  local pane_width usable_width label
+  local pane_width usable_width label quick_switch_label quick_switch_index
   pane_width="$(sidebar_pane_width)"
   usable_width=$((pane_width - 4))
   if [ "$usable_width" -lt 12 ]; then
     usable_width=12
   fi
 
-  sidebar_list_visible_sessions "$client_name" "$show_numbered_sessions" | while IFS=$'\t' read -r session_name attached_state window_count is_current; do
+  quick_switch_index=0
+  sidebar_list_visible_sessions "$client_name" "$show_numbered_sessions" | while IFS=$'\t' read -r session_name _ _ is_current; do
     [ -z "$session_name" ] && continue
-    label="$(render_session_label "$session_name" "$attached_state" "$window_count" "$is_current" "$usable_width")"
+    if sidebar_session_is_numeric "$session_name"; then
+      quick_switch_label="$(quick_switch_badge '')"
+    else
+      quick_switch_index=$((quick_switch_index + 1))
+      quick_switch_label="$(quick_switch_badge "$quick_switch_index")"
+    fi
+    label="$(render_session_label "$session_name" "$is_current" "$quick_switch_label" "$usable_width")"
     printf '%s\t%s\n' "$session_name" "$label"
   done
 }
@@ -160,7 +170,7 @@ current_session_name() {
 
 should_close_after_switch() {
   local close_after_switch
-  close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch on)"
+  close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch off)"
   [ "$close_after_switch" = "on" ]
 }
 
