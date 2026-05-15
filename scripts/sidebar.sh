@@ -126,8 +126,28 @@ persist_sidebar_refresh_socket() {
   fi
 }
 
+schedule_sidebar_layout_restore_on_exit() {
+  local sidebar_window_id quoted_restore_script restore_cmd
+
+  [ -n "$sidebar_pane_id" ] || return 0
+  sidebar_window_id="$(sidebar_pane_window_id "$sidebar_pane_id" 2>/dev/null || true)"
+  [ -n "$sidebar_window_id" ] || return 0
+  [ -n "$(sidebar_window_saved_layout "$sidebar_window_id")" ] || return 0
+
+  printf -v quoted_restore_script '%q' "$SCRIPT_DIR/actions/restore-layout-after-pane-close.sh"
+  printf -v restore_cmd '%s --window %q --pane %q' \
+    "$quoted_restore_script" \
+    "$sidebar_window_id" \
+    "$sidebar_pane_id"
+  "$TMUX_BIN" run-shell -b "$restore_cmd" >/dev/null 2>&1 || true
+}
+
 persist_sidebar_refresh_state
 persist_sidebar_refresh_socket ""
+
+if [ "$render_entries_only" != "on" ] && [ "$refresh_loop_mode" != "on" ]; then
+  trap schedule_sidebar_layout_restore_on_exit EXIT
+fi
 
 quote_args() {
   local quoted="" arg
