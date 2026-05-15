@@ -46,7 +46,7 @@ fi
 EOF
 chmod +x "$fake_bin/fzf"
 
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s alpha 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -f /dev/null -L "$sock" new-session -d -s alpha 'sleep 9999'
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s beta 'sleep 9999'
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s gamma 'sleep 9999'
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s delta 'sleep 9999'
@@ -57,6 +57,7 @@ env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s theta 'sleep 9999'
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s iota 'sleep 9999'
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s kappa 'sleep 9999'
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" new-session -d -s 123 'sleep 9999'
+env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -g @session-sidebar-heat-colors off
 script -q -c "env -u TMUX TERM=xterm-256color tmux -L $sock attach-session -t alpha" "$client_log" >/dev/null 2>&1 &
 client_pid=$!
 
@@ -71,11 +72,15 @@ done
 [ -n "$client_name" ] || { echo 'no tmux client found' >&2; exit 1; }
 alpha_window_id="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-windows -t '=alpha' -F '#{window_id}' | head -n1)"
 
-sidebar_cmd="$(printf '%q ' env PATH="$fake_bin:$PATH" TEST_FZF_CALLS="$fzf_calls" TEST_SIDEBAR_INPUT_FIRST="$sidebar_input_first" TEST_SIDEBAR_INPUT_SECOND="$sidebar_input_second" "$REPO_DIR/scripts/sidebar.sh" --client "$client_name" --source-path "$work_dir")"
+sidebar_cmd="$(printf '%q ' env PATH="$fake_bin:$PATH" SESSION_SIDEBAR_FZF_LISTEN=off TEST_FZF_CALLS="$fzf_calls" TEST_SIDEBAR_INPUT_FIRST="$sidebar_input_first" TEST_SIDEBAR_INPUT_SECOND="$sidebar_input_second" "$REPO_DIR/scripts/sidebar.sh" --client "$client_name" --source-path "$work_dir")"
 env -u TMUX "$REAL_TMUX_BIN" -L "$sock" split-window -d -t "$alpha_window_id" -hbf -l 40 "$sidebar_cmd" >/dev/null
 
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  if [ -s "$sidebar_input_first" ] && [ -s "$sidebar_input_second" ]; then
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+  call_count="$(cat "$fzf_calls" 2>/dev/null || printf '0')"
+  first_lines="$(if [ -f "$sidebar_input_first" ]; then wc -l < "$sidebar_input_first"; else printf '0'; fi)"
+  second_lines="$(if [ -f "$sidebar_input_second" ]; then wc -l < "$sidebar_input_second"; else printf '0'; fi)"
+  if [ "$call_count" = '2' ] && [ "$first_lines" -ge 10 ] && [ "$second_lines" -ge 11 ]; then
+    sleep 0.2
     break
   fi
   sleep 0.2

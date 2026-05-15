@@ -54,8 +54,14 @@ fi
 
 close_after_switch="$(sidebar_get_option @session-sidebar-close-after-switch off)"
 session_target="$(sidebar_session_target "$session_name")" || exit 1
+previous_session_name="$(sidebar_current_session "$client_name" 2>/dev/null || true)"
 
 "$TMUX_BIN" switch-client -c "$client_name" -t "$session_target"
+
+if [ -n "$previous_session_name" ] && [ "$previous_session_name" != "$session_name" ]; then
+  sidebar_sync_session_heat "$previous_session_name" >/dev/null || true
+fi
+sidebar_sync_session_heat "$session_name" >/dev/null || true
 
 if [ "$close_after_switch" = "on" ] && [ -n "$sidebar_pane_id" ]; then
   sidebar_window_id="$(sidebar_pane_window_id "$sidebar_pane_id" 2>/dev/null || true)"

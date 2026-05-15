@@ -10,10 +10,33 @@ SCRIPT_DIR="$(cd "$($DIRNAME_BIN "${BASH_SOURCE[0]}")" && "$PWD_BIN")" || exit 1
 source "$SCRIPT_DIR/lib/tmux.sh"
 SED_BIN="$(sidebar_require_command sed)" || exit 1
 FZF_BIN="$(command -v fzf 2>/dev/null || true)"
+MKTEMP_BIN="$(command -v mktemp 2>/dev/null || true)"
+CURL_BIN="$(command -v curl 2>/dev/null || true)"
+FZF_SUPPORTS_LISTEN="off"
+if [ -n "$FZF_BIN" ]; then
+  case "${SESSION_SIDEBAR_FZF_LISTEN:-auto}" in
+    on)
+      FZF_SUPPORTS_LISTEN="on"
+      ;;
+    off)
+      FZF_SUPPORTS_LISTEN="off"
+      ;;
+    *)
+      case "$("$FZF_BIN" --help 2>/dev/null || true)" in
+        *"--listen=SOCKET_PATH"*) FZF_SUPPORTS_LISTEN="on" ;;
+      esac
+      ;;
+  esac
+fi
 
 client_name=""
 source_path=""
 show_numbered_sessions="off"
+render_entries_only="off"
+refresh_loop_mode="off"
+refresh_socket=""
+refresh_interval=""
+sidebar_pane_id=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -27,6 +50,34 @@ while [ $# -gt 0 ]; do
       source_path="$2"
       shift 2
       ;;
+    --show-numbered-sessions)
+      require_arg "$1" "${2:-}"
+      show_numbered_sessions="$2"
+      shift 2
+      ;;
+    --sidebar-pane)
+      require_arg "$1" "${2:-}"
+      sidebar_pane_id="$2"
+      shift 2
+      ;;
+    --render-entries)
+      render_entries_only="on"
+      shift
+      ;;
+    --fzf-refresh-loop)
+      refresh_loop_mode="on"
+      shift
+      ;;
+    --socket)
+      require_arg "$1" "${2:-}"
+      refresh_socket="$2"
+      shift 2
+      ;;
+    --interval)
+      require_arg "$1" "${2:-}"
+      refresh_interval="$2"
+      shift 2
+      ;;
     *)
       echo "tmux-session-sidebar: unknown argument: $1" >&2
       exit 1
@@ -35,12 +86,28 @@ while [ $# -gt 0 ]; do
 done
 
 client_name="$(sidebar_current_client "$client_name")" || exit 1
-sidebar_pane_id="$(sidebar_current_pane_id)" || exit 1
 
-"$TMUX_BIN" set-option -p -t "$sidebar_pane_id" @session-sidebar-pane 1
+if [ "$render_entries_only" != "on" ] && [ "$refresh_loop_mode" != "on" ]; then
+  if [ -z "$sidebar_pane_id" ]; then
+    sidebar_pane_id="$(sidebar_current_pane_id)" || exit 1
+  fi
+  "$TMUX_BIN" set-option -p -t "$sidebar_pane_id" @session-sidebar-pane 1
+fi
+
+quote_args() {
+  local quoted="" arg
+  for arg in "$@"; do
+    printf -v quoted '%s%q ' "$quoted" "$arg"
+  done
+  printf '%s' "$quoted"
+}
 
 sidebar_pane_width() {
   local width
+  if [ -z "$sidebar_pane_id" ]; then
+    printf '30'
+    return 0
+  fi
   width="$("$TMUX_BIN" display-message -p -t "$sidebar_pane_id" '#{pane_width}' 2>/dev/null || true)"
   case "$width" in
     ''|*[!0-9]*) width=30 ;;
@@ -102,6 +169,133 @@ render_session_label() {
   printf '%s%s%s' "$prefix" "$quick_switch_label" "$rendered_name"
 }
 
+heat_colors_enabled() {
+  [ "$(sidebar_get_option @session-sidebar-heat-colors on)" != "off" ]
+}
+
+terminal_color_capability() {
+  local override term_features colors
+
+  override="${SESSION_SIDEBAR_COLOR_CAPABILITY:-}"
+  case "$override" in
+    none|basic|256|rgb)
+      printf '%s' "$override"
+      return 0
+      ;;
+  esac
+
+  term_features="$("$TMUX_BIN" display-message -p -t "$client_name" '#{client_termfeatures}' 2>/dev/null || true)"
+  case "$term_features" in
+    *RGB*)
+      printf 'rgb'
+      return 0
+      ;;
+  esac
+
+  colors="$(tput colors 2>/dev/null || true)"
+  case "$colors" in
+    ''|*[!0-9]*) printf 'none' ;;
+    256|[3-9][0-9][0-9]*) printf '256' ;;
+    [1-9]|[1-9][0-9]) printf 'basic' ;;
+    *) printf 'none' ;;
+  esac
+}
+
+session_heat_bucket() {
+  local heat_score="$1"
+  local last_seen_at="$2"
+  local is_current="$3"
+  local now stale_seconds half_life_seconds
+
+  if [ "$is_current" = "current" ]; then
+    printf 'current'
+    return 0
+  fi
+
+  now="$(sidebar_now_epoch)"
+  stale_seconds="$(sidebar_heat_stale_seconds)"
+  case "$last_seen_at" in
+    ''|*[!0-9]*) ;;
+    *)
+      if [ $((now - last_seen_at)) -ge "$stale_seconds" ]; then
+        printf 'stale'
+        return 0
+      fi
+      ;;
+  esac
+
+  half_life_seconds="$(sidebar_heat_half_life_seconds)"
+  "$AWK_BIN" -v score="$heat_score" -v half_life_seconds="$half_life_seconds" '
+    BEGIN {
+      if (score !~ /^-?[0-9]+([.][0-9]+)?$/) score = 0;
+      if (half_life_seconds !~ /^[0-9]+$/ || half_life_seconds <= 0) half_life_seconds = 28800;
+      if (score >= half_life_seconds / 4) {
+        print "hot";
+      } else if (score >= half_life_seconds / 12) {
+        print "warm";
+      } else if (score >= half_life_seconds / 48) {
+        print "cool";
+      } else {
+        print "none";
+      }
+    }
+  '
+}
+
+session_heat_style() {
+  local bucket="$1"
+  local capability="$2"
+
+  case "$capability:$bucket" in
+    rgb:current) printf '\033[1;38;2;152;251;152m' ;;
+    rgb:hot)     printf '\033[38;2;122;232;122m' ;;
+    rgb:warm)    printf '\033[38;2;106;198;106m' ;;
+    rgb:cool)    printf '\033[38;2;124;154;124m' ;;
+    rgb:stale)   printf '\033[2;38;2;140;140;140m' ;;
+    256:current) printf '\033[1;38;5;121m' ;;
+    256:hot)     printf '\033[38;5;114m' ;;
+    256:warm)    printf '\033[38;5;108m' ;;
+    256:cool)    printf '\033[38;5;72m' ;;
+    256:stale)   printf '\033[2;38;5;244m' ;;
+    basic:current) printf '\033[1;32m' ;;
+    basic:hot)     printf '\033[32m' ;;
+    basic:warm)    printf '\033[2;32m' ;;
+    basic:cool)    printf '\033[2;37m' ;;
+    basic:stale)   printf '\033[2;37m' ;;
+    *) printf '' ;;
+  esac
+}
+
+colorize_session_label() {
+  local label="$1"
+  local heat_score="$2"
+  local last_seen_at="$3"
+  local is_current="$4"
+  local bucket capability style
+
+  if ! heat_colors_enabled; then
+    printf '%s' "$label"
+    return 0
+  fi
+
+  bucket="$(session_heat_bucket "$heat_score" "$last_seen_at" "$is_current")"
+  case "$bucket" in
+    none)
+      printf '%s' "$label"
+      return 0
+      ;;
+  esac
+
+  capability="$(terminal_color_capability)"
+  style="$(session_heat_style "$bucket" "$capability")"
+  if [ -z "$style" ]; then
+    printf '%s' "$label"
+    return 0
+  fi
+
+  printf '%b%s%b' "$style" "$label" $'\033[0m'
+}
+
 toggle_numbered_sessions() {
   if [ "$show_numbered_sessions" = "on" ]; then
     show_numbered_sessions="off"
@@ -119,7 +313,7 @@ numbered_sessions_status_label() {
 }
 
 render_session_entries() {
-  local pane_width usable_width label quick_switch_label quick_switch_index
+  local pane_width usable_width label colored_label quick_switch_label quick_switch_index heat_snapshot heat_score heat_last_seen
   pane_width="$(sidebar_pane_width)"
   usable_width=$((pane_width - 4))
   if [ "$usable_width" -lt 12 ]; then
@@ -135,8 +329,65 @@ render_session_entries() {
       quick_switch_index=$((quick_switch_index + 1))
       quick_switch_label="$(quick_switch_badge "$quick_switch_index")"
     fi
+    heat_snapshot="$(sidebar_sync_session_heat "$session_name")"
+    heat_score="${heat_snapshot%%$'\t'*}"
+    heat_last_seen="${heat_snapshot#*$'\t'}"
+    heat_last_seen="${heat_last_seen%%$'\t'*}"
     label="$(render_session_label "$session_name" "$is_current" "$quick_switch_label" "$usable_width")"
-    printf '%s\t%s\n' "$session_name" "$label"
+    colored_label="$(colorize_session_label "$label" "$heat_score" "$heat_last_seen" "$is_current")"
+    printf '%s\t%s\n' "$session_name" "$colored_label"
+  done
+}
+
+render_entries_command() {
+  local args
+  args=("$SCRIPT_DIR/sidebar.sh" --client "$client_name" --show-numbered-sessions "$show_numbered_sessions")
+  if [ -n "$source_path" ]; then
+    args+=(--source-path "$source_path")
+  fi
+  if [ -n "$sidebar_pane_id" ]; then
+    args+=(--sidebar-pane "$sidebar_pane_id")
+  fi
+  args+=(--render-entries)
+  quote_args "${args[@]}"
+}
+
+start_fzf_refresh_loop() {
+  local interval_value="$1"
+  local -a args
+
+  [ -n "$refresh_socket" ] || return 1
+  args=("$SCRIPT_DIR/sidebar.sh" --fzf-refresh-loop --socket "$refresh_socket" --interval "$interval_value" --client "$client_name" --show-numbered-sessions "$show_numbered_sessions")
+  if [ -n "$source_path" ]; then
+    args+=(--source-path "$source_path")
+  fi
+  if [ -n "$sidebar_pane_id" ]; then
+    args+=(--sidebar-pane "$sidebar_pane_id")
+  fi
+
+  "${args[@]}" >/dev/null 2>&1 &
+  printf '%s' "$!"
+}
+
+run_fzf_refresh_loop() {
+  local reload_command payload interval_value
+
+  [ -n "$refresh_socket" ] || return 0
+  [ -n "$refresh_interval" ] || return 0
+  [ -n "$CURL_BIN" ] || return 0
+  case "$refresh_interval" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  interval_value="$refresh_interval"
+  if [ "$interval_value" -le 0 ]; then
+    return 0
+  fi
+
+  reload_command="$(render_entries_command)"
+  payload="reload-sync($reload_command)"
+
+  while sleep "$interval_value"; do
+    "$CURL_BIN" --silent --show-error --unix-socket "$refresh_socket" http -d "$payload" >/dev/null 2>&1 || break
   done
 }
 
@@ -174,6 +425,21 @@ should_close_after_switch() {
   [ "$close_after_switch" = "on" ]
 }
 
+should_use_fzf_refresh_loop() {
+  local interval_value
+
+  heat_colors_enabled || return 1
+  [ "$FZF_SUPPORTS_LISTEN" = "on" ] || return 1
+  [ -n "$CURL_BIN" ] || return 1
+  [ -n "$MKTEMP_BIN" ] || return 1
+
+  interval_value="$(sidebar_heat_refresh_seconds)"
+  case "$interval_value" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$interval_value" -gt 0 ]
+}
+
 prompt_session_target() {
   local lines="$1"
   local prompt="$2"
@@ -201,18 +467,56 @@ prompt_session_target() {
 }
 
 run_fzf_browser() {
-  local output key selection session_name header_line
+  local output key selection session_name header_line refresh_dir refresh_seconds tab_delimiter refresh_loop_pid
+  local -a fzf_args
 
   header_line="Enter: switch  Alt+n: project  Alt+g: git repo  Alt+a: adhoc  Alt+r: rename  Alt+x: kill  Alt+h: numbers ($(numbered_sessions_status_label))  Esc: close"
+  tab_delimiter=$'\t'
+  fzf_args=(
+    "--ansi"
+    "--delimiter=$tab_delimiter"
+    "--with-nth=2"
+    "--expect=esc,alt-n,alt-g,alt-a,alt-r,alt-x,alt-h"
+    "--header=$header_line"
+    "--prompt=session> "
+    "--height=100%"
+  )
+
+  refresh_dir=""
+  if should_use_fzf_refresh_loop; then
+    refresh_dir="$("$MKTEMP_BIN" -d "${TMPDIR:-/tmp}/tmux-session-sidebar-fzf.XXXXXX")" || refresh_dir=""
+    if [ -n "$refresh_dir" ]; then
+      refresh_socket="$refresh_dir/fzf.sock"
+      refresh_seconds="$(sidebar_heat_refresh_seconds)"
+      fzf_args+=(
+        "--track"
+        "--id-nth=1"
+        "--listen" "$refresh_socket"
+      )
+      refresh_loop_pid="$(start_fzf_refresh_loop "$refresh_seconds")"
+    fi
+  fi
+
   output="$({
     render_session_entries
-  } | "$FZF_BIN" \
-    --delimiter=$'\t' \
-    --with-nth=2 \
-    --expect=esc,alt-n,alt-g,alt-a,alt-r,alt-x,alt-h \
-    --header="$header_line" \
-    --prompt='session> ' \
-    --height=100%)" || return 1
+  } | "$FZF_BIN" "${fzf_args[@]}")" || {
+    if [ -n "${refresh_loop_pid:-}" ]; then
+      kill "$refresh_loop_pid" 2>/dev/null || true
+      wait "$refresh_loop_pid" 2>/dev/null || true
+    fi
+    if [ -n "$refresh_dir" ]; then
+      rm -rf "$refresh_dir"
+    fi
+    return 1
+  }
+
+  if [ -n "${refresh_loop_pid:-}" ]; then
+    kill "$refresh_loop_pid" 2>/dev/null || true
+    wait "$refresh_loop_pid" 2>/dev/null || true
+  fi
+  if [ -n "$refresh_dir" ]; then
+    rm -rf "$refresh_dir"
+  fi
 
   key="$(printf '%s\n' "$output" | "$SED_BIN" -n '1p')"
   selection="$(printf '%s\n' "$output" | "$SED_BIN" -n '2p')"
@@ -416,6 +720,16 @@ EOF
 
 main() {
   local use_fzf
+
+  if [ "$render_entries_only" = "on" ]; then
+    render_session_entries
+    exit 0
+  fi
+
+  if [ "$refresh_loop_mode" = "on" ]; then
+    run_fzf_refresh_loop
+    exit 0
+  fi
 
   while :; do
     use_fzf="$(sidebar_get_option @session-sidebar-use-fzf on)"

@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DIRNAME_BIN="$(command -v dirname 2>/dev/null || true)"
+PWD_BIN="$(command -v pwd 2>/dev/null || true)"
+[ -n "$DIRNAME_BIN" ] || { echo 'dirname not found' >&2; exit 1; }
+[ -n "$PWD_BIN" ] || { echo 'pwd not found' >&2; exit 1; }
+REPO_DIR="$(cd "$($DIRNAME_BIN "${BASH_SOURCE[0]}")/.." && "$PWD_BIN")" || exit 1
+
+work_dir="$(mktemp -d)"
+fake_bin="$work_dir/bin"
+curl_calls="$work_dir/curl-calls.txt"
+mkdir -p "$fake_bin"
+
+cleanup() {
+  rm -rf "$work_dir"
+}
+trap cleanup EXIT
+
+cat >"$fake_bin/sleep" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$fake_bin/sleep"
+
+cat >"$fake_bin/curl" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$curl_calls"
+exit 1
+EOF
+chmod +x "$fake_bin/curl"
+
+env -u TMUX PATH="$fake_bin:$PATH" "$REPO_DIR/scripts/sidebar.sh" \
+  --fzf-refresh-loop \
+  --socket /tmp/tss-refresh.sock \
+  --interval 1 \
+  --client fake-client \
+  --source-path "$work_dir" \
+  --show-numbered-sessions on
+
+[ -s "$curl_calls" ] || {
+  echo 'expected refresh loop to post at least one reload command' >&2
+  exit 1
+}
+
+grep -Fq -- '--unix-socket /tmp/tss-refresh.sock http -d reload-sync(' "$curl_calls" || {
+  echo 'expected curl call to target the fzf unix socket with reload-sync payload' >&2
+  cat "$curl_calls" >&2
+  exit 1
+}
+
+grep -Fq -- '--client fake-client' "$curl_calls" || {
+  echo 'expected reload payload to include the client name' >&2
+  cat "$curl_calls" >&2
+  exit 1
+}
+
+grep -Fq -- '--show-numbered-sessions on' "$curl_calls" || {
+  echo 'expected reload payload to preserve numbered-session visibility state' >&2
+  cat "$curl_calls" >&2
+  exit 1
+}
+
+grep -Fq -- '--source-path' "$curl_calls" || {
+  echo 'expected reload payload to preserve source path' >&2
+  cat "$curl_calls" >&2
+  exit 1
+}
+
+grep -Fq -- '--render-entries' "$curl_calls" || {
+  echo 'expected reload payload to request render-only mode' >&2
+  cat "$curl_calls" >&2
+  exit 1
+}
+
+echo 'ok: fzf refresh loop posts sidebar reload commands'

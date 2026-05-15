@@ -84,6 +84,10 @@ Configure the plugin with tmux user options in `~/.tmux.conf`.
 | `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated roots searched for project sessions |
 | `@session-sidebar-use-fzf` | `on` | Use `fzf` when it is installed |
 | `@session-sidebar-close-after-switch` | `off` | Close the sidebar pane after a successful session switch |
+| `@session-sidebar-heat-colors` | `on` | Color session rows by recent working-set heat |
+| `@session-sidebar-heat-half-life-hours` | `8` | Heat decay half-life in hours for recent dwell time |
+| `@session-sidebar-heat-stale-hours` | `24` | Fade a session to gray after it has not been seen for this many hours |
+| `@session-sidebar-heat-refresh-seconds` | `300` | Lazy refresh interval for `fzf` sidebar heat colors |
 
 Example:
 
@@ -93,6 +97,10 @@ set -g @session-sidebar-width '20'
 set -g @session-sidebar-project-roots "$HOME/projects:$HOME/dev/projects"
 set -g @session-sidebar-use-fzf 'on'
 set -g @session-sidebar-close-after-switch 'off'
+set -g @session-sidebar-heat-colors 'on'
+set -g @session-sidebar-heat-half-life-hours '8'
+set -g @session-sidebar-heat-stale-hours '24'
+set -g @session-sidebar-heat-refresh-seconds '300'
 ```
 
 ## Usage
@@ -112,8 +120,11 @@ Each row shows:
 - session name
 - quick-switch badge (`[1]` … `[9]`, then `[0]` for the 10th quick-switchable session)
 - current-session marker (`*`)
+- optional heat color based on your recent working set
 
 Purely numeric session names are hidden by default to reduce noise. Toggle them on or off from the sidebar when needed.
+
+With heat colors enabled, the current session is brightest, recently active sessions stay green, and sessions you have not seen for more than `@session-sidebar-heat-stale-hours` fade to gray. The score is based on recent dwell time with decay, not lifetime visit counts.
 
 ### Global quick-switch keys
 
@@ -191,6 +202,15 @@ For rename and kill in fallback mode, pressing `Enter` at the session-number pro
 - Default `off`: after a successful switch, the old sidebar pane remains alive in the old session. This does **not** create a global cross-session sidebar.
 - `on`: after a successful switch, the sidebar pane is closed.
 - If you already had an older version loaded in a running tmux server, unset this option or restart the tmux server to pick up the new default.
+
+### Session heat colors
+
+- Heat is tracked from recent dwell time while a session is attached, then decays over time.
+- Lifetime visit counts are intentionally **not** used, so a session only stays hot if it is part of your recent working set.
+- Default half-life is `8` hours via `@session-sidebar-heat-half-life-hours`.
+- Sessions unseen for `24` hours fade to gray by default via `@session-sidebar-heat-stale-hours`.
+- In `fzf` mode, the sidebar lazily refreshes heat colors every `300` seconds by default via `@session-sidebar-heat-refresh-seconds`.
+- Colors degrade gracefully by terminal capability: RGB when available, then 256-color, then basic colors, then plain text.
 
 ### Zoomed windows
 
