@@ -216,6 +216,7 @@ sidebar_sync_session_heat() {
   local now actual_attached last_updated stored_score stored_attached elapsed half_life_seconds last_seen_at new_score max_score
 
   [ -n "$session" ] || return 0
+  sidebar_session_is_internal "$session" && return 0
   sidebar_session_exists "$session" || return 0
 
   now="$(sidebar_now_epoch)"
@@ -362,6 +363,13 @@ sidebar_session_is_numeric() {
   [[ "$name" =~ ^[0-9]+$ ]]
 }
 
+sidebar_session_is_internal() {
+  # Usage: sidebar_session_is_internal NAME
+  # Internal helper sessions are deliberately hidden from sidebar navigation.
+  local name="$1"
+  [[ "$name" == __* ]]
+}
+
 sidebar_list_visible_sessions() {
   # Usage: sidebar_list_visible_sessions [CLIENT] [SHOW_NUMBERED]
   # Prints the sidebar-visible session rows using the default filtering model.
@@ -371,6 +379,9 @@ sidebar_list_visible_sessions() {
 
   while IFS=$'\t' read -r session_name attached_state window_count is_current; do
     [ -z "$session_name" ] && continue
+    if sidebar_session_is_internal "$session_name"; then
+      continue
+    fi
     if [ "$show_numbered" != "on" ] && sidebar_session_is_numeric "$session_name"; then
       continue
     fi
