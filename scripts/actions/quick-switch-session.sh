@@ -34,4 +34,13 @@ session_name="$(sidebar_visible_session_name_at_index "$client_name" "$session_i
   exit 1
 }
 
-exec "$SCRIPT_DIR/switch-session.sh" --client "$client_name" --session "$session_name"
+switch_args=(--client "$client_name" --session "$session_name")
+client_window_id="$($TMUX_BIN display-message -p -t "$client_name" '#{window_id}' 2>/dev/null || true)"
+if [ -n "$client_window_id" ]; then
+  sidebar_pane_id="$(sidebar_existing_sidebar_pane "$client_window_id" 2>/dev/null || true)"
+  if [ -n "$sidebar_pane_id" ]; then
+    switch_args+=(--sidebar-pane "$sidebar_pane_id")
+  fi
+fi
+
+exec "$SCRIPT_DIR/switch-session.sh" "${switch_args[@]}"
