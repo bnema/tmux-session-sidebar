@@ -3,6 +3,7 @@ package ipcunix
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -18,7 +19,9 @@ type Server struct {
 func NewServer(socketPath string) Server { return Server{SocketPath: socketPath} }
 
 func (s Server) Serve(ctx context.Context, handler ports.IPCHandler) error {
-	_ = os.Remove(s.SocketPath)
+	if err := removeStaleSocket(s.SocketPath); err != nil {
+		return err
+	}
 	listener, err := net.Listen("unix", s.SocketPath)
 	if err != nil {
 		return err
@@ -38,6 +41,20 @@ func (s Server) Serve(ctx context.Context, handler ports.IPCHandler) error {
 		}
 		go handleConn(ctx, conn, handler)
 	}
+}
+
+func removeStaleSocket(path string) error {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("refusing to remove non-socket IPC path %s", path)
+	}
+	return os.Remove(path)
 }
 
 func handleConn(ctx context.Context, conn net.Conn, handler ports.IPCHandler) {

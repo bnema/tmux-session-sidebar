@@ -44,6 +44,30 @@ printf '%s\n' "$*" >> "$TMUX_LOG"
 	}
 }
 
+func TestCommandPromptsUseQuotedTmuxInputPlaceholder(t *testing.T) {
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+`)
+
+	if err := createAdhoc(context.Background(), map[string]string{"client": "/dev/pts/99"}); err != nil {
+		t.Fatalf("createAdhoc prompt error: %v", err)
+	}
+	if err := renameSession(context.Background(), map[string]string{"client": "/dev/pts/99", "session": "alpha"}); err != nil {
+		t.Fatalf("renameSession prompt error: %v", err)
+	}
+	logBytes, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read fake tmux log: %v", err)
+	}
+	log := string(logBytes)
+	if !strings.Contains(log, "--name") || !strings.Contains(log, "%%") {
+		t.Fatalf("expected quoted tmux input placeholder, log=%q", log)
+	}
+	if strings.Contains(log, "%%%") {
+		t.Fatalf("unexpected escaped placeholder, log=%q", log)
+	}
+}
+
 func TestConfirmedKillRefreshesSidebarPane(t *testing.T) {
 	logPath := installFakeTmux(t, `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"

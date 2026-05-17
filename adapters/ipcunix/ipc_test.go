@@ -2,6 +2,7 @@ package ipcunix
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -49,6 +50,20 @@ func TestIPCUnixRoundTrip(t *testing.T) {
 				t.Fatal("server did not stop")
 			}
 		})
+	}
+}
+
+func TestServeRefusesToRemoveNonSocketPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "not-a-socket")
+	if err := os.WriteFile(path, []byte("keep"), 0o600); err != nil {
+		t.Fatalf("write regular file: %v", err)
+	}
+	handler := mocks.NewMockIPCHandler(t)
+	if err := NewServer(path).Serve(context.Background(), handler); err == nil {
+		t.Fatal("Serve error = nil, want error")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("regular file was removed: %v", err)
 	}
 }
 

@@ -35,7 +35,7 @@ func (l FileLocker) Acquire(_ context.Context, key string) (*Handle, error) {
 }
 
 func (h *Handle) Release() error {
-	if h.file == nil {
+	if h == nil || h.file == nil {
 		return nil
 	}
 	unlockErr := syscall.Flock(int(h.file.Fd()), syscall.LOCK_UN)
