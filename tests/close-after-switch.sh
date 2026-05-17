@@ -51,8 +51,8 @@ client_session="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-clients -F '#{cli
   exit 1
 }
 
-env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-panes -t "$alpha_window_id" -F '#{pane_id}' | grep -Fxq "$alpha_sidebar_pane" || {
-  echo 'expected sidebar pane to stay open by default after session switch' >&2
+env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-panes -t "$beta_window_id" -F '#{@session-sidebar-pane}' | grep -Fxq 1 || {
+  echo 'expected a sidebar pane to stay open and follow the client by default after session switch' >&2
   exit 1
 }
 
