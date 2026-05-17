@@ -273,6 +273,7 @@ filtered_session_entries() {
   fi
 
   render_session_entries | "$FZF_BIN" \
+    --ansi \
     --filter "$active_filter" \
     --delimiter=$'\t' \
     --with-nth=2 || true
