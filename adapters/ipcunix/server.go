@@ -51,7 +51,9 @@ func handleConn(ctx context.Context, conn net.Conn, handler ports.IPCHandler) {
 	if err := json.NewDecoder(conn).Decode(&req); err != nil {
 		return
 	}
-	resp, err := handler.HandleIPC(ctx, req)
+	ctxWithDeadline, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	resp, err := handler.HandleIPC(ctxWithDeadline, req)
 	if err != nil {
 		resp = ports.Response{OK: false, Message: err.Error()}
 	}

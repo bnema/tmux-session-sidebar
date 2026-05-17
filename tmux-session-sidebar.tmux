@@ -59,7 +59,7 @@ main() {
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"
   previous_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-bound-key 2>/dev/null || true)"
   printf -v quoted_ensure '%q' "$SCRIPTS_DIR/ensure-runtime.sh"
-  runtime_bin="$($SCRIPTS_DIR/ensure-runtime.sh)"
+  runtime_bin="$("$SCRIPTS_DIR/ensure-runtime.sh")"
   printf -v quoted_runtime '%q' "$runtime_bin"
 
   if [ -n "$previous_key" ] && [ "$previous_key" != "$sidebar_key" ]; then

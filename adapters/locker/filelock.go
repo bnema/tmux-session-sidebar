@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -39,19 +38,11 @@ func (h *Handle) Release() error {
 	if h.file == nil {
 		return nil
 	}
-	path := h.file.Name()
 	unlockErr := syscall.Flock(int(h.file.Fd()), syscall.LOCK_UN)
 	closeErr := h.file.Close()
 	h.file = nil
-	removeErr := os.Remove(path)
-	if errors.Is(removeErr, os.ErrNotExist) {
-		removeErr = nil
-	}
 	if unlockErr != nil {
 		return unlockErr
 	}
-	if closeErr != nil {
-		return closeErr
-	}
-	return removeErr
+	return closeErr
 }

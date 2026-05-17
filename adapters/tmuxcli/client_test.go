@@ -109,6 +109,7 @@ func TestOpenSidebarPane(t *testing.T) {
 		wantErr  bool
 	}{
 		{name: "empty output errors", stdout: "", wantErr: true},
+		{name: "missing pane id errors", stdout: "\t@window\n", wantErr: true},
 		{name: "targets client and parses pane", clientID: "%client", stdout: "%pane\t@window\n", want: ports.PaneRef{PaneID: "%pane", WindowID: "@window"}},
 	}
 	for _, tt := range tests {

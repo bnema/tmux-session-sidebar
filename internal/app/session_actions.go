@@ -34,7 +34,7 @@ func createCurrentGitProject(ctx context.Context, flags map[string]string) error
 func createAdhoc(ctx context.Context, flags map[string]string) error {
 	name := strings.TrimSpace(flags["name"])
 	if name == "" {
-		return commandPrompt(ctx, "Ad-hoc session name", "action create-adhoc --client "+shellQuote(flags["client"])+" --name %%")
+		return commandPrompt(ctx, "Ad-hoc session name", "action create-adhoc --client "+shellQuote(flags["client"])+" --name '%%%'")
 	}
 	path := flags["source-path"]
 	if path == "" {
@@ -61,7 +61,7 @@ func renameSession(ctx context.Context, flags map[string]string) error {
 		return fmt.Errorf("missing session")
 	}
 	if newName == "" {
-		return commandPrompt(ctx, "Rename session", "action rename --session "+shellQuote(session)+" --name %%")
+		return commandPrompt(ctx, "Rename session", "action rename --session "+shellQuote(session)+" --name '%%%'")
 	}
 	_, err := tmux(ctx, "rename-session", "-t", session, newName)
 	return err

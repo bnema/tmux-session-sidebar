@@ -127,12 +127,12 @@ func (c Client) OpenSidebarPane(ctx context.Context, clientID string, width stri
 	if err != nil {
 		return ports.PaneRef{}, err
 	}
-	out := strings.TrimSpace(result.Stdout)
+	out := strings.TrimRight(result.Stdout, "\r\n")
 	if out == "" {
 		return ports.PaneRef{}, fmt.Errorf("open sidebar pane: empty tmux output")
 	}
 	fields := strings.Split(out, "\t")
-	if fields[0] == "" {
+	if len(fields) == 0 || fields[0] == "" {
 		return ports.PaneRef{}, fmt.Errorf("open sidebar pane: malformed tmux output %q", out)
 	}
 	ref := ports.PaneRef{PaneID: fields[0]}
