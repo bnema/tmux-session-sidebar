@@ -2,11 +2,15 @@ package tmuxcli
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
+
+var ErrLayoutUnsupported = errors.New("tmux layout save/restore is not supported by tmuxcli adapter")
 
 type Client struct {
 	Process ports.ProcessPort
@@ -38,7 +42,7 @@ func (c Client) ListSessions(ctx context.Context) ([]ports.TmuxSessionSnapshot, 
 		return nil, err
 	}
 	var sessions []ports.TmuxSessionSnapshot
-	for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
 		if line == "" {
 			continue
 		}
@@ -65,7 +69,7 @@ func (c Client) ListClients(ctx context.Context) ([]ports.TmuxClientSnapshot, er
 		return nil, err
 	}
 	var clients []ports.TmuxClientSnapshot
-	for _, line := range strings.Split(strings.TrimRight(result.Stdout, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(result.Stdout, "\n"), "\n") {
 		if line == "" {
 			continue
 		}
@@ -113,13 +117,24 @@ func (c Client) DisplayMessage(ctx context.Context, clientID string, message str
 }
 
 func (c Client) OpenSidebarPane(ctx context.Context, clientID string, width string, command []string) (ports.PaneRef, error) {
-	args := []string{"split-window", "-P", "-F", "#{pane_id}\t#{window_id}", "-hb", "-l", width}
+	args := []string{"split-window", "-P", "-F", "#{pane_id}\t#{window_id}"}
+	if clientID != "" {
+		args = append(args, "-t", clientID)
+	}
+	args = append(args, "-hb", "-l", width)
 	args = append(args, command...)
 	result, err := c.Process.Exec(ctx, "tmux", args)
 	if err != nil {
 		return ports.PaneRef{}, err
 	}
-	fields := strings.Split(strings.TrimSpace(result.Stdout), "\t")
+	out := strings.TrimSpace(result.Stdout)
+	if out == "" {
+		return ports.PaneRef{}, fmt.Errorf("open sidebar pane: empty tmux output")
+	}
+	fields := strings.Split(out, "\t")
+	if fields[0] == "" {
+		return ports.PaneRef{}, fmt.Errorf("open sidebar pane: malformed tmux output %q", out)
+	}
 	ref := ports.PaneRef{PaneID: fields[0]}
 	if len(fields) > 1 {
 		ref.WindowID = fields[1]
@@ -133,12 +148,10 @@ func (c Client) ClosePane(ctx context.Context, paneID string) error {
 }
 
 func (c Client) SaveWindowLayout(ctx context.Context, windowID string) error {
-	// TODO: persist and restore tmux layouts around sidebar panes.
-	return nil
+	return ErrLayoutUnsupported
 }
 func (c Client) RestoreWindowLayout(ctx context.Context, windowID string) error {
-	// TODO: persist and restore tmux layouts around sidebar panes.
-	return nil
+	return ErrLayoutUnsupported
 }
 
 func (c Client) LoadSessionMetadata(ctx context.Context, sessionName string) (ports.SessionMetadata, error) {

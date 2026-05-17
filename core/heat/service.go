@@ -34,9 +34,7 @@ func Advance(state State, now time.Time, attachedCount int, halfLife time.Durati
 	}
 
 	elapsed := now.Sub(state.UpdatedAt)
-	if elapsed < 0 {
-		elapsed = 0
-	}
+	elapsed = max(elapsed, 0)
 	elapsedSeconds := elapsed.Seconds()
 	decay := math.Pow(0.5, elapsedSeconds/halfLife.Seconds())
 	state.Score *= decay

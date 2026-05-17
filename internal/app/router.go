@@ -32,6 +32,10 @@ func (runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer, 
 		return runUI(ctx, route.Flags, stdout)
 	case "action/quick-switch":
 		return quickSwitch(ctx, route.Flags)
+	case "action/switch":
+		return switchClient(ctx, route.Flags["client"], route.Flags["session"])
+	case "action/toggle-numeric":
+		return nil
 	case "action/create-project":
 		return createProject(ctx, route.Flags, stdout)
 	case "action/create-current-git-project":
@@ -46,7 +50,7 @@ func (runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer, 
 		return nil
 	default:
 		_, _ = fmt.Fprintf(stderr, "%s not implemented yet\n", route.Path)
-		return nil
+		return fmt.Errorf("unimplemented route: %s", route.Path)
 	}
 }
 
@@ -123,7 +127,7 @@ func existingSidebarPane(ctx context.Context, client string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		fields := strings.Split(line, "\t")
 		if len(fields) == 2 && fields[1] == "1" {
 			return fields[0], nil
@@ -194,7 +198,7 @@ func quickSwitch(ctx context.Context, flags map[string]string) error {
 
 func visibleSessionNames(out string) []string {
 	var names []string
-	for _, name := range strings.Split(strings.TrimSpace(out), "\n") {
+	for name := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		name = strings.TrimSpace(name)
 		if name != "" && !sessions.IsNumericName(name) && !strings.HasPrefix(name, "__") {
 			names = append(names, name)

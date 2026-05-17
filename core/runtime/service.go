@@ -2,12 +2,25 @@ package runtime
 
 import (
 	"context"
+	"errors"
+	"maps"
 
 	"github.com/bnema/tmux-session-sidebar/core/clients"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
+var (
+	ErrMissingTmuxConfig = errors.New("missing tmux config dependency")
+	ErrMissingTmuxQuery  = errors.New("missing tmux query dependency")
+)
+
 func (s *Service) Snapshot(ctx context.Context) (State, error) {
+	if s.tmuxConfig == nil {
+		return State{}, ErrMissingTmuxConfig
+	}
+	if s.tmuxQuery == nil {
+		return State{}, ErrMissingTmuxQuery
+	}
 	cfg, err := s.tmuxConfig.LoadConfig(ctx)
 	if err != nil {
 		return State{}, err
@@ -52,8 +65,6 @@ func ReconcileSidebarPane(state State, clientID string) (State, bool) {
 
 func clonePanes(panes map[string]ports.PaneRef) map[string]ports.PaneRef {
 	cloned := make(map[string]ports.PaneRef, len(panes))
-	for key, value := range panes {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, panes)
 	return cloned
 }

@@ -2,6 +2,8 @@ package locker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -20,7 +22,8 @@ func (l FileLocker) Acquire(_ context.Context, key string) (*Handle, error) {
 	if err := os.MkdirAll(l.Dir, 0o700); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(l.Dir, key+".lock")
+	sum := sha256.Sum256([]byte(key))
+	path := filepath.Join(l.Dir, hex.EncodeToString(sum[:])+".lock")
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err

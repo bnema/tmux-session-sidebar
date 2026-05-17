@@ -100,6 +100,43 @@ func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	}
 }
 
+func TestOpenSidebarPane(t *testing.T) {
+	tests := []struct {
+		name     string
+		clientID string
+		stdout   string
+		want     ports.PaneRef
+		wantErr  bool
+	}{
+		{name: "empty output errors", stdout: "", wantErr: true},
+		{name: "targets client and parses pane", clientID: "%client", stdout: "%pane\t@window\n", want: ports.PaneRef{PaneID: "%pane", WindowID: "@window"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			process := mocks.NewMockProcessPort(t)
+			process.EXPECT().Exec(ctx, "tmux", mock.MatchedBy(func(args []string) bool {
+				if tt.clientID == "" {
+					return true
+				}
+				for i := 0; i < len(args)-1; i++ {
+					if args[i] == "-t" && args[i+1] == tt.clientID {
+						return true
+					}
+				}
+				return false
+			})).Return(ports.Result{Stdout: tt.stdout}, nil)
+			got, err := (Client{Process: process}).OpenSidebarPane(ctx, tt.clientID, "20", []string{"cmd"})
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("OpenSidebarPane error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Fatalf("OpenSidebarPane = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExecErrorsPropagate(t *testing.T) {
 	boom := errors.New("boom")
 	tests := []struct {

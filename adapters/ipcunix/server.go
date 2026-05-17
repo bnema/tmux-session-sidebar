@@ -3,10 +3,10 @@ package ipcunix
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log"
 	"net"
 	"os"
+	"time"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
@@ -31,7 +31,7 @@ func (s Server) Serve(ctx context.Context, handler ports.IPCHandler) error {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			if errors.Is(ctx.Err(), context.Canceled) {
+			if ctx.Err() != nil {
 				return nil
 			}
 			return err
@@ -42,6 +42,11 @@ func (s Server) Serve(ctx context.Context, handler ports.IPCHandler) error {
 
 func handleConn(ctx context.Context, conn net.Conn, handler ports.IPCHandler) {
 	defer conn.Close()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(5 * time.Second)
+	}
+	_ = conn.SetReadDeadline(deadline)
 	var req ports.Request
 	if err := json.NewDecoder(conn).Decode(&req); err != nil {
 		return
@@ -50,6 +55,7 @@ func handleConn(ctx context.Context, conn net.Conn, handler ports.IPCHandler) {
 	if err != nil {
 		resp = ports.Response{OK: false, Message: err.Error()}
 	}
+	_ = conn.SetWriteDeadline(deadline)
 	if err := json.NewEncoder(conn).Encode(resp); err != nil {
 		log.Printf("tmux-session-sidebar ipc encode response for %q failed: %v", req.Kind, err)
 	}

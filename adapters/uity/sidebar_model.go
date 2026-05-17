@@ -3,6 +3,7 @@ package uity
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	lipgloss "charm.land/lipgloss/v2"
 	tea "github.com/charmbracelet/bubbletea"
@@ -139,11 +140,13 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		default:
-			if m.mode == ModeSearch {
-				m.filter += msg.String()
-			}
-			if m.mode == ModeProject {
-				m.projectFilter += msg.String()
+			if key, ok := printableKey(msg.String()); ok {
+				if m.mode == ModeSearch {
+					m.filter += key
+				}
+				if m.mode == ModeProject {
+					m.projectFilter += key
+				}
 			}
 		}
 	}
@@ -298,6 +301,14 @@ func (m SidebarModel) renderProjects(selected lipgloss.Style, dimStyle lipgloss.
 		lines = append(lines, dimStyle.Render("no projects"))
 	}
 	return lines
+}
+
+func printableKey(value string) (string, bool) {
+	runes := []rune(value)
+	if len(runes) != 1 || !unicode.IsPrint(runes[0]) {
+		return "", false
+	}
+	return string(runes[0]), true
 }
 
 func trimLastRune(value string) string {

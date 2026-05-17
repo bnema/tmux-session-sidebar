@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -33,7 +34,7 @@ func projectCandidates(ctx context.Context) ([]projects.Candidate, error) {
 		return nil, err
 	}
 	var candidates []projects.Candidate
-	for _, root := range strings.Split(strings.TrimSpace(rootsOut), ":") {
+	for root := range strings.SplitSeq(strings.TrimSpace(rootsOut), ":") {
 		root = strings.TrimSpace(root)
 		if root == "" {
 			continue
@@ -81,7 +82,7 @@ func pickProjectFZF(ctx context.Context, fzf string, candidates []projects.Candi
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			switch exitErr.ExitCode() {
 			case 1, 130:
 				return "", nil
@@ -125,8 +126,12 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 	if _, err := tmux(ctx, "new-session", "-d", "-s", candidate.SessionName, "-c", candidate.Path); err != nil {
 		return err
 	}
-	_, _ = tmux(ctx, "set-option", "-t", candidate.SessionName, "@session-sidebar-kind", "project")
-	_, _ = tmux(ctx, "set-option", "-t", candidate.SessionName, "@session-sidebar-project-path", candidate.Path)
+	if _, err := tmux(ctx, "set-option", "-t", candidate.SessionName, "@session-sidebar-kind", "project"); err != nil {
+		return fmt.Errorf("set project metadata kind for %s: %w", candidate.SessionName, err)
+	}
+	if _, err := tmux(ctx, "set-option", "-t", candidate.SessionName, "@session-sidebar-project-path", candidate.Path); err != nil {
+		return fmt.Errorf("set project metadata path for %s (%s): %w", candidate.SessionName, candidate.Path, err)
+	}
 	return switchClient(ctx, client, candidate.SessionName)
 }
 

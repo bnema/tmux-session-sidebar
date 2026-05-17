@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -22,7 +23,10 @@ func createCurrentGitProject(ctx context.Context, flags map[string]string) error
 	root, err := gitRoot(ctx, path)
 	if err != nil || root == "" {
 		_, _ = tmux(ctx, "display-message", "tmux-session-sidebar: no git repository found")
-		return err
+		if err != nil {
+			return err
+		}
+		return errors.New("no git repository found")
 	}
 	return createOrSwitchProject(ctx, flags["client"], projects.CandidateFromPath(root))
 }
@@ -34,7 +38,11 @@ func createAdhoc(ctx context.Context, flags map[string]string) error {
 	}
 	path := flags["source-path"]
 	if path == "" {
-		path = strings.TrimSpace(mustTmux(ctx, "display-message", "-p", "#{pane_current_path}"))
+		out, err := tmux(ctx, "display-message", "-p", "#{pane_current_path}")
+		if err != nil {
+			return fmt.Errorf("get current pane path: %w", err)
+		}
+		path = strings.TrimSpace(out)
 	}
 	if sessionExists(ctx, name) {
 		return switchClient(ctx, flags["client"], name)
@@ -65,7 +73,10 @@ func killSession(ctx context.Context, flags map[string]string) error {
 		return fmt.Errorf("missing session")
 	}
 	if flags["confirmed"] != "yes" {
-		exe, _ := os.Executable()
+		exe, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("resolve executable for kill confirmation: %w", err)
+		}
 		cmd := shellQuote(exe) + " action kill --session " + shellQuote(session) + " --confirmed yes"
 		return confirmBefore(ctx, "Kill session "+session+"?", cmd)
 	}
@@ -91,11 +102,6 @@ func commandPrompt(ctx context.Context, prompt string, command string) error {
 func confirmBefore(ctx context.Context, prompt string, command string) error {
 	_, err := tmux(ctx, "confirm-before", "-p", prompt, "run-shell "+shellQuote(command))
 	return err
-}
-
-func mustTmux(ctx context.Context, args ...string) string {
-	out, _ := tmux(ctx, args...)
-	return out
 }
 
 func shellQuote(value string) string {

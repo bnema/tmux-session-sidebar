@@ -35,13 +35,13 @@ unbind_plugin_binding() {
 }
 
 install_runtime_hooks() {
-  local runtime_bin="$1"
+  local quoted_runtime="$1"
   "$TMUX_BIN" set-hook -g client-attached[9701] \
-    "run-shell \"$runtime_bin hook client-attached --client #{q:client_name}\""
+    "run-shell \"$quoted_runtime hook client-attached --client #{q:client_name}\""
   "$TMUX_BIN" set-hook -g client-detached[9702] \
-    "run-shell \"$runtime_bin hook client-detached --client #{q:client_name}\""
+    "run-shell \"$quoted_runtime hook client-detached --client #{q:client_name}\""
   "$TMUX_BIN" set-hook -g client-session-changed[9703] \
-    "run-shell \"$runtime_bin hook client-session-changed --client #{q:client_name}\""
+    "run-shell \"$quoted_runtime hook client-session-changed --client #{q:client_name}\""
 }
 
 main() {
@@ -78,7 +78,7 @@ main() {
   "$TMUX_BIN" bind-key -n C-0 \
     run-shell "$quoted_runtime action quick-switch --client #{q:client_name} --slot 10"
 
-  install_runtime_hooks "$runtime_bin"
+  install_runtime_hooks "$quoted_runtime"
 }
 
 main "$@"

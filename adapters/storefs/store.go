@@ -29,6 +29,7 @@ func (s Store) Load(_ context.Context, serverID string) (ports.PersistedState, e
 	if err := json.Unmarshal(data, &state); err != nil {
 		return ports.PersistedState{}, err
 	}
+	initializeMaps(&state)
 	return state, nil
 }
 
@@ -45,4 +46,16 @@ func (s Store) Save(_ context.Context, serverID string, state ports.PersistedSta
 
 func (s Store) path(serverID string) string {
 	return filepath.Join(s.Dir, filepath.Base(serverID)+".json")
+}
+
+func initializeMaps(state *ports.PersistedState) {
+	if state.Sessions == nil {
+		state.Sessions = map[string]ports.SessionMetadata{}
+	}
+	if state.Clients == nil {
+		state.Clients = map[string][]byte{}
+	}
+	if state.Heat == nil {
+		state.Heat = map[string][]byte{}
+	}
 }
