@@ -272,10 +272,20 @@ filtered_session_entries() {
     return 0
   fi
 
+  local status
+
+  set +e
   render_session_entries | "$FZF_BIN" \
     --ansi \
     --filter "$active_filter" \
     --delimiter=$'\t' \
-    --with-nth=2 || true
+    --with-nth=2
+  status="$?"
+  set -e
+
+  if [ "$status" -eq 1 ]; then
+    return 0
+  fi
+  return "$status"
 }
 
