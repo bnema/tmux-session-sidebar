@@ -3,7 +3,7 @@ PLUGIN_REPO ?= bnema/$(PLUGIN_NAME)
 TPM_DIR ?= $(HOME)/.tmux/plugins
 TARGET_DIR ?= $(TPM_DIR)/$(PLUGIN_NAME)
 
-.PHONY: install uninstall
+.PHONY: install uninstall mocks test-go
 
 install:
 	@mkdir -p "$(TPM_DIR)"
@@ -13,6 +13,12 @@ install:
 	@echo "  set -g @plugin '$(PLUGIN_REPO)'"
 	@echo "  run '~/.tmux/plugins/tpm/tpm'"
 	@echo "Then reload tmux or press prefix + I."
+
+mocks:
+	@mockery
+
+test-go:
+	@go test ./...
 
 uninstall:
 	@[ -n "$(TARGET_DIR)" ] || { echo "Error: TARGET_DIR is empty" >&2; exit 1; }

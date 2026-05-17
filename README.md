@@ -6,10 +6,10 @@ It lets you switch sessions in the same tmux client, create project-backed sessi
 ## Requirements
 
 - `tmux 3.6+`
-- `bash`
-- `fzf` optional but recommended
+- `bash` for the small TPM bootstrap
+- Go-built `tmux-session-sidebar` runtime; `scripts/ensure-runtime.sh` builds it locally with `go` when `bin/tmux-session-sidebar` is missing
 
-`tmux 3.6+` is required because the plugin marks the sidebar with a pane-scoped user option.
+The Go runtime owns sidebar UI, actions, state reconciliation, and tmux command dispatch. `fzf` is no longer required; `@session-sidebar-use-fzf` is accepted for compatibility but ignored by the Go UI.
 
 ## Installation
 
@@ -82,12 +82,12 @@ Configure the plugin with tmux user options in `~/.tmux.conf`.
 | `@session-sidebar-key` | `b` | Key used after the tmux prefix to toggle the sidebar |
 | `@session-sidebar-width` | `20` | Width passed to the left split; defaults to a fixed column count |
 | `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated roots searched for project sessions |
-| `@session-sidebar-use-fzf` | `on` | Use `fzf` when it is installed |
-| `@session-sidebar-close-after-switch` | `off` | Close the sidebar pane after a successful session switch |
+| `@session-sidebar-use-fzf` | `on` | Compatibility option only; the Go UI ignores it |
+| `@session-sidebar-close-after-switch` | `off` | `on` closes the sidebar after a switch; `off` keeps it open and follows the client into the new current window/session |
 | `@session-sidebar-heat-colors` | `on` | Color session rows by recent working-set heat; set to `off` to disable heat colors and periodic heat refresh |
 | `@session-sidebar-heat-half-life-hours` | `8` | Heat decay half-life in hours for recent dwell time |
 | `@session-sidebar-heat-stale-hours` | `24` | Fade a session to gray after it has not been seen for this many hours |
-| `@session-sidebar-heat-refresh-seconds` | `300` | Lazy refresh interval for `fzf` sidebar heat colors |
+| `@session-sidebar-heat-refresh-seconds` | `300` | Runtime heat refresh interval while sidebars are open |
 
 Example:
 
@@ -110,7 +110,7 @@ set -g @session-sidebar-heat-refresh-seconds '300'
 
 - `prefix + b` opens or closes the left sidebar in the current window.
 
-The sidebar is a real tmux pane, not a global overlay. If the current window already has pane splits, the sidebar still opens as a full-height left pane for the whole window. By default it stays open in the old session after a switch. If you set `@session-sidebar-close-after-switch` to `on`, the pane closes and can be reopened in the new session.
+The sidebar is a real tmux pane backed by a Go runtime. If the current window already has pane splits, the sidebar still opens as a full-height left pane for the whole window. By default it remains logically open after a switch and follows the client into the new current window/session. If you set `@session-sidebar-close-after-switch` to `on`, the pane closes after a successful switch.
 
 The sidebar browser still fills the pane height. The default width is now a fixed column count instead of a percentage, though tmux-style percentage values still work if you set them explicitly.
 
@@ -136,55 +136,33 @@ These work without opening the sidebar:
 
 The quick-switch order matches the sidebar's default visible session list, so purely numeric session names are skipped unless you switch to them some other way. The sidebar shows this mapping with `[1]` through `[9]` and `[0]` badges beside the first 10 quick-switchable sessions.
 
-### Keys in `fzf` mode
+### Sidebar keys
 
-These keys are used when `fzf` is available and `@session-sidebar-use-fzf` is not `off`.
+The Go UI starts in browse mode, so search is inactive until you press `/`.
 
 | Key | Action |
 | --- | --- |
 | `j` / `k` | Move down or up in browse mode |
 | `/` | Enter search mode |
 | `Enter` | Apply filter (search mode) or switch session (browse mode) |
-| `Alt+n` | Open the project picker and create or switch to a project session |
-| `Alt+g` | Create or switch to a project session from the current pane's git repo root |
-| `Alt+a` | Create or switch to an ad-hoc session |
-| `Alt+r` | Rename the selected session |
-| `Alt+x` | Kill the selected session |
-| `Alt+h` | Show or hide purely numeric session names |
-| `Esc` | Close the sidebar |
+| `n` | Create or switch to a project session |
+| `g` | Create or switch to a project session from the current pane's git repo root |
+| `a` | Create or switch to an ad-hoc session |
+| `r` | Rename the selected session |
+| `x` | Kill the selected session |
+| `h` | Show or hide purely numeric session names |
+| `Esc` | Clear search and return to browse mode, or close the sidebar from browse mode |
 
-The sidebar now starts in browse mode, so fuzzy search is inactive until you press `/`. After you press `Enter` in search mode, the current filter stays applied and the sidebar returns to browse mode.
-
-### Keys in fallback mode
-
-Fallback mode is used when `fzf` is unavailable or when:
-
-```tmux
-set -g @session-sidebar-use-fzf 'off'
-```
-
-Prompt actions:
-
-- `[number]` switch to a session
-- `n` create or switch to a project session
-- `g` create or switch to a project session from the current pane's git repo root
-- `a` create or switch to an ad-hoc session
-- `r` rename a session
-- `x` kill a session
-- `h` show or hide purely numeric session names
-- `q` close the sidebar
-
-For rename and kill in fallback mode, pressing `Enter` at the session-number prompt targets the current session.
+After you press `Enter` in search mode, the current filter stays applied and the sidebar returns to browse mode.
 
 ## Behavior notes
 
 ### Project session creation
 
 - The plugin lists one directory level under each configured project root.
-- In `fzf` mode, `Alt+n` opens the project picker in a tmux popup so long project lists stay readable.
 - Configured project roots may be symlinked paths; the plugin resolves them before listing projects.
 - The picker shows the project name first, with its parent path as context.
-- `Alt+g` (or `g` in fallback mode) treats the current pane's enclosing git repository root as a project, even if it is outside configured project roots.
+- `g` treats the current pane's enclosing git repository root as a project, even if it is outside configured project roots.
 - The default session name is derived from the project directory basename.
 - Names are normalized to a tmux-safe form.
 - If the derived name already exists, the plugin switches to that session instead of creating a suffixed variant.
@@ -202,9 +180,9 @@ For rename and kill in fallback mode, pressing `Enter` at the session-number pro
 
 ### `@session-sidebar-close-after-switch`
 
-- Default `off`: after a successful switch, the old sidebar pane remains alive in the old session. This does **not** create a global cross-session sidebar.
+- Default `off`: after a successful switch, the sidebar remains logically open and follows the client into the new current window/session.
 - `on`: after a successful switch, the sidebar pane is closed.
-- If you already had an older version loaded in a running tmux server, unset this option or restart the tmux server to pick up the new default.
+- If you already had an older version loaded in a running tmux server, unset this option or restart the tmux server to pick up the new semantics.
 
 ### Session heat colors
 
@@ -216,7 +194,7 @@ For rename and kill in fallback mode, pressing `Enter` at the session-number pro
 - Set `@session-sidebar-heat-colors` to `off` if you prefer simpler output or want to avoid the periodic heat-refresh overhead.
 - Plugin-driven session switches trigger an immediate sidebar rerender, so current-session markers and heat colors update without waiting for the periodic refresh.
 - Manual `tmux switch-client` session changes also trigger the same refresh through a tmux `client-session-changed` hook.
-- In `fzf` mode, the sidebar also lazily refreshes heat colors every `300` seconds by default via `@session-sidebar-heat-refresh-seconds`.
+- The runtime lazily refreshes heat colors every `300` seconds by default via `@session-sidebar-heat-refresh-seconds` while sidebars are open.
 - Colors degrade gracefully by terminal capability: RGB when available, then 256-color, then basic colors, then plain text.
 
 ### Zoomed windows
@@ -233,23 +211,15 @@ Check that the plugin is loaded:
 tmux list-keys -T prefix b
 ```
 
-You should see a `run-shell` binding for `scripts/open-sidebar.sh`.
-
-### `fzf` is installed but I want the plain fallback menu
-
-Set:
-
-```tmux
-set -g @session-sidebar-use-fzf 'off'
-```
+You should see a `run-shell` binding for `tmux-session-sidebar sidebar toggle`.
 
 ### I switched sessions and the sidebar disappeared
 
 That is expected when `@session-sidebar-close-after-switch` is `on`. Reopen it with `prefix + b` in the new session.
 
-### I switched sessions and the old sidebar stayed behind
+### I switched sessions and the sidebar followed me
 
-That is the default behavior. When `@session-sidebar-close-after-switch` is `off`, the pane stays in the old session; it is not a global sidebar.
+That is the default behavior. When `@session-sidebar-close-after-switch` is `off`, the logical sidebar follows the client into the new current window/session.
 
 ### I want simpler output or less periodic refresh work
 

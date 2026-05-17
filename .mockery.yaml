@@ -1,0 +1,24 @@
+template: testify
+formatter: goimports
+force-file-write: true
+dir: '{{.InterfaceDir}}/mocks'
+filename: 'mock_{{.InterfaceName | snakecase}}.go'
+structname: 'Mock{{.InterfaceName}}'
+pkgname: mocks
+packages:
+  github.com/bnema/tmux-session-sidebar/ports:
+    interfaces:
+      TmuxConfigPort:
+      TmuxQueryPort:
+      TmuxControlPort:
+      TmuxMetadataPort:
+      IPCClientPort:
+      IPCServerPort:
+      IPCHandler:
+      StateStorePort:
+      ClockPort:
+      FilesystemPort:
+      GitPort:
+      LockerPort:
+      ProcessPort:
+      LoggerPort:
