@@ -77,8 +77,8 @@ done
 }
 
 alpha_sidebar_count="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-panes -t "$alpha_window_id" -F '#{@session-sidebar-pane}' | grep -Fc -- '1' || true)"
-[ "$alpha_sidebar_count" -eq 0 ] || {
-  echo 'expected quick switch not to leave the open sidebar behind in the previous session' >&2
+[ "$alpha_sidebar_count" -eq 1 ] || {
+  echo 'expected quick switch to keep the original sidebar available in the previous session' >&2
   exit 1
 }
 
@@ -114,4 +114,79 @@ active_filter_state="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" show-options -p -
   exit 1
 }
 
-echo 'ok: quick-switch preserves an open sidebar by recreating it in the target session'
+env -u TMUX PATH="$fake_bin:$PATH" "$REPO_DIR/scripts/actions/quick-switch-session.sh" --client "$client_name" --index 1
+
+client_session=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  client_session="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-clients -F '#{client_session}' | head -n1)"
+  if [ "$client_session" = 'alpha' ]; then
+    break
+  fi
+  sleep 0.2
+done
+[ "$client_session" = 'alpha' ] || {
+  echo "expected Ctrl-number quick switch to switch client back to alpha, got: ${client_session:-<empty>}" >&2
+  exit 1
+}
+
+if ! env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-panes -t "$alpha_window_id" -F '#{pane_id}' | grep -Fxq "$sidebar_pane_id"; then
+  echo 'expected quick switch back to reuse the original alpha sidebar pane instead of recreating it' >&2
+  exit 1
+fi
+
+if ! env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-panes -t "$beta_window_id" -F '#{pane_id}' | grep -Fxq "$new_sidebar_pane_id"; then
+  echo 'expected quick switch back to keep the beta sidebar pane available for reuse' >&2
+  exit 1
+fi
+
+beta_source_path="$work_dir/beta-source"
+mkdir -p "$beta_source_path"
+env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -p -t "$new_sidebar_pane_id" @session-sidebar-source-path "$beta_source_path"
+env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -p -t "$new_sidebar_pane_id" @session-sidebar-active-filter alpha
+env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -p -t "$new_sidebar_pane_id" @session-sidebar-show-numbered-sessions on
+env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -p -t "$new_sidebar_pane_id" @session-sidebar-refresh-socket "$work_dir/missing-refresh.sock"
+env -u TMUX PATH="$fake_bin:$PATH" "$REPO_DIR/scripts/actions/quick-switch-session.sh" --client "$client_name" --index 2
+
+client_session=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  client_session="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-clients -F '#{client_session}' | head -n1)"
+  if [ "$client_session" = 'beta' ]; then
+    break
+  fi
+  sleep 0.2
+done
+[ "$client_session" = 'beta' ] || {
+  echo "expected Ctrl-number quick switch to switch client back to beta, got: ${client_session:-<empty>}" >&2
+  exit 1
+}
+
+if env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-panes -t "$beta_window_id" -F '#{pane_id}' | grep -Fxq "$new_sidebar_pane_id"; then
+  echo 'expected quick switch to replace a target sidebar with a stale refresh socket' >&2
+  exit 1
+fi
+
+replacement_beta_sidebar="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-panes -t "$beta_window_id" -F '#{pane_id} #{@session-sidebar-pane}' | awk '$2 == 1 { print $1; exit }')"
+[ -n "$replacement_beta_sidebar" ] || {
+  echo 'expected quick switch to recreate a sidebar after replacing the stale target sidebar' >&2
+  exit 1
+}
+
+replacement_source_path="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" show-options -p -t "$replacement_beta_sidebar" -vq @session-sidebar-source-path)"
+[ "$replacement_source_path" = "$beta_source_path" ] || {
+  echo "expected stale target sidebar replacement to preserve source path as $beta_source_path, got ${replacement_source_path:-<empty>}" >&2
+  exit 1
+}
+
+replacement_show_numbered="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" show-options -p -t "$replacement_beta_sidebar" -vq @session-sidebar-show-numbered-sessions)"
+[ "$replacement_show_numbered" = 'on' ] || {
+  echo "expected stale target sidebar replacement to preserve numeric-session visibility as on, got ${replacement_show_numbered:-<empty>}" >&2
+  exit 1
+}
+
+replacement_active_filter="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" show-options -p -t "$replacement_beta_sidebar" -vq @session-sidebar-active-filter)"
+[ "$replacement_active_filter" = 'alpha' ] || {
+  echo "expected stale target sidebar replacement to preserve active filter as alpha, got ${replacement_active_filter:-<empty>}" >&2
+  exit 1
+}
+
+echo 'ok: quick-switch preserves open sidebars, reuses them, and replaces stale target sidebars'
