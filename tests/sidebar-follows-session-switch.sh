@@ -76,8 +76,8 @@ client_session="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" display-message -p -t 
 }
 
 alpha_sidebar_count="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" list-panes -t "$alpha_window_id" -F '#{@session-sidebar-pane}' | grep -Fc -- '1' || true)"
-[ "$alpha_sidebar_count" -eq 0 ] || {
-  echo 'expected sidebar pane not to be left behind in the previous session' >&2
+[ "$alpha_sidebar_count" -eq 1 ] || {
+  echo 'expected original sidebar pane to remain available in the previous session' >&2
   exit 1
 }
 
@@ -113,4 +113,4 @@ active_filter_state="$(env -u TMUX "$REAL_TMUX_BIN" -L "$sock" show-options -p -
   exit 1
 }
 
-echo 'ok: sidebar is recreated for plugin-driven session switches without changing numeric-session visibility'
+echo 'ok: sidebar is available after plugin-driven session switches without changing numeric-session visibility'
