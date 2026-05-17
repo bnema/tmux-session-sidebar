@@ -64,7 +64,7 @@ env -u TMUX "$REAL_TMUX_BIN" -L "$sock" set-option -p -t "$sidebar_pane_id" @ses
 env -u TMUX PATH="$fake_bin:$PATH" "$REAL_TMUX_BIN" -L "$sock" switch-client -c "$client_name" -t beta
 
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25; do
-  if grep -Fq -- "--unix-socket $refresh_socket http -d reload-sync(" "$curl_calls" 2>/dev/null; then
+  if grep -Fq -- "--unix-socket $refresh_socket http -d pos(2)+reload-sync(" "$curl_calls" 2>/dev/null; then
     break
   fi
   sleep 0.2
@@ -75,8 +75,8 @@ done
   exit 1
 }
 
-grep -Fq -- "--unix-socket $refresh_socket http -d reload-sync(" "$curl_calls" || {
-  echo 'expected hook-driven refresh to target the registered sidebar socket' >&2
+grep -Fq -- "--unix-socket $refresh_socket http -d pos(2)+reload-sync(" "$curl_calls" || {
+  echo 'expected hook-driven refresh to target the registered sidebar socket and move selection to the current session row' >&2
   cat "$curl_calls" >&2
   exit 1
 }

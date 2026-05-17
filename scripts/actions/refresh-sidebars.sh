@@ -57,9 +57,32 @@ render_entries_command_for_pane() {
   quote_args "${args[@]}"
 }
 
+current_session_position_for_pane() {
+  local target_pane="$1"
+  local client_name show_numbered current_session session_name position
+
+  client_name="$(sidebar_get_pane_option "$target_pane" @session-sidebar-client '')"
+  [ -n "$client_name" ] || return 1
+  show_numbered="$(sidebar_get_pane_option "$target_pane" @session-sidebar-show-numbered-sessions off)"
+  current_session="$(sidebar_current_session "$client_name" 2>/dev/null || true)"
+  [ -n "$current_session" ] || return 1
+
+  position=0
+  while IFS=$'\t' read -r session_name _ _ _; do
+    [ -n "$session_name" ] || continue
+    position=$((position + 1))
+    if [ "$session_name" = "$current_session" ]; then
+      printf '%s' "$position"
+      return 0
+    fi
+  done < <(sidebar_list_visible_sessions "$client_name" "$show_numbered")
+
+  return 1
+}
+
 refresh_pane() {
   local target_pane="$1"
-  local socket_path payload render_command
+  local socket_path payload render_command current_position
 
   [ -n "$target_pane" ] || return 0
   socket_path="$(sidebar_get_pane_option "$target_pane" @session-sidebar-refresh-socket '')"
@@ -67,6 +90,11 @@ refresh_pane() {
 
   render_command="$(render_entries_command_for_pane "$target_pane")" || return 0
   payload="reload-sync($render_command)"
+  current_position="$(current_session_position_for_pane "$target_pane" 2>/dev/null || true)"
+  case "$current_position" in
+    ''|*[!0-9]*) ;;
+    *) payload="pos($current_position)+$payload" ;;
+  esac
   "$CURL_BIN" --silent --show-error --unix-socket "$socket_path" http -d "$payload" >/dev/null 2>&1 || true
 }
 

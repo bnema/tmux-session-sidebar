@@ -496,13 +496,17 @@ should_close_after_switch() {
   [ "$close_after_switch" = "on" ]
 }
 
-should_use_fzf_refresh_loop() {
-  local interval_value
-
-  heat_colors_enabled || return 1
+should_use_fzf_live_reload() {
   [ "$FZF_SUPPORTS_LISTEN" = "on" ] || return 1
   [ -n "$CURL_BIN" ] || return 1
   [ -n "$MKTEMP_BIN" ] || return 1
+}
+
+should_use_fzf_refresh_loop() {
+  local interval_value
+
+  should_use_fzf_live_reload || return 1
+  heat_colors_enabled || return 1
 
   interval_value="$(sidebar_heat_refresh_seconds)"
   case "$interval_value" in
@@ -694,18 +698,20 @@ run_fzf_browser() {
         "--bind" "k:up"
       )
 
-      if should_use_fzf_refresh_loop; then
+      if should_use_fzf_live_reload; then
         refresh_dir="$("$MKTEMP_BIN" -d "${TMPDIR:-/tmp}/tmux-session-sidebar-fzf.XXXXXX")" || refresh_dir=''
         if [ -n "$refresh_dir" ]; then
           refresh_socket="$refresh_dir/fzf.sock"
           persist_sidebar_refresh_socket "$refresh_socket"
-          refresh_seconds="$(sidebar_heat_refresh_seconds)"
           fzf_args+=(
             "--track"
             "--id-nth=1"
             "--listen" "$refresh_socket"
           )
-          refresh_loop_pid="$(start_fzf_refresh_loop "$refresh_seconds")"
+          if should_use_fzf_refresh_loop; then
+            refresh_seconds="$(sidebar_heat_refresh_seconds)"
+            refresh_loop_pid="$(start_fzf_refresh_loop "$refresh_seconds")"
+          fi
         fi
       fi
 
