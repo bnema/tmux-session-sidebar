@@ -267,8 +267,8 @@ session_heat_bucket() {
     return 0
   fi
 
-  now="$(sidebar_now_epoch)"
-  stale_seconds="$(sidebar_heat_stale_seconds)"
+  now="${render_now:-$(sidebar_now_epoch)}"
+  stale_seconds="${render_stale_seconds:-$(sidebar_heat_stale_seconds)}"
   case "$last_seen_at" in
     ''|*[!0-9]*) ;;
     *)
@@ -279,7 +279,7 @@ session_heat_bucket() {
       ;;
   esac
 
-  half_life_seconds="$(sidebar_heat_half_life_seconds)"
+  half_life_seconds="${render_half_life_seconds:-$(sidebar_heat_half_life_seconds)}"
   "$AWK_BIN" -v score="$heat_score" -v half_life_seconds="$half_life_seconds" '
     BEGIN {
       if (score !~ /^-?[0-9]+([.][0-9]+)?$/) score = 0;
@@ -321,14 +321,36 @@ session_heat_style() {
   esac
 }
 
+render_heat_colors_enabled=""
+render_color_capability=""
+render_now=""
+render_stale_seconds=""
+render_half_life_seconds=""
+
+prepare_render_context() {
+  if heat_colors_enabled; then
+    render_heat_colors_enabled="on"
+    render_color_capability="$(terminal_color_capability)"
+    render_now="$(sidebar_now_epoch)"
+    render_stale_seconds="$(sidebar_heat_stale_seconds)"
+    render_half_life_seconds="$(sidebar_heat_half_life_seconds)"
+  else
+    render_heat_colors_enabled="off"
+    render_color_capability=""
+    render_now=""
+    render_stale_seconds=""
+    render_half_life_seconds=""
+  fi
+}
+
 colorize_session_label() {
   local label="$1"
   local heat_score="$2"
   local last_seen_at="$3"
   local is_current="$4"
-  local bucket capability style
+  local bucket style
 
-  if ! heat_colors_enabled; then
+  if [ "$render_heat_colors_enabled" != "on" ]; then
     printf '%s' "$label"
     return 0
   fi
@@ -341,8 +363,7 @@ colorize_session_label() {
       ;;
   esac
 
-  capability="$(terminal_color_capability)"
-  style="$(session_heat_style "$bucket" "$capability")"
+  style="$(session_heat_style "$bucket" "$render_color_capability")"
   if [ -z "$style" ]; then
     printf '%s' "$label"
     return 0
@@ -376,6 +397,7 @@ render_session_entries() {
     usable_width=12
   fi
 
+  prepare_render_context
   quick_switch_index=0
   sidebar_list_visible_sessions "$client_name" "$show_numbered_sessions" | while IFS=$'\t' read -r session_name _ _ is_current; do
     [ -z "$session_name" ] && continue
@@ -385,10 +407,14 @@ render_session_entries() {
       quick_switch_index=$((quick_switch_index + 1))
       quick_switch_label="$(quick_switch_badge "$quick_switch_index")"
     fi
-    heat_snapshot="$(sidebar_sync_session_heat "$session_name")"
-    heat_score="${heat_snapshot%%$'\t'*}"
-    heat_last_seen="${heat_snapshot#*$'\t'}"
-    heat_last_seen="${heat_last_seen%%$'\t'*}"
+    heat_score=""
+    heat_last_seen=""
+    if [ "$render_heat_colors_enabled" = "on" ]; then
+      heat_snapshot="$(sidebar_sync_session_heat "$session_name")"
+      heat_score="${heat_snapshot%%$'\t'*}"
+      heat_last_seen="${heat_snapshot#*$'\t'}"
+      heat_last_seen="${heat_last_seen%%$'\t'*}"
+    fi
     label="$(render_session_label "$session_name" "$is_current" "$quick_switch_label" "$usable_width")"
     colored_label="$(colorize_session_label "$label" "$heat_score" "$heat_last_seen" "$is_current")"
     printf '%s\t%s\n' "$session_name" "$colored_label"
