@@ -16,7 +16,7 @@ func (s *Service) SwitchSession(ctx context.Context, clientID string, sessionNam
 	return s.tmuxCtl.SwitchClientSession(ctx, clientID, sessionName)
 }
 
-func RenameSession(existing []sessions.View, oldName string, newName string) error {
+func ValidateRenameSession(existing []sessions.View, oldName string, newName string) error {
 	if err := sessions.ValidateName(newName); err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func RenameSession(existing []sessions.View, oldName string, newName string) err
 	return nil
 }
 
-func KillSession(existing []sessions.View, target string) error {
+func ValidateKillSession(existing []sessions.View, target string) error {
 	if len(existing) <= 1 {
 		return coreerrors.ErrLastSessionKill
 	}

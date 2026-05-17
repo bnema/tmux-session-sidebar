@@ -2,6 +2,9 @@ package storefs
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -27,8 +30,40 @@ func TestStoreLoadSave(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Load error: %v", err)
 			}
-			if len(got.Sessions) != len(tt.state.Sessions) || len(got.Clients) != len(tt.state.Clients) || len(got.Heat) != len(tt.state.Heat) {
+			if !reflect.DeepEqual(got, tt.state) {
 				t.Fatalf("loaded state = %#v, want %#v", got, tt.state)
+			}
+		})
+	}
+}
+
+func TestStoreLoadEdges(t *testing.T) {
+	tests := []struct {
+		name      string
+		serverID  string
+		setup     func(string) error
+		wantErr   bool
+		wantEmpty bool
+	}{
+		{name: "missing server initializes maps", serverID: "missing", wantEmpty: true},
+		{name: "invalid json", serverID: "bad", setup: func(dir string) error { return os.WriteFile(filepath.Join(dir, "bad.json"), []byte("{"), 0o600) }, wantErr: true},
+		{name: "path traversal confined", serverID: "../evil", wantEmpty: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tt.setup != nil {
+				if err := tt.setup(dir); err != nil {
+					t.Fatalf("setup error: %v", err)
+				}
+			}
+			got, err := New(dir).Load(context.Background(), tt.serverID)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Load error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantEmpty && (got.Sessions == nil || got.Clients == nil || got.Heat == nil) {
+				t.Fatalf("expected initialized maps, got %#v", got)
 			}
 		})
 	}

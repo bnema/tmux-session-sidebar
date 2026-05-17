@@ -2,8 +2,13 @@ PLUGIN_NAME ?= tmux-session-sidebar
 PLUGIN_REPO ?= bnema/$(PLUGIN_NAME)
 TPM_DIR ?= $(HOME)/.tmux/plugins
 TARGET_DIR ?= $(TPM_DIR)/$(PLUGIN_NAME)
+GO_BIN_DIR ?= $(shell go env GOBIN 2>/dev/null || true)
+ifeq ($(GO_BIN_DIR),)
+GO_BIN_DIR := $(shell go env GOPATH)/bin
+endif
+GO_BIN_PATH ?= $(GO_BIN_DIR)/tmux-session-sidebar
 
-.PHONY: install uninstall mocks test-go
+.PHONY: install uninstall mocks test-go go-install
 
 install:
 	@mkdir -p "$(TPM_DIR)"
@@ -19,6 +24,11 @@ mocks:
 
 test-go:
 	@go test ./...
+
+go-install:
+	@mkdir -p "$(GO_BIN_DIR)"
+	@go install ./cmd/tmux-session-sidebar
+	@echo "Installed Go runtime -> $(GO_BIN_PATH)"
 
 uninstall:
 	@[ -n "$(TARGET_DIR)" ] || { echo "Error: TARGET_DIR is empty" >&2; exit 1; }

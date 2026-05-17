@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"github.com/bnema/tmux-session-sidebar/core/clients"
-	"github.com/bnema/tmux-session-sidebar/core/heat"
-	"github.com/bnema/tmux-session-sidebar/core/sidebar"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -23,7 +21,8 @@ func (s *Service) Snapshot(ctx context.Context) (State, error) {
 		return State{}, err
 	}
 
-	state := State{Config: cfg, Sessions: map[string]ports.TmuxSessionSnapshot{}, Clients: map[string]clients.State{}, Sidebars: map[string]sidebar.State{}, Heat: map[string]heat.State{}, Panes: map[string]ports.PaneRef{}}
+	state := NewState()
+	state.Config = cfg
 	for _, session := range liveSessions {
 		state.Sessions[session.ID] = session
 	}
@@ -46,6 +45,15 @@ func ReconcileSidebarPane(state State, clientID string) (State, bool) {
 	if hasPane && pane.WindowID == client.CurrentWindowID {
 		return state, false
 	}
+	state.Panes = clonePanes(state.Panes)
 	delete(state.Panes, clientID)
 	return state, true
+}
+
+func clonePanes(panes map[string]ports.PaneRef) map[string]ports.PaneRef {
+	cloned := make(map[string]ports.PaneRef, len(panes))
+	for key, value := range panes {
+		cloned[key] = value
+	}
+	return cloned
 }

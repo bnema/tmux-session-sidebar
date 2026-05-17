@@ -2,8 +2,10 @@ package locker
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 type FileLocker struct {
@@ -11,25 +13,42 @@ type FileLocker struct {
 }
 
 type Handle struct {
-	path string
 	file *os.File
 }
 
 func (l FileLocker) Acquire(_ context.Context, key string) (*Handle, error) {
-	if err := os.MkdirAll(l.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(l.Dir, 0o700); err != nil {
 		return nil, err
 	}
 	path := filepath.Join(l.Dir, key+".lock")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
-	return &Handle{path: path, file: file}, nil
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return &Handle{file: file}, nil
 }
 
 func (h *Handle) Release() error {
-	if h.file != nil {
-		_ = h.file.Close()
+	if h.file == nil {
+		return nil
 	}
-	return os.Remove(h.path)
+	path := h.file.Name()
+	unlockErr := syscall.Flock(int(h.file.Fd()), syscall.LOCK_UN)
+	closeErr := h.file.Close()
+	h.file = nil
+	removeErr := os.Remove(path)
+	if errors.Is(removeErr, os.ErrNotExist) {
+		removeErr = nil
+	}
+	if unlockErr != nil {
+		return unlockErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return removeErr
 }

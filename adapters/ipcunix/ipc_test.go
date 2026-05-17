@@ -8,6 +8,7 @@ import (
 
 	"github.com/bnema/tmux-session-sidebar/ports"
 	"github.com/bnema/tmux-session-sidebar/ports/mocks"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestIPCUnixRoundTrip(t *testing.T) {
@@ -26,13 +27,12 @@ func TestIPCUnixRoundTrip(t *testing.T) {
 			socket := filepath.Join(t.TempDir(), "sock")
 			server := NewServer(socket)
 			handler := mocks.NewMockIPCHandler(t)
-			handler.EXPECT().HandleIPC(ctx, tt.req).Return(tt.resp, nil)
+			handler.EXPECT().HandleIPC(mock.Anything, tt.req).Return(tt.resp, nil)
 
 			done := make(chan error, 1)
 			go func() { done <- server.Serve(ctx, handler) }()
-			time.Sleep(20 * time.Millisecond)
 
-			got, err := NewClient(socket).Send(ctx, tt.req)
+			got, err := sendWithRetry(ctx, socket, tt.req, time.Second)
 			if err != nil {
 				t.Fatalf("Send error: %v", err)
 			}
@@ -49,5 +49,24 @@ func TestIPCUnixRoundTrip(t *testing.T) {
 				t.Fatal("server did not stop")
 			}
 		})
+	}
+}
+
+func sendWithRetry(ctx context.Context, socket string, req ports.Request, timeout time.Duration) (ports.Response, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var lastErr error
+	for {
+		resp, err := NewClient(socket).Send(ctx, req)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		select {
+		case <-ctx.Done():
+			_ = lastErr
+			return ports.Response{}, ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }

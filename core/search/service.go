@@ -61,14 +61,15 @@ func scoreItem(item Item, query string) int {
 }
 
 func isSubsequence(label string, query string) bool {
-	if query == "" {
+	queryRunes := []rune(query)
+	if len(queryRunes) == 0 {
 		return true
 	}
 	qi := 0
 	for _, r := range label {
-		if rune(query[qi]) == r {
+		if queryRunes[qi] == r {
 			qi++
-			if qi == len(query) {
+			if qi == len(queryRunes) {
 				return true
 			}
 		}

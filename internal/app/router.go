@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -10,6 +9,9 @@ import (
 	"strconv"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/bnema/tmux-session-sidebar/adapters/uity"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
 
@@ -27,9 +29,19 @@ func (runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer, 
 	case "sidebar/close":
 		return closeSidebar(ctx, route.Flags)
 	case "ui/run":
-		return runUI(ctx, stdout)
+		return runUI(ctx, route.Flags, stdout)
 	case "action/quick-switch":
 		return quickSwitch(ctx, route.Flags)
+	case "action/create-project":
+		return createProject(ctx, route.Flags, stdout)
+	case "action/create-current-git-project":
+		return createCurrentGitProject(ctx, route.Flags)
+	case "action/create-adhoc":
+		return createAdhoc(ctx, route.Flags)
+	case "action/rename":
+		return renameSession(ctx, route.Flags)
+	case "action/kill":
+		return killSession(ctx, route.Flags)
 	case "daemon/serve", "daemon/ensure", "hook/client-attached", "hook/client-detached", "hook/client-session-changed":
 		return nil
 	default:
@@ -60,11 +72,27 @@ func openSidebar(ctx context.Context, flags map[string]string) error {
 	if err != nil {
 		return err
 	}
-	args := []string{"split-window", "-P", "-F", "#{pane_id}", "-hb", "-l", strings.TrimSpace(width)}
-	if client != "" {
-		args = append(args, "-t", client)
+	windowTarget := client
+	if windowTarget == "" {
+		windowTarget = "#{window_id}"
 	}
-	args = append(args, exe, "ui", "run", "--client", client)
+	windowID, err := tmux(ctx, "display-message", "-p", "-t", windowTarget, "#{window_id}")
+	if err != nil {
+		return err
+	}
+	currentPath, err := tmux(ctx, "display-message", "-p", "-t", windowTarget, "#{pane_current_path}")
+	if err != nil {
+		currentPath = ""
+	}
+	args := []string{"split-window", "-P", "-F", "#{pane_id}", "-t", strings.TrimSpace(windowID), "-hbf", "-l", strings.TrimSpace(width)}
+	if strings.TrimSpace(currentPath) != "" {
+		args = append(args, "-c", strings.TrimSpace(currentPath))
+	}
+	uiArgs := []string{exe, "ui", "run"}
+	if client != "" {
+		uiArgs = append(uiArgs, "--client", client)
+	}
+	args = append(args, uiArgs...)
 	pane, err := tmux(ctx, args...)
 	if err != nil {
 		return err
@@ -104,23 +132,42 @@ func existingSidebarPane(ctx context.Context, client string) (string, error) {
 	return "", nil
 }
 
-func runUI(ctx context.Context, stdout io.Writer) error {
-	for {
-		out, err := tmux(ctx, "list-sessions", "-F", "#{session_name}")
-		if err != nil {
-			return err
-		}
-		_, _ = fmt.Fprint(stdout, "\033[H\033[2Jtmux sessions\n\n")
-		for i, name := range visibleSessionNames(out) {
-			_, _ = fmt.Fprintf(stdout, "[%d] %s\n", i+1, name)
-		}
-		_, _ = fmt.Fprint(stdout, "\nq: close\n")
-		reader := bufio.NewReader(os.Stdin)
-		b, err := reader.ReadByte()
-		if err != nil || b == 'q' || b == 27 {
-			return nil
-		}
+func runUI(ctx context.Context, flags map[string]string, stdout io.Writer) error {
+	items, err := loadSessionItems(ctx)
+	if err != nil {
+		return err
 	}
+	actions := uity.Actions{
+		SwitchSession: func(name string) {
+			handleActionError(ctx, "switch session", switchClient(ctx, flags["client"], name))
+		},
+		CreateProject: func(project uity.ProjectItem) {
+			handleActionError(ctx, "create project session", createProject(ctx, map[string]string{"client": flags["client"], "project-path": project.Path}, stdout))
+		},
+		CreateGitProject: func() {
+			handleActionError(ctx, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": flags["client"]}))
+		},
+		CreateAdhoc: func() {
+			handleActionError(ctx, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": flags["client"]}))
+		},
+		RenameSession: func(name string) {
+			handleActionError(ctx, "rename session", renameSession(ctx, map[string]string{"session": name}))
+		},
+		KillSession: func(name string) {
+			handleActionError(ctx, "kill session", killSession(ctx, map[string]string{"session": name}))
+		},
+		LoadProjects: func() []uity.ProjectItem { return loadProjectItems(ctx) },
+	}
+	program := tea.NewProgram(uity.NewSidebarModel(items, actions), tea.WithOutput(stdout))
+	_, err = program.Run()
+	return err
+}
+
+func handleActionError(ctx context.Context, action string, err error) {
+	if err == nil {
+		return
+	}
+	_, _ = tmux(ctx, "display-message", fmt.Sprintf("tmux-session-sidebar: %s failed: %v", action, err))
 }
 
 func quickSwitch(ctx context.Context, flags map[string]string) error {
@@ -149,7 +196,7 @@ func visibleSessionNames(out string) []string {
 	var names []string
 	for _, name := range strings.Split(strings.TrimSpace(out), "\n") {
 		name = strings.TrimSpace(name)
-		if name != "" && !sessions.IsNumericName(name) {
+		if name != "" && !sessions.IsNumericName(name) && !strings.HasPrefix(name, "__") {
 			names = append(names, name)
 		}
 	}
@@ -157,7 +204,11 @@ func visibleSessionNames(out string) []string {
 }
 
 func tmux(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "tmux", args...)
+	return runCommand(ctx, "tmux", args...)
+}
+
+func runCommand(ctx context.Context, name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

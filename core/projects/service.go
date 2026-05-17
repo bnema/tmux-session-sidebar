@@ -3,7 +3,6 @@ package projects
 import (
 	"path/filepath"
 	"strings"
-	"unicode"
 )
 
 type Root struct {
@@ -27,7 +26,7 @@ func NormalizeSessionName(base string) string {
 
 	for _, r := range lower {
 		switch {
-		case (r >= 'a' && r <= 'z') || unicode.IsDigit(r):
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
 			b.WriteRune(r)
 			lastUnderscore = false
 			lastHyphen = false

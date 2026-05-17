@@ -25,7 +25,7 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	return ports.ConfigSnapshot{KeyBinding: key, Width: width, ProjectRoots: strings.Split(roots, ":")}, nil
+	return ports.ConfigSnapshot{KeyBinding: key, Width: width, ProjectRoots: splitProjectRoots(roots)}, nil
 }
 
 func (c Client) ServerID(ctx context.Context) (string, error) {
@@ -46,28 +46,34 @@ func (c Client) ListSessions(ctx context.Context) ([]ports.TmuxSessionSnapshot, 
 		if len(fields) < 4 {
 			continue
 		}
-		windows, _ := strconv.Atoi(fields[2])
-		attached, _ := strconv.Atoi(fields[3])
+		windows, err := strconv.Atoi(fields[2])
+		if err != nil {
+			continue
+		}
+		attached, err := strconv.Atoi(fields[3])
+		if err != nil {
+			continue
+		}
 		sessions = append(sessions, ports.TmuxSessionSnapshot{ID: fields[0], Name: fields[1], WindowCount: windows, AttachedCount: attached})
 	}
 	return sessions, nil
 }
 
 func (c Client) ListClients(ctx context.Context) ([]ports.TmuxClientSnapshot, error) {
-	result, err := c.Process.Exec(ctx, "tmux", []string{"list-clients", "-F", "#{client_name}\t#{session_id}\t#{window_id}\t#{pane_id}"})
+	result, err := c.Process.Exec(ctx, "tmux", []string{"list-clients", "-F", "#{client_name}\t#{session_id}\t#{window_id}\t#{pane_id}\t#{client_session}"})
 	if err != nil {
 		return nil, err
 	}
 	var clients []ports.TmuxClientSnapshot
-	for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
+	for _, line := range strings.Split(strings.TrimRight(result.Stdout, "\n"), "\n") {
 		if line == "" {
 			continue
 		}
 		fields := strings.Split(line, "\t")
-		if len(fields) < 4 {
+		if len(fields) < 5 {
 			continue
 		}
-		clients = append(clients, ports.TmuxClientSnapshot{ID: fields[0], CurrentSessionID: fields[1], CurrentWindowID: fields[2], CurrentPaneID: fields[3], Attached: true})
+		clients = append(clients, ports.TmuxClientSnapshot{ID: fields[0], CurrentSessionID: fields[1], CurrentWindowID: fields[2], CurrentPaneID: fields[3], Attached: fields[4] != ""})
 	}
 	return clients, nil
 }
@@ -82,10 +88,16 @@ func (c Client) PaneSize(ctx context.Context, paneID string) (ports.PaneSize, er
 		return ports.PaneSize{}, err
 	}
 	fields := strings.Split(out, "\t")
-	width, _ := strconv.Atoi(fields[0])
+	width, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return ports.PaneSize{}, err
+	}
 	height := 0
 	if len(fields) > 1 {
-		height, _ = strconv.Atoi(fields[1])
+		height, err = strconv.Atoi(fields[1])
+		if err != nil {
+			return ports.PaneSize{}, err
+		}
 	}
 	return ports.PaneSize{Width: width, Height: height}, nil
 }
@@ -120,8 +132,14 @@ func (c Client) ClosePane(ctx context.Context, paneID string) error {
 	return err
 }
 
-func (c Client) SaveWindowLayout(ctx context.Context, windowID string) error    { return nil }
-func (c Client) RestoreWindowLayout(ctx context.Context, windowID string) error { return nil }
+func (c Client) SaveWindowLayout(ctx context.Context, windowID string) error {
+	// TODO: persist and restore tmux layouts around sidebar panes.
+	return nil
+}
+func (c Client) RestoreWindowLayout(ctx context.Context, windowID string) error {
+	// TODO: persist and restore tmux layouts around sidebar panes.
+	return nil
+}
 
 func (c Client) LoadSessionMetadata(ctx context.Context, sessionName string) (ports.SessionMetadata, error) {
 	kind, err := c.displayTarget(ctx, sessionName, "#{@session-sidebar-kind}")
@@ -141,6 +159,18 @@ func (c Client) SaveSessionMetadata(ctx context.Context, sessionName string, met
 	}
 	_, err := c.Process.Exec(ctx, "tmux", []string{"set-option", "-t", sessionName, "@session-sidebar-project-path", metadata.ProjectPath})
 	return err
+}
+
+func splitProjectRoots(roots string) []string {
+	parts := strings.Split(roots, ":")
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			filtered = append(filtered, part)
+		}
+	}
+	return filtered
 }
 
 func (c Client) option(ctx context.Context, name string) (string, error) {

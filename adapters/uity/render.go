@@ -3,6 +3,8 @@ package uity
 import (
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/quickswitch"
@@ -24,6 +26,27 @@ type Row struct {
 	Slot    int
 }
 
+type Screen struct {
+	Rows                []Row
+	Capability          Capability
+	Mode                Mode
+	Filter              string
+	ShowNumericSessions bool
+}
+
+func RenderScreen(screen Screen) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "sessions %s", screen.Mode)
+	if screen.Filter != "" {
+		fmt.Fprintf(&b, " filter:%s", sanitizeSessionName(screen.Filter))
+	}
+	fmt.Fprintf(&b, " nums:%s\n", numberedStatus(screen.ShowNumericSessions))
+	fmt.Fprintf(&b, "↵ switch  / search  Esc close  M-n project\n")
+	fmt.Fprintf(&b, "M-g git  M-a adhoc  M-r rename  M-x kill  M-h nums\n\n")
+	b.WriteString(Render(screen.Rows, screen.Capability))
+	return b.String()
+}
+
 func Render(rows []Row, capability Capability) string {
 	var b strings.Builder
 	for _, row := range rows {
@@ -34,13 +57,46 @@ func Render(rows []Row, capability Capability) string {
 		}
 		marker := " "
 		if row.Session.Current {
-			marker = "●"
+			marker = "*"
 		}
 		badge := quickswitch.BadgeForSlot(row.Slot)
 		if badge != "" {
 			badge += " "
 		}
-		fmt.Fprintf(&b, "%s%s %s%s%s\n", style, marker, badge, row.Session.Name, reset)
+		fmt.Fprintf(&b, "%s%s %s%s%s\n", style, marker, badge, sanitizeSessionName(row.Session.Name), reset)
+	}
+	return b.String()
+}
+
+func numberedStatus(show bool) string {
+	if show {
+		return "on"
+	}
+	return "off"
+}
+
+func sanitizeSessionName(name string) string {
+	var b strings.Builder
+	for i := 0; i < len(name); {
+		r, size := utf8.DecodeRuneInString(name[i:])
+		if r == '\x1b' {
+			i += size
+			if i < len(name) && name[i] == '[' {
+				i++
+				for i < len(name) {
+					c := name[i]
+					i++
+					if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+						break
+					}
+				}
+			}
+			continue
+		}
+		if !unicode.IsControl(r) {
+			b.WriteRune(r)
+		}
+		i += size
 	}
 	return b.String()
 }

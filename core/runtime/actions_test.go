@@ -23,7 +23,7 @@ func TestRenameSessionValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := RenameSession(existing, tt.oldName, tt.newName)
+			err := ValidateRenameSession(existing, tt.oldName, tt.newName)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tt.wantErr)
 			}
@@ -44,7 +44,7 @@ func TestKillSessionValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := KillSession(tt.existing, tt.target)
+			err := ValidateKillSession(tt.existing, tt.target)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tt.wantErr)
 			}

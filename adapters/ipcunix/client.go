@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"time"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
@@ -21,6 +22,13 @@ func (c Client) Send(ctx context.Context, req ports.Request) (ports.Response, er
 		return ports.Response{}, err
 	}
 	defer conn.Close()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(5 * time.Second)
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		return ports.Response{}, err
+	}
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		return ports.Response{}, err
 	}

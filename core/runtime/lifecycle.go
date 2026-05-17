@@ -26,6 +26,7 @@ func (s *Service) OpenSidebar(ctx context.Context, state State, clientID string,
 	}
 	pane, err := s.tmuxCtl.OpenSidebarPane(ctx, clientID, state.Config.Width, uiCommand)
 	if err != nil {
+		_ = s.tmuxCtl.RestoreWindowLayout(ctx, client.CurrentWindowID)
 		return state, err
 	}
 	ensureSidebarMaps(&state)
@@ -39,22 +40,26 @@ func (s *Service) OpenSidebar(ctx context.Context, state State, clientID string,
 
 func (s *Service) CloseSidebar(ctx context.Context, state State, clientID string) (State, error) {
 	client, hasClient := state.Clients[clientID]
+	var closeErr error
 	if pane, ok := state.Panes[clientID]; ok && pane.PaneID != "" {
-		if err := s.tmuxCtl.ClosePane(ctx, pane.PaneID); err != nil {
-			return state, err
-		}
+		closeErr = s.tmuxCtl.ClosePane(ctx, pane.PaneID)
 	}
+	var restoreErr error
 	if hasClient {
-		if err := s.tmuxCtl.RestoreWindowLayout(ctx, client.CurrentWindowID); err != nil {
-			return state, err
-		}
+		restoreErr = s.tmuxCtl.RestoreWindowLayout(ctx, client.CurrentWindowID)
 	}
 	ensureSidebarMaps(&state)
 	logical := state.Sidebars[clientID]
 	logical.Open = false
 	state.Sidebars[clientID] = logical
 	delete(state.Panes, clientID)
-	return state, nil
+	if closeErr != nil && restoreErr != nil {
+		return state, fmt.Errorf("close pane: %w (also failed to restore layout: %v)", closeErr, restoreErr)
+	}
+	if closeErr != nil {
+		return state, closeErr
+	}
+	return state, restoreErr
 }
 
 func (s *Service) FollowClient(ctx context.Context, state State, clientID string, uiCommand []string) (State, error) {

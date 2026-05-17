@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net"
 	"os"
 
@@ -49,5 +50,7 @@ func handleConn(ctx context.Context, conn net.Conn, handler ports.IPCHandler) {
 	if err != nil {
 		resp = ports.Response{OK: false, Message: err.Error()}
 	}
-	_ = json.NewEncoder(conn).Encode(resp)
+	if err := json.NewEncoder(conn).Encode(resp); err != nil {
+		log.Printf("tmux-session-sidebar ipc encode response for %q failed: %v", req.Kind, err)
+	}
 }

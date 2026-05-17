@@ -16,7 +16,13 @@ func (FS) ListImmediateDirs(root string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	dirs := make([]string, 0)
+	dirCount := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			dirCount++
+		}
+	}
+	dirs := make([]string, 0, dirCount)
 	for _, entry := range entries {
 		if entry.IsDir() {
 			dirs = append(dirs, filepath.Join(root, entry.Name()))

@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -10,11 +11,16 @@ import (
 )
 
 func TestSnapshotLoadsLiveTmuxState(t *testing.T) {
+	boom := errors.New("boom")
 	tests := []struct {
-		name     string
-		config   ports.ConfigSnapshot
-		sessions []ports.TmuxSessionSnapshot
-		clients  []ports.TmuxClientSnapshot
+		name       string
+		config     ports.ConfigSnapshot
+		sessions   []ports.TmuxSessionSnapshot
+		clients    []ports.TmuxClientSnapshot
+		configErr  error
+		sessionErr error
+		clientErr  error
+		wantErr    bool
 	}{
 		{
 			name:   "single client and session",
@@ -26,6 +32,9 @@ func TestSnapshotLoadsLiveTmuxState(t *testing.T) {
 				{ID: "%1", CurrentSessionID: "$1", CurrentWindowID: "@1", CurrentPaneID: "%9", Attached: true},
 			},
 		},
+		{name: "config error", configErr: boom, wantErr: true},
+		{name: "sessions error", sessionErr: boom, wantErr: true},
+		{name: "clients error", clientErr: boom, wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -33,19 +42,29 @@ func TestSnapshotLoadsLiveTmuxState(t *testing.T) {
 			ctx := context.Background()
 			config := mocks.NewMockTmuxConfigPort(t)
 			query := mocks.NewMockTmuxQueryPort(t)
-			config.EXPECT().LoadConfig(ctx).Return(tt.config, nil)
-			query.EXPECT().ListSessions(ctx).Return(tt.sessions, nil)
-			query.EXPECT().ListClients(ctx).Return(tt.clients, nil)
+			config.EXPECT().LoadConfig(ctx).Return(tt.config, tt.configErr)
+			if tt.configErr == nil {
+				query.EXPECT().ListSessions(ctx).Return(tt.sessions, tt.sessionErr)
+			}
+			if tt.configErr == nil && tt.sessionErr == nil {
+				query.EXPECT().ListClients(ctx).Return(tt.clients, tt.clientErr)
+			}
 
 			state, err := NewService(config, query, nil, nil).Snapshot(ctx)
-			if err != nil {
-				t.Fatalf("Snapshot returned error: %v", err)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Snapshot error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
 			}
 			if !reflect.DeepEqual(state.Config, tt.config) {
 				t.Fatalf("config = %#v, want %#v", state.Config, tt.config)
 			}
-			if len(state.Sessions) != len(tt.sessions) || len(state.Clients) != len(tt.clients) {
-				t.Fatalf("sessions/clients len = %d/%d, want %d/%d", len(state.Sessions), len(state.Clients), len(tt.sessions), len(tt.clients))
+			if state.Sessions["$1"].Name != "alpha" {
+				t.Fatalf("session $1 = %#v", state.Sessions["$1"])
+			}
+			if state.Clients["%1"].CurrentSessionID != "$1" {
+				t.Fatalf("client %%1 = %#v", state.Clients["%1"])
 			}
 		})
 	}

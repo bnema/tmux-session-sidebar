@@ -40,6 +40,9 @@ func Advance(state State, now time.Time, attachedCount int, halfLife time.Durati
 	elapsedSeconds := elapsed.Seconds()
 	decay := math.Pow(0.5, elapsedSeconds/halfLife.Seconds())
 	state.Score *= decay
+	// Accumulate elapsedSeconds into state.Score only when state.AttachedCount
+	// says the session was attached during the elapsed period; the new
+	// attachedCount value starts affecting accumulation on the next Advance call.
 	if state.AttachedCount > 0 {
 		state.Score += elapsedSeconds
 	}

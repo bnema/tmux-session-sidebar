@@ -33,7 +33,7 @@ func (s Store) Load(_ context.Context, serverID string) (ports.PersistedState, e
 }
 
 func (s Store) Save(_ context.Context, serverID string, state ports.PersistedState) error {
-	if err := os.MkdirAll(s.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(state, "", "  ")
@@ -44,5 +44,5 @@ func (s Store) Save(_ context.Context, serverID string, state ports.PersistedSta
 }
 
 func (s Store) path(serverID string) string {
-	return filepath.Join(s.Dir, serverID+".json")
+	return filepath.Join(s.Dir, filepath.Base(serverID)+".json")
 }

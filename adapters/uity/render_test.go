@@ -14,14 +14,22 @@ func TestRenderRows(t *testing.T) {
 		rows       []Row
 		capability Capability
 		wantParts  []string
+		wantExact  string
 	}{
-		{name: "plain current with badge", rows: []Row{{Session: sessions.View{Name: "alpha", Current: true}, Slot: 1}}, capability: CapabilityPlain, wantParts: []string{"● [1] alpha\n"}},
+		{name: "empty rows", rows: nil, capability: CapabilityPlain, wantExact: ""},
+		{name: "plain current with badge", rows: []Row{{Session: sessions.View{Name: "alpha", Current: true}, Slot: 1}}, capability: CapabilityPlain, wantParts: []string{"* [1] alpha\n"}},
 		{name: "rgb heat style", rows: []Row{{Session: sessions.View{Name: "beta"}, Bucket: heat.BucketHot}}, capability: CapabilityRGB, wantParts: []string{"\033[38;2;122;232;122m", " beta\033[0m\n"}},
+		{name: "strips ansi from names", rows: []Row{{Session: sessions.View{Name: "\033[31mred\033[0m"}}}, capability: CapabilityPlain, wantExact: "  red\n"},
+		{name: "empty name", rows: []Row{{Session: sessions.View{Name: ""}}}, capability: CapabilityPlain, wantExact: "  \n"},
+		{name: "multi row order", rows: []Row{{Session: sessions.View{Name: "alpha"}}, {Session: sessions.View{Name: "beta"}}}, capability: CapabilityPlain, wantExact: "  alpha\n  beta\n"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Render(tt.rows, tt.capability)
+			if tt.wantExact != "" && got != tt.wantExact {
+				t.Fatalf("Render() = %q, want %q", got, tt.wantExact)
+			}
 			for _, want := range tt.wantParts {
 				if !strings.Contains(got, want) {
 					t.Fatalf("Render() = %q, expected to contain %q", got, want)

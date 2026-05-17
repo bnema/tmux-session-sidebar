@@ -41,6 +41,9 @@ func moveSelection(state State, visible []sessions.View, delta int) State {
 		state.SelectionSessionID = ""
 		return state
 	}
+	// If SelectionSessionID is missing, moveSelection intentionally treats
+	// current as 0: delta +1 selects visible[1], while delta -1 wraps to the
+	// last item. Table tests lock this behavior down.
 	current := 0
 	for i, session := range visible {
 		if session.SessionID == state.SelectionSessionID {
