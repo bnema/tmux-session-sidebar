@@ -22,9 +22,10 @@ const (
 type Mode string
 
 const (
-	ModeBrowse  Mode = "browse"
-	ModeSearch  Mode = "search"
-	ModeProject Mode = "project"
+	ModeBrowse      Mode = "browse"
+	ModeSearch      Mode = "search"
+	ModeProject     Mode = "project"
+	ModeConfirmKill Mode = "confirm-kill"
 )
 
 func InterpretKey(mode Mode, seq []byte) Intent {

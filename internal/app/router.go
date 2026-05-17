@@ -142,36 +142,45 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer) error
 		return err
 	}
 	actions := uity.Actions{
-		SwitchSession: func(name string) {
-			handleActionError(ctx, "switch session", switchClient(ctx, flags["client"], name))
+		SwitchSession: func(name string) bool {
+			return handleActionError(ctx, "switch session", switchClient(ctx, flags["client"], name))
 		},
-		CreateProject: func(project uity.ProjectItem) {
-			handleActionError(ctx, "create project session", createProject(ctx, map[string]string{"client": flags["client"], "project-path": project.Path}, stdout))
+		CreateProject: func(project uity.ProjectItem) bool {
+			return handleActionError(ctx, "create project session", createProject(ctx, map[string]string{"client": flags["client"], "project-path": project.Path}, stdout))
 		},
-		CreateGitProject: func() {
-			handleActionError(ctx, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": flags["client"]}))
+		CreateGitProject: func() bool {
+			return handleActionError(ctx, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": flags["client"]}))
 		},
-		CreateAdhoc: func() {
-			handleActionError(ctx, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": flags["client"]}))
+		CreateAdhoc: func() bool {
+			return handleActionError(ctx, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": flags["client"]}))
 		},
-		RenameSession: func(name string) {
-			handleActionError(ctx, "rename session", renameSession(ctx, map[string]string{"session": name}))
+		RenameSession: func(name string) bool {
+			return handleActionError(ctx, "rename session", renameSession(ctx, map[string]string{"client": flags["client"], "session": name}))
 		},
-		KillSession: func(name string) {
-			handleActionError(ctx, "kill session", killSession(ctx, map[string]string{"session": name}))
+		KillSession: func(name string) bool {
+			return handleActionError(ctx, "kill session", killSession(ctx, map[string]string{"client": flags["client"], "session": name, "confirmed": "yes"}))
 		},
 		LoadProjects: func() []uity.ProjectItem { return loadProjectItems(ctx) },
+		ReloadSessions: func() []uity.SessionItem {
+			items, err := loadSessionItems(ctx)
+			if err != nil {
+				handleActionError(ctx, "reload sessions", err)
+				return nil
+			}
+			return items
+		},
 	}
 	program := tea.NewProgram(uity.NewSidebarModel(items, actions), tea.WithOutput(stdout))
 	_, err = program.Run()
 	return err
 }
 
-func handleActionError(ctx context.Context, action string, err error) {
+func handleActionError(ctx context.Context, action string, err error) bool {
 	if err == nil {
-		return
+		return true
 	}
 	_, _ = tmux(ctx, "display-message", fmt.Sprintf("tmux-session-sidebar: %s failed: %v", action, err))
+	return false
 }
 
 func quickSwitch(ctx context.Context, flags map[string]string) error {

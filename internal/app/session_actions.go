@@ -34,7 +34,7 @@ func createCurrentGitProject(ctx context.Context, flags map[string]string) error
 func createAdhoc(ctx context.Context, flags map[string]string) error {
 	name := strings.TrimSpace(flags["name"])
 	if name == "" {
-		return commandPrompt(ctx, "Ad-hoc session name", "action create-adhoc --client "+shellQuote(flags["client"])+" --name '%%%'")
+		return commandPrompt(ctx, flags["client"], "Ad-hoc session name", "action create-adhoc --client "+shellQuote(flags["client"])+" --name '%%%'")
 	}
 	path := flags["source-path"]
 	if path == "" {
@@ -61,10 +61,17 @@ func renameSession(ctx context.Context, flags map[string]string) error {
 		return fmt.Errorf("missing session")
 	}
 	if newName == "" {
-		return commandPrompt(ctx, "Rename session", "action rename --session "+shellQuote(session)+" --name '%%%'")
+		command := "action rename --session " + shellQuote(session) + " --name '%%%'"
+		if flags["client"] != "" {
+			command += " --client " + shellQuote(flags["client"])
+		}
+		return commandPrompt(ctx, flags["client"], "Rename session", command)
 	}
-	_, err := tmux(ctx, "rename-session", "-t", session, newName)
-	return err
+	if _, err := tmux(ctx, "rename-session", "-t", "="+session, newName); err != nil {
+		return err
+	}
+	refreshSidebar(ctx, flags["client"])
+	return nil
 }
 
 func killSession(ctx context.Context, flags map[string]string) error {
@@ -78,10 +85,16 @@ func killSession(ctx context.Context, flags map[string]string) error {
 			return fmt.Errorf("resolve executable for kill confirmation: %w", err)
 		}
 		cmd := shellQuote(exe) + " action kill --session " + shellQuote(session) + " --confirmed yes"
-		return confirmBefore(ctx, "Kill session "+session+"?", cmd)
+		if flags["client"] != "" {
+			cmd += " --client " + shellQuote(flags["client"])
+		}
+		return confirmBefore(ctx, flags["client"], "Kill session "+session+"?", cmd)
 	}
-	_, err := tmux(ctx, "kill-session", "-t", session)
-	return err
+	if _, err := tmux(ctx, "kill-session", "-t", "="+session); err != nil {
+		return err
+	}
+	refreshSidebar(ctx, flags["client"])
+	return nil
 }
 
 func gitRoot(ctx context.Context, path string) (string, error) {
@@ -89,18 +102,40 @@ func gitRoot(ctx context.Context, path string) (string, error) {
 	return strings.TrimSpace(out), err
 }
 
-func commandPrompt(ctx context.Context, prompt string, command string) error {
+func commandPrompt(ctx context.Context, client string, prompt string, command string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	full := shellQuote(exe) + " " + command
-	_, err = tmux(ctx, "command-prompt", "-p", prompt, "run-shell "+shellQuote(full))
+	args := []string{"command-prompt"}
+	if client != "" {
+		args = append(args, "-t", client)
+	}
+	args = append(args, "-p", prompt, "run-shell "+shellQuote(full))
+	_, err = tmux(ctx, args...)
 	return err
 }
 
-func confirmBefore(ctx context.Context, prompt string, command string) error {
-	_, err := tmux(ctx, "confirm-before", "-p", prompt, "run-shell "+shellQuote(command))
+func confirmBefore(ctx context.Context, client string, prompt string, command string) error {
+	args := []string{"confirm-before"}
+	if client != "" {
+		args = append(args, "-t", client)
+	}
+	args = append(args, "-p", prompt, "run-shell "+shellQuote(command))
+	_, err := tmux(ctx, args...)
+	return err
+}
+
+func refreshSidebar(ctx context.Context, client string) error {
+	if client == "" {
+		return nil
+	}
+	pane, err := existingSidebarPane(ctx, client)
+	if err != nil || pane == "" {
+		return err
+	}
+	_, err = tmux(ctx, "send-keys", "-t", pane, "F5")
 	return err
 }
 

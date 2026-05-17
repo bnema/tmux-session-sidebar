@@ -24,13 +24,14 @@ type ProjectItem struct {
 }
 
 type Actions struct {
-	SwitchSession    func(string)
-	CreateProject    func(ProjectItem)
-	CreateGitProject func()
-	CreateAdhoc      func()
-	RenameSession    func(string)
-	KillSession      func(string)
+	SwitchSession    func(string) bool
+	CreateProject    func(ProjectItem) bool
+	CreateGitProject func() bool
+	CreateAdhoc      func() bool
+	RenameSession    func(string) bool
+	KillSession      func(string) bool
 	LoadProjects     func() []ProjectItem
+	ReloadSessions   func() []SessionItem
 }
 
 type SidebarModel struct {
@@ -43,6 +44,7 @@ type SidebarModel struct {
 	projects      []ProjectItem
 	projectCursor int
 	projectFilter string
+	pendingKill   string
 	actions       Actions
 }
 
@@ -69,6 +71,10 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.projectFilter = ""
 				return m, nil
 			}
+			if m.mode == ModeConfirmKill {
+				m.clearKillConfirmation()
+				return m, nil
+			}
 			return m, tea.Quit
 		case "/":
 			if m.mode == ModeBrowse {
@@ -82,6 +88,10 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.mode == ModeProject {
 				m.createSelectedProject()
+				return m, nil
+			}
+			if m.mode == ModeConfirmKill {
+				m.clearKillConfirmation()
 				return m, nil
 			}
 			m.switchSelected()
@@ -109,24 +119,39 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.projectFilter = ""
 			return m, nil
 		case "alt+g":
-			if m.actions.CreateGitProject != nil {
-				m.actions.CreateGitProject()
+			if m.actions.CreateGitProject != nil && m.actions.CreateGitProject() {
+				m.reloadSessions()
 			}
 			return m, nil
 		case "alt+a":
-			if m.actions.CreateAdhoc != nil {
-				m.actions.CreateAdhoc()
+			if m.actions.CreateAdhoc != nil && m.actions.CreateAdhoc() {
+				m.reloadSessions()
 			}
 			return m, nil
 		case "alt+r":
-			if item, ok := m.selectedSession(); ok && m.actions.RenameSession != nil {
-				m.actions.RenameSession(item.Name)
+			if item, ok := m.selectedSession(); ok && m.actions.RenameSession != nil && m.actions.RenameSession(item.Name) {
+				m.reloadSessions()
 			}
 			return m, nil
 		case "alt+x":
 			if item, ok := m.selectedSession(); ok && m.actions.KillSession != nil {
-				m.actions.KillSession(item.Name)
+				m.mode = ModeConfirmKill
+				m.pendingKill = item.Name
+				m.message = "Kill " + item.Name + "? y/N"
 			}
+			return m, nil
+		case "y", "Y":
+			if m.mode == ModeConfirmKill {
+				m.confirmKill()
+				return m, nil
+			}
+		case "n", "N":
+			if m.mode == ModeConfirmKill {
+				m.clearKillConfirmation()
+				return m, nil
+			}
+		case "f5":
+			m.reloadSessions()
 			return m, nil
 		case "alt+h":
 			m.showNumeric = !m.showNumeric
@@ -181,9 +206,29 @@ func (m SidebarModel) selectedSession() (SessionItem, bool) {
 
 func (m SidebarModel) switchSelected() {
 	item, ok := m.selectedSession()
-	if ok && m.actions.SwitchSession != nil {
-		m.actions.SwitchSession(item.Name)
+	if ok && m.actions.SwitchSession != nil && m.actions.SwitchSession(item.Name) {
+		m.reloadSessions()
 	}
+}
+
+func (m *SidebarModel) reloadSessions() {
+	if m.actions.ReloadSessions != nil {
+		m.items = m.actions.ReloadSessions()
+	}
+}
+
+func (m *SidebarModel) confirmKill() {
+	name := m.pendingKill
+	m.clearKillConfirmation()
+	if name != "" && m.actions.KillSession != nil && m.actions.KillSession(name) {
+		m.reloadSessions()
+	}
+}
+
+func (m *SidebarModel) clearKillConfirmation() {
+	m.mode = ModeBrowse
+	m.pendingKill = ""
+	m.message = ""
 }
 
 func (m SidebarModel) createSelectedProject() {
@@ -191,8 +236,8 @@ func (m SidebarModel) createSelectedProject() {
 	if len(visible) == 0 || m.projectCursor >= len(visible) {
 		return
 	}
-	if m.actions.CreateProject != nil {
-		m.actions.CreateProject(visible[m.projectCursor])
+	if m.actions.CreateProject != nil && m.actions.CreateProject(visible[m.projectCursor]) {
+		m.reloadSessions()
 	}
 }
 
@@ -239,6 +284,9 @@ func (m SidebarModel) View() string {
 	}
 	if m.mode == ModeProject {
 		modeText = "projects:" + m.projectFilter
+	}
+	if m.mode == ModeConfirmKill {
+		modeText = "confirm kill"
 	}
 	meta := lipgloss.NewStyle().Foreground(dim).Render(modeText)
 	currentStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
