@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DIRNAME_BIN="$(command -v dirname 2>/dev/null || true)"
-PWD_BIN="$(command -v pwd 2>/dev/null || true)"
 CURL_BIN="$(command -v curl 2>/dev/null || true)"
-[ -n "$DIRNAME_BIN" ] || { echo 'tmux-session-sidebar: dirname not found' >&2; exit 1; }
-[ -n "$PWD_BIN" ] || { echo 'tmux-session-sidebar: pwd not found' >&2; exit 1; }
 [ -n "$CURL_BIN" ] || exit 0
-SCRIPT_DIR="$(cd "$($DIRNAME_BIN "${BASH_SOURCE[0]}")" && "$PWD_BIN")" || exit 1
 # shellcheck source=/dev/null
-source "$SCRIPT_DIR/../lib/tmux.sh"
+source "$(cd -- "${BASH_SOURCE[0]%/*}" && pwd -P)/_bootstrap.sh"
 
 pane_id=""
 
