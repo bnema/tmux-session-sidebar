@@ -5,6 +5,8 @@ CURL_BIN="$(command -v curl 2>/dev/null || true)"
 [ -n "$CURL_BIN" ] || exit 0
 # shellcheck source=/dev/null
 source "$(cd -- "${BASH_SOURCE[0]%/*}" && pwd -P)/_bootstrap.sh"
+# shellcheck source=/dev/null
+source "$SIDEBAR_SCRIPT_DIR/lib/sidebar-command.sh"
 
 pane_id=""
 
@@ -22,18 +24,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-quote_args() {
-  local quoted="" arg
-  for arg in "$@"; do
-    printf -v quoted '%s%q ' "$quoted" "$arg"
-  done
-  printf '%s' "$quoted"
-}
-
 render_entries_command_for_pane() {
   local target_pane="$1"
   local client_name show_numbered source_path active_filter
-  local -a args
 
   client_name="$(sidebar_get_pane_option "$target_pane" @session-sidebar-client '')"
   [ -n "$client_name" ] || return 1
@@ -41,15 +34,13 @@ render_entries_command_for_pane() {
   source_path="$(sidebar_get_pane_option "$target_pane" @session-sidebar-source-path '')"
   active_filter="$(sidebar_get_pane_option "$target_pane" @session-sidebar-active-filter '')"
 
-  args=("$SCRIPT_DIR/../sidebar.sh" --client "$client_name" --show-numbered-sessions "$show_numbered" --sidebar-pane "$target_pane")
-  if [ -n "$active_filter" ]; then
-    args+=(--active-filter "$active_filter")
-  fi
-  if [ -n "$source_path" ]; then
-    args+=(--source-path "$source_path")
-  fi
-  args+=(--render-entries)
-  quote_args "${args[@]}"
+  sidebar_render_entries_command \
+    "$SIDEBAR_SCRIPT_DIR/sidebar.sh" \
+    "$client_name" \
+    "$show_numbered" \
+    "$target_pane" \
+    "$active_filter" \
+    "$source_path"
 }
 
 current_session_position_for_pane() {

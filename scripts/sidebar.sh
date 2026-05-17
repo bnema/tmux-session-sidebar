@@ -149,31 +149,19 @@ if [ "$render_entries_only" != "on" ] && [ "$refresh_loop_mode" != "on" ]; then
   trap schedule_sidebar_layout_restore_on_exit EXIT
 fi
 
-quote_args() {
-  local quoted="" arg
-  for arg in "$@"; do
-    printf -v quoted '%s%q ' "$quoted" "$arg"
-  done
-  printf '%s' "$quoted"
-}
-
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/lib/sidebar-command.sh"
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/lib/sidebar-render.sh"
 
 render_entries_command() {
-  local args
-  args=("$SCRIPT_DIR/sidebar.sh" --client "$client_name" --show-numbered-sessions "$show_numbered_sessions")
-  if [ -n "$active_filter" ]; then
-    args+=(--active-filter "$active_filter")
-  fi
-  if [ -n "$source_path" ]; then
-    args+=(--source-path "$source_path")
-  fi
-  if [ -n "$sidebar_pane_id" ]; then
-    args+=(--sidebar-pane "$sidebar_pane_id")
-  fi
-  args+=(--render-entries)
-  quote_args "${args[@]}"
+  sidebar_render_entries_command \
+    "$SCRIPT_DIR/sidebar.sh" \
+    "$client_name" \
+    "$show_numbered_sessions" \
+    "$sidebar_pane_id" \
+    "$active_filter" \
+    "$source_path"
 }
 
 start_fzf_refresh_loop() {
