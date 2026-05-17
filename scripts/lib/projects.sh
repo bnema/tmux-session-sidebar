@@ -268,12 +268,6 @@ sidebar_pick_project() {
   use_fzf="$(sidebar_get_option @session-sidebar-use-fzf on)"
   fzf_cmd="$(command -v fzf 2>/dev/null || true)"
 
-  projects="$(sidebar_list_projects)"
-  if [ -z "$projects" ]; then
-    echo "tmux-session-sidebar: no projects found in configured roots" >&2
-    return 1
-  fi
-
   if [ "$use_fzf" != "off" ] && [ -n "$fzf_cmd" ]; then
     if [ -n "$client_name" ] && sidebar_tmux_supports_popups && popup_script="$(sidebar_project_picker_popup_script 2>/dev/null || true)" && [ -x "$popup_script" ]; then
       sidebar_pick_project_popup "$client_name" "$start_dir" || return 1
@@ -282,6 +276,12 @@ sidebar_pick_project() {
 
     sidebar_pick_project_fzf "$fzf_cmd"
     return 0
+  fi
+
+  projects="$(sidebar_list_projects)"
+  if [ -z "$projects" ]; then
+    echo "tmux-session-sidebar: no projects found in configured roots" >&2
+    return 1
   fi
 
   while IFS= read -r line; do
