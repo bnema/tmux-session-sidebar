@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 type FileLocker struct {
@@ -17,7 +19,7 @@ type Handle struct {
 	file *os.File
 }
 
-func (l FileLocker) Acquire(_ context.Context, key string) (*Handle, error) {
+func (l FileLocker) Acquire(ctx context.Context, key string) (*Handle, error) {
 	if err := os.MkdirAll(l.Dir, 0o700); err != nil {
 		return nil, err
 	}
@@ -27,11 +29,22 @@ func (l FileLocker) Acquire(_ context.Context, key string) (*Handle, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
-		_ = file.Close()
-		return nil, err
+	for {
+		err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return &Handle{file: file}, nil
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
+			_ = file.Close()
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			_ = file.Close()
+			return nil, ctx.Err()
+		case <-time.After(25 * time.Millisecond):
+		}
 	}
-	return &Handle{file: file}, nil
 }
 
 func (h *Handle) Release() error {
