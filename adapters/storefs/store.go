@@ -41,7 +41,37 @@ func (s Store) Save(_ context.Context, serverID string, state ports.PersistedSta
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path(serverID), data, 0o600)
+	path := s.path(serverID)
+	tmp, err := os.CreateTemp(s.Dir, filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	dir, err := os.Open(s.Dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	return dir.Sync()
 }
 
 func (s Store) path(serverID string) string {
