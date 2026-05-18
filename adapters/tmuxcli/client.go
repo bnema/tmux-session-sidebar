@@ -29,7 +29,11 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	return ports.ConfigSnapshot{KeyBinding: key, Width: width, ProjectRoots: splitProjectRoots(roots)}, nil
+	closeAfterSwitch, err := c.option(ctx, "@session-sidebar-close-after-switch")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
+	return ports.ConfigSnapshot{KeyBinding: key, Width: width, ProjectRoots: splitProjectRoots(roots), CloseAfterSwitch: parseTmuxBool(closeAfterSwitch)}, nil
 }
 
 func (c Client) ServerID(ctx context.Context) (string, error) {
@@ -192,6 +196,15 @@ func (c Client) SaveSessionMetadata(ctx context.Context, sessionName string, met
 	}
 	_, err := c.Process.Exec(ctx, "tmux", []string{"set-option", "-t", sessionName, "@session-sidebar-project-path", metadata.ProjectPath})
 	return err
+}
+
+func parseTmuxBool(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "yes", "true", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func splitProjectRoots(roots string) []string {

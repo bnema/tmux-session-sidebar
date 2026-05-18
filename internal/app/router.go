@@ -222,6 +222,10 @@ func tmux(ctx context.Context, args ...string) (string, error) {
 }
 
 func runCommand(ctx context.Context, name string, args ...string) (string, error) {
+	return commandRunner(ctx, name, args...)
+}
+
+var commandRunner = func(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err

@@ -222,7 +222,10 @@ func (m SidebarModel) selectedSession() (SessionItem, bool) {
 
 func (m *SidebarModel) switchSelected() {
 	item, ok := m.selectedSession()
-	if ok && m.actions.SwitchSession != nil && m.actions.SwitchSession(item.Name) {
+	if !ok || item.Current || m.actions.SwitchSession == nil {
+		return
+	}
+	if m.actions.SwitchSession(item.Name) {
 		m.reloadSessions()
 	}
 }
@@ -275,6 +278,9 @@ func (m *SidebarModel) createSelectedProject() {
 		return
 	}
 	if m.actions.CreateProject != nil && m.actions.CreateProject(visible[m.projectCursor]) {
+		m.mode = ModeBrowse
+		m.projectFilter = ""
+		m.projectCursor = 0
 		m.reloadSessions()
 	}
 }
