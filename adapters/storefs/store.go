@@ -20,7 +20,7 @@ func (s Store) Load(_ context.Context, serverID string) (ports.PersistedState, e
 	path := s.path(serverID)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}, Clients: map[string][]byte{}, Heat: map[string][]byte{}}, nil
+		return ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}, SessionOrder: []string{}, Clients: map[string][]byte{}, Heat: map[string][]byte{}}, nil
 	}
 	if err != nil {
 		return ports.PersistedState{}, err
@@ -51,6 +51,9 @@ func (s Store) path(serverID string) string {
 func initializeMaps(state *ports.PersistedState) {
 	if state.Sessions == nil {
 		state.Sessions = map[string]ports.SessionMetadata{}
+	}
+	if state.SessionOrder == nil {
+		state.SessionOrder = []string{}
 	}
 	if state.Clients == nil {
 		state.Clients = map[string][]byte{}

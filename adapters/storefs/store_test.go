@@ -15,8 +15,8 @@ func TestStoreLoadSave(t *testing.T) {
 		name  string
 		state ports.PersistedState
 	}{
-		{name: "empty maps", state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}, Clients: map[string][]byte{}, Heat: map[string][]byte{}}},
-		{name: "session metadata", state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{"alpha": {Kind: "project", ProjectPath: "/tmp/alpha"}}, Clients: map[string][]byte{"%1": []byte("{}")}, Heat: map[string][]byte{"alpha": []byte("{}")}}},
+		{name: "empty maps", state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}, SessionOrder: []string{}, Clients: map[string][]byte{}, Heat: map[string][]byte{}}},
+		{name: "session metadata", state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{"alpha": {Kind: "project", ProjectPath: "/tmp/alpha"}}, SessionOrder: []string{}, Clients: map[string][]byte{"%1": []byte("{}")}, Heat: map[string][]byte{"alpha": []byte("{}")}}},
 	}
 
 	for _, tt := range tests {
@@ -63,7 +63,7 @@ func TestStoreLoadEdges(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Load error = %v, wantErr %v", err, tt.wantErr)
 			}
-			if tt.wantEmpty && (got.Sessions == nil || got.Clients == nil || got.Heat == nil) {
+			if tt.wantEmpty && (got.Sessions == nil || got.SessionOrder == nil || got.Clients == nil || got.Heat == nil) {
 				t.Fatalf("expected initialized maps, got %#v", got)
 			}
 		})

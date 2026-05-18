@@ -20,7 +20,7 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 		return nil, err
 	}
 	current = strings.TrimSpace(current)
-	names := visibleSessionNamesWithNumeric(out, true)
+	names := applySessionOrder(visibleSessionNamesWithNumeric(out, true), loadSessionOrder(ctx))
 	items := make([]uity.SessionItem, 0, len(names))
 	slot := 1
 	for _, name := range names {
@@ -51,7 +51,7 @@ func loadProjectItems(ctx context.Context) []uity.ProjectItem {
 
 func visibleSessionNamesWithNumeric(out string, showNumeric bool) []string {
 	var names []string
-	for _, name := range strings.Split(strings.TrimSpace(out), "\n") {
+	for name := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		name = strings.TrimSpace(name)
 		if name != "" && !strings.HasPrefix(name, "__") && (showNumeric || !sessions.IsNumericName(name)) {
 			names = append(names, name)

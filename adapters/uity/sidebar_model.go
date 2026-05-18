@@ -30,6 +30,7 @@ type Actions struct {
 	CreateAdhoc      func() bool
 	RenameSession    func(string) bool
 	KillSession      func(string) bool
+	ReorderSession   func(string, int) bool
 	LoadProjects     func() []ProjectItem
 	ReloadSessions   func() []SessionItem
 }
@@ -67,6 +68,10 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		key := msg.Keystroke()
+		if delta, ok := reorderKeyDelta(msg); ok {
+			m.reorderSelected(delta)
+			return m, nil
+		}
 		if m.mode == ModeConfirmKill {
 			if isKillConfirmYes(msg) {
 				m.confirmKill()
@@ -228,6 +233,28 @@ func (m *SidebarModel) reloadSessions() {
 	}
 }
 
+func (m *SidebarModel) reorderSelected(delta int) {
+	if m.mode != ModeBrowse && m.mode != ModeSearch {
+		return
+	}
+	item, ok := m.selectedSession()
+	if !ok || m.actions.ReorderSession == nil || !m.actions.ReorderSession(item.Name, delta) {
+		return
+	}
+	m.reloadSessions()
+	m.selectSession(item.Name)
+}
+
+func (m *SidebarModel) selectSession(name string) {
+	for i, item := range m.visibleItems() {
+		if item.Name == name {
+			m.cursor = i
+			return
+		}
+	}
+	m.cursor = 0
+}
+
 func (m *SidebarModel) confirmKill() {
 	name := m.pendingKill
 	m.clearKillConfirmation()
@@ -313,7 +340,8 @@ func (m SidebarModel) Render() string {
 		lines = append(lines,
 			styles.dim.Render("↵ choose  / filter  esc back  M-b toggle"),
 			styles.dim.Render("M-n project  M-a adhoc  M-h nums"),
-			styles.dim.Render("M-r rename   M-x kill  M-? hide"),
+			styles.dim.Render("M-J/K reorder  M-r rename"),
+			styles.dim.Render("M-x kill  M-? hide"),
 		)
 	} else {
 		lines = append(lines, styles.dim.Render("M-? keys"))
@@ -393,6 +421,31 @@ func (m SidebarModel) renderProjects(styles sidebarStyles) []string {
 		lines = append(lines, styles.dim.Render("no projects"))
 	}
 	return lines
+}
+
+func reorderKeyDelta(msg tea.KeyPressMsg) (int, bool) {
+	key := msg.Key()
+	if !key.Mod.Contains(tea.ModAlt) {
+		return 0, false
+	}
+	switch key.Code {
+	case tea.KeyDown:
+		return 1, true
+	case tea.KeyUp:
+		return -1, true
+	case 'j', 'J':
+		return 1, true
+	case 'k', 'K':
+		return -1, true
+	}
+	switch key.Text {
+	case "j", "J":
+		return 1, true
+	case "k", "K":
+		return -1, true
+	default:
+		return 0, false
+	}
 }
 
 func isKillConfirmYes(msg tea.KeyPressMsg) bool {

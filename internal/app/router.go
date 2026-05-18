@@ -160,6 +160,17 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer) error
 		KillSession: func(name string) bool {
 			return handleActionError(ctx, "kill session", killSession(ctx, map[string]string{"client": flags["client"], "session": name, "confirmed": "yes"}))
 		},
+		ReorderSession: func(name string, delta int) bool {
+			items, err := loadSessionItems(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for reorder", err)
+			}
+			names := make([]string, 0, len(items))
+			for _, item := range items {
+				names = append(names, item.Name)
+			}
+			return handleActionError(ctx, "reorder session", saveMovedSessionOrder(ctx, names, name, delta))
+		},
 		LoadProjects: func() []uity.ProjectItem { return loadProjectItems(ctx) },
 		ReloadSessions: func() []uity.SessionItem {
 			items, err := loadSessionItems(ctx)
@@ -192,7 +203,7 @@ func quickSwitch(ctx context.Context, flags map[string]string) error {
 	if err != nil {
 		return err
 	}
-	names := visibleSessionNames(out)
+	names := applySessionOrder(visibleSessionNames(out), loadSessionOrder(ctx))
 	if slot > len(names) {
 		return nil
 	}
