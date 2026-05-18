@@ -67,7 +67,15 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		key := msg.Keystroke()
-		if m.mode == ModeConfirmKill && !isKillConfirmationKey(key) {
+		if m.mode == ModeConfirmKill {
+			if isKillConfirmYes(msg) {
+				m.confirmKill()
+				return m, nil
+			}
+			if isKillConfirmCancel(msg) {
+				m.clearKillConfirmation()
+				return m, nil
+			}
 			return m, nil
 		}
 		switch key {
@@ -153,18 +161,8 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.message = "Kill " + item.Name + "? y/N"
 			}
 			return m, nil
-		case "y", "Y":
-			if m.mode == ModeConfirmKill {
-				m.confirmKill()
-				return m, nil
-			}
-			m.appendPrintable(msg.String())
-		case "n", "N":
-			if m.mode == ModeConfirmKill {
-				m.clearKillConfirmation()
-				return m, nil
-			}
-			m.appendPrintable(msg.String())
+		case "y", "n":
+			m.appendPrintable(msg)
 		case "f5":
 			m.reloadSessions()
 			return m, nil
@@ -183,7 +181,7 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		default:
-			m.appendPrintable(msg.String())
+			m.appendPrintable(msg)
 		}
 	}
 	return m, nil
@@ -252,8 +250,8 @@ func (m *SidebarModel) createSelectedProject() {
 	}
 }
 
-func (m *SidebarModel) appendPrintable(value string) {
-	if key, ok := printableKey(value); ok {
+func (m *SidebarModel) appendPrintable(msg tea.KeyPressMsg) {
+	if key, ok := printableKey(msg); ok {
 		if m.mode == ModeSearch {
 			m.filter += key
 		}
@@ -395,11 +393,17 @@ func (m SidebarModel) renderProjects(styles sidebarStyles) []string {
 	return lines
 }
 
-func isKillConfirmationKey(key string) bool {
-	return key == "y" || key == "Y" || key == "n" || key == "N"
+func isKillConfirmYes(msg tea.KeyPressMsg) bool {
+	return msg.Key().Text == "y" || msg.Key().Text == "Y"
 }
 
-func printableKey(value string) (string, bool) {
+func isKillConfirmCancel(msg tea.KeyPressMsg) bool {
+	key := msg.Keystroke()
+	return msg.Key().Text == "n" || msg.Key().Text == "N" || key == "enter" || key == "esc"
+}
+
+func printableKey(msg tea.KeyPressMsg) (string, bool) {
+	value := msg.Key().Text
 	runes := []rune(value)
 	if len(runes) != 1 || !unicode.IsPrint(runes[0]) {
 		return "", false

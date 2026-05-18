@@ -42,6 +42,37 @@ func TestSidebarModelKillRequiresInlineConfirmation(t *testing.T) {
 	}
 }
 
+func TestSidebarModelKillConfirmationAcceptsUppercaseAndCancelKeys(t *testing.T) {
+	tests := []struct {
+		name    string
+		key     tea.KeyPressMsg
+		wantHit bool
+	}{
+		{name: "uppercase yes", key: keyPress("Y", tea.ModShift), wantHit: true},
+		{name: "uppercase no", key: keyPress("N", tea.ModShift)},
+		{name: "enter cancels", key: tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})},
+		{name: "escape cancels", key: tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc})},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := 0
+			model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+				KillSession: func(string) bool { called++; return true },
+			})
+			updated, _ := model.Update(keyPress("x", tea.ModAlt))
+			model = requireSidebarModel(t, updated)
+			updated, _ = model.Update(tt.key)
+			model = requireSidebarModel(t, updated)
+			if (called == 1) != tt.wantHit {
+				t.Fatalf("KillSession called %d times, wantHit %v", called, tt.wantHit)
+			}
+			if model.mode != ModeBrowse || model.pendingKill != "" || model.message != "" {
+				t.Fatalf("confirmation did not clear: %#v", model)
+			}
+		})
+	}
+}
+
 func TestSidebarModelKillConfirmationCanBeCancelled(t *testing.T) {
 	called := 0
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
@@ -107,6 +138,19 @@ func TestSidebarModelRenderOmitsHeaderAndMovesFilterAboveHelp(t *testing.T) {
 	helpIndex := strings.Index(view, "M-? keys")
 	if filterIndex < 0 || helpIndex < 0 || filterIndex > helpIndex {
 		t.Fatalf("filter should appear between list and help, view=%q", view)
+	}
+}
+
+func TestSidebarModelFilterAcceptsSpace(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha beta"}}, Actions{})
+	updated, _ := model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+	for _, key := range []tea.KeyPressMsg{keyPress("a", 0), keyPress(" ", 0), keyPress("b", 0)} {
+		updated, _ = model.Update(key)
+		model = requireSidebarModel(t, updated)
+	}
+	if model.filter != "a b" {
+		t.Fatalf("filter = %q, want %q", model.filter, "a b")
 	}
 }
 
