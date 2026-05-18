@@ -20,37 +20,35 @@ set_default() {
 }
 
 binding_belongs_to_plugin() {
-  local key="$1" binding
+  local table="$1" key="$2" binding
   [ -z "$key" ] && return 1
-  binding="$("$TMUX_BIN" list-keys -T prefix "$key" 2>/dev/null || true)"
-  [ -n "$binding" ] && printf '%s\n' "$binding" | "$GREP_BIN" -Fq "$SCRIPTS_DIR/open-sidebar.sh"
+  binding="$("$TMUX_BIN" list-keys -T "$table" "$key" 2>/dev/null || true)"
+  [ -n "$binding" ] && printf '%s\n' "$binding" | "$GREP_BIN" -Fq "tmux-session-sidebar sidebar toggle"
 }
 
 unbind_plugin_binding() {
   local key="$1"
   [ -z "$key" ] && return 0
-  if binding_belongs_to_plugin "$key"; then
+  if binding_belongs_to_plugin root "$key"; then
+    "$TMUX_BIN" unbind-key -T root "$key" 2>/dev/null || true
+  fi
+  if binding_belongs_to_plugin prefix "$key"; then
     "$TMUX_BIN" unbind-key -T prefix "$key" 2>/dev/null || true
   fi
 }
 
-install_heat_hooks() {
-  local quoted_sync_script quoted_refresh_script
-  printf -v quoted_sync_script '%q' "$SCRIPTS_DIR/actions/sync-session-heat.sh"
-  printf -v quoted_refresh_script '%q' "$SCRIPTS_DIR/actions/refresh-sidebars.sh"
-
+install_runtime_hooks() {
+  local quoted_runtime="$1"
   "$TMUX_BIN" set-hook -g client-attached[9701] \
-    "run-shell \"$quoted_sync_script --session #{q:session_name}\""
+    "run-shell \"$quoted_runtime hook client-attached --client #{q:client_name}\""
   "$TMUX_BIN" set-hook -g client-detached[9702] \
-    "run-shell \"$quoted_sync_script --session #{q:session_name}\""
+    "run-shell \"$quoted_runtime hook client-detached --client #{q:client_name}\""
   "$TMUX_BIN" set-hook -g client-session-changed[9703] \
-    "run-shell \"$quoted_sync_script --session #{q:client_last_session} --session #{q:session_name}\""
-  "$TMUX_BIN" set-hook -g client-session-changed[9704] \
-    "run-shell \"$quoted_refresh_script\""
+    "run-shell \"$quoted_runtime hook client-session-changed --client #{q:client_name}\""
 }
 
 main() {
-  set_default @session-sidebar-key                  b
+  set_default @session-sidebar-key                  M-b
   set_default @session-sidebar-width                20
   set_default @session-sidebar-project-roots        "$HOME/projects"
   set_default @session-sidebar-use-fzf              on
@@ -60,30 +58,34 @@ main() {
   set_default @session-sidebar-heat-stale-hours     24
   set_default @session-sidebar-heat-refresh-seconds 300
 
-  local sidebar_key previous_key quoted_script quoted_quick_script quoted_sync_script slot
+  local sidebar_key previous_key quoted_runtime quoted_ensure runtime_bin slot
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"
   previous_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-bound-key 2>/dev/null || true)"
-  printf -v quoted_script '%q' "$SCRIPTS_DIR/open-sidebar.sh"
-  printf -v quoted_quick_script '%q' "$SCRIPTS_DIR/actions/quick-switch-session.sh"
+  if [ "$sidebar_key" = b ] && { [ -z "$previous_key" ] || [ "$previous_key" = b ]; }; then
+    sidebar_key=M-b
+    "$TMUX_BIN" set-option -gq @session-sidebar-key "$sidebar_key"
+  fi
+  printf -v quoted_ensure '%q' "$SCRIPTS_DIR/ensure-runtime.sh"
+  runtime_bin="$("$SCRIPTS_DIR/ensure-runtime.sh")"
+  printf -v quoted_runtime '%q' "$runtime_bin"
 
   if [ -n "$previous_key" ] && [ "$previous_key" != "$sidebar_key" ]; then
     unbind_plugin_binding "$previous_key"
   fi
 
-  "$TMUX_BIN" bind-key -T prefix "$sidebar_key" \
-    run-shell "$quoted_script #{q:client_name} #{q:window_id} #{q:pane_id} #{q:pane_current_path}"
+  "$TMUX_BIN" run-shell -b "$quoted_ensure >/dev/null"
+  "$TMUX_BIN" bind-key -n "$sidebar_key" \
+    run-shell "$quoted_runtime sidebar toggle --client #{q:client_name}"
   "$TMUX_BIN" set-option -gq @session-sidebar-bound-key "$sidebar_key"
 
   for slot in 1 2 3 4 5 6 7 8 9; do
     "$TMUX_BIN" bind-key -n "C-$slot" \
-      run-shell "$quoted_quick_script --client #{q:client_name} --index $slot"
+      run-shell "$quoted_runtime action quick-switch --client #{q:client_name} --slot $slot"
   done
   "$TMUX_BIN" bind-key -n C-0 \
-    run-shell "$quoted_quick_script --client #{q:client_name} --index 10"
+    run-shell "$quoted_runtime action quick-switch --client #{q:client_name} --slot 10"
 
-  install_heat_hooks
-  printf -v quoted_sync_script '%q' "$SCRIPTS_DIR/actions/sync-session-heat.sh"
-  "$TMUX_BIN" run-shell -b "$quoted_sync_script --all"
+  install_runtime_hooks "$quoted_runtime"
 }
 
 main "$@"
