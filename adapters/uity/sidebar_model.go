@@ -76,7 +76,9 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.clearKillConfirmation()
 				return m, nil
 			}
-			return m, nil
+			if key != "ctrl+c" {
+				return m, nil
+			}
 		}
 		switch key {
 		case "ctrl+c":

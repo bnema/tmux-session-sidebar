@@ -93,6 +93,18 @@ func TestSidebarModelKillConfirmationCanBeCancelled(t *testing.T) {
 	}
 }
 
+func TestSidebarModelKillConfirmationAllowsCtrlC(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+		KillSession: func(string) bool { return true },
+	})
+	updated, _ := model.Update(keyPress("x", tea.ModAlt))
+	model = requireSidebarModel(t, updated)
+	_, cmd := model.Update(keyPress("c", tea.ModCtrl))
+	if cmd == nil {
+		t.Fatal("expected ctrl+c to return quit command during kill confirmation")
+	}
+}
+
 func TestSidebarModelKillConfirmationIgnoresUnrelatedKeys(t *testing.T) {
 	reloaded := 0
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
