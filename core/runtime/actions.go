@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	coreerrors "github.com/bnema/tmux-session-sidebar/core/errors"
@@ -12,6 +13,9 @@ import (
 )
 
 func (s *Service) SwitchSession(ctx context.Context, clientID string, sessionName string) error {
+	if s.tmuxCtl == nil {
+		return ErrMissingTmuxControl
+	}
 	if err := sessions.ValidateName(sessionName); err != nil {
 		return err
 	}
@@ -34,6 +38,9 @@ func (s *Service) SessionViews(ctx context.Context) ([]sessions.View, error) {
 }
 
 func (s *Service) CreateProjectSession(ctx context.Context, clientID string, existing []sessions.View, candidate projects.Candidate) error {
+	if s.tmuxCtl == nil {
+		return ErrMissingTmuxControl
+	}
 	plan := ProjectSessionDecision(existing, candidate)
 	if plan.Create {
 		if err := ValidateCreateSession(existing, plan.SessionName); err != nil {
@@ -53,8 +60,11 @@ func (s *Service) CreateProjectSession(ctx context.Context, clientID string, exi
 }
 
 func (s *Service) CreateAdhocSession(ctx context.Context, clientID string, existing []sessions.View, name string, path string) error {
+	if s.tmuxCtl == nil {
+		return ErrMissingTmuxControl
+	}
 	if err := ValidateCreateSession(existing, name); err != nil {
-		if err == coreerrors.ErrDuplicateSession {
+		if errors.Is(err, coreerrors.ErrDuplicateSession) {
 			return s.tmuxCtl.SwitchClientSession(ctx, clientID, name)
 		}
 		return err
@@ -71,6 +81,9 @@ func (s *Service) CreateAdhocSession(ctx context.Context, clientID string, exist
 }
 
 func (s *Service) RenameSession(ctx context.Context, existing []sessions.View, oldName string, newName string) error {
+	if s.tmuxCtl == nil {
+		return ErrMissingTmuxControl
+	}
 	if err := ValidateRenameSession(existing, oldName, newName); err != nil {
 		return err
 	}
@@ -78,6 +91,9 @@ func (s *Service) RenameSession(ctx context.Context, existing []sessions.View, o
 }
 
 func (s *Service) KillSession(ctx context.Context, existing []sessions.View, target string) error {
+	if s.tmuxCtl == nil {
+		return ErrMissingTmuxControl
+	}
 	if err := ValidateKillSession(existing, target); err != nil {
 		return err
 	}

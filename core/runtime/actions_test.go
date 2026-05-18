@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -48,6 +49,31 @@ func TestKillSessionValidation(t *testing.T) {
 			err := ValidateKillSession(tt.existing, tt.target)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestServiceActionsRequireTmuxControl(t *testing.T) {
+	ctx := context.Background()
+	existing := []sessions.View{{Name: "alpha"}, {Name: "beta"}}
+	tests := []struct {
+		name string
+		act  func(*Service) error
+	}{
+		{name: "switch", act: func(s *Service) error { return s.SwitchSession(ctx, "%1", "alpha") }},
+		{name: "create project", act: func(s *Service) error {
+			return s.CreateProjectSession(ctx, "%1", existing, projects.Candidate{Path: "/tmp/gamma", SessionName: "gamma"})
+		}},
+		{name: "create adhoc", act: func(s *Service) error { return s.CreateAdhocSession(ctx, "%1", existing, "gamma", "/tmp") }},
+		{name: "rename", act: func(s *Service) error { return s.RenameSession(ctx, existing, "alpha", "gamma") }},
+		{name: "kill", act: func(s *Service) error { return s.KillSession(ctx, existing, "alpha") }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.act(&Service{}); !errors.Is(err, ErrMissingTmuxControl) {
+				t.Fatalf("action error = %v, want %v", err, ErrMissingTmuxControl)
 			}
 		})
 	}
