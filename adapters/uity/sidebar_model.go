@@ -145,11 +145,13 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmKill()
 				return m, nil
 			}
+			m.appendPrintable(msg.String())
 		case "n", "N":
 			if m.mode == ModeConfirmKill {
 				m.clearKillConfirmation()
 				return m, nil
 			}
+			m.appendPrintable(msg.String())
 		case "f5":
 			m.reloadSessions()
 			return m, nil
@@ -165,14 +167,7 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		default:
-			if key, ok := printableKey(msg.String()); ok {
-				if m.mode == ModeSearch {
-					m.filter += key
-				}
-				if m.mode == ModeProject {
-					m.projectFilter += key
-				}
-			}
+			m.appendPrintable(msg.String())
 		}
 	}
 	return m, nil
@@ -204,7 +199,7 @@ func (m SidebarModel) selectedSession() (SessionItem, bool) {
 	return visible[m.cursor], true
 }
 
-func (m SidebarModel) switchSelected() {
+func (m *SidebarModel) switchSelected() {
 	item, ok := m.selectedSession()
 	if ok && m.actions.SwitchSession != nil && m.actions.SwitchSession(item.Name) {
 		m.reloadSessions()
@@ -231,13 +226,24 @@ func (m *SidebarModel) clearKillConfirmation() {
 	m.message = ""
 }
 
-func (m SidebarModel) createSelectedProject() {
+func (m *SidebarModel) createSelectedProject() {
 	visible := m.visibleProjects()
 	if len(visible) == 0 || m.projectCursor >= len(visible) {
 		return
 	}
 	if m.actions.CreateProject != nil && m.actions.CreateProject(visible[m.projectCursor]) {
 		m.reloadSessions()
+	}
+}
+
+func (m *SidebarModel) appendPrintable(value string) {
+	if key, ok := printableKey(value); ok {
+		if m.mode == ModeSearch {
+			m.filter += key
+		}
+		if m.mode == ModeProject {
+			m.projectFilter += key
+		}
 	}
 }
 

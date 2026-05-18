@@ -20,7 +20,7 @@ func TestSidebarModelKillRequiresInlineConfirmation(t *testing.T) {
 	})
 
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}, Alt: true})
-	model = updated.(SidebarModel)
+	model = requireSidebarModel(t, updated)
 	if called != 0 {
 		t.Fatalf("KillSession called before confirmation")
 	}
@@ -29,7 +29,7 @@ func TestSidebarModelKillRequiresInlineConfirmation(t *testing.T) {
 	}
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
-	model = updated.(SidebarModel)
+	model = requireSidebarModel(t, updated)
 	if called != 1 {
 		t.Fatalf("KillSession call count = %d, want 1", called)
 	}
@@ -50,13 +50,22 @@ func TestSidebarModelKillConfirmationCanBeCancelled(t *testing.T) {
 		},
 	})
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}, Alt: true})
-	model = updated.(SidebarModel)
+	model = requireSidebarModel(t, updated)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
-	model = updated.(SidebarModel)
+	model = requireSidebarModel(t, updated)
 	if called != 0 {
 		t.Fatalf("KillSession called after cancellation")
 	}
 	if model.mode != ModeBrowse || model.pendingKill != "" || model.message != "" {
 		t.Fatalf("model did not clear cancellation: %#v", model)
 	}
+}
+
+func requireSidebarModel(t *testing.T, model tea.Model) SidebarModel {
+	t.Helper()
+	m, ok := model.(SidebarModel)
+	if !ok {
+		t.Fatalf("Update returned %T, want SidebarModel", model)
+	}
+	return m
 }

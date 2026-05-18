@@ -22,11 +22,11 @@ func (s Server) Serve(ctx context.Context, handler ports.IPCHandler) error {
 	if err := removeStaleSocket(s.SocketPath); err != nil {
 		return err
 	}
-	listener, err := net.Listen("unix", s.SocketPath)
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "unix", s.SocketPath)
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	go func() {
 		<-ctx.Done()
 		_ = listener.Close()
@@ -58,7 +58,7 @@ func removeStaleSocket(path string) error {
 }
 
 func handleConn(ctx context.Context, conn net.Conn, handler ports.IPCHandler) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		deadline = time.Now().Add(5 * time.Second)
