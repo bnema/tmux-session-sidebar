@@ -121,7 +121,7 @@ The footer is compact by default. Press `M-?` inside the sidebar to show or hide
 | `Esc` | Leave filter/project/confirmation mode, or close the sidebar |
 | `M-n` | Open the inline project picker |
 | `M-g` | Create or switch to a session for the current git repo |
-| `M-a` | Prompt for an ad-hoc session |
+| `M-a` | Create or switch to an ad-hoc session for the current directory |
 | `M-r` | Rename the selected session |
 | `M-x` | Kill the selected session after inline confirmation |
 | `M-h` | Show or hide numeric session names |
@@ -148,7 +148,7 @@ Project session names are derived from directory basenames and normalized for tm
 
 ## Ad-hoc sessions
 
-`M-a` prompts for a session name and starts the session in the current pane path. If the session already exists, the plugin switches to it.
+`M-a` starts a session in the current pane path, named after that path's normalized directory basename. If the session already exists, the plugin switches to it.
 
 ## Rename and kill
 

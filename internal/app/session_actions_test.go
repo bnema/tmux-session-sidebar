@@ -55,7 +55,6 @@ func TestCommandPromptsUseQuotedTmuxInputPlaceholder(t *testing.T) {
 		name string
 		act  func(context.Context) error
 	}{
-		{name: "ad-hoc prompt", act: func(ctx context.Context) error { return createAdhoc(ctx, map[string]string{"client": "/dev/pts/99"}) }},
 		{name: "rename prompt", act: func(ctx context.Context) error {
 			return renameSession(ctx, map[string]string{"client": "/dev/pts/99", "session": "alpha"})
 		}},
@@ -78,6 +77,32 @@ printf '%s\n' "$*" >> "$TMUX_LOG"
 				t.Fatalf("unexpected escaped placeholder, log=%q", log)
 			}
 		})
+	}
+}
+
+func TestCreateAdhocUsesCurrentDirectoryNameWithoutPrompt(t *testing.T) {
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  display-message)
+    printf '/tmp/worktree/scratch\n'
+    ;;
+  list-sessions)
+    ;;
+esac
+`)
+
+	if err := createAdhoc(context.Background(), map[string]string{}); err != nil {
+		t.Fatalf("createAdhoc returned error: %v", err)
+	}
+	log := readLog(t, logPath)
+	if strings.Contains(log, "command-prompt") {
+		t.Fatalf("expected no ad-hoc prompt, log=%q", log)
+	}
+	for _, want := range []string{"display-message -p #{pane_current_path}", "new-session -d -s scratch -c /tmp/worktree/scratch", "switch-client -t scratch"} {
+		if !strings.Contains(log, want) {
+			t.Fatalf("expected log to contain %q, log=%q", want, log)
+		}
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/core/projects"
@@ -32,10 +33,6 @@ func createCurrentGitProject(ctx context.Context, flags map[string]string) error
 }
 
 func createAdhoc(ctx context.Context, flags map[string]string) error {
-	name := strings.TrimSpace(flags["name"])
-	if name == "" {
-		return commandPrompt(ctx, flags["client"], "Ad-hoc session name", "action create-adhoc --client "+shellQuote(flags["client"])+" --name '%%'")
-	}
 	path := flags["source-path"]
 	if path == "" {
 		out, err := tmux(ctx, "display-message", "-p", "#{pane_current_path}")
@@ -43,6 +40,10 @@ func createAdhoc(ctx context.Context, flags map[string]string) error {
 			return fmt.Errorf("get current pane path: %w", err)
 		}
 		path = strings.TrimSpace(out)
+	}
+	name := strings.TrimSpace(flags["name"])
+	if name == "" {
+		name = projects.NormalizeSessionName(filepath.Base(filepath.Clean(path)))
 	}
 	existing, err := loadSessionViews(ctx)
 	if err != nil {
