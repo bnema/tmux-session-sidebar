@@ -3,9 +3,10 @@ package ports
 import "context"
 
 type PersistedState struct {
-	Sessions map[string]SessionMetadata
-	Clients  map[string][]byte
-	Heat     map[string][]byte
+	Sessions     map[string]SessionMetadata
+	SessionOrder []string
+	Clients      map[string][]byte
+	Heat         map[string][]byte
 }
 
 type StateStorePort interface {

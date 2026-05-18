@@ -134,6 +134,75 @@ func TestSidebarModelKillConfirmationIgnoresUnrelatedKeys(t *testing.T) {
 	}
 }
 
+func TestSidebarModelAltJReordersSelectedSessionDownAndKeepsSelection(t *testing.T) {
+	var calls []struct {
+		name  string
+		delta int
+	}
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}, Actions{
+		ReorderSession: func(name string, delta int) bool {
+			calls = append(calls, struct {
+				name  string
+				delta int
+			}{name: name, delta: delta})
+			return true
+		},
+		ReloadSessions: func() []SessionItem {
+			return []SessionItem{{Name: "beta"}, {Name: "alpha"}, {Name: "gamma"}}
+		},
+	})
+
+	updated, _ := model.Update(keyPress("j", tea.ModAlt))
+	model = requireSidebarModel(t, updated)
+
+	if len(calls) != 1 || calls[0].name != "alpha" || calls[0].delta != 1 {
+		t.Fatalf("ReorderSession calls = %#v, want alpha/+1", calls)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+		t.Fatalf("selected after reorder = %#v ok=%v, want alpha", item, ok)
+	}
+}
+
+func TestSidebarModelAltKAndAltArrowsReorderSelectedSession(t *testing.T) {
+	tests := []struct {
+		name      string
+		key       tea.KeyPressMsg
+		wantDelta int
+	}{
+		{name: "alt k", key: keyPress("k", tea.ModAlt), wantDelta: -1},
+		{name: "alt down", key: tea.KeyPressMsg(tea.Key{Code: tea.KeyDown, Mod: tea.ModAlt}), wantDelta: 1},
+		{name: "alt up", key: tea.KeyPressMsg(tea.Key{Code: tea.KeyUp, Mod: tea.ModAlt}), wantDelta: -1},
+		{name: "alt shift j", key: tea.KeyPressMsg(tea.Key{Text: "J", Code: 'J', Mod: tea.ModAlt | tea.ModShift}), wantDelta: 1},
+		{name: "alt shift k", key: tea.KeyPressMsg(tea.Key{Text: "K", Code: 'K', Mod: tea.ModAlt | tea.ModShift}), wantDelta: -1},
+		{name: "alt shift up", key: tea.KeyPressMsg(tea.Key{Code: tea.KeyUp, Mod: tea.ModAlt | tea.ModShift}), wantDelta: -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotName string
+			var gotDelta int
+			model := NewSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{
+				ReorderSession: func(name string, delta int) bool {
+					gotName = name
+					gotDelta = delta
+					return true
+				},
+				ReloadSessions: func() []SessionItem { return []SessionItem{{Name: "alpha"}, {Name: "beta"}} },
+			})
+			model.cursor = 1
+
+			updated, _ := model.Update(tt.key)
+			model = requireSidebarModel(t, updated)
+
+			if gotName != "beta" || gotDelta != tt.wantDelta {
+				t.Fatalf("ReorderSession = %q/%d, want beta/%d", gotName, gotDelta, tt.wantDelta)
+			}
+			if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
+				t.Fatalf("selected after reorder = %#v ok=%v, want beta", item, ok)
+			}
+		})
+	}
+}
+
 func TestSidebarModelRenderOmitsHeaderAndMovesFilterAboveHelp(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
 	view := model.Render()
@@ -179,7 +248,7 @@ func TestSidebarModelHelpToggleHidesExpandedFooterByDefault(t *testing.T) {
 	updated, _ := model.Update(keyPress("?", tea.ModAlt))
 	model = requireSidebarModel(t, updated)
 	view = model.Render()
-	for _, want := range []string{"↵ choose", "M-n project", "M-a adhoc", "M-h nums", "M-r rename", "M-x kill", "M-? hide"} {
+	for _, want := range []string{"↵ choose", "M-n project", "M-a adhoc", "M-h nums", "M-J/K reorder", "M-r rename", "M-x kill", "M-? hide"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expanded footer missing %q in %q", want, view)
 		}
