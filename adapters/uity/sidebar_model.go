@@ -40,6 +40,7 @@ type SidebarModel struct {
 	mode          Mode
 	filter        string
 	showNumeric   bool
+	showHelp      bool
 	message       string
 	projects      []ProjectItem
 	projectCursor int
@@ -57,7 +58,11 @@ func (m SidebarModel) Init() tea.Cmd { return nil }
 func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		key := msg.String()
+		if m.mode == ModeConfirmKill && !isKillConfirmationKey(key) {
+			return m, nil
+		}
+		switch key {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "esc":
@@ -157,6 +162,9 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "alt+h":
 			m.showNumeric = !m.showNumeric
+			return m, nil
+		case "alt+?":
+			m.showHelp = !m.showHelp
 			return m, nil
 		case "backspace":
 			if m.mode == ModeSearch && m.filter != "" {
@@ -304,7 +312,16 @@ func (m SidebarModel) View() string {
 	} else {
 		lines = append(lines, m.renderSessions(selected, currentStyle, warmStyle, dimStyle)...)
 	}
-	lines = append(lines, "", lipgloss.NewStyle().Foreground(dim).Render("↵ choose  / filter  esc back"), lipgloss.NewStyle().Foreground(dim).Render("M-n project  M-a adhoc  M-h nums"), lipgloss.NewStyle().Foreground(dim).Render("M-r rename   M-x kill"))
+	lines = append(lines, "")
+	if m.showHelp {
+		lines = append(lines,
+			lipgloss.NewStyle().Foreground(dim).Render("↵ choose  / filter  esc back  M-b toggle"),
+			lipgloss.NewStyle().Foreground(dim).Render("M-n project  M-a adhoc  M-h nums"),
+			lipgloss.NewStyle().Foreground(dim).Render("M-r rename   M-x kill  M-? hide"),
+		)
+	} else {
+		lines = append(lines, lipgloss.NewStyle().Foreground(dim).Render("M-? keys"))
+	}
 	if m.message != "" {
 		lines = append(lines, lipgloss.NewStyle().Foreground(accent).Render(m.message))
 	}
@@ -355,6 +372,10 @@ func (m SidebarModel) renderProjects(selected lipgloss.Style, dimStyle lipgloss.
 		lines = append(lines, dimStyle.Render("no projects"))
 	}
 	return lines
+}
+
+func isKillConfirmationKey(key string) bool {
+	return key == "y" || key == "Y" || key == "n" || key == "N"
 }
 
 func printableKey(value string) (string, bool) {

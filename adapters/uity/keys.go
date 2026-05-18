@@ -17,6 +17,7 @@ const (
 	IntentRename           Intent = "rename"
 	IntentKill             Intent = "kill"
 	IntentToggleNumeric    Intent = "toggle-numeric"
+	IntentToggleHelp       Intent = "toggle-help"
 )
 
 type Mode string
@@ -52,6 +53,8 @@ func InterpretKey(mode Mode, seq []byte) Intent {
 			return IntentKill
 		case 'h':
 			return IntentToggleNumeric
+		case '?':
+			return IntentToggleHelp
 		}
 		if mode == ModeSearch {
 			return IntentCancelSearch

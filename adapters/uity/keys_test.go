@@ -20,6 +20,7 @@ func TestInterpretKey(t *testing.T) {
 		{name: "alt r rename", mode: ModeBrowse, seq: []byte{0x1b, 'r'}, want: IntentRename},
 		{name: "alt x kill", mode: ModeBrowse, seq: []byte{0x1b, 'x'}, want: IntentKill},
 		{name: "alt h numbers", mode: ModeBrowse, seq: []byte{0x1b, 'h'}, want: IntentToggleNumeric},
+		{name: "alt question mark help", mode: ModeBrowse, seq: []byte{0x1b, '?'}, want: IntentToggleHelp},
 		{name: "j moves down", mode: ModeBrowse, seq: []byte("j"), want: IntentMoveDown},
 		{name: "k moves up", mode: ModeBrowse, seq: []byte("k"), want: IntentMoveUp},
 	}

@@ -20,16 +20,19 @@ set_default() {
 }
 
 binding_belongs_to_plugin() {
-  local key="$1" binding
+  local table="$1" key="$2" binding
   [ -z "$key" ] && return 1
-  binding="$("$TMUX_BIN" list-keys -T prefix "$key" 2>/dev/null || true)"
+  binding="$("$TMUX_BIN" list-keys -T "$table" "$key" 2>/dev/null || true)"
   [ -n "$binding" ] && printf '%s\n' "$binding" | "$GREP_BIN" -Fq "tmux-session-sidebar sidebar toggle"
 }
 
 unbind_plugin_binding() {
   local key="$1"
   [ -z "$key" ] && return 0
-  if binding_belongs_to_plugin "$key"; then
+  if binding_belongs_to_plugin root "$key"; then
+    "$TMUX_BIN" unbind-key -T root "$key" 2>/dev/null || true
+  fi
+  if binding_belongs_to_plugin prefix "$key"; then
     "$TMUX_BIN" unbind-key -T prefix "$key" 2>/dev/null || true
   fi
 }
@@ -45,7 +48,7 @@ install_runtime_hooks() {
 }
 
 main() {
-  set_default @session-sidebar-key                  b
+  set_default @session-sidebar-key                  M-b
   set_default @session-sidebar-width                20
   set_default @session-sidebar-project-roots        "$HOME/projects"
   set_default @session-sidebar-use-fzf              on
@@ -58,6 +61,10 @@ main() {
   local sidebar_key previous_key quoted_runtime quoted_ensure runtime_bin slot
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"
   previous_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-bound-key 2>/dev/null || true)"
+  if [ "$sidebar_key" = b ] && { [ -z "$previous_key" ] || [ "$previous_key" = b ]; }; then
+    sidebar_key=M-b
+    "$TMUX_BIN" set-option -gq @session-sidebar-key "$sidebar_key"
+  fi
   printf -v quoted_ensure '%q' "$SCRIPTS_DIR/ensure-runtime.sh"
   runtime_bin="$("$SCRIPTS_DIR/ensure-runtime.sh")"
   printf -v quoted_runtime '%q' "$runtime_bin"
@@ -67,7 +74,7 @@ main() {
   fi
 
   "$TMUX_BIN" run-shell -b "$quoted_ensure >/dev/null"
-  "$TMUX_BIN" bind-key -T prefix "$sidebar_key" \
+  "$TMUX_BIN" bind-key -n "$sidebar_key" \
     run-shell "$quoted_runtime sidebar toggle --client #{q:client_name}"
   "$TMUX_BIN" set-option -gq @session-sidebar-bound-key "$sidebar_key"
 

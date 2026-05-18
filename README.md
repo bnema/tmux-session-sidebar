@@ -79,7 +79,7 @@ Configure the plugin with tmux user options in `~/.tmux.conf`.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `@session-sidebar-key` | `b` | Key used after the tmux prefix to toggle the sidebar |
+| `@session-sidebar-key` | `M-b` | Global tmux key used to toggle the sidebar |
 | `@session-sidebar-width` | `20` | Width passed to the left split; defaults to a fixed column count |
 | `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated roots searched for project sessions |
 | `@session-sidebar-use-fzf` | `on` | Compatibility option only; the Go UI ignores it |
@@ -92,7 +92,7 @@ Configure the plugin with tmux user options in `~/.tmux.conf`.
 Example:
 
 ```tmux
-set -g @session-sidebar-key 'b'
+set -g @session-sidebar-key 'M-b'
 set -g @session-sidebar-width '20'
 set -g @session-sidebar-project-roots "$HOME/projects:$HOME/dev/projects"
 set -g @session-sidebar-use-fzf 'on'
@@ -108,7 +108,7 @@ set -g @session-sidebar-heat-refresh-seconds '300'
 
 ### Open the sidebar
 
-- `prefix + b` opens or closes the left sidebar in the current window.
+- `Alt+b` opens or closes the left sidebar in the current window.
 
 The sidebar is a real tmux pane backed by a Go runtime. If the current window already has pane splits, the sidebar still opens as a full-height left pane for the whole window. By default it remains logically open after a switch and follows the client into the new current window/session. If you set `@session-sidebar-close-after-switch` to `on`, the pane closes after a successful switch.
 
@@ -152,6 +152,7 @@ The Go UI starts in browse mode, so search is inactive until you press `/`.
 | `x` | Kill the selected session |
 | `h` | Show or hide purely numeric session names |
 | `Esc` | Clear search and return to browse mode, or close the sidebar from browse mode |
+| `M-?` | Show or hide key help |
 
 After you press `Enter` in search mode, the current filter stays applied and the sidebar returns to browse mode.
 
