@@ -8,6 +8,8 @@ import (
 	coreerrors "github.com/bnema/tmux-session-sidebar/core/errors"
 	"github.com/bnema/tmux-session-sidebar/core/projects"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
+	"github.com/bnema/tmux-session-sidebar/ports/mocks"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestRenameSessionValidation(t *testing.T) {
@@ -76,6 +78,58 @@ func TestServiceActionsRequireTmuxControl(t *testing.T) {
 				t.Fatalf("action error = %v, want %v", err, ErrMissingTmuxControl)
 			}
 		})
+	}
+}
+
+func TestCreateSessionRollsBackWhenMetadataSaveFails(t *testing.T) {
+	ctx := context.Background()
+	saveErr := errors.New("save metadata")
+	tests := []struct {
+		name string
+		act  func(*Service) error
+	}{
+		{
+			name: "project",
+			act: func(s *Service) error {
+				return s.CreateProjectSession(ctx, "%1", []sessions.View{{Name: "alpha"}}, projects.Candidate{Path: "/tmp/project", SessionName: "project"})
+			},
+		},
+		{
+			name: "adhoc",
+			act: func(s *Service) error {
+				return s.CreateAdhocSession(ctx, "%1", []sessions.View{{Name: "alpha"}}, "adhoc", "/tmp")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			control := mocks.NewMockTmuxControlPort(t)
+			meta := mocks.NewMockTmuxMetadataPort(t)
+			name := tt.name
+			path := "/tmp"
+			if tt.name == "project" {
+				path = "/tmp/project"
+			}
+			control.EXPECT().CreateSession(ctx, name, path).Return(nil)
+			meta.EXPECT().SaveSessionMetadata(ctx, name, mock.Anything).Return(saveErr)
+			control.EXPECT().KillSession(ctx, name).Return(nil)
+
+			err := tt.act(NewService(nil, nil, control, nil).WithMetadata(meta))
+			if !errors.Is(err, saveErr) {
+				t.Fatalf("error = %v, want wrapped save error", err)
+			}
+		})
+	}
+}
+
+func TestRenameSessionRequiresExistingOldName(t *testing.T) {
+	ctx := context.Background()
+	control := mocks.NewMockTmuxControlPort(t)
+	service := NewService(nil, nil, control, nil)
+	err := service.RenameSession(ctx, []sessions.View{{Name: "alpha"}, {Name: "beta"}}, "missing", "gamma")
+	if !errors.Is(err, coreerrors.ErrMissingSession) {
+		t.Fatalf("RenameSession() error = %v, want %v", err, coreerrors.ErrMissingSession)
 	}
 }
 

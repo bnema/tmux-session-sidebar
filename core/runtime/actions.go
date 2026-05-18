@@ -52,7 +52,7 @@ func (s *Service) CreateProjectSession(ctx context.Context, clientID string, exi
 		if s.tmuxMeta != nil {
 			metadata := ports.SessionMetadata{Kind: "project", ProjectPath: plan.ProjectPath}
 			if err := s.tmuxMeta.SaveSessionMetadata(ctx, plan.SessionName, metadata); err != nil {
-				return fmt.Errorf("save project metadata for %s: %w", plan.SessionName, err)
+				return s.rollbackCreatedSession(ctx, plan.SessionName, fmt.Errorf("save project metadata for %s: %w", plan.SessionName, err))
 			}
 		}
 	}
@@ -74,7 +74,7 @@ func (s *Service) CreateAdhocSession(ctx context.Context, clientID string, exist
 	}
 	if s.tmuxMeta != nil {
 		if err := s.tmuxMeta.SaveSessionMetadata(ctx, name, ports.SessionMetadata{Kind: "adhoc"}); err != nil {
-			return fmt.Errorf("save adhoc metadata for %s: %w", name, err)
+			return s.rollbackCreatedSession(ctx, name, fmt.Errorf("save adhoc metadata for %s: %w", name, err))
 		}
 	}
 	return s.tmuxCtl.SwitchClientSession(ctx, clientID, name)
@@ -87,7 +87,26 @@ func (s *Service) RenameSession(ctx context.Context, existing []sessions.View, o
 	if err := ValidateRenameSession(existing, oldName, newName); err != nil {
 		return err
 	}
+	if !sessionNameExists(existing, oldName) {
+		return fmt.Errorf("%w: %s", coreerrors.ErrMissingSession, oldName)
+	}
 	return s.tmuxCtl.RenameSession(ctx, oldName, newName)
+}
+
+func (s *Service) rollbackCreatedSession(ctx context.Context, sessionName string, original error) error {
+	if err := s.tmuxCtl.KillSession(ctx, sessionName); err != nil {
+		return fmt.Errorf("%w (rollback failed for %s: %v)", original, sessionName, err)
+	}
+	return original
+}
+
+func sessionNameExists(existing []sessions.View, name string) bool {
+	for _, session := range existing {
+		if session.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) KillSession(ctx context.Context, existing []sessions.View, target string) error {
