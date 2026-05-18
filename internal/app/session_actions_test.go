@@ -22,56 +22,79 @@ func installFakeTmux(t *testing.T, script string) string {
 }
 
 func TestKillSessionConfirmationTargetsClient(t *testing.T) {
-	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+	tests := []struct {
+		name         string
+		client       string
+		wantContains []string
+	}{
+		{name: "targets client and carries client to confirmed command", client: "/dev/pts/99", wantContains: []string{"confirm-before -t /dev/pts/99 -p Kill session alpha?", "--client", "/dev/pts/99"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logPath := installFakeTmux(t, `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
 `)
 
-	err := killSession(context.Background(), map[string]string{"client": "/dev/pts/99", "session": "alpha"})
-	if err != nil {
-		t.Fatalf("killSession returned error: %v", err)
-	}
-
-	logBytes, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatalf("read fake tmux log: %v", err)
-	}
-	log := string(logBytes)
-	if !strings.Contains(log, "confirm-before -t /dev/pts/99 -p Kill session alpha?") {
-		t.Fatalf("expected confirm-before to target the sidebar client, log=%q", log)
-	}
-	if !strings.Contains(log, "--client") || !strings.Contains(log, "/dev/pts/99") {
-		t.Fatalf("expected confirmed kill command to carry client for refresh, log=%q", log)
+			err := killSession(context.Background(), map[string]string{"client": tt.client, "session": "alpha"})
+			if err != nil {
+				t.Fatalf("killSession returned error: %v", err)
+			}
+			log := readLog(t, logPath)
+			for _, want := range tt.wantContains {
+				if !strings.Contains(log, want) {
+					t.Fatalf("expected log to contain %q, log=%q", want, log)
+				}
+			}
+		})
 	}
 }
 
 func TestCommandPromptsUseQuotedTmuxInputPlaceholder(t *testing.T) {
-	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+	tests := []struct {
+		name string
+		act  func(context.Context) error
+	}{
+		{name: "ad-hoc prompt", act: func(ctx context.Context) error { return createAdhoc(ctx, map[string]string{"client": "/dev/pts/99"}) }},
+		{name: "rename prompt", act: func(ctx context.Context) error {
+			return renameSession(ctx, map[string]string{"client": "/dev/pts/99", "session": "alpha"})
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logPath := installFakeTmux(t, `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
 `)
 
-	if err := createAdhoc(context.Background(), map[string]string{"client": "/dev/pts/99"}); err != nil {
-		t.Fatalf("createAdhoc prompt error: %v", err)
-	}
-	if err := renameSession(context.Background(), map[string]string{"client": "/dev/pts/99", "session": "alpha"}); err != nil {
-		t.Fatalf("renameSession prompt error: %v", err)
-	}
-	logBytes, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatalf("read fake tmux log: %v", err)
-	}
-	log := string(logBytes)
-	if !strings.Contains(log, "--name") || !strings.Contains(log, "%%") {
-		t.Fatalf("expected quoted tmux input placeholder, log=%q", log)
-	}
-	if strings.Contains(log, "%%%") {
-		t.Fatalf("unexpected escaped placeholder, log=%q", log)
+			if err := tt.act(context.Background()); err != nil {
+				t.Fatalf("prompt action error: %v", err)
+			}
+			log := readLog(t, logPath)
+			if !strings.Contains(log, "--name") || !strings.Contains(log, "%%") {
+				t.Fatalf("expected quoted tmux input placeholder, log=%q", log)
+			}
+			if strings.Contains(log, "%%%'") || strings.Contains(log, "%%\\%") {
+				t.Fatalf("unexpected escaped placeholder, log=%q", log)
+			}
+		})
 	}
 }
 
-func TestConfirmedKillRefreshesSidebarPane(t *testing.T) {
-	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+func TestConfirmedKill(t *testing.T) {
+	tests := []struct {
+		name         string
+		script       string
+		wantContains []string
+	}{
+		{
+			name: "refreshes sidebar pane",
+			script: `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
 case "$1" in
+  list-sessions)
+    printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n'
+    ;;
   display-message)
     printf '%%1\n'
     ;;
@@ -79,30 +102,17 @@ case "$1" in
     printf '%%2\t1\n'
     ;;
 esac
-`)
-
-	err := killSession(context.Background(), map[string]string{"client": "/dev/pts/99", "session": "alpha", "confirmed": "yes"})
-	if err != nil {
-		t.Fatalf("killSession returned error: %v", err)
-	}
-
-	logBytes, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatalf("read fake tmux log: %v", err)
-	}
-	log := string(logBytes)
-	if !strings.Contains(log, "kill-session -t =alpha") {
-		t.Fatalf("expected session to be killed by exact target, log=%q", log)
-	}
-	if !strings.Contains(log, "send-keys -t %2 F5") {
-		t.Fatalf("expected successful kill to refresh sidebar pane, log=%q", log)
-	}
-}
-
-func TestConfirmedKillIgnoresRefreshFailureAfterSuccessfulKill(t *testing.T) {
-	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+`,
+			wantContains: []string{"kill-session -t =alpha", "send-keys -t %2 F5"},
+		},
+		{
+			name: "ignores refresh failure after successful kill",
+			script: `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
 case "$1" in
+  list-sessions)
+    printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n'
+    ;;
   kill-session)
     exit 0
     ;;
@@ -110,19 +120,33 @@ case "$1" in
     exit 1
     ;;
 esac
-`)
-
-	err := killSession(context.Background(), map[string]string{"client": "/dev/pts/99", "session": "alpha", "confirmed": "yes"})
-	if err != nil {
-		t.Fatalf("killSession returned error after successful kill with failed refresh: %v", err)
+`,
+			wantContains: []string{"kill-session -t =alpha"},
+		},
 	}
 
-	logBytes, err := os.ReadFile(logPath)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logPath := installFakeTmux(t, tt.script)
+			err := killSession(context.Background(), map[string]string{"client": "/dev/pts/99", "session": "alpha", "confirmed": "yes"})
+			if err != nil {
+				t.Fatalf("killSession returned error: %v", err)
+			}
+			log := readLog(t, logPath)
+			for _, want := range tt.wantContains {
+				if !strings.Contains(log, want) {
+					t.Fatalf("expected log to contain %q, log=%q", want, log)
+				}
+			}
+		})
+	}
+}
+
+func readLog(t *testing.T, path string) string {
+	t.Helper()
+	logBytes, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read fake tmux log: %v", err)
 	}
-	log := string(logBytes)
-	if !strings.Contains(log, "kill-session -t =alpha") {
-		t.Fatalf("expected session to be killed by exact target, log=%q", log)
-	}
+	return string(logBytes)
 }

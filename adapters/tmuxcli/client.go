@@ -107,12 +107,32 @@ func (c Client) PaneSize(ctx context.Context, paneID string) (ports.PaneSize, er
 }
 
 func (c Client) SwitchClientSession(ctx context.Context, clientID string, sessionName string) error {
-	_, err := c.Process.Exec(ctx, "tmux", []string{"switch-client", "-c", clientID, "-t", sessionName})
+	args := []string{"switch-client"}
+	if clientID != "" {
+		args = append(args, "-c", clientID)
+	}
+	args = append(args, "-t", sessionName)
+	_, err := c.Process.Exec(ctx, "tmux", args)
 	return err
 }
 
 func (c Client) DisplayMessage(ctx context.Context, clientID string, message string) error {
 	_, err := c.Process.Exec(ctx, "tmux", []string{"display-message", "-c", clientID, message})
+	return err
+}
+
+func (c Client) CreateSession(ctx context.Context, sessionName string, path string) error {
+	_, err := c.Process.Exec(ctx, "tmux", []string{"new-session", "-d", "-s", sessionName, "-c", path})
+	return err
+}
+
+func (c Client) RenameSession(ctx context.Context, oldName string, newName string) error {
+	_, err := c.Process.Exec(ctx, "tmux", []string{"rename-session", "-t", "=" + oldName, newName})
+	return err
+}
+
+func (c Client) KillSession(ctx context.Context, sessionName string) error {
+	_, err := c.Process.Exec(ctx, "tmux", []string{"kill-session", "-t", "=" + sessionName})
 	return err
 }
 

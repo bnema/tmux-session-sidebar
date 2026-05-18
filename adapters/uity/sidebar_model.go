@@ -291,15 +291,17 @@ func (m *SidebarModel) appendPrintable(msg tea.KeyPressMsg) {
 }
 
 func (m SidebarModel) visibleItems() []SessionItem {
-	items := make([]SessionItem, 0, len(m.items))
-	filter := strings.ToLower(m.filter)
+	views := make([]sessions.View, 0, len(m.items))
+	byName := make(map[string]SessionItem, len(m.items))
 	for _, item := range m.items {
-		if strings.HasPrefix(item.Name, "__") {
-			continue
-		}
-		if !m.showNumeric && sessions.IsNumericName(item.Name) {
-			continue
-		}
+		views = append(views, sessions.View{Name: item.Name, Visible: true})
+		byName[item.Name] = item
+	}
+	visible := sessions.FilterVisible(views, m.showNumeric)
+	items := make([]SessionItem, 0, len(visible))
+	filter := strings.ToLower(m.filter)
+	for _, view := range visible {
+		item := byName[view.Name]
 		if filter != "" && !strings.Contains(strings.ToLower(item.Name), filter) {
 			continue
 		}

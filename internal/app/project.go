@@ -12,7 +12,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bnema/tmux-session-sidebar/adapters/process"
+	"github.com/bnema/tmux-session-sidebar/adapters/tmuxcli"
 	"github.com/bnema/tmux-session-sidebar/core/projects"
+	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
+	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
 
 func createProject(ctx context.Context, flags map[string]string, stdout io.Writer) error {
@@ -120,32 +124,22 @@ func pickProjectNumbered(stdout io.Writer, candidates []projects.Candidate) (str
 }
 
 func createOrSwitchProject(ctx context.Context, client string, candidate projects.Candidate) error {
-	if sessionExists(ctx, candidate.SessionName) {
-		return switchClient(ctx, client, candidate.SessionName)
-	}
-	if _, err := tmux(ctx, "new-session", "-d", "-s", candidate.SessionName, "-c", candidate.Path); err != nil {
+	existing, err := loadSessionViews(ctx)
+	if err != nil {
 		return err
 	}
-	if _, err := tmux(ctx, "set-option", "-t", candidate.SessionName, "@session-sidebar-kind", "project"); err != nil {
-		return fmt.Errorf("set project metadata kind for %s: %w", candidate.SessionName, err)
-	}
-	if _, err := tmux(ctx, "set-option", "-t", candidate.SessionName, "@session-sidebar-project-path", candidate.Path); err != nil {
-		return fmt.Errorf("set project metadata path for %s (%s): %w", candidate.SessionName, candidate.Path, err)
-	}
-	return switchClient(ctx, client, candidate.SessionName)
-}
-
-func sessionExists(ctx context.Context, sessionName string) bool {
-	_, err := tmux(ctx, "has-session", "-t", sessionName)
-	return err == nil
+	return runtimeService().CreateProjectSession(ctx, client, existing, candidate)
 }
 
 func switchClient(ctx context.Context, client string, sessionName string) error {
-	args := []string{"switch-client"}
-	if client != "" {
-		args = append(args, "-c", client)
-	}
-	args = append(args, "-t", sessionName)
-	_, err := tmux(ctx, args...)
-	return err
+	return runtimeService().SwitchSession(ctx, client, sessionName)
+}
+
+func loadSessionViews(ctx context.Context) ([]sessions.View, error) {
+	return runtimeService().SessionViews(ctx)
+}
+
+func runtimeService() *coreruntime.Service {
+	tmux := tmuxcli.Client{Process: process.Runner{}}
+	return coreruntime.NewService(nil, tmux, tmux, nil).WithMetadata(tmux)
 }
