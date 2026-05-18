@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
+	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
 
@@ -199,32 +200,21 @@ func quickSwitch(ctx context.Context, flags map[string]string) error {
 	if err != nil || slot <= 0 {
 		return fmt.Errorf("invalid quick-switch slot %q", flags["slot"])
 	}
-	out, err := tmux(ctx, "list-sessions", "-F", "#{session_name}")
+	views, err := runtimeService().SessionViews(ctx)
 	if err != nil {
 		return err
 	}
-	names := applySessionOrder(visibleSessionNames(out), loadSessionOrder(ctx))
-	if slot > len(names) {
+	visible := sessions.FilterVisible(views, false)
+	names := sessions.ApplyOrder(sessionNames(visible), loadSessionOrder(ctx))
+	ordered := make([]sessions.View, 0, len(names))
+	for _, name := range names {
+		ordered = append(ordered, sessions.View{Name: name, Visible: true})
+	}
+	target, err := coreruntime.QuickSwitchTarget(ordered, slot)
+	if err != nil {
 		return nil
 	}
-	args := []string{"switch-client"}
-	if flags["client"] != "" {
-		args = append(args, "-c", flags["client"])
-	}
-	args = append(args, "-t", names[slot-1])
-	_, err = tmux(ctx, args...)
-	return err
-}
-
-func visibleSessionNames(out string) []string {
-	var names []string
-	for name := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
-		name = strings.TrimSpace(name)
-		if name != "" && !sessions.IsNumericName(name) && !strings.HasPrefix(name, "__") {
-			names = append(names, name)
-		}
-	}
-	return names
+	return switchClient(ctx, flags["client"], target)
 }
 
 func tmux(ctx context.Context, args ...string) (string, error) {

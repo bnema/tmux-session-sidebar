@@ -58,6 +58,9 @@ type TmuxQueryPort interface {
 type TmuxControlPort interface {
 	SwitchClientSession(ctx context.Context, clientID string, sessionName string) error
 	DisplayMessage(ctx context.Context, clientID string, message string) error
+	CreateSession(ctx context.Context, sessionName string, path string) error
+	RenameSession(ctx context.Context, oldName string, newName string) error
+	KillSession(ctx context.Context, sessionName string) error
 	OpenSidebarPane(ctx context.Context, clientID string, width string, command []string) (PaneRef, error)
 	ClosePane(ctx context.Context, paneID string) error
 	SaveWindowLayout(ctx context.Context, windowID string) error

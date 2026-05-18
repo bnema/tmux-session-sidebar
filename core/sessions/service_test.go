@@ -49,6 +49,109 @@ func TestIsNumericName(t *testing.T) {
 	}
 }
 
+func TestApplyOrder(t *testing.T) {
+	tests := []struct {
+		name  string
+		live  []string
+		order []string
+		want  []string
+	}{
+		{name: "saved order first and new sessions appended", live: []string{"alpha", "beta", "gamma", "delta"}, order: []string{"gamma", "missing", "alpha"}, want: []string{"gamma", "alpha", "beta", "delta"}},
+		{name: "duplicates in saved order are ignored", live: []string{"alpha", "beta", "gamma"}, order: []string{"beta", "beta", "alpha"}, want: []string{"beta", "alpha", "gamma"}},
+		{name: "nil saved order keeps live order", live: []string{"alpha", "beta"}, order: nil, want: []string{"alpha", "beta"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ApplyOrder(tt.live, tt.order)
+			if len(got) != len(tt.want) {
+				t.Fatalf("ApplyOrder() = %#v, want %#v", got, tt.want)
+			}
+			for i, want := range tt.want {
+				if got[i] != want {
+					t.Fatalf("ApplyOrder()[%d] = %q, want %q (full: %#v)", i, got[i], want, got)
+				}
+			}
+		})
+	}
+}
+
+func TestMoveOrder(t *testing.T) {
+	tests := []struct {
+		name    string
+		live    []string
+		order   []string
+		session string
+		delta   int
+		want    []string
+	}{
+		{name: "moves selected down after applying saved order", live: []string{"alpha", "beta", "gamma"}, order: []string{"gamma", "alpha", "beta"}, session: "alpha", delta: 1, want: []string{"gamma", "beta", "alpha"}},
+		{name: "clamps first session moving up", live: []string{"alpha", "beta", "gamma"}, order: nil, session: "alpha", delta: -1, want: []string{"alpha", "beta", "gamma"}},
+		{name: "clamps last session moving down", live: []string{"alpha", "beta", "gamma"}, order: nil, session: "gamma", delta: 1, want: []string{"alpha", "beta", "gamma"}},
+		{name: "missing selected session keeps applied order", live: []string{"alpha", "beta"}, order: []string{"beta", "alpha"}, session: "missing", delta: 1, want: []string{"beta", "alpha"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MoveOrder(tt.live, tt.order, tt.session, tt.delta)
+			if len(got) != len(tt.want) {
+				t.Fatalf("MoveOrder() = %#v, want %#v", got, tt.want)
+			}
+			for i, want := range tt.want {
+				if got[i] != want {
+					t.Fatalf("MoveOrder()[%d] = %q, want %q (full: %#v)", i, got[i], want, got)
+				}
+			}
+		})
+	}
+}
+
+func TestIsHiddenName(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{name: "double underscore hidden", in: "__scratch", want: true},
+		{name: "single underscore visible", in: "_scratch", want: false},
+		{name: "normal visible", in: "alpha", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsHiddenName(tt.in); got != tt.want {
+				t.Fatalf("IsHiddenName(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestVisibleNames(t *testing.T) {
+	tests := []struct {
+		name        string
+		names       []string
+		showNumeric bool
+		want        []string
+	}{
+		{name: "hides numeric and internal by default", names: []string{"alpha", "123", "__scratch", "beta"}, showNumeric: false, want: []string{"alpha", "beta"}},
+		{name: "shows numeric when requested", names: []string{"alpha", "123", "__scratch"}, showNumeric: true, want: []string{"alpha", "123"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := VisibleNames(tt.names, tt.showNumeric)
+			if len(got) != len(tt.want) {
+				t.Fatalf("VisibleNames() = %#v, want %#v", got, tt.want)
+			}
+			for i, want := range tt.want {
+				if got[i] != want {
+					t.Fatalf("VisibleNames()[%d] = %q, want %q (full: %#v)", i, got[i], want, got)
+				}
+			}
+		})
+	}
+}
+
 func TestFilterVisible(t *testing.T) {
 	all := []View{
 		{SessionID: "1", Name: "alpha", Visible: true},

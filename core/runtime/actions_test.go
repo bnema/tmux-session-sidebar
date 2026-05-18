@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	coreerrors "github.com/bnema/tmux-session-sidebar/core/errors"
+	"github.com/bnema/tmux-session-sidebar/core/projects"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
 
@@ -47,6 +48,53 @@ func TestKillSessionValidation(t *testing.T) {
 			err := ValidateKillSession(tt.existing, tt.target)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateCreateSession(t *testing.T) {
+	existing := []sessions.View{{Name: "alpha"}, {Name: "beta"}}
+	tests := []struct {
+		name    string
+		newName string
+		wantErr error
+	}{
+		{name: "valid new session", newName: "gamma"},
+		{name: "invalid session name", newName: "bad name", wantErr: coreerrors.ErrInvalidSessionName},
+		{name: "duplicate session", newName: "alpha", wantErr: coreerrors.ErrDuplicateSession},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateCreateSession(existing, tt.newName)
+			if tt.wantErr == nil && err != nil {
+				t.Fatalf("ValidateCreateSession() error = %v, want nil", err)
+			}
+			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+				t.Fatalf("ValidateCreateSession() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestProjectSessionDecision(t *testing.T) {
+	existing := []sessions.View{{Name: "alpha"}, {Name: "project"}}
+	tests := []struct {
+		name       string
+		candidate  projects.Candidate
+		wantName   string
+		wantCreate bool
+	}{
+		{name: "existing project switches", candidate: projects.Candidate{Path: "/tmp/project", SessionName: "project"}, wantName: "project", wantCreate: false},
+		{name: "new project creates", candidate: projects.Candidate{Path: "/tmp/new", SessionName: "new"}, wantName: "new", wantCreate: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ProjectSessionDecision(existing, tt.candidate)
+			if got.SessionName != tt.wantName || got.Create != tt.wantCreate {
+				t.Fatalf("ProjectSessionDecision() = %#v, want name %q create %v", got, tt.wantName, tt.wantCreate)
 			}
 		})
 	}

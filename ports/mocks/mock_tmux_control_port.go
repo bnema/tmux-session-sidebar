@@ -95,6 +95,69 @@ func (_c *MockTmuxControlPort_ClosePane_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
+// CreateSession provides a mock function for the type MockTmuxControlPort
+func (_mock *MockTmuxControlPort) CreateSession(ctx context.Context, sessionName string, path string) error {
+	ret := _mock.Called(ctx, sessionName, path)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateSession")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, sessionName, path)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockTmuxControlPort_CreateSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateSession'
+type MockTmuxControlPort_CreateSession_Call struct {
+	*mock.Call
+}
+
+// CreateSession is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionName string
+//   - path string
+func (_e *MockTmuxControlPort_Expecter) CreateSession(ctx interface{}, sessionName interface{}, path interface{}) *MockTmuxControlPort_CreateSession_Call {
+	return &MockTmuxControlPort_CreateSession_Call{Call: _e.mock.On("CreateSession", ctx, sessionName, path)}
+}
+
+func (_c *MockTmuxControlPort_CreateSession_Call) Run(run func(ctx context.Context, sessionName string, path string)) *MockTmuxControlPort_CreateSession_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTmuxControlPort_CreateSession_Call) Return(err error) *MockTmuxControlPort_CreateSession_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockTmuxControlPort_CreateSession_Call) RunAndReturn(run func(ctx context.Context, sessionName string, path string) error) *MockTmuxControlPort_CreateSession_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DisplayMessage provides a mock function for the type MockTmuxControlPort
 func (_mock *MockTmuxControlPort) DisplayMessage(ctx context.Context, clientID string, message string) error {
 	ret := _mock.Called(ctx, clientID, message)
@@ -154,6 +217,63 @@ func (_c *MockTmuxControlPort_DisplayMessage_Call) Return(err error) *MockTmuxCo
 }
 
 func (_c *MockTmuxControlPort_DisplayMessage_Call) RunAndReturn(run func(ctx context.Context, clientID string, message string) error) *MockTmuxControlPort_DisplayMessage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// KillSession provides a mock function for the type MockTmuxControlPort
+func (_mock *MockTmuxControlPort) KillSession(ctx context.Context, sessionName string) error {
+	ret := _mock.Called(ctx, sessionName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for KillSession")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, sessionName)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockTmuxControlPort_KillSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'KillSession'
+type MockTmuxControlPort_KillSession_Call struct {
+	*mock.Call
+}
+
+// KillSession is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionName string
+func (_e *MockTmuxControlPort_Expecter) KillSession(ctx interface{}, sessionName interface{}) *MockTmuxControlPort_KillSession_Call {
+	return &MockTmuxControlPort_KillSession_Call{Call: _e.mock.On("KillSession", ctx, sessionName)}
+}
+
+func (_c *MockTmuxControlPort_KillSession_Call) Run(run func(ctx context.Context, sessionName string)) *MockTmuxControlPort_KillSession_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTmuxControlPort_KillSession_Call) Return(err error) *MockTmuxControlPort_KillSession_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockTmuxControlPort_KillSession_Call) RunAndReturn(run func(ctx context.Context, sessionName string) error) *MockTmuxControlPort_KillSession_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -232,6 +352,69 @@ func (_c *MockTmuxControlPort_OpenSidebarPane_Call) Return(paneRef ports.PaneRef
 }
 
 func (_c *MockTmuxControlPort_OpenSidebarPane_Call) RunAndReturn(run func(ctx context.Context, clientID string, width string, command []string) (ports.PaneRef, error)) *MockTmuxControlPort_OpenSidebarPane_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RenameSession provides a mock function for the type MockTmuxControlPort
+func (_mock *MockTmuxControlPort) RenameSession(ctx context.Context, oldName string, newName string) error {
+	ret := _mock.Called(ctx, oldName, newName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RenameSession")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, oldName, newName)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockTmuxControlPort_RenameSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RenameSession'
+type MockTmuxControlPort_RenameSession_Call struct {
+	*mock.Call
+}
+
+// RenameSession is a helper method to define mock.On call
+//   - ctx context.Context
+//   - oldName string
+//   - newName string
+func (_e *MockTmuxControlPort_Expecter) RenameSession(ctx interface{}, oldName interface{}, newName interface{}) *MockTmuxControlPort_RenameSession_Call {
+	return &MockTmuxControlPort_RenameSession_Call{Call: _e.mock.On("RenameSession", ctx, oldName, newName)}
+}
+
+func (_c *MockTmuxControlPort_RenameSession_Call) Run(run func(ctx context.Context, oldName string, newName string)) *MockTmuxControlPort_RenameSession_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTmuxControlPort_RenameSession_Call) Return(err error) *MockTmuxControlPort_RenameSession_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockTmuxControlPort_RenameSession_Call) RunAndReturn(run func(ctx context.Context, oldName string, newName string) error) *MockTmuxControlPort_RenameSession_Call {
 	_c.Call.Return(run)
 	return _c
 }

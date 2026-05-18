@@ -74,22 +74,33 @@ func TestSidebarModelKillConfirmationAcceptsUppercaseAndCancelKeys(t *testing.T)
 }
 
 func TestSidebarModelKillConfirmationCanBeCancelled(t *testing.T) {
-	called := 0
-	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
-		KillSession: func(string) bool {
-			called++
-			return true
-		},
-	})
-	updated, _ := model.Update(keyPress("x", tea.ModAlt))
-	model = requireSidebarModel(t, updated)
-	updated, _ = model.Update(keyPress("n", 0))
-	model = requireSidebarModel(t, updated)
-	if called != 0 {
-		t.Fatalf("KillSession called after cancellation")
+	tests := []struct {
+		name string
+		key  tea.KeyPressMsg
+	}{
+		{name: "lowercase no", key: keyPress("n", 0)},
 	}
-	if model.mode != ModeBrowse || model.pendingKill != "" || model.message != "" {
-		t.Fatalf("model did not clear cancellation: %#v", model)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := 0
+			model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+				KillSession: func(string) bool {
+					called++
+					return true
+				},
+			})
+			updated, _ := model.Update(keyPress("x", tea.ModAlt))
+			model = requireSidebarModel(t, updated)
+			updated, _ = model.Update(tt.key)
+			model = requireSidebarModel(t, updated)
+			if called != 0 {
+				t.Fatalf("KillSession called after cancellation")
+			}
+			if model.mode != ModeBrowse || model.pendingKill != "" || model.message != "" {
+				t.Fatalf("model did not clear cancellation: %#v", model)
+			}
+		})
 	}
 }
 
@@ -223,15 +234,27 @@ func TestSidebarModelRenderOmitsHeaderAndMovesFilterAboveHelp(t *testing.T) {
 }
 
 func TestSidebarModelFilterAcceptsSpace(t *testing.T) {
-	model := NewSidebarModel([]SessionItem{{Name: "alpha beta"}}, Actions{})
-	updated, _ := model.Update(keyPress("/", 0))
-	model = requireSidebarModel(t, updated)
-	for _, key := range []tea.KeyPressMsg{keyPress("a", 0), keyPress(" ", 0), keyPress("b", 0)} {
-		updated, _ = model.Update(key)
-		model = requireSidebarModel(t, updated)
+	tests := []struct {
+		name string
+		keys []tea.KeyPressMsg
+		want string
+	}{
+		{name: "space is printable filter input", keys: []tea.KeyPressMsg{keyPress("a", 0), keyPress(" ", 0), keyPress("b", 0)}, want: "a b"},
 	}
-	if model.filter != "a b" {
-		t.Fatalf("filter = %q, want %q", model.filter, "a b")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model := NewSidebarModel([]SessionItem{{Name: "alpha beta"}}, Actions{})
+			updated, _ := model.Update(keyPress("/", 0))
+			model = requireSidebarModel(t, updated)
+			for _, key := range tt.keys {
+				updated, _ = model.Update(key)
+				model = requireSidebarModel(t, updated)
+			}
+			if model.filter != tt.want {
+				t.Fatalf("filter = %q, want %q", model.filter, tt.want)
+			}
+		})
 	}
 }
 

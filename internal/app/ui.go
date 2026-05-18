@@ -15,12 +15,12 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("getting current tmux session: %w", err)
 	}
-	out, err := tmux(ctx, "list-sessions", "-F", "#{session_name}")
+	views, err := runtimeService().SessionViews(ctx)
 	if err != nil {
 		return nil, err
 	}
 	current = strings.TrimSpace(current)
-	names := applySessionOrder(visibleSessionNamesWithNumeric(out, true), loadSessionOrder(ctx))
+	names := sessions.ApplyOrder(sessionNames(sessions.FilterVisible(views, true)), loadSessionOrder(ctx))
 	items := make([]uity.SessionItem, 0, len(names))
 	slot := 1
 	for _, name := range names {
@@ -49,13 +49,10 @@ func loadProjectItems(ctx context.Context) []uity.ProjectItem {
 	return items
 }
 
-func visibleSessionNamesWithNumeric(out string, showNumeric bool) []string {
-	var names []string
-	for name := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
-		name = strings.TrimSpace(name)
-		if name != "" && !strings.HasPrefix(name, "__") && (showNumeric || !sessions.IsNumericName(name)) {
-			names = append(names, name)
-		}
+func sessionNames(views []sessions.View) []string {
+	names := make([]string, 0, len(views))
+	for _, view := range views {
+		names = append(names, view.Name)
 	}
 	return names
 }

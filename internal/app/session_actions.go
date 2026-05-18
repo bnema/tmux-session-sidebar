@@ -44,14 +44,11 @@ func createAdhoc(ctx context.Context, flags map[string]string) error {
 		}
 		path = strings.TrimSpace(out)
 	}
-	if sessionExists(ctx, name) {
-		return switchClient(ctx, flags["client"], name)
-	}
-	if _, err := tmux(ctx, "new-session", "-d", "-s", name, "-c", path); err != nil {
+	existing, err := loadSessionViews(ctx)
+	if err != nil {
 		return err
 	}
-	_, _ = tmux(ctx, "set-option", "-t", name, "@session-sidebar-kind", "adhoc")
-	return switchClient(ctx, flags["client"], name)
+	return runtimeService().CreateAdhocSession(ctx, flags["client"], existing, name, path)
 }
 
 func renameSession(ctx context.Context, flags map[string]string) error {
@@ -67,7 +64,11 @@ func renameSession(ctx context.Context, flags map[string]string) error {
 		}
 		return commandPrompt(ctx, flags["client"], "Rename session", command)
 	}
-	if _, err := tmux(ctx, "rename-session", "-t", "="+session, newName); err != nil {
+	existing, err := loadSessionViews(ctx)
+	if err != nil {
+		return err
+	}
+	if err := runtimeService().RenameSession(ctx, existing, session, newName); err != nil {
 		return err
 	}
 	refreshSidebar(ctx, flags["client"])
@@ -90,7 +91,11 @@ func killSession(ctx context.Context, flags map[string]string) error {
 		}
 		return confirmBefore(ctx, flags["client"], "Kill session "+session+"?", cmd)
 	}
-	if _, err := tmux(ctx, "kill-session", "-t", "="+session); err != nil {
+	existing, err := loadSessionViews(ctx)
+	if err != nil {
+		return err
+	}
+	if err := runtimeService().KillSession(ctx, existing, session); err != nil {
 		return err
 	}
 	refreshSidebar(ctx, flags["client"])
