@@ -214,6 +214,42 @@ func TestSidebarModelAltKAndAltArrowsReorderSelectedSession(t *testing.T) {
 	}
 }
 
+func TestSidebarModelLoadsAndPersistsShowNumericItems(t *testing.T) {
+	var saved []bool
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}, {Name: "123"}}, Actions{
+		SetShowNumericItems: func(show bool) bool {
+			saved = append(saved, show)
+			return true
+		},
+	}, SidebarOptions{ShowNumericItems: true})
+	if !model.showNumeric {
+		t.Fatal("showNumeric should load from options")
+	}
+
+	updated, _ := model.Update(keyPress("h", tea.ModAlt))
+	model = requireSidebarModel(t, updated)
+
+	if model.showNumeric {
+		t.Fatal("showNumeric should toggle off")
+	}
+	if len(saved) != 1 || saved[0] {
+		t.Fatalf("saved show numeric states = %#v, want [false]", saved)
+	}
+}
+
+func TestSidebarModelKeepsShowNumericWhenPersistFails(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{
+		SetShowNumericItems: func(bool) bool { return false },
+	}, SidebarOptions{ShowNumericItems: true})
+
+	updated, _ := model.Update(keyPress("h", tea.ModAlt))
+	model = requireSidebarModel(t, updated)
+
+	if !model.showNumeric {
+		t.Fatal("showNumeric changed despite failed persistence")
+	}
+}
+
 func TestSidebarModelRenderOmitsHeaderAndMovesFilterAboveHelp(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
 	view := model.Render()

@@ -3,10 +3,15 @@ package ports
 import "context"
 
 type PersistedState struct {
-	Sessions     map[string]SessionMetadata
-	SessionOrder []string
-	Clients      map[string][]byte
-	Heat         map[string][]byte
+	Sessions     map[string]SessionMetadata `json:"sessions,omitempty"`
+	SessionOrder []string                   `json:"sessionOrder,omitempty"`
+	Sidebar      *SidebarState              `json:"sidebar,omitempty"`
+	Clients      map[string][]byte          `json:"clients,omitempty"`
+	Heat         map[string][]byte          `json:"heat,omitempty"`
+}
+
+type SidebarState struct {
+	ShowNumericSessions bool `json:"showNumericSessions,omitempty"`
 }
 
 type StateStorePort interface {

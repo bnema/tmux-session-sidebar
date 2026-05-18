@@ -142,6 +142,7 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer) error
 	if err != nil {
 		return err
 	}
+	persisted, _ := loadSidebarState(ctx)
 	actions := uity.Actions{
 		SwitchSession: func(name string) bool {
 			return handleActionError(ctx, "switch session", switchClient(ctx, flags["client"], name))
@@ -172,6 +173,9 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer) error
 			}
 			return handleActionError(ctx, "reorder session", saveMovedSessionOrder(ctx, names, name, delta))
 		},
+		SetShowNumericItems: func(show bool) bool {
+			return handleActionError(ctx, "save sidebar state", saveShowNumericSessions(ctx, show))
+		},
 		LoadProjects: func() []uity.ProjectItem { return loadProjectItems(ctx) },
 		ReloadSessions: func() []uity.SessionItem {
 			items, err := loadSessionItems(ctx)
@@ -182,7 +186,11 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer) error
 			return items
 		},
 	}
-	program := tea.NewProgram(uity.NewSidebarModel(items, actions), tea.WithOutput(stdout))
+	options := uity.SidebarOptions{}
+	if persisted.Sidebar != nil {
+		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
+	}
+	program := tea.NewProgram(uity.NewSidebarModelWithOptions(items, actions, options), tea.WithOutput(stdout))
 	_, err = program.Run()
 	return err
 }

@@ -24,15 +24,20 @@ type ProjectItem struct {
 }
 
 type Actions struct {
-	SwitchSession    func(string) bool
-	CreateProject    func(ProjectItem) bool
-	CreateGitProject func() bool
-	CreateAdhoc      func() bool
-	RenameSession    func(string) bool
-	KillSession      func(string) bool
-	ReorderSession   func(string, int) bool
-	LoadProjects     func() []ProjectItem
-	ReloadSessions   func() []SessionItem
+	SwitchSession       func(string) bool
+	CreateProject       func(ProjectItem) bool
+	CreateGitProject    func() bool
+	CreateAdhoc         func() bool
+	RenameSession       func(string) bool
+	KillSession         func(string) bool
+	ReorderSession      func(string, int) bool
+	SetShowNumericItems func(bool) bool
+	LoadProjects        func() []ProjectItem
+	ReloadSessions      func() []SessionItem
+}
+
+type SidebarOptions struct {
+	ShowNumericItems bool
 }
 
 type SidebarModel struct {
@@ -59,7 +64,11 @@ type sidebarStyles struct {
 }
 
 func NewSidebarModel(items []SessionItem, actions Actions) SidebarModel {
-	return SidebarModel{items: items, actions: actions, mode: ModeBrowse}
+	return NewSidebarModelWithOptions(items, actions, SidebarOptions{})
+}
+
+func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options SidebarOptions) SidebarModel {
+	return SidebarModel{items: items, actions: actions, mode: ModeBrowse, showNumeric: options.ShowNumericItems}
 }
 
 func (m SidebarModel) Init() tea.Cmd { return nil }
@@ -174,7 +183,11 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.reloadSessions()
 			return m, nil
 		case "alt+h":
-			m.showNumeric = !m.showNumeric
+			next := !m.showNumeric
+			if m.actions.SetShowNumericItems != nil && !m.actions.SetShowNumericItems(next) {
+				return m, nil
+			}
+			m.showNumeric = next
 			return m, nil
 		case "alt+?":
 			m.showHelp = !m.showHelp

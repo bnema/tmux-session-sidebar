@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -34,6 +35,38 @@ func TestStoreLoadSave(t *testing.T) {
 				t.Fatalf("loaded state = %#v, want %#v", got, tt.state)
 			}
 		})
+	}
+}
+
+func TestStoreSaveWritesTinyAtomicJSON(t *testing.T) {
+	dir := t.TempDir()
+	store := New(dir)
+	state := ports.PersistedState{SessionOrder: []string{"beta", "alpha"}, Sidebar: &ports.SidebarState{ShowNumericSessions: true}}
+	if err := store.Save(context.Background(), "server", state); err != nil {
+		t.Fatalf("Save error: %v", err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir error: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "server.json" {
+		t.Fatalf("store dir entries = %#v, want only server.json", entries)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "server.json"))
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	content := string(data)
+	for _, absent := range []string{"\"sessions\"", "\"clients\"", "\"heat\""} {
+		if strings.Contains(content, absent) {
+			t.Fatalf("tiny json should omit %q, got %s", absent, content)
+		}
+	}
+	for _, want := range []string{"sessionOrder", "sidebar", "showNumericSessions"} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("json missing %q: %s", want, content)
+		}
 	}
 }
 

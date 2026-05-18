@@ -47,6 +47,20 @@ func TestSaveMovedSessionOrder(t *testing.T) {
 	}
 }
 
+func TestSaveShowNumericSessions(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if err := saveShowNumericSessions(context.Background(), true); err != nil {
+		t.Fatalf("saveShowNumericSessions() error = %v", err)
+	}
+	state, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState() error = %v", err)
+	}
+	if state.Sidebar == nil || !state.Sidebar.ShowNumericSessions {
+		t.Fatalf("ShowNumericSessions = false, want true")
+	}
+}
+
 func TestSessionOrderStoreResolvesStateDirectory(t *testing.T) {
 	tests := []struct {
 		name          string
