@@ -128,11 +128,15 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 	if err != nil {
 		return err
 	}
-	return runtimeService().CreateProjectSession(ctx, client, existing, candidate)
+	return withSidebarFollow(ctx, client, func() error {
+		return runtimeService().CreateProjectSession(ctx, client, existing, candidate)
+	})
 }
 
 func switchClient(ctx context.Context, client string, sessionName string) error {
-	return runtimeService().SwitchSession(ctx, client, sessionName)
+	return withSidebarFollow(ctx, client, func() error {
+		return runtimeService().SwitchSession(ctx, client, sessionName)
+	})
 }
 
 func loadSessionViews(ctx context.Context) ([]sessions.View, error) {

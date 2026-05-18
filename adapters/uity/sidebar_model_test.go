@@ -233,6 +233,61 @@ func TestSidebarModelRenderOmitsHeaderAndMovesFilterAboveHelp(t *testing.T) {
 	}
 }
 
+func TestSidebarModelEnterOnCurrentSessionDoesNothing(t *testing.T) {
+	called := 0
+	reloaded := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true}}, Actions{
+		SwitchSession: func(string) bool {
+			called++
+			return true
+		},
+		ReloadSessions: func() []SessionItem {
+			reloaded++
+			return []SessionItem{{Name: "alpha", Current: true}}
+		},
+	})
+
+	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+
+	if called != 0 || reloaded != 0 {
+		t.Fatalf("current session enter called SwitchSession %d times and ReloadSessions %d times, want neither", called, reloaded)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || !item.Current {
+		t.Fatalf("selection changed after no-op enter: %#v ok=%v", item, ok)
+	}
+}
+
+func TestSidebarModelChoosingProjectReturnsToBrowseMode(t *testing.T) {
+	model := NewSidebarModel(nil, Actions{
+		LoadProjects: func() []ProjectItem {
+			return []ProjectItem{{Name: "tmux-stacked-panes", Path: "/projects/tmux-stacked-panes"}}
+		},
+		CreateProject:  func(ProjectItem) bool { return true },
+		ReloadSessions: func() []SessionItem { return []SessionItem{{Name: "tmux-stacked-panes", Current: true}} },
+	})
+
+	updated, _ := model.Update(keyPress("n", tea.ModAlt))
+	model = requireSidebarModel(t, updated)
+	for _, key := range []tea.KeyPressMsg{keyPress("s", 0), keyPress("t", 0), keyPress("a", 0), keyPress("c", 0)} {
+		updated, _ = model.Update(key)
+		model = requireSidebarModel(t, updated)
+	}
+	if model.mode != ModeProject || model.projectFilter != "stac" {
+		t.Fatalf("setup failed: mode=%q projectFilter=%q", model.mode, model.projectFilter)
+	}
+
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+
+	if model.mode != ModeBrowse || model.projectFilter != "" || model.projectCursor != 0 {
+		t.Fatalf("project picker state not cleared after choose: %#v", model)
+	}
+	if len(model.items) != 1 || !model.items[0].Current {
+		t.Fatalf("sessions not reloaded after choose: %#v", model.items)
+	}
+}
+
 func TestSidebarModelFilterAcceptsSpace(t *testing.T) {
 	tests := []struct {
 		name string

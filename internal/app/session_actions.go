@@ -48,7 +48,9 @@ func createAdhoc(ctx context.Context, flags map[string]string) error {
 	if err != nil {
 		return err
 	}
-	return runtimeService().CreateAdhocSession(ctx, flags["client"], existing, name, path)
+	return withSidebarFollow(ctx, flags["client"], func() error {
+		return runtimeService().CreateAdhocSession(ctx, flags["client"], existing, name, path)
+	})
 }
 
 func renameSession(ctx context.Context, flags map[string]string) error {

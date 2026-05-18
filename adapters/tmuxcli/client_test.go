@@ -91,12 +91,16 @@ func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-key"}).Return(ports.Result{Stdout: "b\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-width"}).Return(ports.Result{Stdout: "20\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-project-roots"}).Return(ports.Result{Stdout: ":/a::/b:\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-close-after-switch"}).Return(ports.Result{Stdout: "on\n"}, nil)
 	got, err := (Client{Process: process}).LoadConfig(ctx)
 	if err != nil {
 		t.Fatalf("LoadConfig error: %v", err)
 	}
 	if len(got.ProjectRoots) != 2 || got.ProjectRoots[0] != "/a" || got.ProjectRoots[1] != "/b" {
 		t.Fatalf("ProjectRoots = %#v", got.ProjectRoots)
+	}
+	if !got.CloseAfterSwitch {
+		t.Fatal("CloseAfterSwitch = false, want true")
 	}
 }
 
