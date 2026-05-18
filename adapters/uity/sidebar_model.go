@@ -5,8 +5,8 @@ import (
 	"strings"
 	"unicode"
 
+	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
-	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
@@ -49,6 +49,14 @@ type SidebarModel struct {
 	actions       Actions
 }
 
+type sidebarStyles struct {
+	accent   lipgloss.Style
+	dim      lipgloss.Style
+	current  lipgloss.Style
+	warm     lipgloss.Style
+	selected lipgloss.Style
+}
+
 func NewSidebarModel(items []SessionItem, actions Actions) SidebarModel {
 	return SidebarModel{items: items, actions: actions, mode: ModeBrowse}
 }
@@ -57,8 +65,8 @@ func (m SidebarModel) Init() tea.Cmd { return nil }
 
 func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		key := msg.String()
+	case tea.KeyPressMsg:
+		key := msg.Keystroke()
 		if m.mode == ModeConfirmKill && !isKillConfirmationKey(key) {
 			return m, nil
 		}
@@ -285,50 +293,63 @@ func (m SidebarModel) visibleProjects() []ProjectItem {
 	return projects
 }
 
-func (m SidebarModel) View() string {
-	accent := lipgloss.Color("#7dd3fc")
-	dim := lipgloss.Color("#6b7280")
-	green := lipgloss.Color("#86efac")
-	warm := lipgloss.Color("#a7f3d0")
-	selected := lipgloss.NewStyle().Background(lipgloss.Color("#1f2937")).Foreground(lipgloss.Color("#ffffff")).Bold(true)
-	header := lipgloss.NewStyle().Foreground(accent).Bold(true).Render("sessions")
-	modeText := "browse"
-	if m.mode == ModeSearch {
-		modeText = "filter:" + m.filter
-	}
+func (m SidebarModel) View() tea.View {
+	return tea.NewView(m.Render())
+}
+
+func (m SidebarModel) Render() string {
+	styles := newSidebarStyles()
+	lines := []string{""}
 	if m.mode == ModeProject {
-		modeText = "projects:" + m.projectFilter
-	}
-	if m.mode == ModeConfirmKill {
-		modeText = "confirm kill"
-	}
-	meta := lipgloss.NewStyle().Foreground(dim).Render(modeText)
-	currentStyle := lipgloss.NewStyle().Foreground(green).Bold(true)
-	warmStyle := lipgloss.NewStyle().Foreground(warm)
-	dimStyle := lipgloss.NewStyle().Foreground(dim)
-	lines := []string{header + " " + meta, ""}
-	if m.mode == ModeProject {
-		lines = append(lines, m.renderProjects(selected, dimStyle)...)
+		lines = append(lines, m.renderProjects(styles)...)
 	} else {
-		lines = append(lines, m.renderSessions(selected, currentStyle, warmStyle, dimStyle)...)
+		lines = append(lines, m.renderSessions(styles)...)
+	}
+	if status := m.statusLine(); status != "" {
+		lines = append(lines, "", styles.accent.Render(status))
 	}
 	lines = append(lines, "")
 	if m.showHelp {
 		lines = append(lines,
-			lipgloss.NewStyle().Foreground(dim).Render("↵ choose  / filter  esc back  M-b toggle"),
-			lipgloss.NewStyle().Foreground(dim).Render("M-n project  M-a adhoc  M-h nums"),
-			lipgloss.NewStyle().Foreground(dim).Render("M-r rename   M-x kill  M-? hide"),
+			styles.dim.Render("↵ choose  / filter  esc back  M-b toggle"),
+			styles.dim.Render("M-n project  M-a adhoc  M-h nums"),
+			styles.dim.Render("M-r rename   M-x kill  M-? hide"),
 		)
 	} else {
-		lines = append(lines, lipgloss.NewStyle().Foreground(dim).Render("M-? keys"))
+		lines = append(lines, styles.dim.Render("M-? keys"))
 	}
 	if m.message != "" {
-		lines = append(lines, lipgloss.NewStyle().Foreground(accent).Render(m.message))
+		lines = append(lines, styles.accent.Render(m.message))
 	}
 	return lipgloss.NewStyle().Padding(0, 1).Render(strings.Join(lines, "\n"))
 }
 
-func (m SidebarModel) renderSessions(selected lipgloss.Style, currentStyle lipgloss.Style, warmStyle lipgloss.Style, dimStyle lipgloss.Style) []string {
+func newSidebarStyles() sidebarStyles {
+	return sidebarStyles{
+		accent:  lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
+		dim:     lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
+		current: lipgloss.NewStyle().Foreground(lipgloss.Color("#86efac")).Bold(true),
+		warm:    lipgloss.NewStyle().Foreground(lipgloss.Color("#a7f3d0")),
+		selected: lipgloss.NewStyle().Background(lipgloss.Color("#1f2937")).
+			Foreground(lipgloss.Color("#ffffff")).
+			Bold(true),
+	}
+}
+
+func (m SidebarModel) statusLine() string {
+	switch m.mode {
+	case ModeSearch:
+		return "filter: " + m.filter
+	case ModeProject:
+		return "projects: " + m.projectFilter
+	case ModeConfirmKill:
+		return "confirm kill"
+	default:
+		return ""
+	}
+}
+
+func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
 	visible := m.visibleItems()
 	lines := make([]string, 0, len(visible)+1)
 	for i, item := range visible {
@@ -342,34 +363,34 @@ func (m SidebarModel) renderSessions(selected lipgloss.Style, currentStyle lipgl
 		}
 		style := lipgloss.NewStyle()
 		if item.Current {
-			style = currentStyle
+			style = styles.current
 		} else if item.Heat == "hot" || item.Heat == "warm" {
-			style = warmStyle
+			style = styles.warm
 		}
 		row := style.Render(fmt.Sprintf("%s %s%s", marker, badge, item.Name))
 		if i == m.cursor {
-			row = selected.Render(row)
+			row = styles.selected.Render(row)
 		}
 		lines = append(lines, row)
 	}
 	if len(visible) == 0 {
-		lines = append(lines, dimStyle.Render("no sessions"))
+		lines = append(lines, styles.dim.Render("no sessions"))
 	}
 	return lines
 }
 
-func (m SidebarModel) renderProjects(selected lipgloss.Style, dimStyle lipgloss.Style) []string {
+func (m SidebarModel) renderProjects(styles sidebarStyles) []string {
 	visible := m.visibleProjects()
 	lines := make([]string, 0, len(visible)+1)
 	for i, project := range visible {
 		row := fmt.Sprintf("  %-18s", project.Name)
 		if i == m.projectCursor {
-			row = selected.Render(row)
+			row = styles.selected.Render(row)
 		}
 		lines = append(lines, row)
 	}
 	if len(visible) == 0 {
-		lines = append(lines, dimStyle.Render("no projects"))
+		lines = append(lines, styles.dim.Render("no projects"))
 	}
 	return lines
 }
