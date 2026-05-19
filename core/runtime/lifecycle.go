@@ -55,7 +55,7 @@ func (s *Service) CloseSidebar(ctx context.Context, state State, clientID string
 	logical.Open = false
 	state.Sidebars[clientID] = logical
 	delete(state.Panes, clientID)
-	return state, err
+	return state, nil
 }
 
 func (s *Service) FollowClient(ctx context.Context, state State, clientID string, uiCommand []string) (State, error) {

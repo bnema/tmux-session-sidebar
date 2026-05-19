@@ -30,10 +30,14 @@ func withSidebarFollow(ctx context.Context, client string, sidebar ports.TmuxSid
 	if closeAfterSwitch(ctx, sidebar) {
 		return sidebar.CloseSidebarPane(ctx, oldPane)
 	}
-	if err := openSidebar(ctx, map[string]string{"client": client}, sidebar); err != nil {
+	targetPane, err := existingSidebarPane(ctx, client, sidebar)
+	if err != nil {
 		return err
 	}
-	return sidebar.CloseSidebarPane(ctx, oldPane)
+	if targetPane != "" {
+		return sidebar.RefreshSidebar(ctx, client)
+	}
+	return openSidebar(ctx, map[string]string{"client": client}, sidebar)
 }
 
 func closeAfterSwitch(ctx context.Context, sidebar ports.TmuxSidebarPort) bool {

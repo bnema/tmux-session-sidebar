@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestWithSidebarFollowMovesOpenSidebarWhenConfiguredToStayOpen(t *testing.T) {
+func TestWithSidebarFollowPreservesOldSidebarAndOpensTargetWhenConfiguredToStayOpen(t *testing.T) {
 	var calls [][]string
 	var ops []string
 	ctx := t.Context()
@@ -34,14 +34,14 @@ func TestWithSidebarFollowMovesOpenSidebarWhenConfiguredToStayOpen(t *testing.T)
 
 	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Run(func(context.Context, string) {
 		ops = append(ops, "find-old")
-	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
+	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil).Once()
 	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Run(func(context.Context, string) {
+		ops = append(ops, "find-target")
+	}).Return(ports.PaneRef{WindowID: "@new"}, nil).Once()
 	tmuxPort.EXPECT().OpenSidebar(ctx, "client-1", mock.MatchedBy(matchesUIRunCommand("client-1"))).Run(func(context.Context, string, []string) {
 		ops = append(ops, "open-new")
 	}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@new"}, nil)
-	tmuxPort.EXPECT().CloseSidebarPane(ctx, "%9").Run(func(context.Context, string) {
-		ops = append(ops, "close-old")
-	}).Return(nil)
 
 	err := withSidebarFollow(ctx, "client-1", tmuxPort, func() error {
 		_, _ = tmux(ctx, "switch-client", "-c", "client-1", "-t", "beta")
@@ -55,7 +55,38 @@ func TestWithSidebarFollowMovesOpenSidebarWhenConfiguredToStayOpen(t *testing.T)
 		{"switch-client", "-c", "client-1", "-t", "beta"},
 	}
 	assertCallSubsequence(t, calls, wantSubsequence)
-	assertOps(t, ops, []string{"find-old", "open-new", "close-old"})
+	assertOps(t, ops, []string{"find-old", "find-target", "open-new"})
+}
+
+func TestWithSidebarFollowReusesExistingTargetSidebarWhenConfiguredToStayOpen(t *testing.T) {
+	var ops []string
+	ctx := t.Context()
+	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	restore := stubCommandRunner(t, func(_ context.Context, _ string, _ ...string) (string, error) {
+		return "", nil
+	})
+	defer restore()
+
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Run(func(context.Context, string) {
+		ops = append(ops, "find-old")
+	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil).Once()
+	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Run(func(context.Context, string) {
+		ops = append(ops, "find-target")
+	}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@new"}, nil).Once()
+	tmuxPort.EXPECT().RefreshSidebar(ctx, "client-1").Run(func(context.Context, string) {
+		ops = append(ops, "refresh-target")
+	}).Return(nil)
+
+	err := withSidebarFollow(ctx, "client-1", tmuxPort, func() error {
+		_, _ = tmux(ctx, "switch-client", "-c", "client-1", "-t", "beta")
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withSidebarFollow returned error: %v", err)
+	}
+
+	assertOps(t, ops, []string{"find-old", "find-target", "refresh-target"})
 }
 
 func TestWithSidebarFollowClosesOpenSidebarWhenConfiguredCloseAfterSwitch(t *testing.T) {

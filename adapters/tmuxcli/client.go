@@ -15,6 +15,7 @@ const (
 	cmdDisplayMessage = "display-message"
 	cmdKillPane       = "kill-pane"
 	cmdListPanes      = "list-panes"
+	cmdResizePane     = "resize-pane"
 	cmdRunShell       = "run-shell"
 	cmdSelectLayout   = "select-layout"
 	cmdSendKeys       = "send-keys"
@@ -226,7 +227,7 @@ func (c Client) OpenSidebarPane(ctx context.Context, clientID string, width stri
 	if clientID != "" {
 		args = append(args, "-t", clientID)
 	}
-	args = append(args, "-hb", "-l", width)
+	args = append(args, "-hbf", "-l", width)
 	args = append(args, command...)
 	result, err := c.Process.Exec(ctx, tmuxBinary, args)
 	if err != nil {
@@ -255,6 +256,11 @@ func (c Client) openMarkedSidebarPane(ctx context.Context, windowID string, widt
 		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
 		return ports.PaneRef{}, err
 	}
+	if err := c.resizePaneWidth(ctx, ref.PaneID, width); err != nil {
+		_ = c.ClosePane(ctx, ref.PaneID)
+		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
+		return ports.PaneRef{}, err
+	}
 	return ref, nil
 }
 
@@ -265,6 +271,15 @@ func (c Client) markSidebarPane(ctx context.Context, paneID string) error {
 
 func (c Client) ClosePane(ctx context.Context, paneID string) error {
 	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdKillPane, "-t", paneID})
+	return err
+}
+
+func (c Client) resizePaneWidth(ctx context.Context, paneID string, width string) error {
+	width = strings.TrimSpace(width)
+	if width == "" {
+		return nil
+	}
+	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdResizePane, "-t", strings.TrimSpace(paneID), "-x", width})
 	return err
 }
 
@@ -328,10 +343,10 @@ func (c Client) RestoreWindowLayout(ctx context.Context, windowID string) error 
 		return nil
 	}
 	_, selectErr := c.Process.Exec(ctx, tmuxBinary, []string{cmdSelectLayout, "-t", windowID, layout})
-	_, unsetErr := c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-wu", "-t", windowID, optionSidebarWindowLayout})
 	if selectErr != nil {
 		return selectErr
 	}
+	_, unsetErr := c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-wu", "-t", windowID, optionSidebarWindowLayout})
 	return unsetErr
 }
 
@@ -443,7 +458,7 @@ func sidebarLayoutRestoreCommand(windowID string, paneID string) string {
 		"tmux list-panes -t \"$window\" -F '" + escapedFormatPaneID + "' 2>/dev/null | grep -Fxq \"$pane\" && exit 0; " +
 		"layout=$(tmux show-options -w -v -t \"$window\" \"$option\" 2>/dev/null || true); " +
 		"[ -n \"$layout\" ] || exit 0; " +
-		"tmux select-layout -t \"$window\" \"$layout\" >/dev/null 2>&1 || true; " +
+		"tmux select-layout -t \"$window\" \"$layout\" >/dev/null 2>&1 && " +
 		"tmux set-option -wu -t \"$window\" \"$option\" >/dev/null 2>&1 || true"
 	return "sh -c " + shellQuote(script) + " sh " + shellQuote(windowID) + " " + shellQuote(paneID) + " " + shellQuote(optionSidebarWindowLayout)
 }
