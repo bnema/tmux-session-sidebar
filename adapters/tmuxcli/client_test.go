@@ -100,6 +100,20 @@ func TestWindowIDUsesDisplayWhenTargetIsEmpty(t *testing.T) {
 	}
 }
 
+func TestCurrentPanePathUsesDisplayWhenTargetIsEmpty(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "#{pane_current_path}"}).Return(ports.Result{Stdout: "/tmp/project\n"}, nil)
+
+	got, err := (Client{Process: process}).CurrentPanePath(ctx, "")
+	if err != nil {
+		t.Fatalf("CurrentPanePath error: %v", err)
+	}
+	if got != "/tmp/project" {
+		t.Fatalf("CurrentPanePath = %q, want /tmp/project", got)
+	}
+}
+
 func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
@@ -264,6 +278,45 @@ func TestScheduleSidebarRestoreOnExitPropagatesShowOptionsError(t *testing.T) {
 
 	if err := client.ScheduleSidebarRestoreOnExit(ctx, "", "%9"); !errors.Is(err, boom) {
 		t.Fatalf("ScheduleSidebarRestoreOnExit error = %v, want %v", err, boom)
+	}
+}
+
+func TestScheduleSidebarRestoreOnExitIgnoresMissingSidebarTarget(t *testing.T) {
+	ctx := t.Context()
+	boom := errors.New("tmux failed")
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stderr: "can't find client: client-1\n", ExitCode: 1}, boom)
+
+	if err := client.ScheduleSidebarRestoreOnExit(ctx, "client-1", ""); err != nil {
+		t.Fatalf("ScheduleSidebarRestoreOnExit error = %v, want nil for missing target", err)
+	}
+}
+
+func TestScheduleSidebarRestoreOnExitPropagatesSidebarLookupError(t *testing.T) {
+	ctx := t.Context()
+	boom := errors.New("tmux failed")
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stderr: "server exited unexpectedly\n", ExitCode: 1}, boom)
+
+	if err := client.ScheduleSidebarRestoreOnExit(ctx, "client-1", ""); !errors.Is(err, boom) {
+		t.Fatalf("ScheduleSidebarRestoreOnExit error = %v, want %v", err, boom)
+	}
+}
+
+func TestScheduleSidebarRestoreOnExitIgnoresMissingPaneTarget(t *testing.T) {
+	ctx := t.Context()
+	boom := errors.New("tmux failed")
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stderr: "can't find pane: %9\n", ExitCode: 1}, boom)
+
+	if err := client.ScheduleSidebarRestoreOnExit(ctx, "", "%9"); err != nil {
+		t.Fatalf("ScheduleSidebarRestoreOnExit error = %v, want nil for missing pane", err)
 	}
 }
 

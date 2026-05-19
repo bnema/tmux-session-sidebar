@@ -2,6 +2,7 @@ package tmuxcli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -115,9 +116,6 @@ func (c Client) CurrentPanePath(ctx context.Context, clientID string) (string, e
 }
 
 func (c Client) WindowID(ctx context.Context, target string) (string, error) {
-	if strings.TrimSpace(target) == "" {
-		return c.display(ctx, formatWindowID)
-	}
 	return c.displayTarget(ctx, target, formatWindowID)
 }
 
@@ -128,7 +126,7 @@ func (c Client) FindSidebarPane(ctx context.Context, target string) (ports.PaneR
 	}
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-t", windowID, "-F", formatPaneID + "\t" + formatSidebarPane})
 	if err != nil {
-		return ports.PaneRef{}, err
+		return ports.PaneRef{}, wrapTmuxError(result, err)
 	}
 	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
 		fields := strings.Split(line, "\t")
@@ -372,14 +370,26 @@ func (c Client) ScheduleSidebarRestoreOnExit(ctx context.Context, clientID strin
 	paneID = strings.TrimSpace(paneID)
 	if paneID == "" {
 		// The sidebar pane can already be gone during TUI shutdown; nothing to schedule then.
-		pane, _ := c.FindSidebarPane(ctx, clientID)
+		pane, err := c.FindSidebarPane(ctx, clientID)
+		if err != nil {
+			if isTmuxTargetGone(err) {
+				return nil
+			}
+			return err
+		}
 		paneID = strings.TrimSpace(pane.PaneID)
 	}
 	if paneID == "" {
 		return nil
 	}
 	windowID, err := c.WindowID(ctx, paneID)
-	if err != nil || strings.TrimSpace(windowID) == "" {
+	if err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
+		return err
+	}
+	if strings.TrimSpace(windowID) == "" {
 		// Exit cleanup is best-effort because the pane/window may disappear first.
 		return nil
 	}
@@ -443,12 +453,57 @@ func (c Client) option(ctx context.Context, name string) (string, error) {
 
 func (c Client) display(ctx context.Context, format string) (string, error) {
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdDisplayMessage, "-p", format})
-	return strings.TrimSpace(result.Stdout), err
+	if err != nil {
+		return "", wrapTmuxError(result, err)
+	}
+	return strings.TrimSpace(result.Stdout), nil
 }
 
 func (c Client) displayTarget(ctx context.Context, target string, format string) (string, error) {
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdDisplayMessage, "-p", "-t", target, format})
-	return strings.TrimSpace(result.Stdout), err
+	args := []string{cmdDisplayMessage, "-p"}
+	if strings.TrimSpace(target) != "" {
+		args = append(args, "-t", target)
+	}
+	args = append(args, format)
+	result, err := c.Process.Exec(ctx, tmuxBinary, args)
+	if err != nil {
+		return "", wrapTmuxError(result, err)
+	}
+	return strings.TrimSpace(result.Stdout), nil
+}
+
+type tmuxError struct {
+	result ports.Result
+	err    error
+}
+
+func (e tmuxError) Error() string {
+	return e.err.Error()
+}
+
+func (e tmuxError) Unwrap() error {
+	return e.err
+}
+
+func wrapTmuxError(result ports.Result, err error) error {
+	if err == nil {
+		return nil
+	}
+	return tmuxError{result: result, err: err}
+}
+
+func isTmuxTargetGone(err error) bool {
+	var tmuxErr tmuxError
+	if !errors.As(err, &tmuxErr) {
+		return false
+	}
+	message := strings.ToLower(tmuxErr.result.Stderr + tmuxErr.result.Stdout)
+	return strings.Contains(message, "no such window") ||
+		strings.Contains(message, "can't find window") ||
+		strings.Contains(message, "no such pane") ||
+		strings.Contains(message, "can't find pane") ||
+		strings.Contains(message, "no such client") ||
+		strings.Contains(message, "can't find client")
 }
 
 func parsePaneRef(out string) (ports.PaneRef, error) {
