@@ -2,19 +2,23 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/ports/mocks"
+	"github.com/stretchr/testify/mock"
 )
 
-func TestWithSidebarFollowMovesOpenSidebarWhenConfiguredToStayOpen(t *testing.T) {
+func TestWithSidebarFollowPreservesOldSidebarAndOpensTargetWhenConfiguredToStayOpen(t *testing.T) {
 	var calls [][]string
-	currentWindow := "@old"
-	restoreConfig := stubLoadTmuxConfig(t, ports.ConfigSnapshot{CloseAfterSwitch: false})
-	defer restoreConfig()
+	var ops []string
+	ctx := t.Context()
+	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
 		if name != "tmux" {
 			t.Fatalf("command name = %q, want tmux", name)
@@ -22,32 +26,25 @@ func TestWithSidebarFollowMovesOpenSidebarWhenConfiguredToStayOpen(t *testing.T)
 		calls = append(calls, append([]string(nil), args...))
 		joined := strings.Join(args, "\x00")
 		if joined == "switch-client\x00-c\x00client-1\x00-t\x00beta" {
-			currentWindow = "@new"
 			return "", nil
 		}
-		switch joined {
-		case "display-message\x00-p\x00-t\x00client-1\x00#{window_id}":
-			return currentWindow + "\n", nil
-		case "list-panes\x00-t\x00@old\x00-F\x00#{pane_id}\t#{@session-sidebar-pane}":
-			return "%9\t1\n", nil
-		case "show-options\x00-gvq\x00@session-sidebar-width":
-			return "20\n", nil
-		case "display-message\x00-p\x00-t\x00client-1\x00#{pane_current_path}":
-			return "/tmp\n", nil
-		case "split-window\x00-P\x00-F\x00#{pane_id}\x00-t\x00@new\x00-hbf\x00-l\x0020\x00-c\x00/tmp\x00" + testExecutable(t) + "\x00ui\x00run\x00--client\x00client-1":
-			return "%10\n", nil
-		case "set-option\x00-p\x00-t\x00%10\x00@session-sidebar-pane\x001":
-			return "", nil
-		case "kill-pane\x00-t\x00%9":
-			return "", nil
-		default:
-			return "", nil
-		}
+		return "", nil
 	})
 	defer restore()
 
-	err := withSidebarFollow(context.Background(), "client-1", func() error {
-		_, _ = tmux(context.Background(), "switch-client", "-c", "client-1", "-t", "beta")
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Run(func(context.Context, string) {
+		ops = append(ops, "find-old")
+	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil).Once()
+	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Run(func(context.Context, string) {
+		ops = append(ops, "find-target")
+	}).Return(ports.PaneRef{WindowID: "@new"}, nil).Once()
+	tmuxPort.EXPECT().OpenSidebar(ctx, "client-1", mock.MatchedBy(matchesUIRunCommand("client-1"))).Run(func(context.Context, string, []string) {
+		ops = append(ops, "open-new")
+	}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@new"}, nil)
+
+	err := withSidebarFollow(ctx, "client-1", tmuxPort, func() error {
+		_, _ = tmux(ctx, "switch-client", "-c", "client-1", "-t", "beta")
 		return nil
 	})
 	if err != nil {
@@ -56,33 +53,58 @@ func TestWithSidebarFollowMovesOpenSidebarWhenConfiguredToStayOpen(t *testing.T)
 
 	wantSubsequence := [][]string{
 		{"switch-client", "-c", "client-1", "-t", "beta"},
-		{"split-window", "-P", "-F", "#{pane_id}", "-t", "@new", "-hbf", "-l", "20", "-c", "/tmp", testExecutable(t), "ui", "run", "--client", "client-1"},
-		{"kill-pane", "-t", "%9"},
 	}
 	assertCallSubsequence(t, calls, wantSubsequence)
+	assertOps(t, ops, []string{"find-old", "find-target", "open-new"})
+}
+
+func TestWithSidebarFollowReusesExistingTargetSidebarWhenConfiguredToStayOpen(t *testing.T) {
+	var ops []string
+	ctx := t.Context()
+	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	restore := stubCommandRunner(t, func(_ context.Context, _ string, _ ...string) (string, error) {
+		return "", nil
+	})
+	defer restore()
+
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Run(func(context.Context, string) {
+		ops = append(ops, "find-old")
+	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil).Once()
+	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Run(func(context.Context, string) {
+		ops = append(ops, "find-target")
+	}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@new"}, nil).Once()
+	tmuxPort.EXPECT().RefreshSidebar(ctx, "client-1").Run(func(context.Context, string) {
+		ops = append(ops, "refresh-target")
+	}).Return(nil)
+
+	err := withSidebarFollow(ctx, "client-1", tmuxPort, func() error {
+		_, _ = tmux(ctx, "switch-client", "-c", "client-1", "-t", "beta")
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withSidebarFollow returned error: %v", err)
+	}
+
+	assertOps(t, ops, []string{"find-old", "find-target", "refresh-target"})
 }
 
 func TestWithSidebarFollowClosesOpenSidebarWhenConfiguredCloseAfterSwitch(t *testing.T) {
 	var calls [][]string
-	restoreConfig := stubLoadTmuxConfig(t, ports.ConfigSnapshot{CloseAfterSwitch: true})
-	defer restoreConfig()
+	ctx := t.Context()
+	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
-		switch strings.Join(args, "\x00") {
-		case "display-message\x00-p\x00-t\x00client-1\x00#{window_id}":
-			return "@old\n", nil
-		case "list-panes\x00-t\x00@old\x00-F\x00#{pane_id}\t#{@session-sidebar-pane}":
-			return "%9\t1\n", nil
-		case "kill-pane\x00-t\x00%9":
-			return "", nil
-		default:
-			return "", nil
-		}
+		return "", nil
 	})
 	defer restore()
 
-	err := withSidebarFollow(context.Background(), "client-1", func() error {
-		_, _ = tmux(context.Background(), "switch-client", "-c", "client-1", "-t", "beta")
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
+	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(true, nil)
+	tmuxPort.EXPECT().CloseSidebarPane(ctx, "%9").Return(nil)
+
+	err := withSidebarFollow(ctx, "client-1", tmuxPort, func() error {
+		_, _ = tmux(ctx, "switch-client", "-c", "client-1", "-t", "beta")
 		return nil
 	})
 	if err != nil {
@@ -91,7 +113,6 @@ func TestWithSidebarFollowClosesOpenSidebarWhenConfiguredCloseAfterSwitch(t *tes
 
 	assertCallSubsequence(t, calls, [][]string{
 		{"switch-client", "-c", "client-1", "-t", "beta"},
-		{"kill-pane", "-t", "%9"},
 	})
 	for _, call := range calls {
 		if len(call) > 0 && call[0] == "split-window" {
@@ -100,18 +121,40 @@ func TestWithSidebarFollowClosesOpenSidebarWhenConfiguredCloseAfterSwitch(t *tes
 	}
 }
 
+func TestWithSidebarFollowReturnsSidebarDiscoveryError(t *testing.T) {
+	ctx := t.Context()
+	boom := errors.New("tmux failed")
+	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, boom)
+
+	err := withSidebarFollow(ctx, "client-1", tmuxPort, func() error {
+		t.Fatal("action should not run after sidebar discovery failure")
+		return nil
+	})
+	if !errors.Is(err, boom) {
+		t.Fatalf("withSidebarFollow error = %v, want %v", err, boom)
+	}
+}
+
+func matchesUIRunCommand(client string) func([]string) bool {
+	return func(command []string) bool {
+		if !slices.Contains(command, "ui") || !slices.Contains(command, "run") {
+			return false
+		}
+		for i, arg := range command {
+			if arg == "--client" {
+				return i+1 < len(command) && command[i+1] == client
+			}
+		}
+		return false
+	}
+}
+
 func stubCommandRunner(t *testing.T, runner func(context.Context, string, ...string) (string, error)) func() {
 	t.Helper()
 	old := commandRunner
 	commandRunner = runner
 	return func() { commandRunner = old }
-}
-
-func stubLoadTmuxConfig(t *testing.T, config ports.ConfigSnapshot) func() {
-	t.Helper()
-	old := loadTmuxConfig
-	loadTmuxConfig = func(context.Context) (ports.ConfigSnapshot, error) { return config, nil }
-	return func() { loadTmuxConfig = old }
 }
 
 func assertCallSubsequence(t *testing.T, calls [][]string, want [][]string) {
@@ -124,6 +167,13 @@ func assertCallSubsequence(t *testing.T, calls [][]string, want [][]string) {
 	}
 	if at != len(want) {
 		t.Fatalf("calls missing subsequence\nwant: %#v\ngot:  %#v", want, calls)
+	}
+}
+
+func assertOps(t *testing.T, got []string, want []string) {
+	t.Helper()
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ops mismatch\nwant: %#v\ngot:  %#v", want, got)
 	}
 }
 

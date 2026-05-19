@@ -61,10 +61,16 @@ type TmuxControlPort interface {
 	CreateSession(ctx context.Context, sessionName string, path string) error
 	RenameSession(ctx context.Context, oldName string, newName string) error
 	KillSession(ctx context.Context, sessionName string) error
-	OpenSidebarPane(ctx context.Context, clientID string, width string, command []string) (PaneRef, error)
-	ClosePane(ctx context.Context, paneID string) error
-	SaveWindowLayout(ctx context.Context, windowID string) error
-	RestoreWindowLayout(ctx context.Context, windowID string) error
+}
+
+type TmuxSidebarPort interface {
+	CloseAfterSwitch(ctx context.Context) (bool, error)
+	FindSidebarPane(ctx context.Context, target string) (PaneRef, error)
+	OpenSidebar(ctx context.Context, clientID string, command []string) (PaneRef, error)
+	CloseSidebar(ctx context.Context, clientID string) error
+	CloseSidebarPane(ctx context.Context, paneID string) error
+	RefreshSidebar(ctx context.Context, clientID string) error
+	ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error
 }
 
 type TmuxMetadataPort interface {

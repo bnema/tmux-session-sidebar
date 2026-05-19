@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/core/clients"
@@ -15,32 +16,30 @@ func TestSidebarLifecycle(t *testing.T) {
 		name     string
 		state    State
 		act      func(context.Context, *Service, State, string, []string) (State, error)
-		expect   func(context.Context, *mocks.MockTmuxControlPort)
+		expect   func(context.Context, *mocks.MockTmuxSidebarPort)
 		wantOpen bool
 		wantPane bool
 	}{
 		{
-			name:  "open saves layout and opens pane",
+			name:  "open delegates to sidebar port",
 			state: State{Config: ports.ConfigSnapshot{Width: "20"}, Clients: map[string]clients.State{"%1": {ID: "%1", CurrentWindowID: "@1"}}},
 			act: func(ctx context.Context, service *Service, state State, clientID string, uiCommand []string) (State, error) {
 				return service.OpenSidebar(ctx, state, clientID, uiCommand)
 			},
-			expect: func(ctx context.Context, control *mocks.MockTmuxControlPort) {
-				control.EXPECT().SaveWindowLayout(ctx, "@1").Return(nil)
-				control.EXPECT().OpenSidebarPane(ctx, "%1", "20", []string{"ui", "run"}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
+			expect: func(ctx context.Context, sidebar *mocks.MockTmuxSidebarPort) {
+				sidebar.EXPECT().OpenSidebar(ctx, "%1", []string{"ui", "run"}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 			},
 			wantOpen: true,
 			wantPane: true,
 		},
 		{
-			name:  "close kills pane and restores layout",
+			name:  "close delegates to sidebar port",
 			state: State{Clients: map[string]clients.State{"%1": {ID: "%1", CurrentWindowID: "@1"}}, Sidebars: map[string]sidebar.State{"%1": {Open: true}}, Panes: map[string]ports.PaneRef{"%1": {PaneID: "%9", WindowID: "@1"}}},
 			act: func(ctx context.Context, service *Service, state State, clientID string, _ []string) (State, error) {
 				return service.CloseSidebar(ctx, state, clientID)
 			},
-			expect: func(ctx context.Context, control *mocks.MockTmuxControlPort) {
-				control.EXPECT().ClosePane(ctx, "%9").Return(nil)
-				control.EXPECT().RestoreWindowLayout(ctx, "@1").Return(nil)
+			expect: func(ctx context.Context, sidebar *mocks.MockTmuxSidebarPort) {
+				sidebar.EXPECT().CloseSidebarPane(ctx, "%9").Return(nil)
 			},
 			wantOpen: false,
 			wantPane: false,
@@ -51,9 +50,8 @@ func TestSidebarLifecycle(t *testing.T) {
 			act: func(ctx context.Context, service *Service, state State, clientID string, uiCommand []string) (State, error) {
 				return service.ToggleSidebar(ctx, state, clientID, uiCommand)
 			},
-			expect: func(ctx context.Context, control *mocks.MockTmuxControlPort) {
-				control.EXPECT().SaveWindowLayout(ctx, "@1").Return(nil)
-				control.EXPECT().OpenSidebarPane(ctx, "%1", "20", []string{"ui", "run"}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
+			expect: func(ctx context.Context, sidebar *mocks.MockTmuxSidebarPort) {
+				sidebar.EXPECT().OpenSidebar(ctx, "%1", []string{"ui", "run"}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 			},
 			wantOpen: true,
 			wantPane: true,
@@ -64,9 +62,8 @@ func TestSidebarLifecycle(t *testing.T) {
 			act: func(ctx context.Context, service *Service, state State, clientID string, uiCommand []string) (State, error) {
 				return service.FollowClient(ctx, state, clientID, uiCommand)
 			},
-			expect: func(ctx context.Context, control *mocks.MockTmuxControlPort) {
-				control.EXPECT().SaveWindowLayout(ctx, "@2").Return(nil)
-				control.EXPECT().OpenSidebarPane(ctx, "%1", "20", []string{"ui", "run"}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@2"}, nil)
+			expect: func(ctx context.Context, sidebar *mocks.MockTmuxSidebarPort) {
+				sidebar.EXPECT().OpenSidebar(ctx, "%1", []string{"ui", "run"}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@2"}, nil)
 			},
 			wantOpen: true,
 			wantPane: true,
@@ -75,10 +72,10 @@ func TestSidebarLifecycle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			control := mocks.NewMockTmuxControlPort(t)
-			tt.expect(ctx, control)
-			got, err := tt.act(ctx, NewService(nil, nil, control, nil), tt.state, "%1", []string{"ui", "run"})
+			ctx := t.Context()
+			sidebar := mocks.NewMockTmuxSidebarPort(t)
+			tt.expect(ctx, sidebar)
+			got, err := tt.act(ctx, NewService(nil, nil, nil, nil).WithSidebar(sidebar), tt.state, "%1", []string{"ui", "run"})
 			if err != nil {
 				t.Fatalf("lifecycle error: %v", err)
 			}
@@ -90,5 +87,28 @@ func TestSidebarLifecycle(t *testing.T) {
 				t.Fatalf("has pane = %v, want %v", hasPane, tt.wantPane)
 			}
 		})
+	}
+}
+
+func TestCloseSidebarKeepsStateWhenPortCloseFails(t *testing.T) {
+	ctx := t.Context()
+	boom := errors.New("close failed")
+	state := State{
+		Clients:  map[string]clients.State{"%1": {ID: "%1", CurrentWindowID: "@1"}},
+		Sidebars: map[string]sidebar.State{"%1": {Open: true}},
+		Panes:    map[string]ports.PaneRef{"%1": {PaneID: "%9", WindowID: "@1"}},
+	}
+	sidebarPort := mocks.NewMockTmuxSidebarPort(t)
+	sidebarPort.EXPECT().CloseSidebarPane(ctx, "%9").Return(boom)
+
+	got, err := NewService(nil, nil, nil, nil).WithSidebar(sidebarPort).CloseSidebar(ctx, state, "%1")
+	if !errors.Is(err, boom) {
+		t.Fatalf("CloseSidebar error = %v, want %v", err, boom)
+	}
+	if !got.Sidebars["%1"].Open {
+		t.Fatal("sidebar state was closed after failed port close")
+	}
+	if got.Panes["%1"].PaneID != "%9" {
+		t.Fatalf("pane state = %#v, want original pane", got.Panes["%1"])
 	}
 }

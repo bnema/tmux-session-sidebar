@@ -11,6 +11,7 @@ packages:
       TmuxConfigPort:
       TmuxQueryPort:
       TmuxControlPort:
+      TmuxSidebarPort:
       TmuxMetadataPort:
       IPCClientPort:
       IPCServerPort:

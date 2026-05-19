@@ -2,13 +2,13 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"os"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/process"
-	"github.com/bnema/tmux-session-sidebar/adapters/tmuxcli"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-func withSidebarFollow(ctx context.Context, client string, action func() error) error {
+func withSidebarFollow(ctx context.Context, client string, sidebar ports.TmuxSidebarPort, action func() error) error {
 	if action == nil {
 		return nil
 	}
@@ -16,7 +16,10 @@ func withSidebarFollow(ctx context.Context, client string, action func() error) 
 		return action()
 	}
 
-	oldPane, _ := existingSidebarPane(ctx, client)
+	oldPane, err := existingSidebarPane(ctx, client, sidebar)
+	if err != nil {
+		return err
+	}
 	wasOpen := oldPane != ""
 	if err := action(); err != nil {
 		return err
@@ -24,25 +27,24 @@ func withSidebarFollow(ctx context.Context, client string, action func() error) 
 	if !wasOpen {
 		return nil
 	}
-	if closeAfterSwitch(ctx) {
-		_, err := tmux(ctx, "kill-pane", "-t", oldPane)
+	if closeAfterSwitch(ctx, sidebar) {
+		return sidebar.CloseSidebarPane(ctx, oldPane)
+	}
+	targetPane, err := existingSidebarPane(ctx, client, sidebar)
+	if err != nil {
 		return err
 	}
-	if err := openSidebar(ctx, map[string]string{"client": client}); err != nil {
-		return err
+	if targetPane != "" {
+		return sidebar.RefreshSidebar(ctx, client)
 	}
-	_, err := tmux(ctx, "kill-pane", "-t", oldPane)
-	return err
+	return openSidebar(ctx, map[string]string{"client": client}, sidebar)
 }
 
-func closeAfterSwitch(ctx context.Context) bool {
-	cfg, err := loadTmuxConfig(ctx)
+func closeAfterSwitch(ctx context.Context, sidebar ports.TmuxSidebarPort) bool {
+	shouldClose, err := sidebar.CloseAfterSwitch(ctx)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: read close-after-switch failed: %v\n", err)
 		return false
 	}
-	return cfg.CloseAfterSwitch
-}
-
-var loadTmuxConfig = func(ctx context.Context) (ports.ConfigSnapshot, error) {
-	return (tmuxcli.Client{Process: process.Runner{}}).LoadConfig(ctx)
+	return shouldClose
 }

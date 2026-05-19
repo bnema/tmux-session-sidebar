@@ -17,9 +17,10 @@ import (
 	"github.com/bnema/tmux-session-sidebar/core/projects"
 	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
+	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-func createProject(ctx context.Context, flags map[string]string, stdout io.Writer) error {
+func createProject(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort) error {
 	projectPath := flags["project-path"]
 	if projectPath == "" {
 		selected, err := pickProject(ctx, stdout)
@@ -29,7 +30,7 @@ func createProject(ctx context.Context, flags map[string]string, stdout io.Write
 		projectPath = selected
 	}
 	candidate := projects.CandidateFromPath(projectPath)
-	return createOrSwitchProject(ctx, flags["client"], candidate)
+	return createOrSwitchProject(ctx, flags["client"], candidate, sidebar)
 }
 
 func projectCandidates(ctx context.Context) ([]projects.Candidate, error) {
@@ -123,18 +124,18 @@ func pickProjectNumbered(stdout io.Writer, candidates []projects.Candidate) (str
 	return candidates[index-1].Path, nil
 }
 
-func createOrSwitchProject(ctx context.Context, client string, candidate projects.Candidate) error {
+func createOrSwitchProject(ctx context.Context, client string, candidate projects.Candidate, sidebar ports.TmuxSidebarPort) error {
 	existing, err := loadSessionViews(ctx)
 	if err != nil {
 		return err
 	}
-	return withSidebarFollow(ctx, client, func() error {
+	return withSidebarFollow(ctx, client, sidebar, func() error {
 		return runtimeService().CreateProjectSession(ctx, client, existing, candidate)
 	})
 }
 
-func switchClient(ctx context.Context, client string, sessionName string) error {
-	return withSidebarFollow(ctx, client, func() error {
+func switchClient(ctx context.Context, client string, sessionName string, sidebar ports.TmuxSidebarPort) error {
+	return withSidebarFollow(ctx, client, sidebar, func() error {
 		return runtimeService().SwitchSession(ctx, client, sessionName)
 	})
 }

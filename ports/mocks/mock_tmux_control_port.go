@@ -7,7 +7,6 @@ package mocks
 import (
 	"context"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -36,63 +35,6 @@ type MockTmuxControlPort_Expecter struct {
 
 func (_m *MockTmuxControlPort) EXPECT() *MockTmuxControlPort_Expecter {
 	return &MockTmuxControlPort_Expecter{mock: &_m.Mock}
-}
-
-// ClosePane provides a mock function for the type MockTmuxControlPort
-func (_mock *MockTmuxControlPort) ClosePane(ctx context.Context, paneID string) error {
-	ret := _mock.Called(ctx, paneID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ClosePane")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, paneID)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockTmuxControlPort_ClosePane_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClosePane'
-type MockTmuxControlPort_ClosePane_Call struct {
-	*mock.Call
-}
-
-// ClosePane is a helper method to define mock.On call
-//   - ctx context.Context
-//   - paneID string
-func (_e *MockTmuxControlPort_Expecter) ClosePane(ctx interface{}, paneID interface{}) *MockTmuxControlPort_ClosePane_Call {
-	return &MockTmuxControlPort_ClosePane_Call{Call: _e.mock.On("ClosePane", ctx, paneID)}
-}
-
-func (_c *MockTmuxControlPort_ClosePane_Call) Run(run func(ctx context.Context, paneID string)) *MockTmuxControlPort_ClosePane_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockTmuxControlPort_ClosePane_Call) Return(err error) *MockTmuxControlPort_ClosePane_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockTmuxControlPort_ClosePane_Call) RunAndReturn(run func(ctx context.Context, paneID string) error) *MockTmuxControlPort_ClosePane_Call {
-	_c.Call.Return(run)
-	return _c
 }
 
 // CreateSession provides a mock function for the type MockTmuxControlPort
@@ -278,84 +220,6 @@ func (_c *MockTmuxControlPort_KillSession_Call) RunAndReturn(run func(ctx contex
 	return _c
 }
 
-// OpenSidebarPane provides a mock function for the type MockTmuxControlPort
-func (_mock *MockTmuxControlPort) OpenSidebarPane(ctx context.Context, clientID string, width string, command []string) (ports.PaneRef, error) {
-	ret := _mock.Called(ctx, clientID, width, command)
-
-	if len(ret) == 0 {
-		panic("no return value specified for OpenSidebarPane")
-	}
-
-	var r0 ports.PaneRef
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []string) (ports.PaneRef, error)); ok {
-		return returnFunc(ctx, clientID, width, command)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []string) ports.PaneRef); ok {
-		r0 = returnFunc(ctx, clientID, width, command)
-	} else {
-		r0 = ret.Get(0).(ports.PaneRef)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, []string) error); ok {
-		r1 = returnFunc(ctx, clientID, width, command)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockTmuxControlPort_OpenSidebarPane_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OpenSidebarPane'
-type MockTmuxControlPort_OpenSidebarPane_Call struct {
-	*mock.Call
-}
-
-// OpenSidebarPane is a helper method to define mock.On call
-//   - ctx context.Context
-//   - clientID string
-//   - width string
-//   - command []string
-func (_e *MockTmuxControlPort_Expecter) OpenSidebarPane(ctx interface{}, clientID interface{}, width interface{}, command interface{}) *MockTmuxControlPort_OpenSidebarPane_Call {
-	return &MockTmuxControlPort_OpenSidebarPane_Call{Call: _e.mock.On("OpenSidebarPane", ctx, clientID, width, command)}
-}
-
-func (_c *MockTmuxControlPort_OpenSidebarPane_Call) Run(run func(ctx context.Context, clientID string, width string, command []string)) *MockTmuxControlPort_OpenSidebarPane_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		var arg2 string
-		if args[2] != nil {
-			arg2 = args[2].(string)
-		}
-		var arg3 []string
-		if args[3] != nil {
-			arg3 = args[3].([]string)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-			arg3,
-		)
-	})
-	return _c
-}
-
-func (_c *MockTmuxControlPort_OpenSidebarPane_Call) Return(paneRef ports.PaneRef, err error) *MockTmuxControlPort_OpenSidebarPane_Call {
-	_c.Call.Return(paneRef, err)
-	return _c
-}
-
-func (_c *MockTmuxControlPort_OpenSidebarPane_Call) RunAndReturn(run func(ctx context.Context, clientID string, width string, command []string) (ports.PaneRef, error)) *MockTmuxControlPort_OpenSidebarPane_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // RenameSession provides a mock function for the type MockTmuxControlPort
 func (_mock *MockTmuxControlPort) RenameSession(ctx context.Context, oldName string, newName string) error {
 	ret := _mock.Called(ctx, oldName, newName)
@@ -415,120 +279,6 @@ func (_c *MockTmuxControlPort_RenameSession_Call) Return(err error) *MockTmuxCon
 }
 
 func (_c *MockTmuxControlPort_RenameSession_Call) RunAndReturn(run func(ctx context.Context, oldName string, newName string) error) *MockTmuxControlPort_RenameSession_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// RestoreWindowLayout provides a mock function for the type MockTmuxControlPort
-func (_mock *MockTmuxControlPort) RestoreWindowLayout(ctx context.Context, windowID string) error {
-	ret := _mock.Called(ctx, windowID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for RestoreWindowLayout")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, windowID)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockTmuxControlPort_RestoreWindowLayout_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RestoreWindowLayout'
-type MockTmuxControlPort_RestoreWindowLayout_Call struct {
-	*mock.Call
-}
-
-// RestoreWindowLayout is a helper method to define mock.On call
-//   - ctx context.Context
-//   - windowID string
-func (_e *MockTmuxControlPort_Expecter) RestoreWindowLayout(ctx interface{}, windowID interface{}) *MockTmuxControlPort_RestoreWindowLayout_Call {
-	return &MockTmuxControlPort_RestoreWindowLayout_Call{Call: _e.mock.On("RestoreWindowLayout", ctx, windowID)}
-}
-
-func (_c *MockTmuxControlPort_RestoreWindowLayout_Call) Run(run func(ctx context.Context, windowID string)) *MockTmuxControlPort_RestoreWindowLayout_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockTmuxControlPort_RestoreWindowLayout_Call) Return(err error) *MockTmuxControlPort_RestoreWindowLayout_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockTmuxControlPort_RestoreWindowLayout_Call) RunAndReturn(run func(ctx context.Context, windowID string) error) *MockTmuxControlPort_RestoreWindowLayout_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// SaveWindowLayout provides a mock function for the type MockTmuxControlPort
-func (_mock *MockTmuxControlPort) SaveWindowLayout(ctx context.Context, windowID string) error {
-	ret := _mock.Called(ctx, windowID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for SaveWindowLayout")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, windowID)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockTmuxControlPort_SaveWindowLayout_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveWindowLayout'
-type MockTmuxControlPort_SaveWindowLayout_Call struct {
-	*mock.Call
-}
-
-// SaveWindowLayout is a helper method to define mock.On call
-//   - ctx context.Context
-//   - windowID string
-func (_e *MockTmuxControlPort_Expecter) SaveWindowLayout(ctx interface{}, windowID interface{}) *MockTmuxControlPort_SaveWindowLayout_Call {
-	return &MockTmuxControlPort_SaveWindowLayout_Call{Call: _e.mock.On("SaveWindowLayout", ctx, windowID)}
-}
-
-func (_c *MockTmuxControlPort_SaveWindowLayout_Call) Run(run func(ctx context.Context, windowID string)) *MockTmuxControlPort_SaveWindowLayout_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockTmuxControlPort_SaveWindowLayout_Call) Return(err error) *MockTmuxControlPort_SaveWindowLayout_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockTmuxControlPort_SaveWindowLayout_Call) RunAndReturn(run func(ctx context.Context, windowID string) error) *MockTmuxControlPort_SaveWindowLayout_Call {
 	_c.Call.Return(run)
 	return _c
 }
