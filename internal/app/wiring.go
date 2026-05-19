@@ -6,6 +6,7 @@ type Dependencies struct {
 	TmuxConfig  ports.TmuxConfigPort
 	TmuxQuery   ports.TmuxQueryPort
 	TmuxControl ports.TmuxControlPort
+	TmuxSidebar ports.TmuxSidebarPort
 	TmuxMeta    ports.TmuxMetadataPort
 	IPCClient   ports.IPCClientPort
 	IPCServer   ports.IPCServerPort

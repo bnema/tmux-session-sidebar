@@ -33,11 +33,12 @@ func NewState() State {
 // Service coordinates runtime behavior by composing tmux configuration, query,
 // control, and persistence ports.
 type Service struct {
-	tmuxConfig ports.TmuxConfigPort
-	tmuxQuery  ports.TmuxQueryPort
-	tmuxCtl    ports.TmuxControlPort
-	tmuxMeta   ports.TmuxMetadataPort
-	store      ports.StateStorePort
+	tmuxConfig  ports.TmuxConfigPort
+	tmuxQuery   ports.TmuxQueryPort
+	tmuxCtl     ports.TmuxControlPort
+	tmuxSidebar ports.TmuxSidebarPort
+	tmuxMeta    ports.TmuxMetadataPort
+	store       ports.StateStorePort
 }
 
 // NewService creates a Service from its adapter ports. Methods validate the
@@ -45,6 +46,11 @@ type Service struct {
 // collaborators needed for that behavior.
 func NewService(config ports.TmuxConfigPort, query ports.TmuxQueryPort, control ports.TmuxControlPort, store ports.StateStorePort) *Service {
 	return &Service{tmuxConfig: config, tmuxQuery: query, tmuxCtl: control, store: store}
+}
+
+func (s *Service) WithSidebar(sidebar ports.TmuxSidebarPort) *Service {
+	s.tmuxSidebar = sidebar
+	return s
 }
 
 func (s *Service) WithMetadata(meta ports.TmuxMetadataPort) *Service {

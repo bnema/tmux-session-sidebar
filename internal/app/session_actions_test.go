@@ -2,10 +2,13 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bnema/tmux-session-sidebar/ports/mocks"
 )
 
 func installFakeTmux(t *testing.T, script string) string {
@@ -36,7 +39,7 @@ func TestKillSessionConfirmationTargetsClient(t *testing.T) {
 printf '%s\n' "$*" >> "$TMUX_LOG"
 `)
 
-			err := killSession(context.Background(), map[string]string{"client": tt.client, "session": "alpha"})
+			err := killSession(t.Context(), map[string]string{"client": tt.client, "session": "alpha"}, nil)
 			if err != nil {
 				t.Fatalf("killSession returned error: %v", err)
 			}
@@ -56,7 +59,7 @@ func TestCommandPromptsUseQuotedTmuxInputPlaceholder(t *testing.T) {
 		act  func(context.Context) error
 	}{
 		{name: "rename prompt", act: func(ctx context.Context) error {
-			return renameSession(ctx, map[string]string{"client": "/dev/pts/99", "session": "alpha"})
+			return renameSession(ctx, map[string]string{"client": "/dev/pts/99", "session": "alpha"}, nil)
 		}},
 	}
 
@@ -66,7 +69,7 @@ func TestCommandPromptsUseQuotedTmuxInputPlaceholder(t *testing.T) {
 printf '%s\n' "$*" >> "$TMUX_LOG"
 `)
 
-			if err := tt.act(context.Background()); err != nil {
+			if err := tt.act(t.Context()); err != nil {
 				t.Fatalf("prompt action error: %v", err)
 			}
 			log := readLog(t, logPath)
@@ -92,7 +95,7 @@ case "$1" in
 esac
 `)
 
-	if err := createAdhoc(context.Background(), map[string]string{}); err != nil {
+	if err := createAdhoc(t.Context(), map[string]string{}, nil); err != nil {
 		t.Fatalf("createAdhoc returned error: %v", err)
 	}
 	log := readLog(t, logPath)
@@ -128,7 +131,7 @@ case "$1" in
     ;;
 esac
 `,
-			wantContains: []string{"kill-session -t =alpha", "send-keys -t %2 F5"},
+			wantContains: []string{"kill-session -t =alpha"},
 		},
 		{
 			name: "ignores refresh failure after successful kill",
@@ -152,8 +155,11 @@ esac
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
 			logPath := installFakeTmux(t, tt.script)
-			err := killSession(context.Background(), map[string]string{"client": "/dev/pts/99", "session": "alpha", "confirmed": "yes"})
+			sidebar := mocks.NewMockTmuxSidebarPort(t)
+			sidebar.EXPECT().RefreshSidebar(ctx, "/dev/pts/99").Return(errors.New("refresh failure"))
+			err := killSession(ctx, map[string]string{"client": "/dev/pts/99", "session": "alpha", "confirmed": "yes"}, sidebar)
 			if err != nil {
 				t.Fatalf("killSession returned error: %v", err)
 			}

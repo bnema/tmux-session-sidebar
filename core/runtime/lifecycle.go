@@ -21,15 +21,11 @@ func (s *Service) OpenSidebar(ctx context.Context, state State, clientID string,
 	if !ok {
 		return state, fmt.Errorf("missing client %s", clientID)
 	}
-	if err := s.tmuxCtl.SaveWindowLayout(ctx, client.CurrentWindowID); err != nil {
-		return state, err
+	if s.tmuxSidebar == nil {
+		return state, ErrMissingTmuxSidebar
 	}
-	pane, err := s.tmuxCtl.OpenSidebarPane(ctx, clientID, state.Config.Width, uiCommand)
+	pane, err := s.tmuxSidebar.OpenSidebar(ctx, client.ID, uiCommand)
 	if err != nil {
-		restoreErr := s.tmuxCtl.RestoreWindowLayout(ctx, client.CurrentWindowID)
-		if restoreErr != nil {
-			return state, fmt.Errorf("open sidebar pane: %w (also failed to restore layout: %w)", err, restoreErr)
-		}
 		return state, err
 	}
 	ensureSidebarMaps(&state)
@@ -42,27 +38,24 @@ func (s *Service) OpenSidebar(ctx context.Context, state State, clientID string,
 }
 
 func (s *Service) CloseSidebar(ctx context.Context, state State, clientID string) (State, error) {
-	client, hasClient := state.Clients[clientID]
-	var closeErr error
+	if s.tmuxSidebar == nil {
+		return state, ErrMissingTmuxSidebar
+	}
+	var err error
 	if pane, ok := state.Panes[clientID]; ok && pane.PaneID != "" {
-		closeErr = s.tmuxCtl.ClosePane(ctx, pane.PaneID)
+		err = s.tmuxSidebar.CloseSidebarPane(ctx, pane.PaneID)
+	} else {
+		err = s.tmuxSidebar.CloseSidebar(ctx, clientID)
 	}
-	var restoreErr error
-	if hasClient {
-		restoreErr = s.tmuxCtl.RestoreWindowLayout(ctx, client.CurrentWindowID)
-	}
-	if closeErr != nil && restoreErr != nil {
-		return state, fmt.Errorf("close pane: %w (also failed to restore layout: %w)", closeErr, restoreErr)
-	}
-	if closeErr != nil {
-		return state, closeErr
+	if err != nil {
+		return state, err
 	}
 	ensureSidebarMaps(&state)
 	logical := state.Sidebars[clientID]
 	logical.Open = false
 	state.Sidebars[clientID] = logical
 	delete(state.Panes, clientID)
-	return state, restoreErr
+	return state, err
 }
 
 func (s *Service) FollowClient(ctx context.Context, state State, clientID string, uiCommand []string) (State, error) {

@@ -14,39 +14,44 @@ import (
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
 	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
+	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-type runtimeRouter struct{}
+type runtimeRouter struct {
+	sidebar ports.TmuxSidebarPort
+}
 
 // NewRouter composes the production command router used by the tmux bootstrap.
-func NewRouter() Router { return runtimeRouter{} }
+func NewRouter(sidebar ports.TmuxSidebarPort) Router {
+	return runtimeRouter{sidebar: sidebar}
+}
 
-func (runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer, stderr io.Writer) error {
+func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer, stderr io.Writer) error {
 	switch route.Path {
 	case "sidebar/toggle":
-		return toggleSidebar(ctx, route.Flags)
+		return toggleSidebar(ctx, route.Flags, r.sidebar)
 	case "sidebar/open":
-		return openSidebar(ctx, route.Flags)
+		return openSidebar(ctx, route.Flags, r.sidebar)
 	case "sidebar/close":
-		return closeSidebar(ctx, route.Flags)
+		return closeSidebar(ctx, route.Flags, r.sidebar)
 	case "ui/run":
-		return runUI(ctx, route.Flags, stdout)
+		return runUI(ctx, route.Flags, stdout, r.sidebar)
 	case "action/quick-switch":
-		return quickSwitch(ctx, route.Flags)
+		return quickSwitch(ctx, route.Flags, r.sidebar)
 	case "action/switch":
-		return switchClient(ctx, route.Flags["client"], route.Flags["session"])
+		return switchClient(ctx, route.Flags["client"], route.Flags["session"], r.sidebar)
 	case "action/toggle-numeric":
 		return nil
 	case "action/create-project":
-		return createProject(ctx, route.Flags, stdout)
+		return createProject(ctx, route.Flags, stdout, r.sidebar)
 	case "action/create-current-git-project":
-		return createCurrentGitProject(ctx, route.Flags)
+		return createCurrentGitProject(ctx, route.Flags, r.sidebar)
 	case "action/create-adhoc":
-		return createAdhoc(ctx, route.Flags)
+		return createAdhoc(ctx, route.Flags, r.sidebar)
 	case "action/rename":
-		return renameSession(ctx, route.Flags)
+		return renameSession(ctx, route.Flags, r.sidebar)
 	case "action/kill":
-		return killSession(ctx, route.Flags)
+		return killSession(ctx, route.Flags, r.sidebar)
 	case "daemon/serve", "daemon/ensure", "hook/client-attached", "hook/client-detached", "hook/client-session-changed":
 		return nil
 	default:
@@ -55,89 +60,45 @@ func (runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer, 
 	}
 }
 
-func toggleSidebar(ctx context.Context, flags map[string]string) error {
-	pane, err := existingSidebarPane(ctx, flags["client"])
+func toggleSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+	pane, err := sidebar.FindSidebarPane(ctx, flags["client"])
 	if err != nil {
 		return err
 	}
-	if pane != "" {
-		_, err := tmux(ctx, "kill-pane", "-t", pane)
-		return err
+	if pane.PaneID != "" {
+		return sidebar.CloseSidebarPane(ctx, pane.PaneID)
 	}
-	return openSidebar(ctx, flags)
+	return openSidebar(ctx, flags, sidebar)
 }
 
-func openSidebar(ctx context.Context, flags map[string]string) error {
+func openSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
 	client := flags["client"]
-	width, err := tmux(ctx, "show-options", "-gvq", "@session-sidebar-width")
-	if err != nil || strings.TrimSpace(width) == "" {
-		width = "20"
-	}
 	exe, err := os.Executable()
 	if err != nil {
 		return err
-	}
-	windowTarget := client
-	if windowTarget == "" {
-		windowTarget = "#{window_id}"
-	}
-	windowID, err := tmux(ctx, "display-message", "-p", "-t", windowTarget, "#{window_id}")
-	if err != nil {
-		return err
-	}
-	currentPath, err := tmux(ctx, "display-message", "-p", "-t", windowTarget, "#{pane_current_path}")
-	if err != nil {
-		currentPath = ""
-	}
-	args := []string{"split-window", "-P", "-F", "#{pane_id}", "-t", strings.TrimSpace(windowID), "-hbf", "-l", strings.TrimSpace(width)}
-	if strings.TrimSpace(currentPath) != "" {
-		args = append(args, "-c", strings.TrimSpace(currentPath))
 	}
 	uiArgs := []string{exe, "ui", "run"}
 	if client != "" {
 		uiArgs = append(uiArgs, "--client", client)
 	}
-	args = append(args, uiArgs...)
-	pane, err := tmux(ctx, args...)
-	if err != nil {
-		return err
-	}
-	_, err = tmux(ctx, "set-option", "-p", "-t", strings.TrimSpace(pane), "@session-sidebar-pane", "1")
+	_, err = sidebar.OpenSidebar(ctx, client, uiArgs)
 	return err
 }
 
-func closeSidebar(ctx context.Context, flags map[string]string) error {
-	pane, err := existingSidebarPane(ctx, flags["client"])
-	if err != nil || pane == "" {
-		return err
-	}
-	_, err = tmux(ctx, "kill-pane", "-t", pane)
-	return err
+func closeSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+	return sidebar.CloseSidebar(ctx, flags["client"])
 }
 
-func existingSidebarPane(ctx context.Context, client string) (string, error) {
-	windowTarget := client
-	if windowTarget == "" {
-		windowTarget = "#{window_id}"
-	}
-	window, err := tmux(ctx, "display-message", "-p", "-t", windowTarget, "#{window_id}")
+func existingSidebarPane(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) (string, error) {
+	pane, err := sidebar.FindSidebarPane(ctx, client)
 	if err != nil {
 		return "", err
 	}
-	out, err := tmux(ctx, "list-panes", "-t", strings.TrimSpace(window), "-F", "#{pane_id}\t#{@session-sidebar-pane}")
-	if err != nil {
-		return "", err
-	}
-	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
-		fields := strings.Split(line, "\t")
-		if len(fields) == 2 && fields[1] == "1" {
-			return fields[0], nil
-		}
-	}
-	return "", nil
+	return pane.PaneID, nil
 }
 
-func runUI(ctx context.Context, flags map[string]string, stdout io.Writer) error {
+func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort) error {
+	defer scheduleSidebarLayoutRestoreOnExit(ctx, flags, sidebar)
 	items, err := loadSessionItems(ctx)
 	if err != nil {
 		return err
@@ -145,22 +106,22 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer) error
 	persisted, _ := loadSidebarState(ctx)
 	actions := uity.Actions{
 		SwitchSession: func(name string) bool {
-			return handleActionError(ctx, "switch session", switchClient(ctx, flags["client"], name))
+			return handleActionError(ctx, "switch session", switchClient(ctx, flags["client"], name, sidebar))
 		},
 		CreateProject: func(project uity.ProjectItem) bool {
-			return handleActionError(ctx, "create project session", createProject(ctx, map[string]string{"client": flags["client"], "project-path": project.Path}, stdout))
+			return handleActionError(ctx, "create project session", createProject(ctx, map[string]string{"client": flags["client"], "project-path": project.Path}, stdout, sidebar))
 		},
 		CreateGitProject: func() bool {
-			return handleActionError(ctx, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": flags["client"]}))
+			return handleActionError(ctx, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": flags["client"]}, sidebar))
 		},
 		CreateAdhoc: func() bool {
-			return handleActionError(ctx, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": flags["client"]}))
+			return handleActionError(ctx, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": flags["client"]}, sidebar))
 		},
 		RenameSession: func(name string) bool {
-			return handleActionError(ctx, "rename session", renameSession(ctx, map[string]string{"client": flags["client"], "session": name}))
+			return handleActionError(ctx, "rename session", renameSession(ctx, map[string]string{"client": flags["client"], "session": name}, sidebar))
 		},
 		KillSession: func(name string) bool {
-			return handleActionError(ctx, "kill session", killSession(ctx, map[string]string{"client": flags["client"], "session": name, "confirmed": "yes"}))
+			return handleActionError(ctx, "kill session", killSession(ctx, map[string]string{"client": flags["client"], "session": name, "confirmed": "yes"}, sidebar))
 		},
 		ReorderSession: func(name string, delta int) bool {
 			items, err := loadSessionItems(ctx)
@@ -195,6 +156,16 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer) error
 	return err
 }
 
+func scheduleSidebarLayoutRestoreOnExit(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) {
+	pane := strings.TrimSpace(flags["pane"])
+	if pane == "" {
+		pane = strings.TrimSpace(os.Getenv("TMUX_PANE"))
+	}
+	if err := sidebar.ScheduleSidebarRestoreOnExit(ctx, flags["client"], pane); err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: schedule sidebar restore failed for client %q pane %q: %v\n", flags["client"], pane, err)
+	}
+}
+
 func handleActionError(ctx context.Context, action string, err error) bool {
 	if err == nil {
 		return true
@@ -203,7 +174,7 @@ func handleActionError(ctx context.Context, action string, err error) bool {
 	return false
 }
 
-func quickSwitch(ctx context.Context, flags map[string]string) error {
+func quickSwitch(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
 	slot, err := strconv.Atoi(flags["slot"])
 	if err != nil || slot <= 0 {
 		return fmt.Errorf("invalid quick-switch slot %q", flags["slot"])
@@ -222,7 +193,7 @@ func quickSwitch(ctx context.Context, flags map[string]string) error {
 	if err != nil {
 		return nil
 	}
-	return switchClient(ctx, flags["client"], target)
+	return switchClient(ctx, flags["client"], target, sidebar)
 }
 
 func tmux(ctx context.Context, args ...string) (string, error) {

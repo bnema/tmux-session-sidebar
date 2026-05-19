@@ -9,9 +9,10 @@ import (
 	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/core/projects"
+	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-func createCurrentGitProject(ctx context.Context, flags map[string]string) error {
+func createCurrentGitProject(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
 	path := flags["source-path"]
 	if path == "" {
 		var err error
@@ -29,10 +30,10 @@ func createCurrentGitProject(ctx context.Context, flags map[string]string) error
 		}
 		return errors.New("no git repository found")
 	}
-	return createOrSwitchProject(ctx, flags["client"], projects.CandidateFromPath(root))
+	return createOrSwitchProject(ctx, flags["client"], projects.CandidateFromPath(root), sidebar)
 }
 
-func createAdhoc(ctx context.Context, flags map[string]string) error {
+func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
 	path := flags["source-path"]
 	if path == "" {
 		out, err := tmux(ctx, "display-message", "-p", "#{pane_current_path}")
@@ -49,12 +50,12 @@ func createAdhoc(ctx context.Context, flags map[string]string) error {
 	if err != nil {
 		return err
 	}
-	return withSidebarFollow(ctx, flags["client"], func() error {
+	return withSidebarFollow(ctx, flags["client"], sidebar, func() error {
 		return runtimeService().CreateAdhocSession(ctx, flags["client"], existing, name, path)
 	})
 }
 
-func renameSession(ctx context.Context, flags map[string]string) error {
+func renameSession(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
 	session := flags["session"]
 	newName := strings.TrimSpace(flags["name"])
 	if session == "" {
@@ -74,11 +75,13 @@ func renameSession(ctx context.Context, flags map[string]string) error {
 	if err := runtimeService().RenameSession(ctx, existing, session, newName); err != nil {
 		return err
 	}
-	refreshSidebar(ctx, flags["client"])
+	if err := refreshSidebar(ctx, flags["client"], sidebar); err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: sidebar refresh failed after rename: %v\n", err)
+	}
 	return nil
 }
 
-func killSession(ctx context.Context, flags map[string]string) error {
+func killSession(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
 	session := flags["session"]
 	if session == "" {
 		return fmt.Errorf("missing session")
@@ -101,7 +104,9 @@ func killSession(ctx context.Context, flags map[string]string) error {
 	if err := runtimeService().KillSession(ctx, existing, session); err != nil {
 		return err
 	}
-	refreshSidebar(ctx, flags["client"])
+	if err := refreshSidebar(ctx, flags["client"], sidebar); err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: sidebar refresh failed after kill: %v\n", err)
+	}
 	return nil
 }
 
@@ -135,16 +140,8 @@ func confirmBefore(ctx context.Context, client string, prompt string, command st
 	return err
 }
 
-func refreshSidebar(ctx context.Context, client string) error {
-	if client == "" {
-		return nil
-	}
-	pane, err := existingSidebarPane(ctx, client)
-	if err != nil || pane == "" {
-		return err
-	}
-	_, err = tmux(ctx, "send-keys", "-t", pane, "F5")
-	return err
+func refreshSidebar(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
+	return sidebar.RefreshSidebar(ctx, client)
 }
 
 func shellQuote(value string) string {

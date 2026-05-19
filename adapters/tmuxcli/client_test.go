@@ -3,6 +3,7 @@ package tmuxcli
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -22,7 +23,7 @@ func TestListSessionsParsesTmuxRows(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
 			process.EXPECT().Exec(ctx, "tmux", []string{"list-sessions", "-F", "#{session_id}\t#{session_name}\t#{session_windows}\t#{session_attached}"}).Return(ports.Result{Stdout: tt.out}, nil)
 
@@ -46,7 +47,7 @@ func TestListClientsParsesTmuxRows(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
 			process.EXPECT().Exec(ctx, "tmux", []string{"list-clients", "-F", "#{client_name}\t#{session_id}\t#{window_id}\t#{pane_id}\t#{client_session}"}).Return(ports.Result{Stdout: tt.out}, nil)
 			got, err := (Client{Process: process}).ListClients(ctx)
@@ -71,7 +72,7 @@ func TestPaneSize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
 			process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%1", "#{pane_width}\t#{pane_height}"}).Return(ports.Result{Stdout: tt.out}, nil)
 			got, err := (Client{Process: process}).PaneSize(ctx, "%1")
@@ -86,7 +87,7 @@ func TestPaneSize(t *testing.T) {
 }
 
 func TestLoadConfigFiltersProjectRoots(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-key"}).Return(ports.Result{Stdout: "b\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-width"}).Return(ports.Result{Stdout: "20\n"}, nil)
@@ -118,7 +119,7 @@ func TestOpenSidebarPane(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
 			process.EXPECT().Exec(ctx, "tmux", mock.MatchedBy(func(args []string) bool {
 				if tt.clientID == "" {
@@ -142,6 +143,190 @@ func TestOpenSidebarPane(t *testing.T) {
 	}
 }
 
+func TestSaveAndRestoreWindowLayout(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_layout}"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@1", "@session-sidebar-window-layout", "layout-before-sidebar"}).Return(ports.Result{}, nil)
+	if err := client.SaveWindowLayout(ctx, "@1"); err != nil {
+		t.Fatalf("SaveWindowLayout error: %v", err)
+	}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"select-layout", "-t", "@1", "layout-before-sidebar"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
+	if err := client.RestoreWindowLayout(ctx, "@1"); err != nil {
+		t.Fatalf("RestoreWindowLayout error: %v", err)
+	}
+}
+
+func TestSaveWindowLayoutOverwritesStaleSavedLayout(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_layout}"}).Return(ports.Result{Stdout: "current-layout\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@1", "@session-sidebar-window-layout", "current-layout"}).Return(ports.Result{}, nil)
+
+	if err := client.SaveWindowLayout(ctx, "@1"); err != nil {
+		t.Fatalf("SaveWindowLayout error: %v", err)
+	}
+}
+
+func TestRestoreWindowLayoutUnsetsSavedLayoutWhenSelectFails(t *testing.T) {
+	ctx := t.Context()
+	boom := errors.New("select failed")
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"select-layout", "-t", "@1", "layout-before-sidebar"}).Return(ports.Result{}, boom)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
+
+	if err := client.RestoreWindowLayout(ctx, "@1"); !errors.Is(err, boom) {
+		t.Fatalf("RestoreWindowLayout error = %v, want %v", err, boom)
+	}
+}
+
+func TestScheduleSidebarRestoreOnExit(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", mock.MatchedBy(func(args []string) bool {
+		if len(args) != 3 || args[0] != "run-shell" || args[1] != "-b" {
+			return false
+		}
+		command := args[2]
+		for _, want := range []string{"list-panes", "##{pane_id}", "select-layout", "set-option", "@session-sidebar-window-layout", "%9", "@1"} {
+			if !strings.Contains(command, want) {
+				return false
+			}
+		}
+		return !strings.Contains(command, "seq ")
+	})).Return(ports.Result{}, nil)
+
+	if err := client.ScheduleSidebarRestoreOnExit(ctx, "", "%9"); err != nil {
+		t.Fatalf("ScheduleSidebarRestoreOnExit error: %v", err)
+	}
+}
+
+func TestOpenSidebarRestoresLayoutWhenSplitOutputIsMalformed(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-key"}).Return(ports.Result{Stdout: "M-b\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-width"}).Return(ports.Result{Stdout: "20\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-project-roots"}).Return(ports.Result{Stdout: "/tmp\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-close-after-switch"}).Return(ports.Result{Stdout: "off\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_layout}"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@1", "@session-sidebar-window-layout", "layout-before-sidebar"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{pane_current_path}"}).Return(ports.Result{Stdout: "/tmp\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"split-window", "-P", "-F", "#{pane_id}\t#{window_id}", "-t", "@1", "-hbf", "-l", "20", "-c", "/tmp", "ui", "run"}).Return(ports.Result{Stdout: "\t@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"select-layout", "-t", "@1", "layout-before-sidebar"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
+
+	if _, err := client.OpenSidebar(ctx, "client-1", []string{"ui", "run"}); err == nil {
+		t.Fatal("OpenSidebar error = nil, want malformed split output error")
+	}
+}
+
+func TestOpenSidebarCleansUpWhenPaneMarkFails(t *testing.T) {
+	ctx := t.Context()
+	boom := errors.New("mark failed")
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-key"}).Return(ports.Result{Stdout: "M-b\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-width"}).Return(ports.Result{Stdout: "20\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-project-roots"}).Return(ports.Result{Stdout: "/tmp\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-close-after-switch"}).Return(ports.Result{Stdout: "off\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_layout}"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@1", "@session-sidebar-window-layout", "layout-before-sidebar"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{pane_current_path}"}).Return(ports.Result{Stdout: "/tmp\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"split-window", "-P", "-F", "#{pane_id}\t#{window_id}", "-t", "@1", "-hbf", "-l", "20", "-c", "/tmp", "ui", "run"}).Return(ports.Result{Stdout: "%9\t@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1"}).Return(ports.Result{}, boom)
+	process.EXPECT().Exec(ctx, "tmux", []string{"kill-pane", "-t", "%9"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"select-layout", "-t", "@1", "layout-before-sidebar"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
+
+	if _, err := client.OpenSidebar(ctx, "client-1", []string{"ui", "run"}); !errors.Is(err, boom) {
+		t.Fatalf("OpenSidebar error = %v, want %v", err, boom)
+	}
+}
+
+func TestCloseSidebarPaneReturnsWindowLookupError(t *testing.T) {
+	ctx := t.Context()
+	boom := errors.New("window lookup failed")
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{}, boom)
+
+	if err := client.CloseSidebarPane(ctx, "%9"); !errors.Is(err, boom) {
+		t.Fatalf("CloseSidebarPane error = %v, want %v", err, boom)
+	}
+}
+
+func TestCloseSidebarPaneSchedulesRestoreBeforeKillingPane(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+	restoreScheduled := false
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil).Once()
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil).Once()
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", mock.MatchedBy(func(args []string) bool {
+		return len(args) == 3 && args[0] == "run-shell" && args[1] == "-b" && strings.Contains(args[2], "%9")
+	})).Run(func(context.Context, string, []string) {
+		restoreScheduled = true
+	}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"kill-pane", "-t", "%9"}).Run(func(context.Context, string, []string) {
+		if !restoreScheduled {
+			t.Fatal("kill-pane ran before restore watcher was scheduled")
+		}
+	}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"select-layout", "-t", "@1", "layout-before-sidebar"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
+
+	if err := client.CloseSidebarPane(ctx, "%9"); err != nil {
+		t.Fatalf("CloseSidebarPane error: %v", err)
+	}
+}
+
+func TestCloseSidebarPaneIgnoresInvalidSavedLayoutAfterPaneCountChanges(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+	restoreErr := errors.New("invalid saved layout")
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil).Once()
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil).Once()
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", mock.MatchedBy(func(args []string) bool {
+		return len(args) == 3 && args[0] == "run-shell" && args[1] == "-b" && strings.Contains(args[2], "%9")
+	})).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"kill-pane", "-t", "%9"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"select-layout", "-t", "@1", "layout-before-sidebar"}).Return(ports.Result{}, restoreErr)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
+
+	if err := client.CloseSidebarPane(ctx, "%9"); err != nil {
+		t.Fatalf("CloseSidebarPane error = %v, want nil", err)
+	}
+}
+
 func TestExecErrorsPropagate(t *testing.T) {
 	boom := errors.New("boom")
 	tests := []struct {
@@ -153,7 +338,7 @@ func TestExecErrorsPropagate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
 			process.EXPECT().Exec(ctx, "tmux", mock.Anything).Return(ports.Result{}, boom)
 			if err := tt.call(ctx, Client{Process: process}); !errors.Is(err, boom) {
