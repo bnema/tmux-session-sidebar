@@ -46,7 +46,7 @@ Reload tmux:
 tmux source-file ~/.tmux.conf
 ```
 
-The bootstrap uses `scripts/ensure-runtime.sh`. It prefers an installed `tmux-session-sidebar` binary from `PATH`; otherwise it runs `go install`.
+The bootstrap uses `scripts/ensure-runtime.sh`. It builds a plugin-local Go runtime at `.bin/tmux-session-sidebar` and records a build fingerprint. After TPM updates the plugin checkout, the next reload rebuilds the runtime automatically when the fingerprint changes.
 
 ## Local development install
 
@@ -58,13 +58,7 @@ make install
 
 This symlinks the repo into `~/.tmux/plugins/tmux-session-sidebar`.
 
-Build and install the Go runtime:
-
-```bash
-make go-install
-```
-
-The binary is installed to your Go bin directory, normally `~/go/bin/tmux-session-sidebar`.
+The Go runtime is built automatically into the plugin checkout when tmux loads the plugin. To force a rebuild during local development, remove `.bin/tmux-session-sidebar` or `.bin/.build-fingerprint`, then reload tmux.
 
 Remove the local plugin symlink with:
 
@@ -211,7 +205,7 @@ Useful checks:
 ```bash
 go test ./...
 go vet ./...
-make go-install
+make test-runtime-bootstrap
 ```
 
 The current runtime is Go-first. Shell is only used for TPM/bootstrap integration.
