@@ -286,9 +286,7 @@ func (c Client) CloseSidebarPane(ctx context.Context, paneID string) error {
 	if err != nil {
 		return err
 	}
-	if err := c.ScheduleSidebarRestoreOnExit(ctx, "", paneID); err != nil {
-		return err
-	}
+	_ = c.ScheduleSidebarRestoreOnExit(ctx, "", paneID)
 	if err := c.ClosePane(ctx, strings.TrimSpace(paneID)); err != nil {
 		return err
 	}
@@ -511,14 +509,10 @@ func parsePaneRef(out string) (ports.PaneRef, error) {
 		return ports.PaneRef{}, fmt.Errorf("open sidebar pane: empty tmux output")
 	}
 	fields := strings.Split(out, "\t")
-	if len(fields) == 0 || fields[0] == "" {
+	if len(fields) < 2 || fields[0] == "" || fields[1] == "" {
 		return ports.PaneRef{}, fmt.Errorf("open sidebar pane: malformed tmux output %q", out)
 	}
-	ref := ports.PaneRef{PaneID: fields[0]}
-	if len(fields) > 1 {
-		ref.WindowID = fields[1]
-	}
-	return ref, nil
+	return ports.PaneRef{PaneID: fields[0], WindowID: fields[1]}, nil
 }
 
 func sidebarLayoutRestoreCommand(windowID string, paneID string) string {
