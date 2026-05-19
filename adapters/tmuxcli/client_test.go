@@ -86,6 +86,20 @@ func TestPaneSize(t *testing.T) {
 	}
 }
 
+func TestWindowIDUsesDisplayWhenTargetIsEmpty(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+
+	got, err := (Client{Process: process}).WindowID(ctx, "")
+	if err != nil {
+		t.Fatalf("WindowID error: %v", err)
+	}
+	if got != "@1" {
+		t.Fatalf("WindowID = %q, want @1", got)
+	}
+}
+
 func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
@@ -189,6 +203,31 @@ func TestRestoreWindowLayoutKeepsSavedLayoutWhenSelectFails(t *testing.T) {
 	}
 }
 
+func TestRestoreWindowLayoutIgnoresMissingSavedLayoutOption(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "invalid option: @session-sidebar-window-layout\n", ExitCode: 1}, errors.New("tmux failed"))
+
+	if err := client.RestoreWindowLayout(ctx, "@1"); err != nil {
+		t.Fatalf("RestoreWindowLayout error = %v, want nil for missing option", err)
+	}
+}
+
+func TestRestoreWindowLayoutPropagatesShowOptionsError(t *testing.T) {
+	ctx := t.Context()
+	boom := errors.New("tmux failed")
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "no such window: @1\n", ExitCode: 1}, boom)
+
+	if err := client.RestoreWindowLayout(ctx, "@1"); !errors.Is(err, boom) {
+		t.Fatalf("RestoreWindowLayout error = %v, want %v", err, boom)
+	}
+}
+
 func TestScheduleSidebarRestoreOnExit(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
@@ -211,6 +250,20 @@ func TestScheduleSidebarRestoreOnExit(t *testing.T) {
 
 	if err := client.ScheduleSidebarRestoreOnExit(ctx, "", "%9"); err != nil {
 		t.Fatalf("ScheduleSidebarRestoreOnExit error: %v", err)
+	}
+}
+
+func TestScheduleSidebarRestoreOnExitPropagatesShowOptionsError(t *testing.T) {
+	ctx := t.Context()
+	boom := errors.New("tmux failed")
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "server exited unexpectedly\n", ExitCode: 1}, boom)
+
+	if err := client.ScheduleSidebarRestoreOnExit(ctx, "", "%9"); !errors.Is(err, boom) {
+		t.Fatalf("ScheduleSidebarRestoreOnExit error = %v, want %v", err, boom)
 	}
 }
 

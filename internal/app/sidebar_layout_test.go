@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -27,6 +28,19 @@ func TestCloseSidebarDelegatesToPort(t *testing.T) {
 
 	if err := closeSidebar(ctx, map[string]string{"client": "client-1"}, tmux); err != nil {
 		t.Fatalf("closeSidebar returned error: %v", err)
+	}
+}
+
+func TestRuntimeRouterRequiresSidebarPortForSidebarRoutes(t *testing.T) {
+	err := (runtimeRouter{}).Handle(t.Context(), Route{Path: "sidebar/toggle"}, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "sidebar port is required") {
+		t.Fatalf("Handle error = %v, want missing sidebar port error", err)
+	}
+}
+
+func TestRuntimeRouterAllowsNonSidebarRoutesWithoutSidebarPort(t *testing.T) {
+	if err := (runtimeRouter{}).Handle(t.Context(), Route{Path: "daemon/ensure"}, nil, nil); err != nil {
+		t.Fatalf("Handle daemon route error: %v", err)
 	}
 }
 

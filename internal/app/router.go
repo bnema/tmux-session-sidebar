@@ -27,6 +27,9 @@ func NewRouter(sidebar ports.TmuxSidebarPort) Router {
 }
 
 func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer, stderr io.Writer) error {
+	if routeRequiresSidebar(route.Path) && r.sidebar == nil {
+		return fmt.Errorf("runtime router: sidebar port is required for %s", route.Path)
+	}
 	switch route.Path {
 	case "sidebar/toggle":
 		return toggleSidebar(ctx, route.Flags, r.sidebar)
@@ -57,6 +60,25 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	default:
 		_, _ = fmt.Fprintf(stderr, "%s not implemented yet\n", route.Path)
 		return fmt.Errorf("unimplemented route: %s", route.Path)
+	}
+}
+
+func routeRequiresSidebar(path string) bool {
+	switch path {
+	case "sidebar/toggle",
+		"sidebar/open",
+		"sidebar/close",
+		"ui/run",
+		"action/quick-switch",
+		"action/switch",
+		"action/create-project",
+		"action/create-current-git-project",
+		"action/create-adhoc",
+		"action/rename",
+		"action/kill":
+		return true
+	default:
+		return false
 	}
 }
 

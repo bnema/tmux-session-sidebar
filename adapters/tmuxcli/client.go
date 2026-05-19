@@ -116,7 +116,7 @@ func (c Client) CurrentPanePath(ctx context.Context, clientID string) (string, e
 
 func (c Client) WindowID(ctx context.Context, target string) (string, error) {
 	if strings.TrimSpace(target) == "" {
-		target = formatWindowID
+		return c.display(ctx, formatWindowID)
 	}
 	return c.displayTarget(ctx, target, formatWindowID)
 }
@@ -333,12 +333,10 @@ func (c Client) RestoreWindowLayout(ctx context.Context, windowID string) error 
 	if strings.TrimSpace(windowID) == "" {
 		return nil
 	}
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdShowOptions, "-w", "-v", "-t", windowID, optionSidebarWindowLayout})
+	layout, err := c.savedWindowLayout(ctx, windowID)
 	if err != nil {
-		// The saved-layout option is absent when no sidebar layout has been saved.
-		return nil
+		return err
 	}
-	layout := strings.TrimSpace(result.Stdout)
 	if layout == "" {
 		return nil
 	}
@@ -348,6 +346,26 @@ func (c Client) RestoreWindowLayout(ctx context.Context, windowID string) error 
 	}
 	_, unsetErr := c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-wu", "-t", windowID, optionSidebarWindowLayout})
 	return unsetErr
+}
+
+func (c Client) savedWindowLayout(ctx context.Context, windowID string) (string, error) {
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdShowOptions, "-w", "-v", "-t", windowID, optionSidebarWindowLayout})
+	if err != nil {
+		if isTmuxMissingOption(result) {
+			return "", nil
+		}
+		return "", err
+	}
+	layout := strings.TrimSpace(result.Stdout)
+	if layout == "" {
+		return "", nil
+	}
+	return layout, nil
+}
+
+func isTmuxMissingOption(result ports.Result) bool {
+	message := strings.ToLower(result.Stderr + result.Stdout)
+	return strings.Contains(message, "invalid option") || strings.Contains(message, "unknown option")
 }
 
 func (c Client) ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error {
@@ -365,8 +383,11 @@ func (c Client) ScheduleSidebarRestoreOnExit(ctx context.Context, clientID strin
 		// Exit cleanup is best-effort because the pane/window may disappear first.
 		return nil
 	}
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdShowOptions, "-w", "-v", "-t", windowID, optionSidebarWindowLayout})
-	if err != nil || strings.TrimSpace(result.Stdout) == "" {
+	layout, err := c.savedWindowLayout(ctx, windowID)
+	if err != nil {
+		return err
+	}
+	if layout == "" {
 		// No saved layout means there is no sidebar-induced split to restore.
 		return nil
 	}
