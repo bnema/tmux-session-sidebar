@@ -8,7 +8,7 @@ GO_BIN_DIR := $(shell go env GOPATH)/bin
 endif
 GO_BIN_PATH ?= $(GO_BIN_DIR)/tmux-session-sidebar
 
-.PHONY: install uninstall mocks test-go go-install
+.PHONY: install uninstall mocks test-go test-runtime-bootstrap go-install
 
 install:
 	@mkdir -p "$(TPM_DIR)"
@@ -24,6 +24,9 @@ mocks:
 
 test-go:
 	@go test ./...
+
+test-runtime-bootstrap:
+	@bash scripts/ensure-runtime_test.sh
 
 go-install:
 	@mkdir -p "$(GO_BIN_DIR)"
