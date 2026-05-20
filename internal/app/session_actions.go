@@ -121,15 +121,10 @@ func killSession(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 	if err != nil {
 		return err
 	}
-	previousState, err := snapshotSidebarState(ctx)
-	if err != nil {
+	if err := runtimeService().KillSession(ctx, existing, session); err != nil {
 		return err
 	}
 	if err := removePersistedSession(ctx, session); err != nil {
-		return err
-	}
-	if err := runtimeService().KillSession(ctx, existing, session); err != nil {
-		rollbackPersistedState(ctx, previousState)
 		return err
 	}
 	if err := refreshSidebar(ctx, flags["client"], sidebar); err != nil {
