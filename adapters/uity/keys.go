@@ -51,7 +51,7 @@ func InterpretKey(mode Mode, seq []byte) Intent {
 			return IntentRename
 		case 'x':
 			return IntentKill
-		case 'h':
+		case 'h', 'H':
 			return IntentToggleNumeric
 		case '?':
 			return IntentToggleHelp

@@ -20,6 +20,7 @@ func TestSaveMovedSessionOrder(t *testing.T) {
 	}{
 		{name: "moves selected down after applying saved order", initial: []string{"gamma", "alpha", "beta"}, live: []string{"alpha", "beta", "gamma"}, session: "alpha", delta: 1, want: []string{"gamma", "beta", "alpha"}},
 		{name: "clamps first session moving up", initial: nil, live: []string{"alpha", "beta", "gamma"}, session: "alpha", delta: -1, want: []string{"alpha", "beta", "gamma"}},
+		{name: "moves visible session above numeric first session", initial: nil, live: []string{"1", "alpha", "beta"}, session: "beta", delta: -1, want: []string{"1", "beta", "alpha"}},
 	}
 
 	for _, tt := range tests {

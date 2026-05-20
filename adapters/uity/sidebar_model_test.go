@@ -237,6 +237,34 @@ func TestSidebarModelLoadsAndPersistsShowNumericItems(t *testing.T) {
 	}
 }
 
+func TestSidebarModelAltHTogglesNumericSessionVisibility(t *testing.T) {
+	tests := []struct {
+		name string
+		key  tea.KeyPressMsg
+	}{
+		{name: "lowercase", key: keyPress("h", tea.ModAlt)},
+		{name: "uppercase text", key: keyPress("H", tea.ModAlt|tea.ModShift)},
+		{name: "shifted keystroke", key: tea.KeyPressMsg(tea.Key{Text: "", Code: 'h', Mod: tea.ModAlt | tea.ModShift})},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model := NewSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "123"}}, Actions{
+				SetShowNumericItems: func(bool) bool { return true },
+			})
+			if strings.Contains(model.Render(), "123") {
+				t.Fatalf("numeric session visible before toggle: %q", model.Render())
+			}
+
+			updated, _ := model.Update(tt.key)
+			model = requireSidebarModel(t, updated)
+
+			if !strings.Contains(model.Render(), "123") {
+				t.Fatalf("numeric session hidden after toggle on: %q", model.Render())
+			}
+		})
+	}
+}
+
 func TestSidebarModelKeepsShowNumericWhenPersistFails(t *testing.T) {
 	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{
 		SetShowNumericItems: func(bool) bool { return false },
@@ -362,7 +390,7 @@ func TestSidebarModelHelpToggleHidesExpandedFooterByDefault(t *testing.T) {
 	updated, _ := model.Update(keyPress("?", tea.ModAlt))
 	model = requireSidebarModel(t, updated)
 	view = model.Render()
-	for _, want := range []string{"↵ choose", "M-n project", "M-a adhoc", "M-h nums", "M-J/K reorder", "M-r rename", "M-x kill", "M-? hide"} {
+	for _, want := range []string{"↵ choose", "M-n project", "M-a adhoc", "M-H nums", "M-J/K reorder", "M-r rename", "M-x kill", "M-? hide"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expanded footer missing %q in %q", want, view)
 		}

@@ -31,7 +31,9 @@ test-runtime-bootstrap:
 go-install:
 	@mkdir -p "$(GO_BIN_DIR)"
 	@go install ./cmd/tmux-session-sidebar
-	@echo "Installed Go runtime -> $(GO_BIN_PATH)"
+	@runtime_bin="$$(bash scripts/ensure-runtime.sh)"; \
+		echo "Installed Go runtime -> $(GO_BIN_PATH)"; \
+		echo "Updated tmux plugin runtime -> $$runtime_bin"
 
 uninstall:
 	@[ -n "$(TARGET_DIR)" ] || { echo "Error: TARGET_DIR is empty" >&2; exit 1; }

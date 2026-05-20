@@ -86,6 +86,7 @@ printf '%s\n' "$*" >> "$TMUX_LOG"
 }
 
 func TestCreateAdhocUsesCurrentDirectoryNameWithoutPrompt(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	logPath := installFakeTmux(t, `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
 case "$1" in
@@ -108,6 +109,92 @@ esac
 		if !strings.Contains(log, want) {
 			t.Fatalf("expected log to contain %q, log=%q", want, log)
 		}
+	}
+}
+
+func TestCreateAdhocUsesOnlyNonSidebarPanePathWhenSidebarIsCurrentPane(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  display-message)
+    if [ "$5" = '#{window_id}' ]; then
+      printf '@1\n'
+    elif [ "$5" = '#{pane_current_path}' ]; then
+      printf '/tmp/sidebar-stale\n'
+    else
+      printf '/tmp/sidebar-stale\n'
+    fi
+    ;;
+  list-panes)
+    printf '%%1\t0\t1\t\t/tmp/worktree/fresh\n%%2\t1\t0\t1\t/tmp/sidebar-stale\n'
+    ;;
+  list-sessions)
+    ;;
+esac
+`)
+
+	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar.EXPECT().FindSidebarPane(t.Context(), "/dev/pts/99").Return(ports.PaneRef{}, nil)
+
+	if err := createAdhoc(t.Context(), map[string]string{"client": "/dev/pts/99"}, sidebar); err != nil {
+		t.Fatalf("createAdhoc returned error: %v", err)
+	}
+	log := readLog(t, logPath)
+	for _, want := range []string{"list-panes -t @1", "new-session -d -s fresh -c /tmp/worktree/fresh", "switch-client -c /dev/pts/99 -t fresh"} {
+		if !strings.Contains(log, want) {
+			t.Fatalf("expected log to contain %q, log=%q", want, log)
+		}
+	}
+	if strings.Contains(log, "new-session -d -s sidebar-stale") {
+		t.Fatalf("ad-hoc used sidebar pane path, log=%q", log)
+	}
+}
+
+func TestCurrentPanePathForActionPrefersActiveNonSidebarPane(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  display-message)
+    printf '@1\n'
+    ;;
+  list-panes)
+    printf '%%1\t1\t0\t\t/tmp/worktree/active\n%%2\t0\t0\t1\t/tmp/sidebar\n%%3\t0\t1\t\t/tmp/worktree/inactive\n'
+    ;;
+esac
+`)
+
+	got, err := currentPanePathForAction(t.Context(), "/dev/pts/99")
+	if err != nil {
+		t.Fatalf("currentPanePathForAction error: %v", err)
+	}
+	if got != "/tmp/worktree/active" {
+		t.Fatalf("currentPanePathForAction = %q, want active non-sidebar path", got)
+	}
+}
+
+func TestCurrentPanePathForActionPrefersLastNonSidebarPaneWhenSidebarIsActive(t *testing.T) {
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  display-message)
+    if [ "$5" = '#{window_id}' ]; then
+      printf '@1\n'
+    elif [ "$5" = '#{pane_current_path}' ]; then
+      printf '/tmp/sidebar\n'
+    fi
+    ;;
+  list-panes)
+    printf '%%1\t0\t0\t\t/tmp/worktree/first\n%%2\t1\t0\t1\t/tmp/sidebar\n%%3\t0\t1\t\t/tmp/worktree/last\n'
+    ;;
+esac
+`)
+
+	got, err := currentPanePathForAction(t.Context(), "/dev/pts/99")
+	if err != nil {
+		t.Fatalf("currentPanePathForAction error: %v", err)
+	}
+	if got != "/tmp/worktree/last" {
+		t.Fatalf("currentPanePathForAction = %q, want last non-sidebar path", got)
 	}
 }
 

@@ -106,6 +106,37 @@ func TestMoveOrder(t *testing.T) {
 	}
 }
 
+func TestMoveVisibleOrder(t *testing.T) {
+	tests := []struct {
+		name        string
+		live        []string
+		order       []string
+		session     string
+		delta       int
+		showNumeric bool
+		want        []string
+	}{
+		{name: "jumps over hidden numeric when moving to first visible", live: []string{"1", "alpha", "beta"}, order: nil, session: "alpha", delta: -1, want: []string{"1", "alpha", "beta"}},
+		{name: "moves visible session above previous visible despite hidden first", live: []string{"1", "alpha", "beta"}, order: nil, session: "beta", delta: -1, want: []string{"1", "beta", "alpha"}},
+		{name: "includes numeric when shown", live: []string{"1", "alpha", "beta"}, order: nil, session: "alpha", delta: -1, showNumeric: true, want: []string{"alpha", "1", "beta"}},
+		{name: "hidden sessions are always skipped", live: []string{"__scratch", "alpha", "beta"}, order: nil, session: "beta", delta: -1, showNumeric: true, want: []string{"__scratch", "beta", "alpha"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MoveVisibleOrder(tt.live, tt.order, tt.session, tt.delta, tt.showNumeric)
+			if len(got) != len(tt.want) {
+				t.Fatalf("MoveVisibleOrder() = %#v, want %#v", got, tt.want)
+			}
+			for i, want := range tt.want {
+				if got[i] != want {
+					t.Fatalf("MoveVisibleOrder()[%d] = %q, want %q (full: %#v)", i, got[i], want, got)
+				}
+			}
+		})
+	}
+}
+
 func TestIsHiddenName(t *testing.T) {
 	tests := []struct {
 		name string
