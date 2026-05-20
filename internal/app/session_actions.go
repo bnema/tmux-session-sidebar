@@ -142,6 +142,7 @@ func killSession(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 }
 
 func rollbackPersistedState(ctx context.Context, previous ports.PersistedState) {
+	// Best-effort restore; the primary operation error takes precedence over rollback failures.
 	_ = restoreSidebarState(ctx, previous)
 }
 

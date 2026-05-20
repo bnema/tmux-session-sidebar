@@ -177,7 +177,7 @@ case "$1" in
     if [[ -f "`+counter+`" ]]; then count=$(cat "`+counter+`"); fi
     count=$((count + 1))
     printf '%s' "$count" > "`+counter+`"
-    if [[ "$count" -ge 2 ]]; then printf '$1\tscratch\t1\t0\n'; fi
+    if [[ "$count" -ge 2 ]]; then printf '$9\tscratch\t1\t0\n'; fi
     ;;
   switch-client) exit 1 ;;
   set-option) ;;

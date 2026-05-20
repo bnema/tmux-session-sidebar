@@ -111,6 +111,19 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	if err := renamePersistedSession(ctx, "alpha", "__hidden"); err != nil {
 		t.Fatalf("renamePersistedSession() to hidden error = %v", err)
 	}
+	state, err = loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() after hidden rename error = %v", err)
+	}
+	if _, ok := state.Sessions["alpha"]; ok {
+		t.Fatalf("Sessions[alpha] exists after hidden rename: %#v", state.Sessions)
+	}
+	if _, ok := state.Sessions["__hidden"]; ok {
+		t.Fatalf("Sessions[__hidden] exists after hidden rename: %#v", state.Sessions)
+	}
+	if want := []string{"gamma"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder after hidden rename = %#v, want %#v", state.SessionOrder, want)
+	}
 
 	if err := saveSessionMetadata(ctx, "beta", metadata); err != nil {
 		t.Fatalf("saveSessionMetadata() beta error = %v", err)

@@ -7,43 +7,44 @@ import (
 	"path/filepath"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/locker"
+	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 )
 
 func ensureRestoredAndCaptured(ctx context.Context) error {
-	store := sessionOrderStore()
-	lock, err := (locker.FileLocker{Dir: filepath.Join(store.Dir, "locks")}).Acquire(ctx, "tmux-sidebar-state")
-	if err != nil {
-		return err
-	}
-	defer releaseSidebarLock(lock)
-
-	service := runtimeServiceWithStore(store)
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		if err == nil {
-			err = fmt.Errorf("empty user home directory")
+	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+		service := runtimeServiceWithStore(store)
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			if err == nil {
+				err = fmt.Errorf("empty user home directory")
+			}
+			return fmt.Errorf("get user home directory: %w", err)
 		}
-		return fmt.Errorf("get user home directory: %w", err)
-	}
-	report := service.RestorePersistedSessions(ctx, "tmux", home)
-	for name, restoreErr := range report.SystemFailures {
-		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed: %v\n", name, restoreErr)
-	}
-	for name, restoreErr := range report.Failed {
-		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed: %v\n", name, restoreErr)
-	}
-	return service.CaptureLiveSessions(ctx, "tmux")
+		report := service.RestorePersistedSessions(ctx, "tmux", home)
+		for name, restoreErr := range report.SystemFailures {
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed (system): %v\n", name, restoreErr)
+		}
+		for name, restoreErr := range report.Failed {
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed (session): %v\n", name, restoreErr)
+		}
+		return service.CaptureLiveSessions(ctx, "tmux")
+	})
 }
 
 func captureLiveSidebarSessions(ctx context.Context) error {
+	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+		return runtimeServiceWithStore(store).CaptureLiveSessions(ctx, "tmux")
+	})
+}
+
+func withLockedSidebarStore(ctx context.Context, fn func(storefs.Store) error) error {
 	store := sessionOrderStore()
 	lock, err := (locker.FileLocker{Dir: filepath.Join(store.Dir, "locks")}).Acquire(ctx, "tmux-sidebar-state")
 	if err != nil {
 		return err
 	}
 	defer releaseSidebarLock(lock)
-
-	return runtimeServiceWithStore(store).CaptureLiveSessions(ctx, "tmux")
+	return fn(store)
 }
 
 func releaseSidebarLock(lock interface{ Release() error }) {
