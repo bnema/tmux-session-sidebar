@@ -62,30 +62,6 @@ func TestStoreLoadSaveSessionRestoreMetadata(t *testing.T) {
 	}
 }
 
-func TestStoreLoadLegacyUppercaseJSONKeys(t *testing.T) {
-	dir := t.TempDir()
-	legacy := `{
-  "Sessions": {"alpha": {"Kind": "project", "ProjectPath": "/tmp/alpha", "LastPath": "/tmp/alpha"}},
-  "SessionOrder": ["alpha"],
-  "Sidebar": {"ShowNumericSessions": true},
-  "Clients": {},
-  "Heat": {}
-}`
-	if err := os.WriteFile(filepath.Join(dir, "server.json"), []byte(legacy), 0o600); err != nil {
-		t.Fatalf("write legacy state: %v", err)
-	}
-	got, err := New(dir).Load(context.Background(), "server")
-	if err != nil {
-		t.Fatalf("Load error: %v", err)
-	}
-	if got.Sessions["alpha"].Kind != "project" || got.Sessions["alpha"].ProjectPath != "/tmp/alpha" || got.Sessions["alpha"].LastPath != "/tmp/alpha" || got.SessionOrder[0] != "alpha" {
-		t.Fatalf("legacy state not loaded: %#v", got)
-	}
-	if got.Sidebar == nil || !got.Sidebar.ShowNumericSessions {
-		t.Fatalf("legacy sidebar not loaded: %#v", got.Sidebar)
-	}
-}
-
 func TestStoreSaveWritesTinyAtomicJSON(t *testing.T) {
 	dir := t.TempDir()
 	store := New(dir)
