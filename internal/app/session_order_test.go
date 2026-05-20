@@ -108,6 +108,7 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 		t.Fatalf("SessionOrder after numeric rename = %#v, want %#v", state.SessionOrder, want)
 	}
 
+	// Renaming a non-existent session to a hidden name is a no-op and must not create hidden restore metadata.
 	if err := renamePersistedSession(ctx, "alpha", "__hidden"); err != nil {
 		t.Fatalf("renamePersistedSession() to hidden error = %v", err)
 	}
