@@ -125,7 +125,7 @@ func isRestorableSessionName(name string) bool {
 }
 
 func restorePath(metadata ports.SessionMetadata, home string) string {
-	for _, candidate := range []string{metadata.ProjectPath, metadata.LastPath} {
+	for _, candidate := range []string{metadata.LastPath, metadata.ProjectPath} {
 		if usefulPath(candidate) {
 			return strings.TrimSpace(candidate)
 		}
