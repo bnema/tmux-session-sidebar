@@ -39,8 +39,9 @@ type PaneRef struct {
 }
 
 type SessionMetadata struct {
-	Kind        string
-	ProjectPath string
+	Kind        string `json:"kind,omitempty"`
+	ProjectPath string `json:"projectPath,omitempty"`
+	LastPath    string `json:"lastPath,omitempty"`
 }
 
 type TmuxConfigPort interface {

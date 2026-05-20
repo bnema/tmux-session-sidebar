@@ -26,7 +26,7 @@ func (s Store) Load(_ context.Context, serverID string) (ports.PersistedState, e
 		return ports.PersistedState{}, err
 	}
 	var state ports.PersistedState
-	if err := json.Unmarshal(data, &state); err != nil {
+	if err := decodePersistedState(data, &state); err != nil {
 		return ports.PersistedState{}, err
 	}
 	initializeMaps(&state)
@@ -76,6 +76,44 @@ func (s Store) Save(_ context.Context, serverID string, state ports.PersistedSta
 
 func (s Store) path(serverID string) string {
 	return filepath.Join(s.Dir, filepath.Base(serverID)+".json")
+}
+
+type legacyPersistedState struct {
+	Sessions     map[string]ports.SessionMetadata `json:"Sessions"`
+	SessionOrder []string                         `json:"SessionOrder"`
+	Sidebar      *legacySidebarState              `json:"Sidebar"`
+	Clients      map[string][]byte                `json:"Clients"`
+	Heat         map[string][]byte                `json:"Heat"`
+}
+
+type legacySidebarState struct {
+	ShowNumericSessions bool `json:"ShowNumericSessions"`
+}
+
+func decodePersistedState(data []byte, state *ports.PersistedState) error {
+	if err := json.Unmarshal(data, state); err != nil {
+		return err
+	}
+	var legacy legacyPersistedState
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return err
+	}
+	if len(state.Sessions) == 0 && legacy.Sessions != nil {
+		state.Sessions = legacy.Sessions
+	}
+	if len(state.SessionOrder) == 0 && legacy.SessionOrder != nil {
+		state.SessionOrder = legacy.SessionOrder
+	}
+	if state.Sidebar == nil && legacy.Sidebar != nil {
+		state.Sidebar = &ports.SidebarState{ShowNumericSessions: legacy.Sidebar.ShowNumericSessions}
+	}
+	if len(state.Clients) == 0 && legacy.Clients != nil {
+		state.Clients = legacy.Clients
+	}
+	if len(state.Heat) == 0 && legacy.Heat != nil {
+		state.Heat = legacy.Heat
+	}
+	return nil
 }
 
 func initializeMaps(state *ports.PersistedState) {
