@@ -129,8 +129,23 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 	if err != nil {
 		return err
 	}
+	previousState, err := snapshotSidebarState(ctx)
+	if err != nil {
+		return err
+	}
+	metadata := ports.SessionMetadata{Kind: "project", ProjectPath: candidate.Path, LastPath: candidate.Path}
+	if err := saveSessionMetadata(ctx, candidate.SessionName, metadata); err != nil {
+		return err
+	}
 	return withSidebarFollow(ctx, client, sidebar, func() error {
-		return runtimeService().CreateProjectSession(ctx, client, existing, candidate)
+		if err := runtimeService().CreateProjectSession(ctx, client, existing, candidate); err != nil {
+			if liveSessionExists(ctx, candidate.SessionName) {
+				return err
+			}
+			rollbackPersistedState(ctx, previousState)
+			return err
+		}
+		return nil
 	})
 }
 
