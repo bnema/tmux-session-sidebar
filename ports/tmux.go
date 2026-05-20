@@ -53,6 +53,7 @@ type TmuxQueryPort interface {
 	ListSessions(ctx context.Context) ([]TmuxSessionSnapshot, error)
 	ListClients(ctx context.Context) ([]TmuxClientSnapshot, error)
 	CurrentPanePath(ctx context.Context, clientID string) (string, error)
+	SessionPath(ctx context.Context, sessionName string) (string, error)
 	PaneSize(ctx context.Context, paneID string) (PaneSize, error)
 }
 
