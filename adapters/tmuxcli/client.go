@@ -34,7 +34,6 @@ const (
 
 	optionSidebarPane         = "@session-sidebar-pane"
 	optionSidebarWindowLayout = "@session-sidebar-window-layout"
-	optionSidebarWidth        = "@session-sidebar-width"
 )
 
 type Client struct {

@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -175,13 +174,4 @@ func assertOps(t *testing.T, got []string, want []string) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ops mismatch\nwant: %#v\ngot:  %#v", want, got)
 	}
-}
-
-func testExecutable(t *testing.T) string {
-	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatalf("os.Executable: %v", err)
-	}
-	return exe
 }
