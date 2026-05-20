@@ -61,22 +61,51 @@ func ApplyOrder(live []string, order []string) []string {
 
 func MoveOrder(live []string, order []string, session string, delta int) []string {
 	ordered := ApplyOrder(live, order)
-	index := -1
+	return moveOrderAtIndices(ordered, allIndices(ordered), session, delta)
+}
+
+func MoveVisibleOrder(live []string, order []string, session string, delta int, showNumeric bool) []string {
+	ordered := ApplyOrder(live, order)
+	indices := make([]int, 0, len(ordered))
 	for i, name := range ordered {
-		if name == session {
-			index = i
+		if IsHiddenName(name) {
+			continue
+		}
+		if IsNumericName(name) && !showNumeric {
+			continue
+		}
+		indices = append(indices, i)
+	}
+	return moveOrderAtIndices(ordered, indices, session, delta)
+}
+
+func moveOrderAtIndices(ordered []string, indices []int, session string, delta int) []string {
+	visibleIndex := -1
+	for i, orderedIndex := range indices {
+		if ordered[orderedIndex] == session {
+			visibleIndex = i
 			break
 		}
 	}
-	if index < 0 {
+	if visibleIndex < 0 {
 		return ordered
 	}
-	target := min(max(index+delta, 0), len(ordered)-1)
-	if target == index {
+	target := min(max(visibleIndex+delta, 0), len(indices)-1)
+	if target == visibleIndex {
 		return ordered
 	}
-	ordered[index], ordered[target] = ordered[target], ordered[index]
+	fromIndex := indices[visibleIndex]
+	toIndex := indices[target]
+	ordered[fromIndex], ordered[toIndex] = ordered[toIndex], ordered[fromIndex]
 	return ordered
+}
+
+func allIndices(values []string) []int {
+	indices := make([]int, len(values))
+	for i := range values {
+		indices[i] = i
+	}
+	return indices
 }
 
 func VisibleNames(names []string, showNumeric bool) []string {

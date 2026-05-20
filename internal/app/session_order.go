@@ -45,8 +45,12 @@ func restoreSidebarState(ctx context.Context, state ports.PersistedState) error 
 }
 
 func saveMovedSessionOrder(ctx context.Context, live []string, session string, delta int) error {
+	return saveMovedVisibleSessionOrder(ctx, live, session, delta, false)
+}
+
+func saveMovedVisibleSessionOrder(ctx context.Context, live []string, session string, delta int, showNumeric bool) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		state.SessionOrder = sessions.MoveOrder(live, state.SessionOrder, session, delta)
+		state.SessionOrder = sessions.MoveVisibleOrder(live, state.SessionOrder, session, delta, showNumeric)
 	})
 }
 

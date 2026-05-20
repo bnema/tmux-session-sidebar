@@ -16,11 +16,10 @@ func createCurrentGitProject(ctx context.Context, flags map[string]string, sideb
 	path := flags["source-path"]
 	if path == "" {
 		var err error
-		path, err = tmux(ctx, "display-message", "-p", "#{pane_current_path}")
+		path, err = currentPanePathForAction(ctx, flags["client"])
 		if err != nil {
 			return err
 		}
-		path = strings.TrimSpace(path)
 	}
 	root, err := gitRoot(ctx, path)
 	if err != nil || root == "" {
@@ -36,11 +35,11 @@ func createCurrentGitProject(ctx context.Context, flags map[string]string, sideb
 func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
 	path := flags["source-path"]
 	if path == "" {
-		out, err := tmux(ctx, "display-message", "-p", "#{pane_current_path}")
+		var err error
+		path, err = currentPanePathForAction(ctx, flags["client"])
 		if err != nil {
 			return fmt.Errorf("get current pane path: %w", err)
 		}
-		path = strings.TrimSpace(out)
 	}
 	name := strings.TrimSpace(flags["name"])
 	if name == "" {
@@ -65,6 +64,49 @@ func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 		}
 		return nil
 	})
+}
+
+func currentPanePathForAction(ctx context.Context, client string) (string, error) {
+	client = strings.TrimSpace(client)
+	if client == "" {
+		out, err := tmux(ctx, "display-message", "-p", "#{pane_current_path}")
+		return strings.TrimSpace(out), err
+	}
+	windowID, err := tmux(ctx, "display-message", "-p", "-t", client, "#{window_id}")
+	if err == nil && strings.TrimSpace(windowID) != "" {
+		out, listErr := tmux(ctx, "list-panes", "-t", strings.TrimSpace(windowID), "-F", "#{pane_id}\t#{pane_active}\t#{pane_last}\t#{@session-sidebar-pane}\t#{pane_current_path}")
+		if listErr == nil {
+			var firstWorkPanePath string
+			var lastWorkPanePath string
+			for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
+				fields := strings.SplitN(line, "\t", 5)
+				if len(fields) < 5 || strings.TrimSpace(fields[3]) == "1" {
+					continue
+				}
+				path := strings.TrimSpace(fields[4])
+				if path == "" {
+					continue
+				}
+				if firstWorkPanePath == "" {
+					firstWorkPanePath = path
+				}
+				if strings.TrimSpace(fields[1]) == "1" {
+					return path, nil
+				}
+				if strings.TrimSpace(fields[2]) == "1" {
+					lastWorkPanePath = path
+				}
+			}
+			if lastWorkPanePath != "" {
+				return lastWorkPanePath, nil
+			}
+			if firstWorkPanePath != "" {
+				return firstWorkPanePath, nil
+			}
+		}
+	}
+	out, err := tmux(ctx, "display-message", "-p", "-t", client, "#{pane_current_path}")
+	return strings.TrimSpace(out), err
 }
 
 func renameSession(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {

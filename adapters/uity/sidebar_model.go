@@ -94,6 +94,14 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		if toggleNumericKey(msg) {
+			next := !m.showNumeric
+			if m.actions.SetShowNumericItems != nil && !m.actions.SetShowNumericItems(next) {
+				return m, nil
+			}
+			m.showNumeric = next
+			return m, nil
+		}
 		switch key {
 		case "ctrl+c":
 			return m, tea.Quit
@@ -181,13 +189,6 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendPrintable(msg)
 		case "f5":
 			m.reloadSessions()
-			return m, nil
-		case "alt+h":
-			next := !m.showNumeric
-			if m.actions.SetShowNumericItems != nil && !m.actions.SetShowNumericItems(next) {
-				return m, nil
-			}
-			m.showNumeric = next
 			return m, nil
 		case "alt+?":
 			m.showHelp = !m.showHelp
@@ -360,7 +361,7 @@ func (m SidebarModel) Render() string {
 	if m.showHelp {
 		lines = append(lines,
 			styles.dim.Render("↵ choose  / filter  esc back  M-b toggle"),
-			styles.dim.Render("M-n project  M-a adhoc  M-h nums"),
+			styles.dim.Render("M-n project  M-a adhoc  M-H nums"),
 			styles.dim.Render("M-J/K reorder  M-r rename"),
 			styles.dim.Render("M-x kill  M-? hide"),
 		)
@@ -467,6 +468,14 @@ func reorderKeyDelta(msg tea.KeyPressMsg) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func toggleNumericKey(msg tea.KeyPressMsg) bool {
+	key := msg.Key()
+	if !key.Mod.Contains(tea.ModAlt) {
+		return false
+	}
+	return key.Text == "h" || key.Text == "H" || key.Code == 'h' || key.Code == 'H'
 }
 
 func isKillConfirmYes(msg tea.KeyPressMsg) bool {

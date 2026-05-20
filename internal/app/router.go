@@ -160,7 +160,15 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 			for _, item := range items {
 				names = append(names, item.Name)
 			}
-			return handleActionError(ctx, "reorder session", saveMovedSessionOrder(ctx, names, name, delta))
+			state, err := loadSidebarState(ctx)
+			if err != nil {
+				return handleActionError(ctx, "reorder session", err)
+			}
+			showNumeric := false
+			if state.Sidebar != nil {
+				showNumeric = state.Sidebar.ShowNumericSessions
+			}
+			return handleActionError(ctx, "reorder session", saveMovedVisibleSessionOrder(ctx, names, name, delta, showNumeric))
 		},
 		SetShowNumericItems: func(show bool) bool {
 			return handleActionError(ctx, "save sidebar state", saveShowNumericSessions(ctx, show))
