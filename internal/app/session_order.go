@@ -25,7 +25,13 @@ func loadSidebarState(ctx context.Context) (ports.PersistedState, error) {
 }
 
 func snapshotSidebarState(ctx context.Context) (ports.PersistedState, error) {
-	state, err := loadSidebarState(ctx)
+	store := sessionOrderStore()
+	lock, err := (locker.FileLocker{Dir: filepath.Join(store.Dir, "locks")}).Acquire(ctx, "tmux-sidebar-state")
+	if err != nil {
+		return ports.PersistedState{}, err
+	}
+	defer releaseSidebarLock(lock)
+	state, err := store.Load(ctx, "tmux")
 	if err != nil {
 		return ports.PersistedState{}, err
 	}
@@ -135,7 +141,7 @@ func updateSidebarState(ctx context.Context, update func(*ports.PersistedState))
 	if err != nil {
 		return err
 	}
-	defer func() { _ = lock.Release() }()
+	defer releaseSidebarLock(lock)
 	state, err := store.Load(ctx, "tmux")
 	if err != nil {
 		return err

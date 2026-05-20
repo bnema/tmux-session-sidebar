@@ -72,6 +72,43 @@ func TestRestorePersistedSessionsFallsBackToDotWhenNoUsefulPath(t *testing.T) {
 	}
 }
 
+func TestRestorePersistedSessionsReportsInfrastructureFailures(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	boom := errors.New("boom")
+
+	t.Run("store load", func(t *testing.T) {
+		store := mocks.NewMockStateStorePort(t)
+		query := mocks.NewMockTmuxQueryPort(t)
+		control := mocks.NewMockTmuxControlPort(t)
+		store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, boom)
+
+		report := NewService(nil, query, control, store).RestorePersistedSessions(ctx, serverID, t.TempDir())
+		if !errors.Is(report.SystemFailures["load"], boom) {
+			t.Fatalf("system failure load = %v, want %v", report.SystemFailures["load"], boom)
+		}
+		if len(report.Failed) != 0 {
+			t.Fatalf("session failures = %#v, want empty", report.Failed)
+		}
+	})
+
+	t.Run("list sessions", func(t *testing.T) {
+		store := mocks.NewMockStateStorePort(t)
+		query := mocks.NewMockTmuxQueryPort(t)
+		control := mocks.NewMockTmuxControlPort(t)
+		store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{Sessions: map[string]ports.SessionMetadata{"alpha": {LastPath: t.TempDir()}}}, nil)
+		query.EXPECT().ListSessions(ctx).Return(nil, boom)
+
+		report := NewService(nil, query, control, store).RestorePersistedSessions(ctx, serverID, t.TempDir())
+		if !errors.Is(report.SystemFailures["list"], boom) {
+			t.Fatalf("system failure list = %v, want %v", report.SystemFailures["list"], boom)
+		}
+		if len(report.Failed) != 0 {
+			t.Fatalf("session failures = %#v, want empty", report.Failed)
+		}
+	})
+}
+
 func TestCaptureLiveSessions(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
@@ -133,6 +170,25 @@ func TestCaptureLiveSessionsIgnoresSessionPathErrors(t *testing.T) {
 
 	if err := NewService(nil, query, nil, store).CaptureLiveSessions(ctx, serverID); err != nil {
 		t.Fatalf("CaptureLiveSessions error: %v", err)
+	}
+}
+
+func TestCaptureLiveSessionsReturnsSaveError(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	alphaPath := t.TempDir()
+	boom := errors.New("boom")
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "alpha"}}, nil)
+	query.EXPECT().SessionPath(ctx, "alpha").Return(alphaPath, nil)
+	store.EXPECT().Save(ctx, serverID, mock.Anything).Return(boom)
+
+	err := NewService(nil, query, nil, store).CaptureLiveSessions(ctx, serverID)
+	if !errors.Is(err, boom) {
+		t.Fatalf("CaptureLiveSessions error = %v, want %v", err, boom)
 	}
 }
 

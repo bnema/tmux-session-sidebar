@@ -15,11 +15,20 @@ func ensureRestoredAndCaptured(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = lock.Release() }()
+	defer releaseSidebarLock(lock)
 
 	service := runtimeServiceWithStore(store)
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		if err == nil {
+			err = fmt.Errorf("empty user home directory")
+		}
+		return fmt.Errorf("get user home directory: %w", err)
+	}
 	report := service.RestorePersistedSessions(ctx, "tmux", home)
+	for name, restoreErr := range report.SystemFailures {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed: %v\n", name, restoreErr)
+	}
 	for name, restoreErr := range report.Failed {
 		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed: %v\n", name, restoreErr)
 	}
@@ -32,7 +41,13 @@ func captureLiveSidebarSessions(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = lock.Release() }()
+	defer releaseSidebarLock(lock)
 
 	return runtimeServiceWithStore(store).CaptureLiveSessions(ctx, "tmux")
+}
+
+func releaseSidebarLock(lock interface{ Release() error }) {
+	if err := lock.Release(); err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: release state lock failed: %v\n", err)
+	}
 }

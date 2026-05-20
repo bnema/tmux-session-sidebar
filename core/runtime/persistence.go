@@ -11,34 +11,35 @@ import (
 )
 
 type RestoreReport struct {
-	Restored []string
-	Skipped  []string
-	Failed   map[string]error
+	Restored       []string
+	Skipped        []string
+	Failed         map[string]error
+	SystemFailures map[string]error
 }
 
 func (s *Service) RestorePersistedSessions(ctx context.Context, serverID string, home string) RestoreReport {
-	report := RestoreReport{Failed: map[string]error{}}
+	report := RestoreReport{Failed: map[string]error{}, SystemFailures: map[string]error{}}
 	if s.store == nil {
-		report.Failed["store"] = ErrMissingStateStore
+		report.SystemFailures["store"] = ErrMissingStateStore
 		return report
 	}
 	if s.tmuxQuery == nil {
-		report.Failed["query"] = ErrMissingTmuxQuery
+		report.SystemFailures["query"] = ErrMissingTmuxQuery
 		return report
 	}
 	if s.tmuxCtl == nil {
-		report.Failed["control"] = ErrMissingTmuxControl
+		report.SystemFailures["control"] = ErrMissingTmuxControl
 		return report
 	}
 
 	state, err := s.store.Load(ctx, serverID)
 	if err != nil {
-		report.Failed["load"] = err
+		report.SystemFailures["load"] = err
 		return report
 	}
 	live, err := s.tmuxQuery.ListSessions(ctx)
 	if err != nil {
-		report.Failed["list"] = err
+		report.SystemFailures["list"] = err
 		return report
 	}
 
