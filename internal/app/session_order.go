@@ -57,15 +57,24 @@ func saveShowNumericSessions(ctx context.Context, show bool) error {
 }
 
 func saveSessionMetadata(ctx context.Context, name string, metadata ports.SessionMetadata) error {
+	_, err := saveSessionMetadataWithSnapshot(ctx, name, metadata)
+	return err
+}
+
+func saveSessionMetadataWithSnapshot(ctx context.Context, name string, metadata ports.SessionMetadata) (ports.PersistedState, error) {
+	var previous ports.PersistedState
 	if !shouldPersistSessionName(name) {
-		return nil
+		state, err := snapshotSidebarState(ctx)
+		return state, err
 	}
-	return updateSidebarState(ctx, func(state *ports.PersistedState) {
+	err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		previous = clonePersistedState(*state)
 		if state.Sessions == nil {
 			state.Sessions = map[string]ports.SessionMetadata{}
 		}
 		state.Sessions[name] = metadata
 	})
+	return previous, err
 }
 
 func persistedSessionMetadata(ctx context.Context, name string) (ports.SessionMetadata, bool) {
@@ -100,6 +109,7 @@ func renamePersistedSession(ctx context.Context, oldName string, newName string)
 		for i, name := range state.SessionOrder {
 			if name == oldName {
 				state.SessionOrder[i] = newName
+				break
 			}
 		}
 	})

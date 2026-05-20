@@ -50,12 +50,9 @@ func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 	if err != nil {
 		return err
 	}
-	previousState, err := snapshotSidebarState(ctx)
-	if err != nil {
-		return err
-	}
 	metadata := ports.SessionMetadata{Kind: "adhoc", LastPath: path}
-	if err := saveSessionMetadata(ctx, name, metadata); err != nil {
+	previousState, err := saveSessionMetadataWithSnapshot(ctx, name, metadata)
+	if err != nil {
 		return err
 	}
 	return withSidebarFollow(ctx, flags["client"], sidebar, func() error {

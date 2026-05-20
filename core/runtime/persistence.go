@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
@@ -47,7 +48,8 @@ func (s *Service) RestorePersistedSessions(ctx context.Context, serverID string,
 	for _, session := range live {
 		liveNames[session.Name] = true
 	}
-	for name, metadata := range state.Sessions {
+	for _, name := range orderedPersistedSessionNames(state) {
+		metadata := state.Sessions[name]
 		if !isRestorableSessionName(name) || liveNames[name] {
 			report.Skipped = append(report.Skipped, name)
 			continue
@@ -97,6 +99,25 @@ func (s *Service) CaptureLiveSessions(ctx context.Context, serverID string) erro
 		state.Sessions[session.Name] = metadata
 	}
 	return s.store.Save(ctx, serverID, state)
+}
+
+func orderedPersistedSessionNames(state ports.PersistedState) []string {
+	used := map[string]bool{}
+	ordered := make([]string, 0, len(state.Sessions))
+	for _, name := range state.SessionOrder {
+		if _, ok := state.Sessions[name]; ok && !used[name] {
+			ordered = append(ordered, name)
+			used[name] = true
+		}
+	}
+	remaining := make([]string, 0, len(state.Sessions)-len(ordered))
+	for name := range state.Sessions {
+		if !used[name] {
+			remaining = append(remaining, name)
+		}
+	}
+	sort.Strings(remaining)
+	return append(ordered, remaining...)
 }
 
 func isRestorableSessionName(name string) bool {
