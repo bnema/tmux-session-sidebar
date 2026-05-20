@@ -58,14 +58,13 @@ main() {
   set_default @session-sidebar-heat-stale-hours     24
   set_default @session-sidebar-heat-refresh-seconds 300
 
-  local sidebar_key previous_key quoted_runtime quoted_ensure runtime_bin slot
+  local sidebar_key previous_key quoted_runtime runtime_bin slot
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"
   previous_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-bound-key 2>/dev/null || true)"
   if [ "$sidebar_key" = b ] && { [ -z "$previous_key" ] || [ "$previous_key" = b ]; }; then
     sidebar_key=M-b
     "$TMUX_BIN" set-option -gq @session-sidebar-key "$sidebar_key"
   fi
-  printf -v quoted_ensure '%q' "$SCRIPTS_DIR/ensure-runtime.sh"
   runtime_bin="$("$SCRIPTS_DIR/ensure-runtime.sh")"
   printf -v quoted_runtime '%q' "$runtime_bin"
 
@@ -73,7 +72,7 @@ main() {
     unbind_plugin_binding "$previous_key"
   fi
 
-  "$TMUX_BIN" run-shell -b "$quoted_ensure >/dev/null"
+  "$TMUX_BIN" run-shell -b "$quoted_runtime daemon ensure >/dev/null"
   "$TMUX_BIN" bind-key -n "$sidebar_key" \
     run-shell "$quoted_runtime sidebar toggle --client #{q:client_name}"
   "$TMUX_BIN" set-option -gq @session-sidebar-bound-key "$sidebar_key"

@@ -160,6 +160,10 @@ func loadSessionViews(ctx context.Context) ([]sessions.View, error) {
 }
 
 func runtimeService() *coreruntime.Service {
+	return runtimeServiceWithStore(nil)
+}
+
+func runtimeServiceWithStore(store ports.StateStorePort) *coreruntime.Service {
 	tmux := tmuxcli.Client{Process: process.Runner{}}
-	return coreruntime.NewService(nil, tmux, tmux, nil).WithMetadata(tmux)
+	return coreruntime.NewService(nil, tmux, tmux, store).WithMetadata(tmux)
 }

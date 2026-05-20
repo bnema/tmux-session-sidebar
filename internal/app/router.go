@@ -55,7 +55,13 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 		return renameSession(ctx, route.Flags, r.sidebar)
 	case "action/kill":
 		return killSession(ctx, route.Flags, r.sidebar)
-	case "daemon/serve", "daemon/ensure", "hook/client-attached", "hook/client-detached", "hook/client-session-changed":
+	case "daemon/ensure":
+		return ensureRestoredAndCaptured(ctx)
+	case "hook/client-attached":
+		return ensureRestoredAndCaptured(ctx)
+	case "hook/client-detached", "hook/client-session-changed":
+		return captureLiveSidebarSessions(ctx)
+	case "daemon/serve":
 		return nil
 	default:
 		_, _ = fmt.Fprintf(stderr, "%s not implemented yet\n", route.Path)
