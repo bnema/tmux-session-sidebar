@@ -129,8 +129,20 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 	if err != nil {
 		return err
 	}
+	metadata := ports.SessionMetadata{Kind: "project", ProjectPath: candidate.Path, LastPath: candidate.Path}
+	previousState, err := saveSessionMetadataWithSnapshot(ctx, candidate.SessionName, metadata)
+	if err != nil {
+		return err
+	}
 	return withSidebarFollow(ctx, client, sidebar, func() error {
-		return runtimeService().CreateProjectSession(ctx, client, existing, candidate)
+		if err := runtimeService().CreateProjectSession(ctx, client, existing, candidate); err != nil {
+			if liveSessionExists(ctx, candidate.SessionName) {
+				return err
+			}
+			rollbackPersistedState(ctx, previousState)
+			return err
+		}
+		return nil
 	})
 }
 
@@ -145,6 +157,10 @@ func loadSessionViews(ctx context.Context) ([]sessions.View, error) {
 }
 
 func runtimeService() *coreruntime.Service {
+	return runtimeServiceWithStore(nil)
+}
+
+func runtimeServiceWithStore(store ports.StateStorePort) *coreruntime.Service {
 	tmux := tmuxcli.Client{Process: process.Runner{}}
-	return coreruntime.NewService(nil, tmux, tmux, nil).WithMetadata(tmux)
+	return coreruntime.NewService(nil, tmux, tmux, store).WithMetadata(tmux)
 }

@@ -38,6 +38,30 @@ func TestStoreLoadSave(t *testing.T) {
 	}
 }
 
+func TestStoreLoadSaveSessionRestoreMetadata(t *testing.T) {
+	store := New(t.TempDir())
+	ctx := context.Background()
+	state := ports.PersistedState{
+		Sessions: map[string]ports.SessionMetadata{
+			"alpha": {Kind: "project", ProjectPath: "/tmp/alpha", LastPath: "/tmp/alpha/subdir"},
+			"beta":  {Kind: "captured", LastPath: "/tmp/beta"},
+		},
+		SessionOrder: []string{"alpha", "beta"},
+		Clients:      map[string][]byte{},
+		Heat:         map[string][]byte{},
+	}
+	if err := store.Save(ctx, "server", state); err != nil {
+		t.Fatalf("Save error: %v", err)
+	}
+	got, err := store.Load(ctx, "server")
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if !reflect.DeepEqual(got, state) {
+		t.Fatalf("loaded state = %#v, want %#v", got, state)
+	}
+}
+
 func TestStoreSaveWritesTinyAtomicJSON(t *testing.T) {
 	dir := t.TempDir()
 	store := New(dir)

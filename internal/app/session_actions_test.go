@@ -5,9 +5,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/bnema/tmux-session-sidebar/ports"
 	"github.com/bnema/tmux-session-sidebar/ports/mocks"
 )
 
@@ -109,6 +111,283 @@ esac
 	}
 }
 
+func TestCreateAdhocPersistsRestoreMetadata(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  display-message) printf '/tmp/worktree/scratch\n' ;;
+  list-sessions) ;;
+  set-option) ;;
+esac
+`)
+
+	if err := createAdhoc(t.Context(), map[string]string{}, nil); err != nil {
+		t.Fatalf("createAdhoc returned error: %v", err)
+	}
+	assertPersistedMetadata(t, "scratch", ports.SessionMetadata{Kind: "adhoc", LastPath: "/tmp/worktree/scratch"})
+}
+
+func TestCreateProjectPersistsRestoreMetadata(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions) ;;
+  set-option) ;;
+esac
+`)
+
+	path := "/tmp/worktree/project"
+	if err := createProject(t.Context(), map[string]string{"project-path": path}, nil, nil); err != nil {
+		t.Fatalf("createProject returned error: %v", err)
+	}
+	assertPersistedMetadata(t, "project", ports.SessionMetadata{Kind: "project", ProjectPath: path, LastPath: path})
+}
+
+func TestCreateAdhocFailureRestoresPreviousMetadata(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	previous := ports.SessionMetadata{Kind: "captured", LastPath: "/tmp/old"}
+	seedPersistedState(t, map[string]ports.SessionMetadata{"scratch": previous}, []string{"alpha", "scratch", "gamma"})
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  display-message) printf '/tmp/worktree/scratch\n' ;;
+  list-sessions) ;;
+  new-session) exit 1 ;;
+esac
+`)
+
+	if err := createAdhoc(t.Context(), map[string]string{}, nil); err == nil {
+		t.Fatal("createAdhoc returned nil, want error")
+	}
+	assertPersistedMetadata(t, "scratch", previous)
+	assertPersistedOrder(t, []string{"alpha", "scratch", "gamma"})
+}
+
+func TestCreateAdhocSwitchFailureKeepsNewMetadataWhenSessionExists(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	counter := filepath.Join(t.TempDir(), "list-count")
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  display-message) printf '/tmp/worktree/scratch\n' ;;
+  list-sessions)
+    count=0
+    if [[ -f "`+counter+`" ]]; then count=$(cat "`+counter+`"); fi
+    count=$((count + 1))
+    printf '%s' "$count" > "`+counter+`"
+    if [[ "$count" -ge 2 ]]; then printf '$9\tscratch\t1\t0\n'; fi
+    ;;
+  switch-client) exit 1 ;;
+  set-option) ;;
+esac
+`)
+
+	if err := createAdhoc(t.Context(), map[string]string{}, nil); err == nil {
+		t.Fatal("createAdhoc returned nil, want switch error")
+	}
+	assertPersistedMetadata(t, "scratch", ports.SessionMetadata{Kind: "adhoc", LastPath: "/tmp/worktree/scratch"})
+}
+
+func TestCreateProjectFailureRestoresPreviousMetadata(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	previous := ports.SessionMetadata{Kind: "captured", LastPath: "/tmp/old-project"}
+	seedPersistedState(t, map[string]ports.SessionMetadata{"project": previous}, []string{"alpha", "project", "gamma"})
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions) ;;
+  new-session) exit 1 ;;
+esac
+`)
+
+	if err := createProject(t.Context(), map[string]string{"project-path": "/tmp/worktree/project"}, nil, nil); err == nil {
+		t.Fatal("createProject returned nil, want error")
+	}
+	assertPersistedMetadata(t, "project", previous)
+	assertPersistedOrder(t, []string{"alpha", "project", "gamma"})
+}
+
+func TestCreateProjectSwitchFailureKeepsNewMetadataWhenSessionExists(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	counter := filepath.Join(t.TempDir(), "list-count")
+	path := "/tmp/worktree/project"
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions)
+    count=0
+    if [[ -f "`+counter+`" ]]; then count=$(cat "`+counter+`"); fi
+    count=$((count + 1))
+    printf '%s' "$count" > "`+counter+`"
+    if [[ "$count" -ge 2 ]]; then printf '$1\tproject\t1\t0\n'; fi
+    ;;
+  switch-client) exit 1 ;;
+  set-option) ;;
+esac
+`)
+
+	if err := createProject(t.Context(), map[string]string{"project-path": path}, nil, nil); err == nil {
+		t.Fatal("createProject returned nil, want switch error")
+	}
+	assertPersistedMetadata(t, "project", ports.SessionMetadata{Kind: "project", ProjectPath: path, LastPath: path})
+}
+
+func TestRenameSessionMovesMetadataAndRollsBackOnFailure(t *testing.T) {
+	tests := []struct {
+		name         string
+		newName      string
+		renameExit   string
+		initial      map[string]ports.SessionMetadata
+		initialOrder []string
+		wantSessions map[string]ports.SessionMetadata
+		wantOrder    []string
+		wantErr      bool
+	}{
+		{
+			name:         "success",
+			newName:      "beta",
+			renameExit:   "0",
+			initial:      map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}},
+			initialOrder: []string{"alpha", "gamma"},
+			wantSessions: map[string]ports.SessionMetadata{"beta": {Kind: "adhoc", LastPath: "/tmp/alpha"}},
+			wantOrder:    []string{"beta", "gamma"},
+		},
+		{
+			name:         "failure restores alpha",
+			newName:      "beta",
+			renameExit:   "1",
+			initial:      map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}},
+			initialOrder: []string{"alpha", "gamma"},
+			wantSessions: map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}},
+			wantOrder:    []string{"alpha", "gamma"},
+			wantErr:      true,
+		},
+		{
+			name:       "failure restores overwritten target metadata",
+			newName:    "beta",
+			renameExit: "1",
+			initial: map[string]ports.SessionMetadata{
+				"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"},
+				"beta":  {Kind: "project", ProjectPath: "/tmp/beta", LastPath: "/tmp/beta"},
+			},
+			initialOrder: []string{"alpha", "beta", "gamma"},
+			wantSessions: map[string]ports.SessionMetadata{
+				"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"},
+				"beta":  {Kind: "project", ProjectPath: "/tmp/beta", LastPath: "/tmp/beta"},
+			},
+			wantOrder: []string{"alpha", "beta", "gamma"},
+			wantErr:   true,
+		},
+		{
+			name:         "success to numeric removes restore record",
+			newName:      "123",
+			renameExit:   "0",
+			initial:      map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}},
+			initialOrder: []string{"alpha", "gamma"},
+			wantSessions: map[string]ports.SessionMetadata{},
+			wantOrder:    []string{"gamma"},
+		},
+		{
+			name:         "failure to hidden restores old record",
+			newName:      "__hidden",
+			renameExit:   "1",
+			initial:      map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}},
+			initialOrder: []string{"alpha", "gamma"},
+			wantSessions: map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}},
+			wantOrder:    []string{"alpha", "gamma"},
+			wantErr:      true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			seedPersistedState(t, tt.initial, tt.initialOrder)
+			installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions) printf '$1\talpha\t1\t1\n$2\tgamma\t1\t0\n' ;;
+  rename-session) exit `+tt.renameExit+` ;;
+esac
+`)
+			sidebar := mocks.NewMockTmuxSidebarPort(t)
+			if !tt.wantErr {
+				sidebar.EXPECT().RefreshSidebar(t.Context(), "").Return(nil)
+			}
+			err := renameSession(t.Context(), map[string]string{"session": "alpha", "name": tt.newName}, sidebar)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("renameSession error = %v, wantErr %v", err, tt.wantErr)
+			}
+			state, err := loadSidebarState(t.Context())
+			if err != nil {
+				t.Fatalf("loadSidebarState error = %v", err)
+			}
+			if !reflect.DeepEqual(state.Sessions, tt.wantSessions) {
+				t.Fatalf("Sessions = %#v, want %#v", state.Sessions, tt.wantSessions)
+			}
+			if !reflect.DeepEqual(state.SessionOrder, tt.wantOrder) {
+				t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, tt.wantOrder)
+			}
+		})
+	}
+}
+
+func TestConfirmedKillRemovesPersistedMetadataAndOrder(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	seedPersistedState(t, map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}, "beta": {Kind: "adhoc", LastPath: "/tmp/beta"}}, []string{"alpha", "beta"})
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions) printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n' ;;
+esac
+`)
+	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar.EXPECT().RefreshSidebar(t.Context(), "").Return(nil)
+
+	if err := killSession(t.Context(), map[string]string{"session": "alpha", "confirmed": "yes"}, sidebar); err != nil {
+		t.Fatalf("killSession returned error: %v", err)
+	}
+	state, err := loadSidebarState(t.Context())
+	if err != nil {
+		t.Fatalf("loadSidebarState error = %v", err)
+	}
+	if _, ok := state.Sessions["alpha"]; ok {
+		t.Fatalf("Sessions[alpha] exists after kill: %#v", state.Sessions)
+	}
+	if want := []string{"beta"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
+	}
+}
+
+func TestConfirmedKillFailureRestoresPersistedMetadataAndOrder(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	initialSessions := map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}, "beta": {Kind: "adhoc", LastPath: "/tmp/beta"}}
+	initialOrder := []string{"alpha", "beta"}
+	seedPersistedState(t, initialSessions, initialOrder)
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions) printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n' ;;
+  kill-session) exit 1 ;;
+esac
+`)
+
+	if err := killSession(t.Context(), map[string]string{"session": "alpha", "confirmed": "yes"}, nil); err == nil {
+		t.Fatal("killSession returned nil, want error")
+	}
+	state, err := loadSidebarState(t.Context())
+	if err != nil {
+		t.Fatalf("loadSidebarState error = %v", err)
+	}
+	if !reflect.DeepEqual(state.Sessions, initialSessions) {
+		t.Fatalf("Sessions = %#v, want %#v", state.Sessions, initialSessions)
+	}
+	if !reflect.DeepEqual(state.SessionOrder, initialOrder) {
+		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, initialOrder)
+	}
+}
+
 func TestConfirmedKill(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -170,6 +449,42 @@ esac
 				}
 			}
 		})
+	}
+}
+
+func assertPersistedMetadata(t *testing.T, name string, want ports.SessionMetadata) {
+	t.Helper()
+	state, err := loadSidebarState(t.Context())
+	if err != nil {
+		t.Fatalf("loadSidebarState error = %v", err)
+	}
+	if got, ok := state.Sessions[name]; !ok || got != want {
+		t.Fatalf("Sessions[%q] = %#v, %v; want %#v, true", name, got, ok, want)
+	}
+}
+
+func assertPersistedOrder(t *testing.T, want []string) {
+	t.Helper()
+	state, err := loadSidebarState(t.Context())
+	if err != nil {
+		t.Fatalf("loadSidebarState error = %v", err)
+	}
+	if !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
+	}
+}
+
+func seedPersistedState(t *testing.T, sessions map[string]ports.SessionMetadata, order []string) {
+	t.Helper()
+	store := sessionOrderStore()
+	state, err := store.Load(t.Context(), "tmux")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	state.Sessions = sessions
+	state.SessionOrder = order
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() error = %v", err)
 	}
 }
 

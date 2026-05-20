@@ -132,6 +132,14 @@ These work without opening the sidebar:
 
 Numeric session names and names beginning with `__` are hidden from the sidebar by default. `M-h` toggles numeric session visibility.
 
+### Session restore
+
+The sidebar remembers named sessions that it creates or observes and recreates them with their original working directory paths when the tmux server is restarted.
+
+Each restored session starts with a single pane running a shell in its remembered directory. When that directory no longer exists, restore falls back to your home directory or the system default working directory and logs a short warning.
+
+Numeric sessions and sessions beginning with `__` are ignored. Killing a session with `M-x` removes it from future restore.
+
 ## Project sessions
 
 `M-n` opens an inline project picker using the directories under `@session-sidebar-project-roots`. The picker filters by project name. Press `Enter` to create or switch to that project session.

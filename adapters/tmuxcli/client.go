@@ -34,7 +34,6 @@ const (
 
 	optionSidebarPane         = "@session-sidebar-pane"
 	optionSidebarWindowLayout = "@session-sidebar-window-layout"
-	optionSidebarWidth        = "@session-sidebar-width"
 )
 
 type Client struct {
@@ -113,6 +112,10 @@ func (c Client) ListClients(ctx context.Context) ([]ports.TmuxClientSnapshot, er
 
 func (c Client) CurrentPanePath(ctx context.Context, clientID string) (string, error) {
 	return c.displayTarget(ctx, clientID, formatPaneCurrentPath)
+}
+
+func (c Client) SessionPath(ctx context.Context, sessionName string) (string, error) {
+	return c.displayTarget(ctx, "="+sessionName, formatPaneCurrentPath)
 }
 
 func (c Client) WindowID(ctx context.Context, target string) (string, error) {

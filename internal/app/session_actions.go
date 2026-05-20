@@ -50,8 +50,20 @@ func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 	if err != nil {
 		return err
 	}
+	metadata := ports.SessionMetadata{Kind: "adhoc", LastPath: path}
+	previousState, err := saveSessionMetadataWithSnapshot(ctx, name, metadata)
+	if err != nil {
+		return err
+	}
 	return withSidebarFollow(ctx, flags["client"], sidebar, func() error {
-		return runtimeService().CreateAdhocSession(ctx, flags["client"], existing, name, path)
+		if err := runtimeService().CreateAdhocSession(ctx, flags["client"], existing, name, path); err != nil {
+			if liveSessionExists(ctx, name) {
+				return err
+			}
+			rollbackPersistedState(ctx, previousState)
+			return err
+		}
+		return nil
 	})
 }
 
@@ -72,7 +84,15 @@ func renameSession(ctx context.Context, flags map[string]string, sidebar ports.T
 	if err != nil {
 		return err
 	}
+	previousState, err := snapshotSidebarState(ctx)
+	if err != nil {
+		return err
+	}
+	if err := renamePersistedSession(ctx, session, newName); err != nil {
+		return err
+	}
 	if err := runtimeService().RenameSession(ctx, existing, session, newName); err != nil {
+		rollbackPersistedState(ctx, previousState)
 		return err
 	}
 	if err := refreshSidebar(ctx, flags["client"], sidebar); err != nil {
@@ -104,10 +124,20 @@ func killSession(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 	if err := runtimeService().KillSession(ctx, existing, session); err != nil {
 		return err
 	}
+	if err := removePersistedSession(ctx, session); err != nil {
+		return err
+	}
 	if err := refreshSidebar(ctx, flags["client"], sidebar); err != nil {
 		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: sidebar refresh failed after kill: %v\n", err)
 	}
 	return nil
+}
+
+func rollbackPersistedState(ctx context.Context, previous ports.PersistedState) {
+	// Best-effort restore; the primary operation error takes precedence over rollback failures.
+	if err := restoreSidebarState(ctx, previous); err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: rollback persisted sidebar state failed: %v\n", err)
+	}
 }
 
 func gitRoot(ctx context.Context, path string) (string, error) {

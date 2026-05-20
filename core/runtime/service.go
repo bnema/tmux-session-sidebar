@@ -14,6 +14,7 @@ var (
 	ErrMissingTmuxQuery   = errors.New("missing tmux query dependency")
 	ErrMissingTmuxControl = errors.New("missing tmux control dependency")
 	ErrMissingTmuxSidebar = errors.New("missing tmux sidebar dependency")
+	ErrMissingStateStore  = errors.New("missing state store dependency")
 )
 
 func (s *Service) Snapshot(ctx context.Context) (State, error) {
