@@ -140,7 +140,9 @@ func killSession(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 
 func rollbackPersistedState(ctx context.Context, previous ports.PersistedState) {
 	// Best-effort restore; the primary operation error takes precedence over rollback failures.
-	_ = restoreSidebarState(ctx, previous)
+	if err := restoreSidebarState(ctx, previous); err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: rollback persisted sidebar state failed: %v\n", err)
+	}
 }
 
 func gitRoot(ctx context.Context, path string) (string, error) {
