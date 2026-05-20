@@ -64,6 +64,7 @@ func saveSessionMetadata(ctx context.Context, name string, metadata ports.Sessio
 func saveSessionMetadataWithSnapshot(ctx context.Context, name string, metadata ports.SessionMetadata) (ports.PersistedState, error) {
 	var previous ports.PersistedState
 	if !shouldPersistSessionName(name) {
+		// Persistence is intentionally skipped, but callers still need a rollback snapshot.
 		state, err := snapshotSidebarState(ctx)
 		return state, err
 	}

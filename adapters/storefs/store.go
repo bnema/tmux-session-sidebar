@@ -90,6 +90,9 @@ type legacySidebarState struct {
 	ShowNumericSessions bool `json:"ShowNumericSessions"`
 }
 
+// decodePersistedState relies on Go's JSON unmarshaler to match legacy nested
+// SessionMetadata fields case-insensitively while explicit legacyPersistedState
+// fields handle top-level keys whose canonical tags changed.
 func decodePersistedState(data []byte, state *ports.PersistedState) error {
 	if err := json.Unmarshal(data, state); err != nil {
 		return err

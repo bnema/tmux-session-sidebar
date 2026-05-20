@@ -78,7 +78,7 @@ func TestStoreLoadLegacyUppercaseJSONKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load error: %v", err)
 	}
-	if got.Sessions["alpha"].LastPath != "/tmp/alpha" || got.SessionOrder[0] != "alpha" {
+	if got.Sessions["alpha"].Kind != "project" || got.Sessions["alpha"].ProjectPath != "/tmp/alpha" || got.Sessions["alpha"].LastPath != "/tmp/alpha" || got.SessionOrder[0] != "alpha" {
 		t.Fatalf("legacy state not loaded: %#v", got)
 	}
 	if got.Sidebar == nil || !got.Sidebar.ShowNumericSessions {
