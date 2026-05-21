@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/locker"
 	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -25,17 +24,12 @@ func loadSidebarState(ctx context.Context) (ports.PersistedState, error) {
 }
 
 func snapshotSidebarState(ctx context.Context) (ports.PersistedState, error) {
-	store := sessionOrderStore()
-	lock, err := (locker.FileLocker{Dir: filepath.Join(store.Dir, "locks")}).Acquire(ctx, "tmux-sidebar-state")
-	if err != nil {
-		return ports.PersistedState{}, err
-	}
-	defer releaseSidebarLock(lock)
-	state, err := store.Load(ctx, "tmux")
-	if err != nil {
-		return ports.PersistedState{}, err
-	}
-	return clonePersistedState(state), nil
+	var snapshot ports.PersistedState
+	err := withLoadedSidebarState(ctx, func(_ storefs.Store, state *ports.PersistedState) error {
+		snapshot = clonePersistedState(*state)
+		return nil
+	})
+	return snapshot, err
 }
 
 func restoreSidebarState(ctx context.Context, state ports.PersistedState) error {
@@ -66,20 +60,14 @@ func saveSessionMetadata(ctx context.Context, name string, metadata ports.Sessio
 }
 
 func saveSessionMetadataWithSnapshot(ctx context.Context, name string, metadata ports.SessionMetadata) (ports.PersistedState, error) {
-	var previous ports.PersistedState
 	if !shouldPersistSessionName(name) {
 		// Persistence is intentionally skipped, but callers still need a rollback snapshot.
 		state, err := snapshotSidebarState(ctx)
 		return state, err
 	}
-	err := updateSidebarState(ctx, func(state *ports.PersistedState) {
-		previous = clonePersistedState(*state)
-		if state.Sessions == nil {
-			state.Sessions = map[string]ports.SessionMetadata{}
-		}
-		state.Sessions[name] = metadata
+	return updateSidebarStateWithSnapshot(ctx, func(state *ports.PersistedState) {
+		saveSessionMetadataState(state, name, metadata)
 	})
-	return previous, err
 }
 
 func persistedSessionMetadata(ctx context.Context, name string) (ports.SessionMetadata, bool) {
@@ -93,48 +81,38 @@ func persistedSessionMetadata(ctx context.Context, name string) (ports.SessionMe
 
 func renamePersistedSession(ctx context.Context, oldName string, newName string) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		if !shouldPersistSessionName(newName) {
-			delete(state.Sessions, oldName)
-			filtered := state.SessionOrder[:0]
-			for _, existing := range state.SessionOrder {
-				if existing != oldName {
-					filtered = append(filtered, existing)
-				}
-			}
-			state.SessionOrder = filtered
-			return
-		}
-		if state.Sessions != nil {
-			metadata, ok := state.Sessions[oldName]
-			if ok {
-				delete(state.Sessions, oldName)
-				state.Sessions[newName] = metadata
-			}
-		}
-		for i, name := range state.SessionOrder {
-			if name == oldName {
-				state.SessionOrder[i] = newName
-				break
-			}
-		}
+		renameSessionState(state, oldName, newName)
 	})
+}
+
+func renameSessionState(state *ports.PersistedState, oldName string, newName string) {
+	if !shouldPersistSessionName(newName) {
+		removeSessionState(state, oldName)
+		return
+	}
+	if state.Sessions != nil {
+		metadata, ok := state.Sessions[oldName]
+		if ok {
+			delete(state.Sessions, oldName)
+			state.Sessions[newName] = metadata
+		}
+	}
+	for i, name := range state.SessionOrder {
+		if name == oldName {
+			state.SessionOrder[i] = newName
+			break
+		}
+	}
 }
 
 func removePersistedSession(ctx context.Context, name string) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		delete(state.Sessions, name)
-		filtered := state.SessionOrder[:0]
-		for _, existing := range state.SessionOrder {
-			if existing != name {
-				filtered = append(filtered, existing)
-			}
-		}
-		state.SessionOrder = filtered
+		removeSessionState(state, name)
 	})
 }
 
 func shouldPersistSessionName(name string) bool {
-	return name != "" && sessions.ValidateName(name) == nil && !sessions.IsNumericName(name) && !sessions.IsHiddenName(name)
+	return sessions.IsPersistableName(name)
 }
 
 func liveSessionExists(ctx context.Context, name string) bool {
@@ -151,18 +129,20 @@ func liveSessionExists(ctx context.Context, name string) bool {
 }
 
 func updateSidebarState(ctx context.Context, update func(*ports.PersistedState)) error {
-	store := sessionOrderStore()
-	lock, err := (locker.FileLocker{Dir: filepath.Join(store.Dir, "locks")}).Acquire(ctx, "tmux-sidebar-state")
-	if err != nil {
-		return err
-	}
-	defer releaseSidebarLock(lock)
-	state, err := store.Load(ctx, "tmux")
-	if err != nil {
-		return err
-	}
-	update(&state)
-	return store.Save(ctx, "tmux", state)
+	_, err := updateSidebarStateWithSnapshot(ctx, func(state *ports.PersistedState) {
+		update(state)
+	})
+	return err
+}
+
+func updateSidebarStateWithSnapshot(ctx context.Context, update func(*ports.PersistedState)) (ports.PersistedState, error) {
+	var previous ports.PersistedState
+	err := withLoadedSidebarState(ctx, func(store storefs.Store, state *ports.PersistedState) error {
+		previous = clonePersistedState(*state)
+		update(state)
+		return saveLoadedSidebarState(ctx, store, *state)
+	})
+	return previous, err
 }
 
 func sessionOrderStore() storefs.Store {
@@ -175,6 +155,38 @@ func sessionOrderStore() storefs.Store {
 		}
 	}
 	return storefs.New(filepath.Join(base, "tmux-session-sidebar"))
+}
+
+func withLoadedSidebarState(ctx context.Context, fn func(store storefs.Store, state *ports.PersistedState) error) error {
+	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+		state, err := store.Load(ctx, "tmux")
+		if err != nil {
+			return err
+		}
+		return fn(store, &state)
+	})
+}
+
+func saveLoadedSidebarState(ctx context.Context, store storefs.Store, state ports.PersistedState) error {
+	return store.Save(ctx, "tmux", state)
+}
+
+func saveSessionMetadataState(state *ports.PersistedState, name string, metadata ports.SessionMetadata) {
+	if state.Sessions == nil {
+		state.Sessions = map[string]ports.SessionMetadata{}
+	}
+	state.Sessions[name] = metadata
+}
+
+func removeSessionState(state *ports.PersistedState, name string) {
+	delete(state.Sessions, name)
+	filtered := state.SessionOrder[:0]
+	for _, existing := range state.SessionOrder {
+		if existing != name {
+			filtered = append(filtered, existing)
+		}
+	}
+	state.SessionOrder = filtered
 }
 
 func clonePersistedState(state ports.PersistedState) ports.PersistedState {

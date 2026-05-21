@@ -55,7 +55,7 @@ esac
 	}
 }
 
-func TestHookClientSessionChangedCapturesLiveNamedSessionPathWithoutPruningAbsentRecords(t *testing.T) {
+func TestHookClientSessionChangedReconcilesLiveNamedSessionsAndPrunesAbsentRecords(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	alphaPath := t.TempDir()
 	betaPath := t.TempDir()
@@ -82,7 +82,10 @@ esac
 	if got := state.Sessions["alpha"]; got.Kind != "captured" || got.LastPath != alphaPath {
 		t.Fatalf("alpha metadata = %#v, want captured at %q", got, alphaPath)
 	}
-	if got := state.Sessions["beta"]; got.Kind != "project" || got.ProjectPath != betaPath || got.LastPath != betaPath {
-		t.Fatalf("beta metadata = %#v, want preserved project record", got)
+	if _, ok := state.Sessions["beta"]; ok {
+		t.Fatalf("beta metadata still present after reconcile: %#v", state.Sessions)
+	}
+	if len(state.SessionOrder) != 1 || state.SessionOrder[0] != "alpha" {
+		t.Fatalf("SessionOrder = %#v, want []string{\"alpha\"}", state.SessionOrder)
 	}
 }

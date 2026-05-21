@@ -130,19 +130,10 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 		return err
 	}
 	metadata := ports.SessionMetadata{Kind: "project", ProjectPath: candidate.Path, LastPath: candidate.Path}
-	previousState, err := saveSessionMetadataWithSnapshot(ctx, candidate.SessionName, metadata)
-	if err != nil {
-		return err
-	}
 	return withSidebarFollow(ctx, client, sidebar, func() error {
-		if err := runtimeService().CreateProjectSession(ctx, client, existing, candidate); err != nil {
-			if liveSessionExists(ctx, candidate.SessionName) {
-				return err
-			}
-			rollbackPersistedState(ctx, previousState)
-			return err
-		}
-		return nil
+		return withPersistedSessionDuringTmuxAction(ctx, candidate.SessionName, metadata, func() error {
+			return runtimeService().CreateProjectSession(ctx, client, existing, candidate)
+		})
 	})
 }
 

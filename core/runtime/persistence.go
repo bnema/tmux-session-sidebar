@@ -80,48 +80,53 @@ func (s *Service) CaptureLiveSessions(ctx context.Context, serverID string) erro
 	if err != nil {
 		return err
 	}
-	if state.Sessions == nil {
-		state.Sessions = map[string]ports.SessionMetadata{}
-	}
+	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
+	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
+	return s.store.Save(ctx, serverID, state)
+}
+
+func reconcileLiveSessionMetadata(ctx context.Context, query ports.TmuxQueryPort, live []ports.TmuxSessionSnapshot, current map[string]ports.SessionMetadata) map[string]ports.SessionMetadata {
+	next := make(map[string]ports.SessionMetadata, len(live))
 	for _, session := range live {
-		if !isRestorableSessionName(session.Name) {
+		if !sessions.IsPersistableName(session.Name) {
 			continue
 		}
-		path, err := s.tmuxQuery.SessionPath(ctx, session.Name)
+		metadata, hadMetadata := current[session.Name]
+		path, err := query.SessionPath(ctx, session.Name)
 		if err != nil || !usefulPath(path) {
+			if hadMetadata {
+				next[session.Name] = metadata
+			}
 			continue
 		}
-		metadata := state.Sessions[session.Name]
 		if strings.TrimSpace(metadata.Kind) == "" {
 			metadata.Kind = "captured"
 		}
 		metadata.LastPath = strings.TrimSpace(path)
-		state.Sessions[session.Name] = metadata
+		next[session.Name] = metadata
 	}
-	return s.store.Save(ctx, serverID, state)
+	return next
+}
+
+func reconcileSessionOrder(order []string, live []ports.TmuxSessionSnapshot) []string {
+	liveNames := make([]string, 0, len(live))
+	for _, session := range live {
+		liveNames = append(liveNames, session.Name)
+	}
+	return sessions.ApplyOrder(liveNames, order)
 }
 
 func orderedPersistedSessionNames(state ports.PersistedState) []string {
-	used := map[string]bool{}
-	ordered := make([]string, 0, len(state.Sessions))
-	for _, name := range state.SessionOrder {
-		if _, ok := state.Sessions[name]; ok && !used[name] {
-			ordered = append(ordered, name)
-			used[name] = true
-		}
-	}
-	remaining := make([]string, 0, len(state.Sessions)-len(ordered))
+	names := make([]string, 0, len(state.Sessions))
 	for name := range state.Sessions {
-		if !used[name] {
-			remaining = append(remaining, name)
-		}
+		names = append(names, name)
 	}
-	sort.Strings(remaining)
-	return append(ordered, remaining...)
+	sort.Strings(names)
+	return sessions.ApplyOrder(names, state.SessionOrder)
 }
 
 func isRestorableSessionName(name string) bool {
-	return name != "" && sessions.ValidateName(name) == nil && !sessions.IsNumericName(name) && !sessions.IsHiddenName(name)
+	return sessions.IsPersistableName(name)
 }
 
 func restorePath(metadata ports.SessionMetadata, home string) string {

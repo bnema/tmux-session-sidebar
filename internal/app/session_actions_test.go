@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
 	"github.com/bnema/tmux-session-sidebar/ports/mocks"
@@ -321,6 +322,156 @@ esac
 	assertPersistedMetadata(t, "project", ports.SessionMetadata{Kind: "project", ProjectPath: path, LastPath: path})
 }
 
+func TestCreateAdhocConcurrentCaptureKeepsMetadataUntilSessionExists(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	sourceRoot := t.TempDir()
+	sourcePath := filepath.Join(sourceRoot, "scratch")
+	if err := os.MkdirAll(sourcePath, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	syncDir := t.TempDir()
+	createStarted := filepath.Join(syncDir, "create-started")
+	allowCreate := filepath.Join(syncDir, "allow-create")
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions)
+    if [[ -f "`+allowCreate+`" ]]; then
+      printf '$1\tscratch\t1\t0\n'
+    fi
+    ;;
+  display-message)
+    target="${4#=}"
+    if [[ -n "$target" ]]; then
+      printf '`+sourcePath+`\n'
+    fi
+    ;;
+  new-session)
+    : > "`+createStarted+`"
+    while [[ ! -f "`+allowCreate+`" ]]; do sleep 0.01; done
+    ;;
+  switch-client) ;;
+  set-option) ;;
+esac
+`)
+
+	createErrCh := make(chan error, 1)
+	go func() {
+		createErrCh <- createAdhoc(t.Context(), map[string]string{"source-path": sourcePath}, nil)
+	}()
+	waitForFile(t, createStarted)
+
+	captureErrCh := make(chan error, 1)
+	go func() {
+		captureErrCh <- captureLiveSidebarSessions(t.Context())
+	}()
+	captureDoneEarly := false
+	var captureErr error
+	select {
+	case captureErr = <-captureErrCh:
+		captureDoneEarly = true
+	case <-time.After(200 * time.Millisecond):
+	}
+	if err := os.WriteFile(allowCreate, []byte("ok"), 0o644); err != nil {
+		t.Fatalf("WriteFile(allowCreate) error = %v", err)
+	}
+	if !captureDoneEarly {
+		captureErr = <-captureErrCh
+	}
+	if captureErr != nil {
+		t.Fatalf("captureLiveSidebarSessions() error = %v", captureErr)
+	}
+	if err := <-createErrCh; err != nil {
+		t.Fatalf("createAdhoc returned error: %v", err)
+	}
+	assertPersistedMetadata(t, "scratch", ports.SessionMetadata{Kind: "adhoc", LastPath: sourcePath})
+}
+
+func TestRenameSessionConcurrentCaptureKeepsRenamedMetadata(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaPath := filepath.Join(t.TempDir(), "alpha")
+	betaPath := alphaPath
+	gammaPath := filepath.Join(t.TempDir(), "gamma")
+	for _, path := range []string{alphaPath, gammaPath} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) error = %v", path, err)
+		}
+	}
+	seedPersistedState(t, map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: alphaPath}}, []string{"alpha", "gamma"})
+	syncDir := t.TempDir()
+	renameStarted := filepath.Join(syncDir, "rename-started")
+	allowRename := filepath.Join(syncDir, "allow-rename")
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions)
+    if [[ -f "`+allowRename+`" ]]; then
+      printf '$1\tbeta\t1\t1\n$2\tgamma\t1\t0\n'
+    else
+      printf '$1\talpha\t1\t1\n$2\tgamma\t1\t0\n'
+    fi
+    ;;
+  display-message)
+    target="${4#=}"
+    case "$target" in
+      alpha) printf '`+alphaPath+`\n' ;;
+      beta) printf '`+betaPath+`\n' ;;
+      gamma) printf '`+gammaPath+`\n' ;;
+    esac
+    ;;
+  rename-session)
+    : > "`+renameStarted+`"
+    while [[ ! -f "`+allowRename+`" ]]; do sleep 0.01; done
+    ;;
+esac
+`)
+	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar.EXPECT().RefreshSidebar(t.Context(), "").Return(nil)
+
+	renameErrCh := make(chan error, 1)
+	go func() {
+		renameErrCh <- renameSession(t.Context(), map[string]string{"session": "alpha", "name": "beta"}, sidebar)
+	}()
+	waitForFile(t, renameStarted)
+
+	captureErrCh := make(chan error, 1)
+	go func() {
+		captureErrCh <- captureLiveSidebarSessions(t.Context())
+	}()
+	captureDoneEarly := false
+	var captureErr error
+	select {
+	case captureErr = <-captureErrCh:
+		captureDoneEarly = true
+	case <-time.After(200 * time.Millisecond):
+	}
+	if err := os.WriteFile(allowRename, []byte("ok"), 0o644); err != nil {
+		t.Fatalf("WriteFile(allowRename) error = %v", err)
+	}
+	if !captureDoneEarly {
+		captureErr = <-captureErrCh
+	}
+	if captureErr != nil {
+		t.Fatalf("captureLiveSidebarSessions() error = %v", captureErr)
+	}
+	if err := <-renameErrCh; err != nil {
+		t.Fatalf("renameSession returned error: %v", err)
+	}
+	state, err := loadSidebarState(t.Context())
+	if err != nil {
+		t.Fatalf("loadSidebarState error = %v", err)
+	}
+	if _, ok := state.Sessions["alpha"]; ok {
+		t.Fatalf("Sessions[alpha] exists after concurrent capture: %#v", state.Sessions)
+	}
+	if got := state.Sessions["beta"]; got.Kind != "adhoc" || got.LastPath != alphaPath {
+		t.Fatalf("Sessions[beta] = %#v, want adhoc metadata preserved", got)
+	}
+	if want := []string{"beta", "gamma"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
+	}
+}
+
 func TestRenameSessionMovesMetadataAndRollsBackOnFailure(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -475,6 +626,159 @@ esac
 	}
 }
 
+func TestConfirmedKillRemovesPersistedStateBeforeKillingSession(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	seedPersistedState(t, map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}, "beta": {Kind: "adhoc", LastPath: "/tmp/beta"}}, []string{"alpha", "beta"})
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+state_file="$XDG_STATE_HOME/tmux-session-sidebar/tmux.json"
+case "$1" in
+  list-sessions) printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n' ;;
+  kill-session)
+    if grep -q '"alpha"' "$state_file"; then
+      echo 'alpha still present in persisted state during kill' >&2
+      exit 42
+    fi
+    ;;
+esac
+`)
+	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar.EXPECT().RefreshSidebar(t.Context(), "").Return(nil)
+
+	if err := killSession(t.Context(), map[string]string{"session": "alpha", "confirmed": "yes"}, sidebar); err != nil {
+		t.Fatalf("killSession returned error: %v\nlog=%q", err, readLog(t, logPath))
+	}
+	state, err := loadSidebarState(t.Context())
+	if err != nil {
+		t.Fatalf("loadSidebarState error = %v", err)
+	}
+	if _, ok := state.Sessions["alpha"]; ok {
+		t.Fatalf("Sessions[alpha] exists after kill: %#v", state.Sessions)
+	}
+	if want := []string{"beta"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
+	}
+}
+
+func TestConfirmedKillDoesNotRollbackIfSessionAlreadyExited(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	initialSessions := map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}, "beta": {Kind: "adhoc", LastPath: "/tmp/beta"}}
+	seedPersistedState(t, initialSessions, []string{"alpha", "beta"})
+	markerDir := t.TempDir()
+	killedMarker := filepath.Join(markerDir, "alpha-killed")
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions)
+    if [[ -f "`+killedMarker+`" ]]; then
+      printf '$2\tbeta\t1\t0\n'
+    else
+      printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n'
+    fi
+    ;;
+  kill-session)
+    : > "`+killedMarker+`"
+    exit 1
+    ;;
+esac
+`)
+
+	err := killSession(t.Context(), map[string]string{"session": "alpha", "confirmed": "yes"}, nil)
+	if err == nil {
+		t.Fatal("killSession returned nil, want error")
+	}
+	state, loadErr := loadSidebarState(t.Context())
+	if loadErr != nil {
+		t.Fatalf("loadSidebarState error = %v", loadErr)
+	}
+	if _, ok := state.Sessions["alpha"]; ok {
+		t.Fatalf("Sessions[alpha] exists after failed kill of missing session: %#v", state.Sessions)
+	}
+	if want := []string{"beta"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
+	}
+}
+
+func TestConfirmedKillConcurrentCaptureDoesNotReaddSession(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaPath := filepath.Join(t.TempDir(), "alpha")
+	betaPath := filepath.Join(t.TempDir(), "beta")
+	for _, path := range []string{alphaPath, betaPath} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) error = %v", path, err)
+		}
+	}
+	seedPersistedState(t, map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: alphaPath}, "beta": {Kind: "adhoc", LastPath: betaPath}}, []string{"alpha", "beta"})
+	syncDir := t.TempDir()
+	killStarted := filepath.Join(syncDir, "kill-started")
+	allowKill := filepath.Join(syncDir, "allow-kill")
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions)
+    if [[ -f "`+allowKill+`" ]]; then
+      printf '$2\tbeta\t1\t0\n'
+    else
+      printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n'
+    fi
+    ;;
+  display-message)
+    target="${4#=}"
+    case "$target" in
+      alpha) printf '`+alphaPath+`\n' ;;
+      beta) printf '`+betaPath+`\n' ;;
+    esac
+    ;;
+  kill-session)
+    : > "`+killStarted+`"
+    while [[ ! -f "`+allowKill+`" ]]; do sleep 0.01; done
+    ;;
+esac
+`)
+	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar.EXPECT().RefreshSidebar(t.Context(), "").Return(nil)
+
+	killErrCh := make(chan error, 1)
+	go func() {
+		killErrCh <- killSession(t.Context(), map[string]string{"session": "alpha", "confirmed": "yes"}, sidebar)
+	}()
+	waitForFile(t, killStarted)
+
+	captureErrCh := make(chan error, 1)
+	go func() {
+		captureErrCh <- captureLiveSidebarSessions(t.Context())
+	}()
+	captureDoneEarly := false
+	var captureErr error
+	select {
+	case captureErr = <-captureErrCh:
+		captureDoneEarly = true
+	case <-time.After(200 * time.Millisecond):
+	}
+	if err := os.WriteFile(allowKill, []byte("ok"), 0o644); err != nil {
+		t.Fatalf("WriteFile(allowKill) error = %v", err)
+	}
+	if !captureDoneEarly {
+		captureErr = <-captureErrCh
+	}
+	if captureErr != nil {
+		t.Fatalf("captureLiveSidebarSessions() error = %v", captureErr)
+	}
+	if err := <-killErrCh; err != nil {
+		t.Fatalf("killSession returned error: %v", err)
+	}
+	state, err := loadSidebarState(t.Context())
+	if err != nil {
+		t.Fatalf("loadSidebarState error = %v", err)
+	}
+	if _, ok := state.Sessions["alpha"]; ok {
+		t.Fatalf("Sessions[alpha] exists after concurrent capture: %#v", state.Sessions)
+	}
+	if want := []string{"beta"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
+	}
+}
+
 func TestConfirmedKill(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -573,6 +877,18 @@ func seedPersistedState(t *testing.T, sessions map[string]ports.SessionMetadata,
 	if err := store.Save(t.Context(), "tmux", state); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
+}
+
+func waitForFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", path)
 }
 
 func readLog(t *testing.T, path string) string {

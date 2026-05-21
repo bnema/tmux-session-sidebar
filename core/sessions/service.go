@@ -38,6 +38,10 @@ func IsNumericName(name string) bool {
 	return true
 }
 
+func IsPersistableName(name string) bool {
+	return name != "" && ValidateName(name) == nil && !IsNumericName(name) && !IsHiddenName(name)
+}
+
 func ApplyOrder(live []string, order []string) []string {
 	liveSet := make(map[string]bool, len(live))
 	for _, name := range live {

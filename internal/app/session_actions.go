@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/core/projects"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
@@ -50,19 +51,10 @@ func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 		return err
 	}
 	metadata := ports.SessionMetadata{Kind: "adhoc", LastPath: path}
-	previousState, err := saveSessionMetadataWithSnapshot(ctx, name, metadata)
-	if err != nil {
-		return err
-	}
 	return withSidebarFollow(ctx, flags["client"], sidebar, func() error {
-		if err := runtimeService().CreateAdhocSession(ctx, flags["client"], existing, name, path); err != nil {
-			if liveSessionExists(ctx, name) {
-				return err
-			}
-			rollbackPersistedState(ctx, previousState)
-			return err
-		}
-		return nil
+		return withPersistedSessionDuringTmuxAction(ctx, name, metadata, func() error {
+			return runtimeService().CreateAdhocSession(ctx, flags["client"], existing, name, path)
+		})
 	})
 }
 
@@ -126,15 +118,9 @@ func renameSession(ctx context.Context, flags map[string]string, sidebar ports.T
 	if err != nil {
 		return err
 	}
-	previousState, err := snapshotSidebarState(ctx)
-	if err != nil {
-		return err
-	}
-	if err := renamePersistedSession(ctx, session, newName); err != nil {
-		return err
-	}
-	if err := runtimeService().RenameSession(ctx, existing, session, newName); err != nil {
-		rollbackPersistedState(ctx, previousState)
+	if err := withRenamedPersistedSessionDuringTmuxAction(ctx, session, newName, func() error {
+		return runtimeService().RenameSession(ctx, existing, session, newName)
+	}); err != nil {
 		return err
 	}
 	if err := refreshSidebar(ctx, flags["client"], sidebar); err != nil {
@@ -163,10 +149,9 @@ func killSession(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 	if err != nil {
 		return err
 	}
-	if err := runtimeService().KillSession(ctx, existing, session); err != nil {
-		return err
-	}
-	if err := removePersistedSession(ctx, session); err != nil {
+	if err := withRemovedPersistedSessionDuringTmuxAction(ctx, session, func() error {
+		return runtimeService().KillSession(ctx, existing, session)
+	}); err != nil {
 		return err
 	}
 	if err := refreshSidebar(ctx, flags["client"], sidebar); err != nil {
@@ -175,9 +160,64 @@ func killSession(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 	return nil
 }
 
-func rollbackPersistedState(ctx context.Context, previous ports.PersistedState) {
+func withPersistedSessionDuringTmuxAction(ctx context.Context, name string, metadata ports.SessionMetadata, action func() error) error {
+	if !shouldPersistSessionName(name) {
+		return action()
+	}
+	return withLoadedSidebarState(ctx, func(store storefs.Store, state *ports.PersistedState) error {
+		previous := clonePersistedState(*state)
+		saveSessionMetadataState(state, name, metadata)
+		if err := saveLoadedSidebarState(ctx, store, *state); err != nil {
+			return err
+		}
+		if err := action(); err != nil {
+			if liveSessionExists(ctx, name) {
+				return err
+			}
+			rollbackLoadedSidebarState(ctx, store, previous)
+			return err
+		}
+		return nil
+	})
+}
+
+func withRenamedPersistedSessionDuringTmuxAction(ctx context.Context, oldName string, newName string, action func() error) error {
+	return withLoadedSidebarState(ctx, func(store storefs.Store, state *ports.PersistedState) error {
+		previous := clonePersistedState(*state)
+		renameSessionState(state, oldName, newName)
+		if err := saveLoadedSidebarState(ctx, store, *state); err != nil {
+			return err
+		}
+		if err := action(); err != nil {
+			if !liveSessionExists(ctx, newName) {
+				rollbackLoadedSidebarState(ctx, store, previous)
+			}
+			return err
+		}
+		return nil
+	})
+}
+
+func withRemovedPersistedSessionDuringTmuxAction(ctx context.Context, name string, action func() error) error {
+	return withLoadedSidebarState(ctx, func(store storefs.Store, state *ports.PersistedState) error {
+		previous := clonePersistedState(*state)
+		removeSessionState(state, name)
+		if err := saveLoadedSidebarState(ctx, store, *state); err != nil {
+			return err
+		}
+		if err := action(); err != nil {
+			if liveSessionExists(ctx, name) {
+				rollbackLoadedSidebarState(ctx, store, previous)
+			}
+			return err
+		}
+		return nil
+	})
+}
+
+func rollbackLoadedSidebarState(ctx context.Context, store storefs.Store, previous ports.PersistedState) {
 	// Best-effort restore; the primary operation error takes precedence over rollback failures.
-	if err := restoreSidebarState(ctx, previous); err != nil {
+	if err := saveLoadedSidebarState(ctx, store, previous); err != nil {
 		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: rollback persisted sidebar state failed: %v\n", err)
 	}
 }
