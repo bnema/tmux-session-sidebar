@@ -73,7 +73,7 @@ Configure tmux options in `~/.tmux.conf`.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `@session-sidebar-key` | `M-b` | Global key for opening or closing the sidebar |
-| `@session-sidebar-width` | `20` | Sidebar width passed to `tmux split-window -l` |
+| `@session-sidebar-width` | `20` | Fixed sidebar width passed to `tmux split-window -l` and reapplied after window resizes |
 | `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated roots for project sessions |
 | `@session-sidebar-close-after-switch` | `off` | Close the sidebar after switching when set to `on` |
 | `@session-sidebar-heat-colors` | `on` | Color sessions by recent activity |
@@ -101,7 +101,7 @@ set -g @session-sidebar-heat-refresh-seconds '300'
 
 Press `Alt+b` to open or close the sidebar.
 
-The sidebar opens as a full-height left split in the current tmux window. If `@session-sidebar-close-after-switch` is `off`, the sidebar stays logically open and follows the client after session switches.
+The sidebar opens as a full-height left split in the current tmux window. If `@session-sidebar-close-after-switch` is `off`, the sidebar stays logically open and follows the client after session switches. Its configured width is also reapplied after tmux window resizes.
 
 ### Sidebar keys
 

@@ -45,6 +45,10 @@ install_runtime_hooks() {
     "run-shell \"$quoted_runtime hook client-detached --client #{q:client_name}\""
   "$TMUX_BIN" set-hook -g client-session-changed[9703] \
     "run-shell \"$quoted_runtime hook client-session-changed --client #{q:client_name}\""
+  "$TMUX_BIN" set-hook -g client-resized[9704] \
+    "run-shell -b \"$quoted_runtime hook client-resized --client #{q:client_name}\""
+  "$TMUX_BIN" set-hook -g window-resized[9705] \
+    "run-shell -b \"$quoted_runtime hook window-resized --window #{q:hook_window}\""
 }
 
 main() {
@@ -89,4 +93,6 @@ main() {
   install_runtime_hooks "$quoted_runtime"
 }
 
-main "$@"
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

@@ -31,6 +31,8 @@ func TestRunDispatchesCommands(t *testing.T) {
 		{name: "hook client attached", args: []string{"hook", "client-attached", "--client", "%1"}, wantExit: 0, wantRoute: "hook/client-attached", wantFlags: map[string]string{"client": "%1"}},
 		{name: "hook detached", args: []string{"hook", "client-detached", "--client", "%1"}, wantExit: 0, wantRoute: "hook/client-detached", wantFlags: map[string]string{"client": "%1"}},
 		{name: "hook session changed", args: []string{"hook", "client-session-changed", "--client", "%1"}, wantExit: 0, wantRoute: "hook/client-session-changed", wantFlags: map[string]string{"client": "%1"}},
+		{name: "hook client resized", args: []string{"hook", "client-resized", "--client", "%1"}, wantExit: 0, wantRoute: "hook/client-resized", wantFlags: map[string]string{"client": "%1"}},
+		{name: "hook window resized", args: []string{"hook", "window-resized", "--window", "@1"}, wantExit: 0, wantRoute: "hook/window-resized", wantFlags: map[string]string{"window": "@1"}},
 		{name: "sidebar toggle", args: []string{"sidebar", "toggle", "--client", "%1"}, wantExit: 0, wantRoute: "sidebar/toggle", wantFlags: map[string]string{"client": "%1"}},
 		{name: "sidebar open", args: []string{"sidebar", "open", "--client=%1"}, wantExit: 0, wantRoute: "sidebar/open", wantFlags: map[string]string{"client": "%1"}},
 		{name: "sidebar close", args: []string{"sidebar", "close", "--client", "%1"}, wantExit: 0, wantRoute: "sidebar/close", wantFlags: map[string]string{"client": "%1"}},
