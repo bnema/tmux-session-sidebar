@@ -119,10 +119,13 @@ func TestCaptureLiveSessions(t *testing.T) {
 	store := mocks.NewMockStateStorePort(t)
 	query := mocks.NewMockTmuxQueryPort(t)
 
-	initial := ports.PersistedState{Sessions: map[string]ports.SessionMetadata{
-		"beta":   {Kind: "project", ProjectPath: "/projects/beta"},
-		"absent": {Kind: "captured", LastPath: "/still/there"},
-	}}
+	initial := ports.PersistedState{
+		Sessions: map[string]ports.SessionMetadata{
+			"beta":   {Kind: "project", ProjectPath: "/projects/beta"},
+			"absent": {Kind: "captured", LastPath: "/still/there"},
+		},
+		SessionOrder: []string{"absent", "beta"},
+	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
 	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{
 		{Name: "alpha"},
@@ -140,12 +143,37 @@ func TestCaptureLiveSessions(t *testing.T) {
 	query.EXPECT().SessionPath(ctx, "missing").Return(missingPath, nil)
 
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
-		want := map[string]ports.SessionMetadata{
-			"alpha":  {Kind: "captured", LastPath: alphaPath},
-			"beta":   {Kind: "project", ProjectPath: "/projects/beta", LastPath: betaPath},
-			"absent": {Kind: "captured", LastPath: "/still/there"},
+		wantSessions := map[string]ports.SessionMetadata{
+			"alpha": {Kind: "captured", LastPath: alphaPath},
+			"beta":  {Kind: "project", ProjectPath: "/projects/beta", LastPath: betaPath},
 		}
-		return reflect.DeepEqual(state.Sessions, want)
+		wantOrder := []string{"beta", "alpha", "123", "__hidden", "relative", "empty", "missing"}
+		return reflect.DeepEqual(state.Sessions, wantSessions) && reflect.DeepEqual(state.SessionOrder, wantOrder)
+	})).Return(nil)
+
+	if err := NewService(nil, query, nil, store).CaptureLiveSessions(ctx, serverID); err != nil {
+		t.Fatalf("CaptureLiveSessions error: %v", err)
+	}
+}
+
+func TestCaptureLiveSessionsPreservesOrderForNonPersistableLiveSessions(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	alphaPath := t.TempDir()
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	initial := ports.PersistedState{
+		Sessions:     map[string]ports.SessionMetadata{"alpha": {Kind: "project", ProjectPath: "/projects/alpha", LastPath: "/projects/alpha"}},
+		SessionOrder: []string{"2", "alpha", "__scratch", "1"},
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "1"}, {Name: "alpha"}, {Name: "2"}, {Name: "__scratch"}}, nil)
+	query.EXPECT().SessionPath(ctx, "alpha").Return(alphaPath, nil)
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		wantSessions := map[string]ports.SessionMetadata{"alpha": {Kind: "project", ProjectPath: "/projects/alpha", LastPath: alphaPath}}
+		wantOrder := []string{"2", "alpha", "__scratch", "1"}
+		return reflect.DeepEqual(state.Sessions, wantSessions) && reflect.DeepEqual(state.SessionOrder, wantOrder)
 	})).Return(nil)
 
 	if err := NewService(nil, query, nil, store).CaptureLiveSessions(ctx, serverID); err != nil {
