@@ -13,6 +13,7 @@ import (
 const (
 	tmuxBinary = "tmux"
 
+	cmdCapturePane    = "capture-pane"
 	cmdDisplayMessage = "display-message"
 	cmdKillPane       = "kill-pane"
 	cmdListPanes      = "list-panes"
@@ -57,7 +58,42 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	return ports.ConfigSnapshot{KeyBinding: key, Width: width, ProjectRoots: splitProjectRoots(roots), CloseAfterSwitch: parseTmuxBool(closeAfterSwitch)}, nil
+	heatColors, err := c.option(ctx, "@session-sidebar-heat-colors")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
+	halfLifeHours, err := c.optionInt(ctx, "@session-sidebar-heat-half-life-hours")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
+	staleHours, err := c.optionInt(ctx, "@session-sidebar-heat-stale-hours")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
+	refreshSeconds, err := c.optionInt(ctx, "@session-sidebar-heat-refresh-seconds")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
+	attentionQuietSeconds, err := c.optionInt(ctx, "@session-sidebar-attention-quiet-seconds")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
+	activityDebugLog, err := c.option(ctx, "@session-sidebar-activity-debug-log")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
+	return ports.ConfigSnapshot{
+		KeyBinding:            key,
+		Width:                 width,
+		ProjectRoots:          splitProjectRoots(roots),
+		CloseAfterSwitch:      parseTmuxBool(closeAfterSwitch),
+		HeatColorsEnabled:     parseTmuxBool(heatColors),
+		HeatHalfLifeHours:     halfLifeHours,
+		HeatStaleHours:        staleHours,
+		HeatRefreshSeconds:    refreshSeconds,
+		AttentionQuietSeconds: attentionQuietSeconds,
+		ActivityDebugLog:      parseTmuxBool(activityDebugLog),
+	}, nil
 }
 
 func (c Client) ServerID(ctx context.Context) (string, error) {
@@ -108,6 +144,47 @@ func (c Client) ListClients(ctx context.Context) ([]ports.TmuxClientSnapshot, er
 		clients = append(clients, ports.TmuxClientSnapshot{ID: fields[0], CurrentSessionID: fields[1], CurrentWindowID: fields[2], CurrentPaneID: fields[3], Attached: fields[4] != ""})
 	}
 	return clients, nil
+}
+
+func (c Client) ListPanes(ctx context.Context) ([]ports.TmuxPaneSnapshot, error) {
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-F", "#{pane_id}\t#{session_id}\t#{session_name}\t#{window_id}\t#{pane_current_path}\t#{pane_current_command}\t#{pane_dead}\t#{pane_dead_status}\t#{@session-sidebar-pane}"})
+	if err != nil {
+		return nil, err
+	}
+	var panes []ports.TmuxPaneSnapshot
+	for line := range strings.SplitSeq(strings.TrimRight(result.Stdout, "\n"), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) < 9 {
+			continue
+		}
+		panes = append(panes, ports.TmuxPaneSnapshot{
+			PaneID:      fields[0],
+			SessionID:   fields[1],
+			SessionName: fields[2],
+			WindowID:    fields[3],
+			CurrentPath: fields[4],
+			CurrentCmd:  fields[5],
+			Dead:        parseTmuxBool(fields[6]),
+			DeadStatus:  fields[7],
+			Sidebar:     parseTmuxBool(fields[8]),
+		})
+	}
+	return panes, nil
+}
+
+func (c Client) CapturePaneText(ctx context.Context, paneID string, tailLines int) (string, error) {
+	if tailLines <= 0 {
+		tailLines = 1
+	}
+	start := -(tailLines - 1)
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdCapturePane, "-pJ", "-t", strings.TrimSpace(paneID), "-S", strconv.Itoa(start), "-E", "-1"})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(result.Stdout), nil
 }
 
 func (c Client) CurrentPanePath(ctx context.Context, clientID string) (string, error) {
@@ -450,6 +527,21 @@ func splitProjectRoots(roots string) []string {
 func (c Client) option(ctx context.Context, name string) (string, error) {
 	result, err := c.Process.Exec(ctx, "tmux", []string{"show-options", "-gvq", name})
 	return strings.TrimSpace(result.Stdout), err
+}
+
+func (c Client) optionInt(ctx context.Context, name string) (int, error) {
+	value, err := c.option(ctx, name)
+	if err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(value) == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0, err
+	}
+	return parsed, nil
 }
 
 func (c Client) display(ctx context.Context, format string) (string, error) {

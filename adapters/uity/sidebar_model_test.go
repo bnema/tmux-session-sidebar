@@ -377,6 +377,50 @@ func TestSidebarModelFilterAcceptsSpace(t *testing.T) {
 	}
 }
 
+func TestSidebarModelRenderShowsAttentionMarkerInPrimaryMarkerSlot(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{})
+	view := model.Render()
+	if !strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
+		t.Fatalf("render missing compact attention marker in %q", view)
+	}
+	if strings.Contains(view, "  [1] alpha") {
+		t.Fatalf("render kept a second empty marker column in %q", view)
+	}
+}
+
+func TestSidebarModelRenderPrefersCurrentMarkerOverAttention(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true, Attention: true, Slot: 1}}, Actions{})
+	view := model.Render()
+	if !strings.Contains(view, "* [1] alpha") {
+		t.Fatalf("render missing current marker in %q", view)
+	}
+	if strings.Contains(view, attentionMarkerSymbol) {
+		t.Fatalf("render should not show attention marker for current session in %q", view)
+	}
+}
+
+func TestSessionHeatColor(t *testing.T) {
+	tests := []struct {
+		name string
+		heat string
+		want string
+	}{
+		{name: "current", heat: "current", want: "#86efac"},
+		{name: "hot", heat: "hot", want: "#4ade80"},
+		{name: "warm", heat: "warm", want: "#86efac"},
+		{name: "cool", heat: "cool", want: "#94a3b8"},
+		{name: "stale", heat: "stale", want: "#4b5563"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sessionHeatColor(SessionItem{Heat: tt.heat}); got != tt.want {
+				t.Fatalf("sessionHeatColor(%q) = %q, want %q", tt.heat, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSidebarModelHelpToggleHidesExpandedFooterByDefault(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
 	view := model.Render()

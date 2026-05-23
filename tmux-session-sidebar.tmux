@@ -60,9 +60,11 @@ main() {
   set_default @session-sidebar-heat-colors          on
   set_default @session-sidebar-heat-half-life-hours 8
   set_default @session-sidebar-heat-stale-hours     24
-  set_default @session-sidebar-heat-refresh-seconds 300
+  set_default @session-sidebar-heat-refresh-seconds 5
+  set_default @session-sidebar-attention-quiet-seconds 120
+  set_default @session-sidebar-activity-debug-log off
 
-  local sidebar_key previous_key quoted_runtime quoted_state_dir runtime_bin slot state_dir
+  local sidebar_key previous_key quoted_runtime quoted_state_dir quoted_pid_file runtime_bin slot state_dir
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"
   previous_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-bound-key 2>/dev/null || true)"
   if [ "$sidebar_key" = b ] && { [ -z "$previous_key" ] || [ "$previous_key" = b ]; }; then
@@ -73,12 +75,14 @@ main() {
   printf -v quoted_runtime '%q' "$runtime_bin"
   state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar"
   printf -v quoted_state_dir '%q' "$state_dir"
+  printf -v quoted_pid_file '%q' "$state_dir/daemon.pid"
 
   if [ -n "$previous_key" ] && [ "$previous_key" != "$sidebar_key" ]; then
     unbind_plugin_binding "$previous_key"
   fi
 
   "$TMUX_BIN" run-shell -b "mkdir -p $quoted_state_dir && $quoted_runtime daemon ensure >/dev/null 2>$quoted_state_dir/errors.log"
+  "$TMUX_BIN" run-shell -b "mkdir -p $quoted_state_dir && if [ -f $quoted_pid_file ]; then old_pid=\$(tr -d '\\n' < $quoted_pid_file 2>/dev/null || true); if [ -n \"\$old_pid\" ] && kill -0 \"\$old_pid\" 2>/dev/null && ps -o command= -p \"\$old_pid\" 2>/dev/null | $GREP_BIN -Fq tmux-session-sidebar; then kill \"\$old_pid\" 2>/dev/null || true; fi; fi && $quoted_runtime daemon serve >/dev/null 2>>$quoted_state_dir/errors.log"
   "$TMUX_BIN" bind-key -n "$sidebar_key" \
     run-shell "$quoted_runtime sidebar toggle --client #{q:client_name}"
   "$TMUX_BIN" set-option -gq @session-sidebar-bound-key "$sidebar_key"

@@ -2,12 +2,16 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/locker"
+	adapterlogger "github.com/bnema/tmux-session-sidebar/adapters/logger"
 	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
+	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
 func ensureRestoredAndCaptured(ctx context.Context) error {
@@ -35,6 +39,89 @@ func captureLiveSidebarSessions(ctx context.Context) error {
 	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
 		return runtimeServiceWithStore(store).CaptureLiveSessions(ctx, "tmux")
 	})
+}
+
+func captureLiveSidebarSessionsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) error {
+	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+		return withActivityDebugLogger(cfg, func(logger ports.LoggerPort) error {
+			return runtimeServiceWithStore(store).WithLogger(logger).CaptureLiveSessionsWithConfig(ctx, "tmux", cfg)
+		})
+	})
+}
+
+func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) error {
+	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+		return withActivityDebugLogger(cfg, func(logger ports.LoggerPort) error {
+			return runtimeServiceWithStore(store).WithLogger(logger).CaptureSessionHeatWithConfig(ctx, "tmux", cfg)
+		})
+	})
+}
+
+func serveSidebarDaemon(ctx context.Context) error {
+	store := sessionOrderStore()
+	acquireCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	lock, err := (locker.FileLocker{Dir: filepath.Join(store.Dir, "locks")}).Acquire(acquireCtx, "tmux-sidebar-daemon")
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return nil
+		}
+		return err
+	}
+	defer releaseSidebarLock(lock)
+	pidFile := filepath.Join(store.Dir, "daemon.pid")
+	if err := os.WriteFile(pidFile, fmt.Appendf(nil, "%d\n", os.Getpid()), 0o600); err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(pidFile) }()
+
+	cfg := loadSidebarConfig(context.Background())
+	if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil {
+		return err
+	}
+
+	ticker := time.NewTicker(sidebarRefreshIntervalFromConfig(cfg))
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := captureLiveSidebarHeat(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
+				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
+			}
+		}
+	}
+}
+
+func withActivityDebugLogger(cfg ports.ConfigSnapshot, fn func(logger ports.LoggerPort) error) error {
+	if fn == nil {
+		return nil
+	}
+	if !cfg.ActivityDebugLog {
+		return fn(nil)
+	}
+	logPath := filepath.Join(sessionOrderStore().Dir, "activity.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+	return fn(adapterlogger.Logger{Out: file})
+}
+
+func sidebarRefreshInterval(ctx context.Context) time.Duration {
+	return sidebarRefreshIntervalFromConfig(loadSidebarConfig(ctx))
+}
+
+func sidebarRefreshIntervalFromConfig(cfg ports.ConfigSnapshot) time.Duration {
+	if cfg.HeatRefreshSeconds > 0 {
+		return time.Duration(cfg.HeatRefreshSeconds) * time.Second
+	}
+	return 5 * time.Second
 }
 
 func withLockedSidebarStore(ctx context.Context, fn func(storefs.Store) error) error {

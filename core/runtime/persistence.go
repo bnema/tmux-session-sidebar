@@ -2,11 +2,17 @@ package runtime
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
@@ -16,6 +22,32 @@ type RestoreReport struct {
 	Skipped        []string
 	Failed         map[string]error
 	SystemFailures map[string]error
+}
+
+const (
+	defaultHeatHalfLife   = 8 * time.Hour
+	defaultHeatStaleAfter = 24 * time.Hour
+	defaultAttentionQuiet = 2 * time.Minute
+	paneSampleTailLines   = 8
+)
+
+type paneObservation struct {
+	SessionID   string
+	SessionName string
+	PaneID      string
+	Fingerprint string
+	Sampled     bool
+}
+
+type paneActivityQuery interface {
+	ListPanes(ctx context.Context) ([]ports.TmuxPaneSnapshot, error)
+	CapturePaneText(ctx context.Context, paneID string, tailLines int) (string, error)
+}
+
+type heatConfig struct {
+	halfLife   time.Duration
+	staleAfter time.Duration
+	quietAfter time.Duration
 }
 
 func (s *Service) RestorePersistedSessions(ctx context.Context, serverID string, home string) RestoreReport {
@@ -82,6 +114,69 @@ func (s *Service) CaptureLiveSessions(ctx context.Context, serverID string) erro
 	}
 	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
 	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
+	s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
+	return s.store.Save(ctx, serverID, state)
+}
+
+func (s *Service) CaptureSessionHeat(ctx context.Context, serverID string) error {
+	if s.store == nil {
+		return ErrMissingStateStore
+	}
+	if s.tmuxQuery == nil {
+		return ErrMissingTmuxQuery
+	}
+
+	state, err := s.store.Load(ctx, serverID)
+	if err != nil {
+		return err
+	}
+	live, err := s.tmuxQuery.ListSessions(ctx)
+	if err != nil {
+		return err
+	}
+	s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
+	return s.store.Save(ctx, serverID, state)
+}
+
+func (s *Service) CaptureLiveSessionsWithConfig(ctx context.Context, serverID string, snapshot ports.ConfigSnapshot) error {
+	if s.store == nil {
+		return ErrMissingStateStore
+	}
+	if s.tmuxQuery == nil {
+		return ErrMissingTmuxQuery
+	}
+
+	state, err := s.store.Load(ctx, serverID)
+	if err != nil {
+		return err
+	}
+	live, err := s.tmuxQuery.ListSessions(ctx)
+	if err != nil {
+		return err
+	}
+	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
+	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
+	s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot))
+	return s.store.Save(ctx, serverID, state)
+}
+
+func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID string, snapshot ports.ConfigSnapshot) error {
+	if s.store == nil {
+		return ErrMissingStateStore
+	}
+	if s.tmuxQuery == nil {
+		return ErrMissingTmuxQuery
+	}
+
+	state, err := s.store.Load(ctx, serverID)
+	if err != nil {
+		return err
+	}
+	live, err := s.tmuxQuery.ListSessions(ctx)
+	if err != nil {
+		return err
+	}
+	s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot))
 	return s.store.Save(ctx, serverID, state)
 }
 
@@ -148,4 +243,223 @@ func usefulPath(path string) bool {
 	}
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg heatConfig) {
+	if state == nil {
+		return
+	}
+	clients, clientsErr := s.tmuxQuery.ListClients(ctx)
+	observations, observationsErr := collectPaneObservations(ctx, s.tmuxQuery)
+	if clientsErr != nil || observationsErr != nil {
+		return
+	}
+	nextHeat, traces := reconcileLiveSessionHeat(
+		decodeHeatStateMap(state.Heat),
+		live,
+		clients,
+		observations,
+		time.Now().UTC(),
+		cfg.halfLife,
+		cfg.staleAfter,
+		cfg.quietAfter,
+	)
+	state.Heat = encodeHeatStateMap(nextHeat)
+	for sessionName, trace := range traces {
+		s.logHeatTrace(sessionName, trace)
+	}
+}
+
+func (s *Service) logHeatTrace(sessionName string, trace heat.Trace) {
+	if s == nil || s.logger == nil {
+		return
+	}
+	s.logger.Debug(string(trace.Status), []ports.LogField{
+		{Key: "session", Value: sessionName},
+		{Key: "status", Value: trace.Status},
+		{Key: "bucket", Value: trace.Bucket},
+		{Key: "idle_for", Value: trace.IdleFor},
+		{Key: "quiet_after", Value: trace.QuietAfter},
+		{Key: "attention", Value: trace.Attention},
+		{Key: "observed_activity", Value: trace.ObservedActivity},
+		{Key: "visited", Value: trace.Visited},
+	})
+}
+
+func heatConfigFromSnapshot(snapshot ports.ConfigSnapshot) heatConfig {
+	cfg := heatConfig{halfLife: defaultHeatHalfLife, staleAfter: defaultHeatStaleAfter, quietAfter: defaultAttentionQuiet}
+	if snapshot.HeatHalfLifeHours > 0 {
+		cfg.halfLife = time.Duration(snapshot.HeatHalfLifeHours) * time.Hour
+	}
+	if snapshot.HeatStaleHours > 0 {
+		cfg.staleAfter = time.Duration(snapshot.HeatStaleHours) * time.Hour
+	}
+	if snapshot.AttentionQuietSeconds > 0 {
+		cfg.quietAfter = time.Duration(snapshot.AttentionQuietSeconds) * time.Second
+	}
+	return cfg
+}
+
+func (s *Service) loadHeatConfig(ctx context.Context) heatConfig {
+	cfg := heatConfigFromSnapshot(ports.ConfigSnapshot{})
+	if s.tmuxConfig == nil {
+		return cfg
+	}
+	snapshot, err := s.tmuxConfig.LoadConfig(ctx)
+	if err != nil {
+		return cfg
+	}
+	return heatConfigFromSnapshot(snapshot)
+}
+
+func collectPaneObservations(ctx context.Context, query ports.TmuxQueryPort) ([]paneObservation, error) {
+	sampler, ok := any(query).(paneActivityQuery)
+	if !ok {
+		return nil, nil
+	}
+	panes, err := sampler.ListPanes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	observations := make([]paneObservation, 0, len(panes))
+	for _, pane := range panes {
+		if pane.Sidebar || strings.TrimSpace(pane.PaneID) == "" || strings.TrimSpace(pane.SessionName) == "" {
+			continue
+		}
+		observation := paneObservation{SessionID: pane.SessionID, SessionName: pane.SessionName, PaneID: pane.PaneID}
+		text, err := sampler.CapturePaneText(ctx, pane.PaneID, paneSampleTailLines)
+		if err == nil {
+			observation.Fingerprint = fingerprintPaneText(text)
+			observation.Sampled = true
+		}
+		observations = append(observations, observation)
+	}
+	return observations, nil
+}
+
+func fingerprintPaneText(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
+func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.TmuxSessionSnapshot, clients []ports.TmuxClientSnapshot, observations []paneObservation, now time.Time, halfLife time.Duration, staleAfter time.Duration, quietAfter time.Duration) (map[string]heat.State, map[string]heat.Trace) {
+	next := make(map[string]heat.State, len(current)+len(live))
+	traces := make(map[string]heat.Trace, len(live))
+	for name, state := range current {
+		next[name] = cloneHeatState(state)
+	}
+
+	sessionNamesByID := make(map[string]string, len(live))
+	for _, session := range live {
+		sessionNamesByID[session.ID] = session.Name
+	}
+	observationsBySession := make(map[string][]paneObservation, len(live))
+	for _, observation := range observations {
+		sessionName := strings.TrimSpace(observation.SessionName)
+		if sessionName == "" {
+			sessionName = sessionNamesByID[observation.SessionID]
+		}
+		if sessionName == "" {
+			continue
+		}
+		observation.SessionName = sessionName
+		observationsBySession[sessionName] = append(observationsBySession[sessionName], observation)
+	}
+	visited := visitedSessionNames(clients, sessionNamesByID)
+
+	for _, session := range live {
+		state := cloneHeatState(next[session.Name])
+		active := applyPaneObservations(&state, observationsBySession[session.Name])
+		nextState, trace := heat.Advance(state, now, active, visited[session.Name], halfLife, staleAfter, quietAfter)
+		next[session.Name] = nextState
+		traces[session.Name] = trace
+	}
+	return next, traces
+}
+
+func applyPaneObservations(state *heat.State, observations []paneObservation) bool {
+	if state == nil {
+		return false
+	}
+	if state.Panes == nil {
+		state.Panes = map[string]heat.PaneState{}
+	}
+	if len(observations) == 0 {
+		return false
+	}
+	nextPanes := make(map[string]heat.PaneState, len(observations))
+	active := false
+	bootstrapOnly := len(state.Panes) == 0 && (state.Score > 0 || !state.LastActiveAt.IsZero() || !state.RecentActivityAt.IsZero() || !state.LastVisitedAt.IsZero() || state.Attention)
+	for _, observation := range observations {
+		if strings.TrimSpace(observation.PaneID) == "" {
+			continue
+		}
+		previous, hadPrevious := state.Panes[observation.PaneID]
+		if !observation.Sampled {
+			if hadPrevious {
+				nextPanes[observation.PaneID] = previous
+			}
+			continue
+		}
+		if !bootstrapOnly && (!hadPrevious || previous.Fingerprint != observation.Fingerprint) {
+			active = true
+		}
+		nextPanes[observation.PaneID] = heat.PaneState{Fingerprint: observation.Fingerprint}
+	}
+	state.Panes = nextPanes
+	return active
+}
+
+func visitedSessionNames(clients []ports.TmuxClientSnapshot, sessionNamesByID map[string]string) map[string]bool {
+	visited := make(map[string]bool, len(clients))
+	for _, client := range clients {
+		if !client.Attached {
+			continue
+		}
+		sessionName := sessionNamesByID[client.CurrentSessionID]
+		if sessionName != "" {
+			visited[sessionName] = true
+		}
+	}
+	return visited
+}
+
+func cloneHeatState(state heat.State) heat.State {
+	clone := state
+	if state.Panes != nil {
+		clone.Panes = make(map[string]heat.PaneState, len(state.Panes))
+		maps.Copy(clone.Panes, state.Panes)
+	}
+	return clone
+}
+
+func decodeHeatStateMap(raw map[string][]byte) map[string]heat.State {
+	decoded := make(map[string]heat.State, len(raw))
+	for name, data := range raw {
+		if len(data) == 0 {
+			continue
+		}
+		var state heat.State
+		if err := json.Unmarshal(data, &state); err != nil {
+			continue
+		}
+		state.RecentActivityAt = time.Time{}
+		state.LastVisitedAt = time.Time{}
+		state.Attention = false
+		state.Panes = nil
+		decoded[name] = state
+	}
+	return decoded
+}
+
+func encodeHeatStateMap(states map[string]heat.State) map[string][]byte {
+	encoded := make(map[string][]byte, len(states))
+	for name, state := range states {
+		data, err := json.Marshal(state)
+		if err != nil {
+			continue
+		}
+		encoded[name] = data
+	}
+	return encoded
 }

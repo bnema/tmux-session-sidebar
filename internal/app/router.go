@@ -64,7 +64,7 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "hook/client-resized", "hook/window-resized":
 		return syncSidebarWidth(ctx, route.Flags)
 	case "daemon/serve":
-		return nil
+		return serveSidebarDaemon(ctx)
 	default:
 		_, _ = fmt.Fprintf(stderr, "%s not implemented yet\n", route.Path)
 		return fmt.Errorf("unimplemented route: %s", route.Path)
@@ -285,7 +285,7 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 			return items
 		},
 	}
-	options := uity.SidebarOptions{}
+	options := uity.SidebarOptions{RefreshInterval: sidebarRefreshInterval(ctx)}
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}

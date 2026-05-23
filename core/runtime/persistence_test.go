@@ -141,6 +141,7 @@ func TestCaptureLiveSessions(t *testing.T) {
 	query.EXPECT().SessionPath(ctx, "relative").Return("relative/path", nil)
 	query.EXPECT().SessionPath(ctx, "empty").Return("  ", nil)
 	query.EXPECT().SessionPath(ctx, "missing").Return(missingPath, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, nil)
 
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		wantSessions := map[string]ports.SessionMetadata{
@@ -170,6 +171,7 @@ func TestCaptureLiveSessionsPreservesOrderForNonPersistableLiveSessions(t *testi
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
 	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "1"}, {Name: "alpha"}, {Name: "2"}, {Name: "__scratch"}}, nil)
 	query.EXPECT().SessionPath(ctx, "alpha").Return(alphaPath, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		wantSessions := map[string]ports.SessionMetadata{"alpha": {Kind: "project", ProjectPath: "/projects/alpha", LastPath: alphaPath}}
 		wantOrder := []string{"2", "alpha", "__scratch", "1"}
@@ -191,9 +193,32 @@ func TestCaptureLiveSessionsIgnoresSessionPathErrors(t *testing.T) {
 	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, nil)
 	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "fail"}}, nil)
 	query.EXPECT().SessionPath(ctx, "alpha").Return(alphaPath, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	query.EXPECT().SessionPath(ctx, "fail").Return("", errors.New("pane gone"))
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		return reflect.DeepEqual(state.Sessions, map[string]ports.SessionMetadata{"alpha": {Kind: "captured", LastPath: alphaPath}})
+	})).Return(nil)
+
+	if err := NewService(nil, query, nil, store).CaptureLiveSessions(ctx, serverID); err != nil {
+		t.Fatalf("CaptureLiveSessions error: %v", err)
+	}
+}
+
+func TestCaptureLiveSessionsStillSavesMetadataWhenHeatCollectionFails(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	alphaPath := t.TempDir()
+	boom := errors.New("list clients failed")
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	initial := ports.PersistedState{Heat: map[string][]byte{"alpha": []byte(`{"Score":600}`)}}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "alpha"}}, nil)
+	query.EXPECT().SessionPath(ctx, "alpha").Return(alphaPath, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, boom)
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		return reflect.DeepEqual(state.Sessions, map[string]ports.SessionMetadata{"alpha": {Kind: "captured", LastPath: alphaPath}}) && reflect.DeepEqual(state.Heat, initial.Heat)
 	})).Return(nil)
 
 	if err := NewService(nil, query, nil, store).CaptureLiveSessions(ctx, serverID); err != nil {
@@ -212,6 +237,7 @@ func TestCaptureLiveSessionsReturnsSaveError(t *testing.T) {
 	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, nil)
 	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "alpha"}}, nil)
 	query.EXPECT().SessionPath(ctx, "alpha").Return(alphaPath, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	store.EXPECT().Save(ctx, serverID, mock.Anything).Return(boom)
 
 	err := NewService(nil, query, nil, store).CaptureLiveSessions(ctx, serverID)
