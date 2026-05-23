@@ -153,5 +153,5 @@ func runtimeService() *coreruntime.Service {
 
 func runtimeServiceWithStore(store ports.StateStorePort) *coreruntime.Service {
 	tmux := tmuxcli.Client{Process: process.Runner{}}
-	return coreruntime.NewService(nil, tmux, tmux, store).WithMetadata(tmux)
+	return coreruntime.NewService(tmux, tmux, tmux, store).WithMetadata(tmux)
 }

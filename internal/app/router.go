@@ -56,15 +56,17 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "action/kill":
 		return killSession(ctx, route.Flags, r.sidebar)
 	case "daemon/ensure":
-		return ensureRestoredAndCaptured(ctx)
+		return ensureRestoredAndCapturedOnStartup(ctx)
 	case "hook/client-attached":
 		return ensureRestoredAndCaptured(ctx)
-	case "hook/client-detached", "hook/client-session-changed":
+	case "hook/client-detached":
 		return captureLiveSidebarSessions(ctx)
+	case "hook/client-session-changed":
+		return captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], r.sidebar)
 	case "hook/client-resized", "hook/window-resized":
 		return syncSidebarWidth(ctx, route.Flags)
 	case "daemon/serve":
-		return nil
+		return serveSidebarDaemon(ctx)
 	default:
 		_, _ = fmt.Fprintf(stderr, "%s not implemented yet\n", route.Path)
 		return fmt.Errorf("unimplemented route: %s", route.Path)
@@ -310,6 +312,16 @@ func handleActionError(ctx context.Context, action string, err error) bool {
 	}
 	_, _ = tmux(ctx, "display-message", fmt.Sprintf("tmux-session-sidebar: %s failed: %v", action, err))
 	return false
+}
+
+func captureLiveSidebarSessionsAndRefresh(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
+	if err := captureLiveSidebarSessions(ctx); err != nil {
+		return err
+	}
+	if sidebar == nil {
+		return nil
+	}
+	return refreshSidebar(ctx, client, sidebar)
 }
 
 func quickSwitch(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {

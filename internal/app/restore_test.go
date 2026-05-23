@@ -2,10 +2,16 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/ports/mocks"
 )
 
 func TestDaemonEnsureRestoresMissingPersistedNamedSessions(t *testing.T) {
@@ -52,6 +58,232 @@ esac
 	log := readLog(t, logPath)
 	if strings.Contains(log, "new-session") {
 		t.Fatalf("expected daemon ensure not to create numeric or hidden sessions, log=%q", log)
+	}
+}
+
+func TestDaemonServeCapturesLiveSessionsBeforeWaiting(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaPath := t.TempDir()
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-attention-quiet-seconds) printf '120\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) printf '$1\talpha\t1\t0\n' ;;
+  list-clients) ;;
+  display-message)
+    if [ "$5" = '#{pane_current_path}' ]; then
+      printf '%s\n' "$CAPTURE_PATH"
+    fi ;;
+esac
+`)
+	t.Setenv("CAPTURE_PATH", alphaPath)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "daemon/serve", Flags: map[string]string{}}, nil, nil); err != nil {
+		t.Fatalf("daemon serve error: %v", err)
+	}
+
+	state, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if got := state.Sessions["alpha"]; got.Kind != "captured" || got.LastPath != alphaPath {
+		t.Fatalf("alpha metadata = %#v, want captured at %q", got, alphaPath)
+	}
+}
+
+func TestDaemonEnsureClearsTransientHeatStateOnStartup(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	store := sessionOrderStore()
+	state, err := store.Load(t.Context(), "tmux")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	encodedHeat, err := json.Marshal(heat.State{
+		Score:            600,
+		UpdatedAt:        time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC),
+		LastActiveAt:     time.Date(2026, 5, 23, 11, 55, 0, 0, time.UTC),
+		RecentActivityAt: time.Date(2026, 5, 23, 11, 59, 0, 0, time.UTC),
+		LastVisitedAt:    time.Date(2026, 5, 23, 11, 58, 0, 0, time.UTC),
+		Attention:        true,
+		Panes:            map[string]heat.PaneState{"%1": {Fingerprint: "abc"}},
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	state.Heat = map[string][]byte{"alpha": encodedHeat}
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions) ;;
+  list-clients) ;;
+  list-panes) ;;
+esac
+`)
+
+	if err := (runtimeRouter{}).Handle(context.Background(), Route{Path: "daemon/ensure", Flags: map[string]string{}}, nil, nil); err != nil {
+		t.Fatalf("daemon ensure error: %v", err)
+	}
+
+	nextState, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	decoded := decodePersistedHeat(nextState.Heat)["alpha"]
+	if decoded.Attention {
+		t.Fatalf("attention = true, want false after startup reset")
+	}
+	if !decoded.RecentActivityAt.IsZero() {
+		t.Fatalf("recent activity at = %v, want zero after startup reset", decoded.RecentActivityAt)
+	}
+	if !decoded.LastVisitedAt.IsZero() {
+		t.Fatalf("last visited at = %v, want zero after startup reset", decoded.LastVisitedAt)
+	}
+	if len(decoded.Panes) != 0 {
+		t.Fatalf("panes = %#v, want cleared transient pane fingerprints after startup reset", decoded.Panes)
+	}
+}
+
+func TestDaemonServeClearsTransientHeatStateOnStartup(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	seedTransientHeatState(t)
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-attention-quiet-seconds) printf '120\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) ;;
+  list-clients) ;;
+  list-panes) ;;
+esac
+`)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "daemon/serve", Flags: map[string]string{}}, nil, nil); err != nil {
+		t.Fatalf("daemon serve error: %v", err)
+	}
+
+	assertTransientHeatStateCleared(t)
+}
+
+func TestCaptureLiveSidebarHeatWritesActivityDebugLogWhenEnabled(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions) printf '$1\talpha\t1\t0\n' ;;
+  list-clients) ;;
+  list-panes) printf '%%1\t$1\talpha\t@1\t/tmp/alpha\tpi\t0\t\t0\n' ;;
+  capture-pane) printf 'working\n' ;;
+esac
+`)
+
+	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, AttentionQuietSeconds: 120, ActivityDebugLog: true}
+	if err := captureLiveSidebarHeat(context.Background(), cfg); err != nil {
+		t.Fatalf("captureLiveSidebarHeat error: %v", err)
+	}
+
+	logPath := filepath.Join(os.Getenv("XDG_STATE_HOME"), "tmux-session-sidebar", "activity.log")
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read activity log: %v", err)
+	}
+	if !strings.Contains(string(content), "status=activity-detected") {
+		t.Fatalf("activity log missing transition status: %q", string(content))
+	}
+}
+
+func seedTransientHeatState(t *testing.T) {
+	t.Helper()
+	store := sessionOrderStore()
+	state, err := store.Load(t.Context(), "tmux")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	encodedHeat, err := json.Marshal(heat.State{
+		Score:            600,
+		UpdatedAt:        time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC),
+		LastActiveAt:     time.Date(2026, 5, 23, 11, 55, 0, 0, time.UTC),
+		RecentActivityAt: time.Date(2026, 5, 23, 11, 59, 0, 0, time.UTC),
+		LastVisitedAt:    time.Date(2026, 5, 23, 11, 58, 0, 0, time.UTC),
+		Attention:        true,
+		Panes:            map[string]heat.PaneState{"%1": {Fingerprint: "abc"}},
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	state.Heat = map[string][]byte{"alpha": encodedHeat}
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+}
+
+func assertTransientHeatStateCleared(t *testing.T) {
+	t.Helper()
+	nextState, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	decoded := decodePersistedHeat(nextState.Heat)["alpha"]
+	if decoded.Attention {
+		t.Fatalf("attention = true, want false after startup reset")
+	}
+	if !decoded.RecentActivityAt.IsZero() {
+		t.Fatalf("recent activity at = %v, want zero after startup reset", decoded.RecentActivityAt)
+	}
+	if !decoded.LastVisitedAt.IsZero() {
+		t.Fatalf("last visited at = %v, want zero after startup reset", decoded.LastVisitedAt)
+	}
+	if len(decoded.Panes) != 0 {
+		t.Fatalf("panes = %#v, want cleared transient pane fingerprints after startup reset", decoded.Panes)
+	}
+}
+
+func TestHookClientSessionChangedRefreshesSidebar(t *testing.T) {
+	ctx := t.Context()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaPath := t.TempDir()
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions) printf '$1\talpha\t1\t1\n' ;;
+  display-message) printf '%s\n' "$CAPTURE_PATH" ;;
+esac
+`)
+	t.Setenv("CAPTURE_PATH", alphaPath)
+	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar.EXPECT().RefreshSidebar(ctx, "%1").Return(nil)
+
+	if err := (runtimeRouter{sidebar: sidebar}).Handle(ctx, Route{Path: "hook/client-session-changed", Flags: map[string]string{"client": "%1"}}, nil, nil); err != nil {
+		t.Fatalf("hook client-session-changed error: %v", err)
 	}
 }
 

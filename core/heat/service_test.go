@@ -8,37 +8,165 @@ import (
 func TestAdvanceHeat(t *testing.T) {
 	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
-		name          string
-		state         State
-		now           time.Time
-		attachedCount int
-		halfLife      time.Duration
-		staleAfter    time.Duration
-		wantBucket    Bucket
-		wantMin       float64
-		wantMax       float64
-		wantAttached  int
+		name               string
+		state              State
+		now                time.Time
+		observedActivity   bool
+		visited            bool
+		halfLife           time.Duration
+		staleAfter         time.Duration
+		quietAfter         time.Duration
+		wantBucket         Bucket
+		wantAttention      bool
+		wantVisitedAt      time.Time
+		wantLastActiveAt   time.Time
+		wantRecentActiveAt time.Time
+		wantScoreMin       float64
+		wantScoreMax       float64
+		wantTraceStatus    TraceStatus
 	}{
-		{name: "current attached", state: State{UpdatedAt: now.Add(-2 * time.Hour), AttachedCount: 1}, now: now, attachedCount: 1, halfLife: 8 * time.Hour, staleAfter: 24 * time.Hour, wantBucket: BucketCurrent, wantMin: 7199, wantMax: 7201, wantAttached: 1},
-		{name: "hot detached", state: State{Score: 7200, UpdatedAt: now, LastSeenAt: now}, now: now, attachedCount: 0, halfLife: 8 * time.Hour, staleAfter: 24 * time.Hour, wantBucket: BucketHot, wantMin: 7200, wantMax: 7200, wantAttached: 0},
-		{name: "warm detached", state: State{Score: 2400, UpdatedAt: now, LastSeenAt: now}, now: now, attachedCount: 0, halfLife: 8 * time.Hour, staleAfter: 24 * time.Hour, wantBucket: BucketWarm, wantMin: 2400, wantMax: 2400, wantAttached: 0},
-		{name: "cool detached", state: State{Score: 500, UpdatedAt: now, LastSeenAt: now}, now: now, attachedCount: 0, halfLife: 8 * time.Hour, staleAfter: 24 * time.Hour, wantBucket: BucketCool, wantMin: 500, wantMax: 500, wantAttached: 0},
-		{name: "stale detached", state: State{Score: 7200, UpdatedAt: now, LastSeenAt: now.Add(-25 * time.Hour)}, now: now, attachedCount: 0, halfLife: 8 * time.Hour, staleAfter: 24 * time.Hour, wantBucket: BucketStale, wantMin: 7200, wantMax: 7200, wantAttached: 0},
-		{name: "decays by half life", state: State{Score: 7200, UpdatedAt: now.Add(-8 * time.Hour), LastSeenAt: now}, now: now, attachedCount: 0, halfLife: 8 * time.Hour, staleAfter: 24 * time.Hour, wantBucket: BucketWarm, wantMin: 3599, wantMax: 3601, wantAttached: 0},
+		{
+			name:               "activity adds heat and marks current",
+			state:              State{},
+			now:                now,
+			observedActivity:   true,
+			halfLife:           8 * time.Hour,
+			staleAfter:         24 * time.Hour,
+			quietAfter:         2 * time.Minute,
+			wantBucket:         BucketCurrent,
+			wantLastActiveAt:   now,
+			wantRecentActiveAt: now,
+			wantScoreMin:       599,
+			wantScoreMax:       601,
+			wantTraceStatus:    TraceStatusActivityDetected,
+		},
+		{
+			name: "quiet latches attention after unseen recent activity",
+			state: State{
+				Score:            600,
+				UpdatedAt:        now,
+				LastActiveAt:     now,
+				RecentActivityAt: now,
+			},
+			now:                now.Add(3 * time.Minute),
+			halfLife:           8 * time.Hour,
+			staleAfter:         24 * time.Hour,
+			quietAfter:         2 * time.Minute,
+			wantBucket:         BucketCool,
+			wantAttention:      true,
+			wantLastActiveAt:   now,
+			wantRecentActiveAt: now,
+			wantScoreMin:       597,
+			wantScoreMax:       598,
+			wantTraceStatus:    TraceStatusAttentionStarted,
+		},
+		{
+			name: "visit clears latched attention",
+			state: State{
+				Score:            600,
+				UpdatedAt:        now,
+				LastActiveAt:     now.Add(-3 * time.Minute),
+				RecentActivityAt: now.Add(-3 * time.Minute),
+				Attention:        true,
+			},
+			now:                now,
+			visited:            true,
+			halfLife:           8 * time.Hour,
+			staleAfter:         24 * time.Hour,
+			quietAfter:         2 * time.Minute,
+			wantBucket:         BucketCool,
+			wantVisitedAt:      now,
+			wantLastActiveAt:   now.Add(-3 * time.Minute),
+			wantRecentActiveAt: now.Add(-3 * time.Minute),
+			wantScoreMin:       599,
+			wantScoreMax:       601,
+			wantTraceStatus:    TraceStatusAttentionClearedOnVisit,
+		},
+		{
+			name: "stale wins after long inactivity",
+			state: State{
+				Score:            7200,
+				UpdatedAt:        now,
+				LastActiveAt:     now.Add(-25 * time.Hour),
+				RecentActivityAt: now.Add(-25 * time.Hour),
+			},
+			now:                now,
+			halfLife:           8 * time.Hour,
+			staleAfter:         24 * time.Hour,
+			quietAfter:         2 * time.Minute,
+			wantBucket:         BucketStale,
+			wantLastActiveAt:   now.Add(-25 * time.Hour),
+			wantRecentActiveAt: now.Add(-25 * time.Hour),
+			wantScoreMin:       7200,
+			wantScoreMax:       7200,
+			wantTraceStatus:    TraceStatusNoChange,
+		},
+		{
+			name: "stale expires attention",
+			state: State{
+				Score:            7200,
+				UpdatedAt:        now,
+				LastActiveAt:     now.Add(-25 * time.Hour),
+				RecentActivityAt: now.Add(-25 * time.Hour),
+				Attention:        true,
+			},
+			now:                now,
+			halfLife:           8 * time.Hour,
+			staleAfter:         24 * time.Hour,
+			quietAfter:         2 * time.Minute,
+			wantBucket:         BucketStale,
+			wantAttention:      false,
+			wantLastActiveAt:   now.Add(-25 * time.Hour),
+			wantRecentActiveAt: now.Add(-25 * time.Hour),
+			wantScoreMin:       7200,
+			wantScoreMax:       7200,
+			wantTraceStatus:    TraceStatusAttentionExpiredAsStale,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, bucket := Advance(tt.state, tt.now, tt.attachedCount, tt.halfLife, tt.staleAfter)
-			if bucket != tt.wantBucket {
-				t.Fatalf("bucket = %q, want %q", bucket, tt.wantBucket)
+			got, trace := Advance(tt.state, tt.now, tt.observedActivity, tt.visited, tt.halfLife, tt.staleAfter, tt.quietAfter)
+			if trace.Bucket != tt.wantBucket {
+				t.Fatalf("bucket = %q, want %q", trace.Bucket, tt.wantBucket)
 			}
-			if got.Score < tt.wantMin || got.Score > tt.wantMax {
-				t.Fatalf("score = %f, want between %f and %f", got.Score, tt.wantMin, tt.wantMax)
+			if got.Attention != tt.wantAttention {
+				t.Fatalf("attention = %v, want %v", got.Attention, tt.wantAttention)
 			}
-			if got.AttachedCount != tt.wantAttached {
-				t.Fatalf("attached count = %d, want %d", got.AttachedCount, tt.wantAttached)
+			if !got.LastVisitedAt.Equal(tt.wantVisitedAt) {
+				t.Fatalf("last visited at = %v, want %v", got.LastVisitedAt, tt.wantVisitedAt)
+			}
+			if !got.LastActiveAt.Equal(tt.wantLastActiveAt) {
+				t.Fatalf("last active at = %v, want %v", got.LastActiveAt, tt.wantLastActiveAt)
+			}
+			if !got.RecentActivityAt.Equal(tt.wantRecentActiveAt) {
+				t.Fatalf("recent activity at = %v, want %v", got.RecentActivityAt, tt.wantRecentActiveAt)
+			}
+			if got.Score < tt.wantScoreMin || got.Score > tt.wantScoreMax {
+				t.Fatalf("score = %f, want between %f and %f", got.Score, tt.wantScoreMin, tt.wantScoreMax)
+			}
+			if trace.Status != tt.wantTraceStatus {
+				t.Fatalf("trace status = %q, want %q", trace.Status, tt.wantTraceStatus)
 			}
 		})
+	}
+}
+
+func TestAdvanceHeatKeepsAttentionLatchedUntilVisit(t *testing.T) {
+	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+	state := State{
+		Score:            600,
+		UpdatedAt:        now,
+		LastActiveAt:     now.Add(-3 * time.Minute),
+		RecentActivityAt: now.Add(-3 * time.Minute),
+		Attention:        true,
+	}
+
+	got, _ := Advance(state, now.Add(30*time.Second), true, false, 8*time.Hour, 24*time.Hour, 2*time.Minute)
+	if !got.Attention {
+		t.Fatal("attention = false, want true until the session is visited")
+	}
+	if !got.LastVisitedAt.IsZero() {
+		t.Fatalf("last visited at = %v, want zero", got.LastVisitedAt)
 	}
 }

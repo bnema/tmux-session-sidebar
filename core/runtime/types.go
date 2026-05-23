@@ -39,6 +39,7 @@ type Service struct {
 	tmuxSidebar ports.TmuxSidebarPort
 	tmuxMeta    ports.TmuxMetadataPort
 	store       ports.StateStorePort
+	logger      ports.LoggerPort
 }
 
 // NewService creates a Service from its adapter ports. Methods validate the
@@ -55,5 +56,10 @@ func (s *Service) WithSidebar(sidebar ports.TmuxSidebarPort) *Service {
 
 func (s *Service) WithMetadata(meta ports.TmuxMetadataPort) *Service {
 	s.tmuxMeta = meta
+	return s
+}
+
+func (s *Service) WithLogger(logger ports.LoggerPort) *Service {
+	s.logger = logger
 	return s
 }

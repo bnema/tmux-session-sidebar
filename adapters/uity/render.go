@@ -102,40 +102,24 @@ func sanitizeSessionName(name string) string {
 }
 
 func HeatStyle(bucket heat.Bucket, capability Capability) string {
+	highlight := bucket != heat.BucketStale
 	switch capability {
 	case CapabilityRGB:
-		switch bucket {
-		case heat.BucketCurrent:
-			return "\033[1;38;2;152;251;152m"
-		case heat.BucketHot:
-			return "\033[38;2;122;232;122m"
-		case heat.BucketWarm:
-			return "\033[38;2;106;198;106m"
-		case heat.BucketCool:
-			return "\033[38;2;124;154;124m"
-		case heat.BucketStale:
-			return "\033[2;38;2;140;140;140m"
+		if highlight {
+			return "\033[38;2;220;252;231m"
 		}
+		return "\033[2;38;2;140;140;140m"
 	case Capability256:
-		switch bucket {
-		case heat.BucketCurrent:
-			return "\033[1;38;5;121m"
-		case heat.BucketHot:
-			return "\033[38;5;114m"
-		case heat.BucketWarm:
-			return "\033[38;5;108m"
-		case heat.BucketCool:
-			return "\033[38;5;72m"
-		case heat.BucketStale:
-			return "\033[2;38;5;244m"
+		if highlight {
+			return "\033[38;5;194m"
 		}
+		return "\033[2;38;5;244m"
 	case CapabilityBasic:
-		if bucket == heat.BucketCurrent || bucket == heat.BucketHot {
+		if highlight {
 			return "\033[32m"
 		}
-		if bucket == heat.BucketStale {
-			return "\033[2m"
-		}
+		return "\033[2m"
+	default:
+		return ""
 	}
-	return ""
 }

@@ -3,14 +3,17 @@ package ports
 import "context"
 
 type ConfigSnapshot struct {
-	KeyBinding         string
-	Width              string
-	ProjectRoots       []string
-	CloseAfterSwitch   bool
-	HeatColorsEnabled  bool
-	HeatHalfLifeHours  int
-	HeatStaleHours     int
-	HeatRefreshSeconds int
+	Loaded                bool
+	KeyBinding            string
+	Width                 string
+	ProjectRoots          []string
+	CloseAfterSwitch      bool
+	HeatColorsEnabled     bool
+	HeatHalfLifeHours     int
+	HeatStaleHours        int
+	HeatRefreshSeconds    int
+	AttentionQuietSeconds int
+	ActivityDebugLog      bool
 }
 
 type TmuxSessionSnapshot struct {
@@ -26,6 +29,18 @@ type TmuxClientSnapshot struct {
 	CurrentWindowID  string
 	CurrentPaneID    string
 	Attached         bool
+}
+
+type TmuxPaneSnapshot struct {
+	PaneID      string
+	SessionID   string
+	SessionName string
+	WindowID    string
+	CurrentPath string
+	CurrentCmd  string
+	Dead        bool
+	DeadStatus  string
+	Sidebar     bool
 }
 
 type PaneSize struct {

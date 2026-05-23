@@ -7,6 +7,7 @@ A TPM plugin for fast tmux session switching. It opens a full-height left sideba
 - tmux 3.6+
 - Go 1.26+
 - bash for the TPM bootstrap script
+- a Nerd Font if you want the bell attention marker (`\uf0f3`, U+F0F3 / nf-fa-bell) to render as the intended glyph
 
 `fzf` is not required. The old `@session-sidebar-use-fzf` option is still accepted for compatibility, but the Go UI ignores it.
 
@@ -76,10 +77,12 @@ Configure tmux options in `~/.tmux.conf`.
 | `@session-sidebar-width` | `20` | Fixed sidebar width passed to `tmux split-window -l` and reapplied after window resizes |
 | `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated roots for project sessions |
 | `@session-sidebar-close-after-switch` | `off` | Close the sidebar after switching when set to `on` |
-| `@session-sidebar-heat-colors` | `on` | Color sessions by recent activity |
+| `@session-sidebar-heat-colors` | `on` | Color sessions by recent terminal activity |
 | `@session-sidebar-heat-half-life-hours` | `8` | Heat decay half-life |
 | `@session-sidebar-heat-stale-hours` | `24` | Hours before a session fades to stale |
-| `@session-sidebar-heat-refresh-seconds` | `300` | Heat refresh interval while the sidebar is open |
+| `@session-sidebar-heat-refresh-seconds` | `5` | Daemon activity-capture cadence; sidebar redraws come from tmux `client-session-changed` or manual `F5` |
+| `@session-sidebar-attention-quiet-seconds` | `120` | Quiet time after the last observed output before a non-current session can show the bell |
+| `@session-sidebar-activity-debug-log` | `off` | Write activity trace lines to `~/.local/state/tmux-session-sidebar/activity.log` |
 | `@session-sidebar-use-fzf` | `on` | Compatibility option; ignored by the Go UI |
 
 Example:
@@ -92,7 +95,9 @@ set -g @session-sidebar-close-after-switch 'off'
 set -g @session-sidebar-heat-colors 'on'
 set -g @session-sidebar-heat-half-life-hours '8'
 set -g @session-sidebar-heat-stale-hours '24'
-set -g @session-sidebar-heat-refresh-seconds '300'
+set -g @session-sidebar-heat-refresh-seconds '5'
+set -g @session-sidebar-attention-quiet-seconds '120'
+set -g @session-sidebar-activity-debug-log 'off'
 ```
 
 ## Usage
@@ -158,15 +163,35 @@ Project session names are derived from directory basenames and normalized for tm
 
 `M-x` asks for inline confirmation before killing the selected session. The plugin refuses to kill the last remaining session.
 
-## Heat colors
+## Heat colors and attention markers
 
-When heat colors are enabled, sessions are colored by recent dwell time:
+When heat colors are enabled, the sidebar shows only three visual states:
 
-- current: brightest green
-- hot, warm, cool: progressively dimmer greens
-- stale: gray after `@session-sidebar-heat-stale-hours`
+- current session: white text with the `*` marker
+- recently switched non-current session: near-white green for 30 seconds after the last visit
+- every other non-current session: dark gray
 
-Heat decays over time. Lifetime visit counts are not used. Colors degrade by terminal capability: RGB, 256-color, basic color, then plain text.
+Why: the sidebar is switch-driven now. It highlights the session you just left instead of rendering a multi-step heat gradient.
+
+The bell is separate from color:
+
+- fresh output that then stays quiet for `@session-sidebar-attention-quiet-seconds` can show the bell on a non-current session
+- the bell clears when you revisit that session
+- the bell does not survive daemon or plugin restarts
+
+Redraws come from tmux `client-session-changed` and manual `F5`. `@session-sidebar-heat-refresh-seconds` only controls background activity sampling for attention/debug state, so raise it to values such as `30` or `300` when you want less background work.
+
+For debugging, enable:
+
+```tmux
+set -g @session-sidebar-activity-debug-log 'on'
+```
+
+Then inspect:
+
+```bash
+tail -f ~/.local/state/tmux-session-sidebar/activity.log
+```
 
 Disable heat colors with:
 

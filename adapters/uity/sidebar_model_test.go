@@ -7,6 +7,35 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+func TestSidebarModelInitDoesNotSchedulePeriodicRefresh(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{})
+	if cmd := model.Init(); cmd != nil {
+		t.Fatal("Init() scheduled a periodic refresh command")
+	}
+}
+
+func TestSidebarModelF5ReloadsSessionsOnDemand(t *testing.T) {
+	reloaded := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+		ReloadSessions: func() []SessionItem {
+			reloaded++
+			return []SessionItem{{Name: "beta"}}
+		},
+	})
+
+	updated, cmd := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyF5}))
+	model = requireSidebarModel(t, updated)
+	if reloaded != 1 {
+		t.Fatalf("ReloadSessions called %d times, want 1", reloaded)
+	}
+	if len(model.items) != 1 || model.items[0].Name != "beta" {
+		t.Fatalf("model items after F5 reload = %#v", model.items)
+	}
+	if cmd != nil {
+		t.Fatal("Update(F5) returned an unexpected follow-up command")
+	}
+}
+
 func TestSidebarModelKillRequiresInlineConfirmation(t *testing.T) {
 	called := 0
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
@@ -374,6 +403,28 @@ func TestSidebarModelFilterAcceptsSpace(t *testing.T) {
 				t.Fatalf("filter = %q, want %q", model.filter, tt.want)
 			}
 		})
+	}
+}
+
+func TestSidebarModelRenderShowsAttentionMarkerInPrimaryMarkerSlot(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{})
+	view := model.Render()
+	if !strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
+		t.Fatalf("render missing compact attention marker in %q", view)
+	}
+	if strings.Contains(view, "  [1] alpha") {
+		t.Fatalf("render kept a second empty marker column in %q", view)
+	}
+}
+
+func TestSidebarModelRenderPrefersCurrentMarkerOverAttention(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true, Attention: true, Slot: 1}}, Actions{})
+	view := model.Render()
+	if !strings.Contains(view, "* [1] alpha") {
+		t.Fatalf("render missing current marker in %q", view)
+	}
+	if strings.Contains(view, attentionMarkerSymbol) {
+		t.Fatalf("render should not show attention marker for current session in %q", view)
 	}
 }
 

@@ -8,14 +8,22 @@ import (
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
 
+	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
 
+const (
+	attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
+	recentSignalColor     = "#dcfce7"
+	inactiveSessionColor  = "#4b5563"
+)
+
 type SessionItem struct {
-	Name    string
-	Current bool
-	Slot    int
-	Heat    string
+	Name      string
+	Current   bool
+	Slot      int
+	Heat      string
+	Attention bool
 }
 
 type ProjectItem struct {
@@ -58,8 +66,9 @@ type SidebarModel struct {
 type sidebarStyles struct {
 	accent   lipgloss.Style
 	dim      lipgloss.Style
-	current  lipgloss.Style
-	warm     lipgloss.Style
+	active   lipgloss.Style
+	recent   lipgloss.Style
+	stale    lipgloss.Style
 	selected lipgloss.Style
 }
 
@@ -71,7 +80,9 @@ func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options Si
 	return SidebarModel{items: items, actions: actions, mode: ModeBrowse, showNumeric: options.ShowNumericItems}
 }
 
-func (m SidebarModel) Init() tea.Cmd { return nil }
+func (m SidebarModel) Init() tea.Cmd {
+	return nil
+}
 
 func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -376,14 +387,33 @@ func (m SidebarModel) Render() string {
 
 func newSidebarStyles() sidebarStyles {
 	return sidebarStyles{
-		accent:  lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
-		dim:     lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
-		current: lipgloss.NewStyle().Foreground(lipgloss.Color("#86efac")).Bold(true),
-		warm:    lipgloss.NewStyle().Foreground(lipgloss.Color("#a7f3d0")),
-		selected: lipgloss.NewStyle().Background(lipgloss.Color("#1f2937")).
-			Foreground(lipgloss.Color("#ffffff")).
-			Bold(true),
+		accent:   lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
+		dim:      lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
+		active:   lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
+		recent:   lipgloss.NewStyle().Foreground(lipgloss.Color(recentSignalColor)),
+		stale:    lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionColor)),
+		selected: lipgloss.NewStyle().Background(lipgloss.Color("#1f2937")).Foreground(lipgloss.Color("#ffffff")).Bold(true),
 	}
+}
+
+func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
+	if item.Current {
+		return styles.active
+	}
+	if item.Heat == "" || item.Heat == string(heat.BucketStale) {
+		return styles.stale
+	}
+	return styles.recent
+}
+
+func sessionMarker(item SessionItem) string {
+	if item.Current {
+		return "*"
+	}
+	if item.Attention {
+		return attentionMarkerSymbol
+	}
+	return " "
 }
 
 func (m SidebarModel) statusLine() string {
@@ -403,21 +433,12 @@ func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
 	visible := m.visibleItems()
 	lines := make([]string, 0, len(visible)+1)
 	for i, item := range visible {
-		marker := " "
-		if item.Current {
-			marker = "*"
-		}
 		badge := "    "
 		if item.Slot > 0 {
 			badge = fmt.Sprintf("[%s] ", slotLabel(item.Slot))
 		}
-		style := lipgloss.NewStyle()
-		if item.Current {
-			style = styles.current
-		} else if item.Heat == "hot" || item.Heat == "warm" {
-			style = styles.warm
-		}
-		row := style.Render(fmt.Sprintf("%s %s%s", marker, badge, item.Name))
+		style := sessionRowStyle(styles, item)
+		row := style.Render(fmt.Sprintf("%s %s%s", sessionMarker(item), badge, item.Name))
 		if i == m.cursor {
 			row = styles.selected.Render(row)
 		}
