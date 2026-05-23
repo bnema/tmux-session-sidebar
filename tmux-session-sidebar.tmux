@@ -81,7 +81,6 @@ main() {
     unbind_plugin_binding "$previous_key"
   fi
 
-  "$TMUX_BIN" run-shell -b "mkdir -p $quoted_state_dir && $quoted_runtime daemon ensure >/dev/null 2>$quoted_state_dir/errors.log"
   "$TMUX_BIN" run-shell -b "$quoted_daemon_control $quoted_runtime $quoted_state_dir"
   "$TMUX_BIN" bind-key -n "$sidebar_key" \
     run-shell "$quoted_runtime sidebar toggle --client #{q:client_name}"

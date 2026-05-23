@@ -21,8 +21,12 @@ is_sidebar_daemon_pid() {
 }
 
 wait_for_daemon_exit() {
-  local pid="$1" runtime_bin="$2" attempt
-  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  local pid="$1" runtime_bin="$2" attempt wait_retries
+  wait_retries="${DAEMON_WAIT_RETRIES:-30}"
+  case "$wait_retries" in
+    *[!0-9]*|"") wait_retries=30 ;;
+  esac
+  for ((attempt = 1; attempt <= wait_retries; attempt++)); do
     if ! is_sidebar_daemon_pid "$pid" "$runtime_bin"; then
       return 0
     fi
@@ -69,6 +73,7 @@ main() {
     exit 1
   fi
   stop_existing_daemon "$runtime_bin" "$pid_file" "$log_file"
+  "$runtime_bin" daemon ensure >/dev/null 2>>"$log_file"
   exec "$runtime_bin" daemon serve >/dev/null 2>>"$log_file"
 }
 

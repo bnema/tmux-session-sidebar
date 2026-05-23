@@ -22,6 +22,15 @@ assert_file_contains() {
   fi
 }
 
+TEMP_ROOTS=()
+cleanup_temp_roots() {
+  local root
+  for root in "${TEMP_ROOTS[@]}"; do
+    rm -rf "$root"
+  done
+}
+trap cleanup_temp_roots EXIT
+
 new_fixture() {
   local root runtime state_dir
   root="$(mktemp -d)"
@@ -46,6 +55,7 @@ case "${3-}" in
 esac
 RUNTIME
   chmod +x "$runtime"
+  TEMP_ROOTS+=("$root")
   printf '%s\n' "$root"
 }
 
@@ -54,11 +64,25 @@ run_control() {
   STATE_DIR="$root/state" "$(dirname "$0")/daemon-control.sh" "$root/tmux-session-sidebar" "$root/state"
 }
 
+assert_file_line_contains() {
+  local file="$1" line_number="$2" needle="$3" message="$4" line
+  line="$(sed -n "${line_number}p" "$file")"
+  case "$line" in
+    *"$needle"*) ;;
+    *)
+      echo "--- $file ---" >&2
+      cat "$file" >&2 || true
+      fail "$message: line $line_number missing '$needle'"
+      ;;
+  esac
+}
+
 test_starts_runtime_when_no_existing_pid() {
   local root
   root="$(new_fixture)"
   run_control "$root"
-  assert_file_contains "$root/state/runtime.log" "daemon serve" "daemon control should start the runtime"
+  assert_file_line_contains "$root/state/runtime.log" 1 "daemon ensure" "daemon control should run ensure before starting the daemon"
+  assert_file_line_contains "$root/state/runtime.log" 2 "daemon serve" "daemon control should start the daemon after ensure"
 }
 
 test_stops_existing_matching_daemon_before_restart() {
@@ -75,8 +99,9 @@ test_stops_existing_matching_daemon_before_restart() {
     fail "old daemon pid $old_pid should have been stopped before restart"
   fi
   assert_file_contains "$root/state/runtime.log" "stop $old_pid" "old daemon should receive a stop signal"
+  assert_file_contains "$root/state/runtime.log" "daemon ensure" "daemon control should re-run ensure before restart"
   starts="$(grep -c '^start ' "$root/state/runtime.log" | tr -d ' ')"
-  assert_eq "2" "$starts" "daemon control should record old and new daemon starts"
+  assert_eq "3" "$starts" "daemon control should record old, ensure, and new daemon starts"
 }
 
 test_logs_and_aborts_when_existing_daemon_ignores_term() {
@@ -87,7 +112,7 @@ test_logs_and_aborts_when_existing_daemon_ignores_term() {
   printf '%s\n' "$stuck_pid" >"$root/state/daemon.pid"
   sleep 0.2
 
-  if run_control "$root"; then
+  if DAEMON_WAIT_RETRIES=2 run_control "$root"; then
     kill -KILL "$stuck_pid" 2>/dev/null || true
     fail "daemon control should fail when the existing daemon ignores TERM"
   fi

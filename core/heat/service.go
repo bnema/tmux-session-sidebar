@@ -73,6 +73,9 @@ func Advance(state State, now time.Time, observedActivity bool, visited bool, ha
 	}
 	state.UpdatedAt = now
 
+	// Attention is purely transient: stale sessions clear any latched attention, while
+	// quiet-period latching only considers activity that happened after the last visit.
+	// LastActiveAt feeds long-lived heat/staleness; RecentActivityAt drives quiet-after.
 	switch {
 	case staleAfter > 0 && !state.LastActiveAt.IsZero() && now.Sub(state.LastActiveAt) >= staleAfter:
 		state.Attention = false
@@ -90,6 +93,8 @@ func Advance(state State, now time.Time, observedActivity bool, visited bool, ha
 	if !state.RecentActivityAt.IsZero() {
 		trace.IdleFor = max(now.Sub(state.RecentActivityAt), 0)
 	}
+	// Determine trace status with intentional precedence: activity > visit-clears-attention
+	// > attention transitions > inactivity detection > no change.
 	switch {
 	case observedActivity:
 		trace.Status = TraceStatusActivityDetected

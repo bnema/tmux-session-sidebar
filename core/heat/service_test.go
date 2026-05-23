@@ -23,6 +23,7 @@ func TestAdvanceHeat(t *testing.T) {
 		wantRecentActiveAt time.Time
 		wantScoreMin       float64
 		wantScoreMax       float64
+		wantTraceStatus    TraceStatus
 	}{
 		{
 			name:               "activity adds heat and marks current",
@@ -37,6 +38,7 @@ func TestAdvanceHeat(t *testing.T) {
 			wantRecentActiveAt: now,
 			wantScoreMin:       599,
 			wantScoreMax:       601,
+			wantTraceStatus:    TraceStatusActivityDetected,
 		},
 		{
 			name: "quiet latches attention after unseen recent activity",
@@ -56,6 +58,7 @@ func TestAdvanceHeat(t *testing.T) {
 			wantRecentActiveAt: now,
 			wantScoreMin:       597,
 			wantScoreMax:       598,
+			wantTraceStatus:    TraceStatusAttentionStarted,
 		},
 		{
 			name: "visit clears latched attention",
@@ -77,6 +80,7 @@ func TestAdvanceHeat(t *testing.T) {
 			wantRecentActiveAt: now.Add(-3 * time.Minute),
 			wantScoreMin:       599,
 			wantScoreMax:       601,
+			wantTraceStatus:    TraceStatusAttentionClearedOnVisit,
 		},
 		{
 			name: "stale wins after long inactivity",
@@ -95,6 +99,28 @@ func TestAdvanceHeat(t *testing.T) {
 			wantRecentActiveAt: now.Add(-25 * time.Hour),
 			wantScoreMin:       7200,
 			wantScoreMax:       7200,
+			wantTraceStatus:    TraceStatusNoChange,
+		},
+		{
+			name: "stale expires attention",
+			state: State{
+				Score:            7200,
+				UpdatedAt:        now,
+				LastActiveAt:     now.Add(-25 * time.Hour),
+				RecentActivityAt: now.Add(-25 * time.Hour),
+				Attention:        true,
+			},
+			now:                now,
+			halfLife:           8 * time.Hour,
+			staleAfter:         24 * time.Hour,
+			quietAfter:         2 * time.Minute,
+			wantBucket:         BucketStale,
+			wantAttention:      false,
+			wantLastActiveAt:   now.Add(-25 * time.Hour),
+			wantRecentActiveAt: now.Add(-25 * time.Hour),
+			wantScoreMin:       7200,
+			wantScoreMax:       7200,
+			wantTraceStatus:    TraceStatusAttentionExpiredAsStale,
 		},
 	}
 
@@ -118,6 +144,9 @@ func TestAdvanceHeat(t *testing.T) {
 			}
 			if got.Score < tt.wantScoreMin || got.Score > tt.wantScoreMax {
 				t.Fatalf("score = %f, want between %f and %f", got.Score, tt.wantScoreMin, tt.wantScoreMax)
+			}
+			if trace.Status != tt.wantTraceStatus {
+				t.Fatalf("trace status = %q, want %q", trace.Status, tt.wantTraceStatus)
 			}
 		})
 	}
