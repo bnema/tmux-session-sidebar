@@ -3,6 +3,7 @@ package ports
 import "context"
 
 type ConfigSnapshot struct {
+	Loaded                bool
 	KeyBinding            string
 	Width                 string
 	ProjectRoots          []string

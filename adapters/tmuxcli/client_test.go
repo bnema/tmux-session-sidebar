@@ -81,7 +81,7 @@ func TestListPanesParsesTmuxRows(t *testing.T) {
 func TestCapturePaneTextUsesTailRange(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
-	process.EXPECT().Exec(ctx, "tmux", []string{"capture-pane", "-pJ", "-t", "%9", "-S", "-7", "-E", "-1"}).Return(ports.Result{Stdout: " line 1\n line 2\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"capture-pane", "-pJ", "-t", "%9", "-S", "-8", "-E", "-1"}).Return(ports.Result{Stdout: " line 1\n line 2\n"}, nil)
 
 	got, err := (Client{Process: process}).CapturePaneText(ctx, "%9", 8)
 	if err != nil {
@@ -172,8 +172,14 @@ func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	if len(got.ProjectRoots) != 2 || got.ProjectRoots[0] != "/a" || got.ProjectRoots[1] != "/b" {
 		t.Fatalf("ProjectRoots = %#v", got.ProjectRoots)
 	}
+	if !got.Loaded {
+		t.Fatal("Loaded = false, want true")
+	}
 	if !got.CloseAfterSwitch {
 		t.Fatal("CloseAfterSwitch = false, want true")
+	}
+	if got.HeatRefreshSeconds != 5 {
+		t.Fatalf("HeatRefreshSeconds = %d, want 5", got.HeatRefreshSeconds)
 	}
 }
 
@@ -185,7 +191,7 @@ func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key s
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-colors"}).Return(ports.Result{Stdout: "on\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-half-life-hours"}).Return(ports.Result{Stdout: "8\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-stale-hours"}).Return(ports.Result{Stdout: "24\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-refresh-seconds"}).Return(ports.Result{Stdout: "300\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-refresh-seconds"}).Return(ports.Result{Stdout: "5\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-attention-quiet-seconds"}).Return(ports.Result{Stdout: "120\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-activity-debug-log"}).Return(ports.Result{Stdout: "off\n"}, nil)
 }

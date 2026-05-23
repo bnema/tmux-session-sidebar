@@ -72,7 +72,9 @@ case "$1" in
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-heat-half-life-hours) printf '8\n' ;;
       @session-sidebar-heat-stale-hours) printf '24\n' ;;
-      @session-sidebar-heat-refresh-seconds) printf '300\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-attention-quiet-seconds) printf '120\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
       *) printf '\n' ;;
     esac ;;
   list-sessions) printf '$1\talpha\t1\t0\n' ;;

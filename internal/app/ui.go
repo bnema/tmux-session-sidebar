@@ -72,16 +72,13 @@ func sessionNames(views []sessions.View) []string {
 
 func loadSidebarConfig(ctx context.Context) ports.ConfigSnapshot {
 	cfg, err := (tmuxcli.Client{Process: process.Runner{}}).LoadConfig(ctx)
-	if err == nil {
-		if !cfg.HeatColorsEnabled && cfg.HeatHalfLifeHours == 0 && cfg.HeatStaleHours == 0 && cfg.HeatRefreshSeconds == 0 && cfg.AttentionQuietSeconds == 0 {
-			cfg.HeatColorsEnabled = true
-			cfg.HeatHalfLifeHours = 8
-			cfg.HeatStaleHours = 24
-			cfg.HeatRefreshSeconds = 5
-			cfg.AttentionQuietSeconds = 120
-		}
+	if err == nil && cfg.Loaded {
 		return cfg
 	}
+	return defaultSidebarConfig()
+}
+
+func defaultSidebarConfig() ports.ConfigSnapshot {
 	return ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, AttentionQuietSeconds: 120, ActivityDebugLog: false}
 }
 

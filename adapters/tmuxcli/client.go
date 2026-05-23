@@ -83,6 +83,7 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		return ports.ConfigSnapshot{}, err
 	}
 	return ports.ConfigSnapshot{
+		Loaded:                true,
 		KeyBinding:            key,
 		Width:                 width,
 		ProjectRoots:          splitProjectRoots(roots),
@@ -179,7 +180,7 @@ func (c Client) CapturePaneText(ctx context.Context, paneID string, tailLines in
 	if tailLines <= 0 {
 		tailLines = 1
 	}
-	start := -(tailLines - 1)
+	start := -tailLines
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdCapturePane, "-pJ", "-t", strings.TrimSpace(paneID), "-S", strconv.Itoa(start), "-E", "-1"})
 	if err != nil {
 		return "", err
