@@ -7,6 +7,7 @@ A TPM plugin for fast tmux session switching. It opens a full-height left sideba
 - tmux 3.6+
 - Go 1.26+
 - bash for the TPM bootstrap script
+- a Nerd Font if you want the bell attention marker to render as the intended glyph
 
 `fzf` is not required. The old `@session-sidebar-use-fzf` option is still accepted for compatibility, but the Go UI ignores it.
 
@@ -170,7 +171,7 @@ When heat colors are enabled, sessions are colored by recent terminal activity:
 - warm / cool: progressively dimmer greens and slate tones
 - stale: dark gray after `@session-sidebar-heat-stale-hours`
 
-This heat is separate from the attention marker. When a session produces fresh output and then stays quiet for `@session-sidebar-attention-quiet-seconds` (120s by default), the sidebar shows a bell marker so you can revisit it. That quiet-after logic is intentionally transient: the bell is meant for recent activity, not for surviving daemon/plugin restarts. The marker clears when you switch back to that session.
+This heat is separate from the attention marker. When a session produces fresh output and then stays quiet for `@session-sidebar-attention-quiet-seconds` (120s by default), the sidebar shows a bell marker so you can revisit it. That quiet-after logic is intentionally transient: the bell is meant for recent activity, not for surviving daemon/plugin restarts. The marker clears when you switch back to that session. The bell uses a Nerd Font glyph; without one, your terminal may show a fallback box instead.
 
 For debugging state transitions, enable:
 

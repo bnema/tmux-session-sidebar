@@ -12,7 +12,14 @@ import (
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
 
-const attentionMarkerSymbol = "\uf0f3"
+const (
+	attentionMarkerSymbol = "\uf0f3"
+	heatCurrentColor      = "#86efac"
+	heatHotColor          = "#4ade80"
+	heatWarmColor         = "#86efac"
+	heatCoolColor         = "#94a3b8"
+	heatStaleColor        = "#4b5563"
+)
 
 type SessionItem struct {
 	Name      string
@@ -406,15 +413,15 @@ func (m SidebarModel) Render() string {
 func sessionHeatColor(item SessionItem) string {
 	switch item.Heat {
 	case "current":
-		return "#86efac"
+		return heatCurrentColor
 	case "hot":
-		return "#4ade80"
+		return heatHotColor
 	case "warm":
-		return "#86efac"
+		return heatWarmColor
 	case "cool":
-		return "#94a3b8"
+		return heatCoolColor
 	case "stale":
-		return "#4b5563"
+		return heatStaleColor
 	default:
 		return ""
 	}
@@ -424,11 +431,11 @@ func newSidebarStyles() sidebarStyles {
 	return sidebarStyles{
 		accent:   lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
 		dim:      lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
-		current:  lipgloss.NewStyle().Foreground(lipgloss.Color(sessionHeatColor(SessionItem{Heat: "current"}))).Bold(true),
-		hot:      lipgloss.NewStyle().Foreground(lipgloss.Color(sessionHeatColor(SessionItem{Heat: "hot"}))),
-		warm:     lipgloss.NewStyle().Foreground(lipgloss.Color(sessionHeatColor(SessionItem{Heat: "warm"}))),
-		cool:     lipgloss.NewStyle().Foreground(lipgloss.Color(sessionHeatColor(SessionItem{Heat: "cool"}))),
-		stale:    lipgloss.NewStyle().Foreground(lipgloss.Color(sessionHeatColor(SessionItem{Heat: "stale"}))),
+		current:  lipgloss.NewStyle().Foreground(lipgloss.Color(heatCurrentColor)).Bold(true),
+		hot:      lipgloss.NewStyle().Foreground(lipgloss.Color(heatHotColor)),
+		warm:     lipgloss.NewStyle().Foreground(lipgloss.Color(heatWarmColor)),
+		cool:     lipgloss.NewStyle().Foreground(lipgloss.Color(heatCoolColor)),
+		stale:    lipgloss.NewStyle().Foreground(lipgloss.Color(heatStaleColor)),
 		selected: lipgloss.NewStyle().Background(lipgloss.Color("#1f2937")).Foreground(lipgloss.Color("#ffffff")).Bold(true),
 	}
 }

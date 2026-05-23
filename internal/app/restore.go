@@ -59,7 +59,7 @@ func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) error
 
 func serveSidebarDaemon(ctx context.Context) error {
 	store := sessionOrderStore()
-	acquireCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	acquireCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	lock, err := (locker.FileLocker{Dir: filepath.Join(store.Dir, "locks")}).Acquire(acquireCtx, "tmux-sidebar-daemon")
 	if err != nil {
@@ -76,6 +76,9 @@ func serveSidebarDaemon(ctx context.Context) error {
 	defer func() { _ = os.Remove(pidFile) }()
 
 	cfg := loadSidebarConfig(ctx)
+	// captureLiveSidebarSessionsWithConfig must succeed during daemon startup so the
+	// initial session snapshot is available; later captureLiveSidebarHeat ticks only log
+	// failures because stale heat/attention data is less critical than bootstrapping.
 	if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil {
 		return err
 	}

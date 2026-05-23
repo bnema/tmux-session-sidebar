@@ -114,6 +114,9 @@ func sessionHeatBucket(state heat.State, now time.Time, cfg ports.ConfigSnapshot
 	if cfg.HeatRefreshSeconds > 0 {
 		refreshWindow = time.Duration(cfg.HeatRefreshSeconds+1) * time.Second
 	}
+	// Equality is intentional here: a session is only "current" when activity was observed
+	// in the same update cycle as the last state advance, and refreshWindow keeps that signal
+	// visible until the next daemon poll.
 	active := !state.UpdatedAt.IsZero() && !state.RecentActivityAt.IsZero() && state.RecentActivityAt.Equal(state.UpdatedAt) && now.Sub(state.UpdatedAt) <= refreshWindow
 	return heat.BucketFor(state, now, active, halfLife, staleAfter)
 }

@@ -27,7 +27,7 @@ func TestRunUsesSignalAwareContext(t *testing.T) {
 		return context.WithCancel(parent)
 	}
 	runApp = func(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, router app.Router) int {
-		gotContext = ctx
+		gotContext = ctx //nolint:fatcontext // test captures the context only for assertions.
 		return 0
 	}
 	newRouter = func() app.Router { return nil }

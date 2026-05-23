@@ -73,13 +73,16 @@ func Advance(state State, now time.Time, observedActivity bool, visited bool, ha
 	}
 	state.UpdatedAt = now
 
+	hasFreshUnvisitedActivity := !state.RecentActivityAt.IsZero() && state.RecentActivityAt.After(state.LastVisitedAt)
+	shouldLatchAttention := !state.Attention && quietAfter > 0 && hasFreshUnvisitedActivity && now.Sub(state.RecentActivityAt) >= quietAfter
+
 	// Attention is purely transient: stale sessions clear any latched attention, while
 	// quiet-period latching only considers activity that happened after the last visit.
 	// LastActiveAt feeds long-lived heat/staleness; RecentActivityAt drives quiet-after.
 	switch {
 	case staleAfter > 0 && !state.LastActiveAt.IsZero() && now.Sub(state.LastActiveAt) >= staleAfter:
 		state.Attention = false
-	case !state.Attention && quietAfter > 0 && !state.RecentActivityAt.IsZero() && state.RecentActivityAt.After(state.LastVisitedAt) && now.Sub(state.RecentActivityAt) >= quietAfter:
+	case shouldLatchAttention:
 		state.Attention = true
 	}
 

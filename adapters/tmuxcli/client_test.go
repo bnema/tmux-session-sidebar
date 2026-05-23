@@ -61,20 +61,41 @@ func TestListClientsParsesTmuxRows(t *testing.T) {
 }
 
 func TestListPanesParsesTmuxRows(t *testing.T) {
-	ctx := t.Context()
-	process := mocks.NewMockProcessPort(t)
-	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-a", "-F", "#{pane_id}\t#{session_id}\t#{session_name}\t#{window_id}\t#{pane_current_path}\t#{pane_current_command}\t#{pane_dead}\t#{pane_dead_status}\t#{@session-sidebar-pane}"}).Return(ports.Result{Stdout: "%9\t$1\talpha\t@1\t/tmp/alpha\tbash\t0\t\t0\n%10\t$2\tbeta\t@2\t/tmp/beta\tpi\t1\t130\t1\n"}, nil)
+	tests := []struct {
+		name string
+		out  string
+		want []ports.TmuxPaneSnapshot
+	}{
+		{
+			name: "valid rows",
+			out:  "%9\t$1\talpha\t@1\t/tmp/alpha\tbash\t0\t\t0\n%10\t$2\tbeta\t@2\t/tmp/beta\tpi\t1\t130\t1\n",
+			want: []ports.TmuxPaneSnapshot{
+				{PaneID: "%9", SessionID: "$1", SessionName: "alpha", WindowID: "@1", CurrentPath: "/tmp/alpha", CurrentCmd: "bash", Dead: false, Sidebar: false},
+				{PaneID: "%10", SessionID: "$2", SessionName: "beta", WindowID: "@2", CurrentPath: "/tmp/beta", CurrentCmd: "pi", Dead: true, DeadStatus: "130", Sidebar: true},
+			},
+		},
+		{name: "empty output", out: "", want: nil},
+		{name: "skips malformed rows", out: "%9\t$1\talpha\n%10\t$2\tbeta\t@2\t/tmp/beta\tpi\t1\t130\t1\n", want: []ports.TmuxPaneSnapshot{{PaneID: "%10", SessionID: "$2", SessionName: "beta", WindowID: "@2", CurrentPath: "/tmp/beta", CurrentCmd: "pi", Dead: true, DeadStatus: "130", Sidebar: true}}},
+		{name: "mixed valid and malformed rows", out: "bad\n%9\t$1\talpha\t@1\t/tmp/alpha\tbash\t0\t\t0\nshort\trow\n", want: []ports.TmuxPaneSnapshot{{PaneID: "%9", SessionID: "$1", SessionName: "alpha", WindowID: "@1", CurrentPath: "/tmp/alpha", CurrentCmd: "bash", Dead: false, Sidebar: false}}},
+	}
 
-	got, err := (Client{Process: process}).ListPanes(ctx)
-	if err != nil {
-		t.Fatalf("ListPanes error: %v", err)
-	}
-	want := []ports.TmuxPaneSnapshot{
-		{PaneID: "%9", SessionID: "$1", SessionName: "alpha", WindowID: "@1", CurrentPath: "/tmp/alpha", CurrentCmd: "bash", Dead: false, Sidebar: false},
-		{PaneID: "%10", SessionID: "$2", SessionName: "beta", WindowID: "@2", CurrentPath: "/tmp/beta", CurrentCmd: "pi", Dead: true, DeadStatus: "130", Sidebar: true},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("ListPanes = %#v, want %#v", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
+			process := mocks.NewMockProcessPort(t)
+			process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-a", "-F", "#{pane_id}\t#{session_id}\t#{session_name}\t#{window_id}\t#{pane_current_path}\t#{pane_current_command}\t#{pane_dead}\t#{pane_dead_status}\t#{@session-sidebar-pane}"}).Return(ports.Result{Stdout: tt.out}, nil)
+
+			got, err := (Client{Process: process}).ListPanes(ctx)
+			if err != nil {
+				t.Fatalf("ListPanes error: %v", err)
+			}
+			if len(tt.want) == 0 && len(got) == 0 {
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("ListPanes = %#v, want %#v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -89,6 +110,34 @@ func TestCapturePaneTextUsesTailRange(t *testing.T) {
 	}
 	if got != "line 1\n line 2" {
 		t.Fatalf("CapturePaneText = %q, want trimmed pane text", got)
+	}
+}
+
+func TestCapturePaneTextClampsTailLinesToMinimumOne(t *testing.T) {
+	tests := []struct {
+		name      string
+		tailLines int
+		wantStart string
+	}{
+		{name: "zero", tailLines: 0, wantStart: "-1"},
+		{name: "negative", tailLines: -3, wantStart: "-1"},
+		{name: "positive", tailLines: 3, wantStart: "-3"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
+			process := mocks.NewMockProcessPort(t)
+			process.EXPECT().Exec(ctx, "tmux", []string{"capture-pane", "-pJ", "-t", "%9", "-S", tt.wantStart, "-E", "-1"}).Return(ports.Result{Stdout: "line\n"}, nil)
+
+			got, err := (Client{Process: process}).CapturePaneText(ctx, "%9", tt.tailLines)
+			if err != nil {
+				t.Fatalf("CapturePaneText error: %v", err)
+			}
+			if got != "line" {
+				t.Fatalf("CapturePaneText = %q, want line", got)
+			}
+		})
 	}
 }
 
