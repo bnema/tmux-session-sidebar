@@ -69,14 +69,15 @@ type SidebarModel struct {
 }
 
 type sidebarStyles struct {
-	accent   lipgloss.Style
-	dim      lipgloss.Style
-	current  lipgloss.Style
-	hot      lipgloss.Style
-	warm     lipgloss.Style
-	cool     lipgloss.Style
-	stale    lipgloss.Style
-	selected lipgloss.Style
+	accent      lipgloss.Style
+	dim         lipgloss.Style
+	active      lipgloss.Style
+	currentHeat lipgloss.Style
+	hot         lipgloss.Style
+	warm        lipgloss.Style
+	cool        lipgloss.Style
+	stale       lipgloss.Style
+	selected    lipgloss.Style
 }
 
 type refreshTickMsg struct{}
@@ -429,22 +430,25 @@ func sessionHeatColor(item SessionItem) string {
 
 func newSidebarStyles() sidebarStyles {
 	return sidebarStyles{
-		accent:   lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
-		dim:      lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
-		current:  lipgloss.NewStyle().Foreground(lipgloss.Color(heatCurrentColor)).Bold(true),
-		hot:      lipgloss.NewStyle().Foreground(lipgloss.Color(heatHotColor)),
-		warm:     lipgloss.NewStyle().Foreground(lipgloss.Color(heatWarmColor)),
-		cool:     lipgloss.NewStyle().Foreground(lipgloss.Color(heatCoolColor)),
-		stale:    lipgloss.NewStyle().Foreground(lipgloss.Color(heatStaleColor)),
-		selected: lipgloss.NewStyle().Background(lipgloss.Color("#1f2937")).Foreground(lipgloss.Color("#ffffff")).Bold(true),
+		accent:      lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
+		dim:         lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
+		active:      lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
+		currentHeat: lipgloss.NewStyle().Foreground(lipgloss.Color(heatCurrentColor)),
+		hot:         lipgloss.NewStyle().Foreground(lipgloss.Color(heatHotColor)),
+		warm:        lipgloss.NewStyle().Foreground(lipgloss.Color(heatWarmColor)),
+		cool:        lipgloss.NewStyle().Foreground(lipgloss.Color(heatCoolColor)),
+		stale:       lipgloss.NewStyle().Foreground(lipgloss.Color(heatStaleColor)),
+		selected:    lipgloss.NewStyle().Background(lipgloss.Color("#1f2937")).Foreground(lipgloss.Color("#ffffff")).Bold(true),
 	}
 }
 
 func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
 	if item.Current {
-		return styles.current
+		return styles.active
 	}
 	switch item.Heat {
+	case "current":
+		return styles.currentHeat
 	case "hot":
 		return styles.hot
 	case "warm":
@@ -454,7 +458,7 @@ func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
 	case "stale":
 		return styles.stale
 	default:
-		return lipgloss.NewStyle()
+		return styles.stale
 	}
 }
 
