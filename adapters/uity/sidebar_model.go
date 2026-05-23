@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	attentionMarkerSymbol = "\uf0f3"
+	attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
 	heatCurrentColor      = "#6ee7b7"
 	heatHotColor          = "#4ade80"
 	heatWarmColor         = "#86efac"
@@ -409,23 +409,6 @@ func (m SidebarModel) Render() string {
 		lines = append(lines, styles.accent.Render(m.message))
 	}
 	return lipgloss.NewStyle().Padding(0, 1).Render(strings.Join(lines, "\n"))
-}
-
-func sessionHeatColor(item SessionItem) string {
-	switch item.Heat {
-	case "current":
-		return heatCurrentColor
-	case "hot":
-		return heatHotColor
-	case "warm":
-		return heatWarmColor
-	case "cool":
-		return heatCoolColor
-	case "stale":
-		return heatStaleColor
-	default:
-		return ""
-	}
 }
 
 func newSidebarStyles() sidebarStyles {

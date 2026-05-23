@@ -436,28 +436,6 @@ func TestSidebarModelRenderPrefersCurrentMarkerOverAttention(t *testing.T) {
 	}
 }
 
-func TestSessionHeatColor(t *testing.T) {
-	tests := []struct {
-		name string
-		heat string
-		want string
-	}{
-		{name: "current", heat: "current", want: heatCurrentColor},
-		{name: "hot", heat: "hot", want: heatHotColor},
-		{name: "warm", heat: "warm", want: heatWarmColor},
-		{name: "cool", heat: "cool", want: heatCoolColor},
-		{name: "stale", heat: "stale", want: heatStaleColor},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := sessionHeatColor(SessionItem{Heat: tt.heat}); got != tt.want {
-				t.Fatalf("sessionHeatColor(%q) = %q, want %q", tt.heat, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestSidebarModelHelpToggleHidesExpandedFooterByDefault(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
 	view := model.Render()

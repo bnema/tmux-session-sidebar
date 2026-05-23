@@ -105,20 +105,22 @@ test_stops_existing_matching_daemon_before_restart() {
 }
 
 test_logs_and_aborts_when_existing_daemon_ignores_term() {
-  local root stuck_pid
+  local root stuck_pid cleanup_trap
   root="$(new_fixture)"
   STATE_DIR="$root/state" "$root/tmux-session-sidebar" daemon serve ignore-term &
   stuck_pid=$!
+  cleanup_trap="kill -KILL $stuck_pid 2>/dev/null || true"
+  trap "$cleanup_trap" RETURN
   printf '%s\n' "$stuck_pid" >"$root/state/daemon.pid"
   sleep 0.2
 
   if DAEMON_WAIT_RETRIES=2 run_control "$root"; then
-    kill -KILL "$stuck_pid" 2>/dev/null || true
     fail "daemon control should fail when the existing daemon ignores TERM"
   fi
 
   assert_file_contains "$root/state/errors.log" "did not exit after stop request" "daemon control should log stuck-daemon failures"
   kill -KILL "$stuck_pid" 2>/dev/null || true
+  trap - RETURN
 }
 
 test_starts_runtime_when_no_existing_pid

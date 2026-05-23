@@ -535,10 +535,10 @@ func (c Client) optionInt(ctx context.Context, name string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if strings.TrimSpace(value) == "" {
+	if value == "" {
 		return 0, nil
 	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return 0, err
 	}

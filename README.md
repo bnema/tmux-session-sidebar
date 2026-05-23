@@ -7,7 +7,7 @@ A TPM plugin for fast tmux session switching. It opens a full-height left sideba
 - tmux 3.6+
 - Go 1.26+
 - bash for the TPM bootstrap script
-- a Nerd Font if you want the bell attention marker to render as the intended glyph
+- a Nerd Font if you want the bell attention marker (`\uf0f3`, U+F0F3 / nf-fa-bell) to render as the intended glyph
 
 `fzf` is not required. The old `@session-sidebar-use-fzf` option is still accepted for compatibility, but the Go UI ignores it.
 

@@ -107,16 +107,19 @@ func serveSidebarDaemon(ctx context.Context) error {
 		return err
 	}
 
-	ticker := time.NewTicker(sidebarRefreshIntervalFromConfig(cfg))
-	defer ticker.Stop()
 	for {
+		cfg = loadSidebarConfig(ctx)
+		timer := time.NewTimer(sidebarRefreshIntervalFromConfig(cfg))
 		select {
 		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			if err := captureLiveSidebarHeat(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
-				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
+			if !timer.Stop() {
+				<-timer.C
 			}
+			return nil
+		case <-timer.C:
+		}
+		if err := captureLiveSidebarHeat(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
 		}
 	}
 }

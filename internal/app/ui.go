@@ -29,7 +29,10 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	persisted, _ := loadSidebarState(ctx)
+	persisted, err := loadSidebarState(ctx)
+	if err != nil {
+		return nil, err
+	}
 	cfg := loadSidebarConfig(ctx)
 	heatStates := decodePersistedHeat(persisted.Heat)
 	now := time.Now().UTC()
