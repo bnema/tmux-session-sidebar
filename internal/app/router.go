@@ -56,7 +56,7 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "action/kill":
 		return killSession(ctx, route.Flags, r.sidebar)
 	case "daemon/ensure":
-		return ensureRestoredAndCaptured(ctx)
+		return ensureRestoredAndCapturedOnStartup(ctx)
 	case "hook/client-attached":
 		return ensureRestoredAndCaptured(ctx)
 	case "hook/client-detached", "hook/client-session-changed":

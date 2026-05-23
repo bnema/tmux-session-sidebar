@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -102,6 +104,95 @@ esac
 	}
 }
 
+func TestDaemonEnsureClearsTransientHeatStateOnStartup(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	store := sessionOrderStore()
+	state, err := store.Load(t.Context(), "tmux")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	encodedHeat, err := json.Marshal(heat.State{
+		Score:            600,
+		UpdatedAt:        time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC),
+		LastActiveAt:     time.Date(2026, 5, 23, 11, 55, 0, 0, time.UTC),
+		RecentActivityAt: time.Date(2026, 5, 23, 11, 59, 0, 0, time.UTC),
+		LastVisitedAt:    time.Date(2026, 5, 23, 11, 58, 0, 0, time.UTC),
+		Attention:        true,
+		Panes:            map[string]heat.PaneState{"%1": {Fingerprint: "abc"}},
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	state.Heat = map[string][]byte{"alpha": encodedHeat}
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions) ;;
+  list-clients) ;;
+  list-panes) ;;
+esac
+`)
+
+	if err := (runtimeRouter{}).Handle(context.Background(), Route{Path: "daemon/ensure", Flags: map[string]string{}}, nil, nil); err != nil {
+		t.Fatalf("daemon ensure error: %v", err)
+	}
+
+	nextState, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	decoded := decodePersistedHeat(nextState.Heat)["alpha"]
+	if decoded.Attention {
+		t.Fatalf("attention = true, want false after startup reset")
+	}
+	if !decoded.RecentActivityAt.IsZero() {
+		t.Fatalf("recent activity at = %v, want zero after startup reset", decoded.RecentActivityAt)
+	}
+	if !decoded.LastVisitedAt.IsZero() {
+		t.Fatalf("last visited at = %v, want zero after startup reset", decoded.LastVisitedAt)
+	}
+	if len(decoded.Panes) != 0 {
+		t.Fatalf("panes = %#v, want cleared transient pane fingerprints after startup reset", decoded.Panes)
+	}
+}
+
+func TestDaemonServeClearsTransientHeatStateOnStartup(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	seedTransientHeatState(t)
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-attention-quiet-seconds) printf '120\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) ;;
+  list-clients) ;;
+  list-panes) ;;
+esac
+`)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "daemon/serve", Flags: map[string]string{}}, nil, nil); err != nil {
+		t.Fatalf("daemon serve error: %v", err)
+	}
+
+	assertTransientHeatStateCleared(t)
+}
+
 func TestCaptureLiveSidebarHeatWritesActivityDebugLogWhenEnabled(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	installFakeTmux(t, `#!/usr/bin/env bash
@@ -126,6 +217,52 @@ esac
 	}
 	if !strings.Contains(string(content), "status=activity-detected") {
 		t.Fatalf("activity log missing transition status: %q", string(content))
+	}
+}
+
+func seedTransientHeatState(t *testing.T) {
+	t.Helper()
+	store := sessionOrderStore()
+	state, err := store.Load(t.Context(), "tmux")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	encodedHeat, err := json.Marshal(heat.State{
+		Score:            600,
+		UpdatedAt:        time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC),
+		LastActiveAt:     time.Date(2026, 5, 23, 11, 55, 0, 0, time.UTC),
+		RecentActivityAt: time.Date(2026, 5, 23, 11, 59, 0, 0, time.UTC),
+		LastVisitedAt:    time.Date(2026, 5, 23, 11, 58, 0, 0, time.UTC),
+		Attention:        true,
+		Panes:            map[string]heat.PaneState{"%1": {Fingerprint: "abc"}},
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	state.Heat = map[string][]byte{"alpha": encodedHeat}
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+}
+
+func assertTransientHeatStateCleared(t *testing.T) {
+	t.Helper()
+	nextState, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	decoded := decodePersistedHeat(nextState.Heat)["alpha"]
+	if decoded.Attention {
+		t.Fatalf("attention = true, want false after startup reset")
+	}
+	if !decoded.RecentActivityAt.IsZero() {
+		t.Fatalf("recent activity at = %v, want zero after startup reset", decoded.RecentActivityAt)
+	}
+	if !decoded.LastVisitedAt.IsZero() {
+		t.Fatalf("last visited at = %v, want zero after startup reset", decoded.LastVisitedAt)
+	}
+	if len(decoded.Panes) != 0 {
+		t.Fatalf("panes = %#v, want cleared transient pane fingerprints after startup reset", decoded.Panes)
 	}
 }
 

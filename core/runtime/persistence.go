@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -181,6 +182,26 @@ func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID str
 	}
 	s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot))
 	return s.store.Save(ctx, serverID, state)
+}
+
+func (s *Service) ResetTransientHeatState(ctx context.Context, serverID string) error {
+	if s.store == nil {
+		return ErrMissingStateStore
+	}
+
+	state, err := s.store.Load(ctx, serverID)
+	if err != nil {
+		return fmt.Errorf("reset transient heat state: load: %w", err)
+	}
+	decoded := decodeHeatStateMap(state.Heat)
+	for name, heatState := range decoded {
+		decoded[name] = clearTransientHeatState(heatState)
+	}
+	state.Heat = encodeHeatStateMap(decoded)
+	if err := s.store.Save(ctx, serverID, state); err != nil {
+		return fmt.Errorf("reset transient heat state: save: %w", err)
+	}
+	return nil
 }
 
 func reconcileLiveSessionMetadata(ctx context.Context, query ports.TmuxQueryPort, live []ports.TmuxSessionSnapshot, current map[string]ports.SessionMetadata) map[string]ports.SessionMetadata {
@@ -444,6 +465,14 @@ func cloneHeatState(state heat.State) heat.State {
 	return clone
 }
 
+func clearTransientHeatState(state heat.State) heat.State {
+	state.RecentActivityAt = time.Time{}
+	state.LastVisitedAt = time.Time{}
+	state.Attention = false
+	state.Panes = nil
+	return state
+}
+
 func decodeHeatStateMap(raw map[string][]byte) map[string]heat.State {
 	decoded := make(map[string]heat.State, len(raw))
 	for name, data := range raw {
@@ -454,10 +483,6 @@ func decodeHeatStateMap(raw map[string][]byte) map[string]heat.State {
 		if err := json.Unmarshal(data, &state); err != nil {
 			continue
 		}
-		state.RecentActivityAt = time.Time{}
-		state.LastVisitedAt = time.Time{}
-		state.Attention = false
-		state.Panes = nil
 		decoded[name] = state
 	}
 	return decoded

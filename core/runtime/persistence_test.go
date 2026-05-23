@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -224,6 +225,39 @@ func TestCaptureLiveSessionsStillSavesMetadataWhenHeatCollectionFails(t *testing
 	if err := NewService(nil, query, nil, store).CaptureLiveSessions(ctx, serverID); err != nil {
 		t.Fatalf("CaptureLiveSessions error: %v", err)
 	}
+}
+
+func TestResetTransientHeatStateWrapsInfrastructureErrors(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	boom := errors.New("boom")
+
+	t.Run("load", func(t *testing.T) {
+		store := mocks.NewMockStateStorePort(t)
+		store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, boom)
+
+		err := NewService(nil, nil, nil, store).ResetTransientHeatState(ctx, serverID)
+		if !errors.Is(err, boom) {
+			t.Fatalf("ResetTransientHeatState error = %v, want %v", err, boom)
+		}
+		if !strings.Contains(err.Error(), "reset transient heat state: load") {
+			t.Fatalf("ResetTransientHeatState error = %q, want load context", err)
+		}
+	})
+
+	t.Run("save", func(t *testing.T) {
+		store := mocks.NewMockStateStorePort(t)
+		store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{Heat: map[string][]byte{"alpha": []byte(`{"Score":600}`)}}, nil)
+		store.EXPECT().Save(ctx, serverID, mock.Anything).Return(boom)
+
+		err := NewService(nil, nil, nil, store).ResetTransientHeatState(ctx, serverID)
+		if !errors.Is(err, boom) {
+			t.Fatalf("ResetTransientHeatState error = %v, want %v", err, boom)
+		}
+		if !strings.Contains(err.Error(), "reset transient heat state: save") {
+			t.Fatalf("ResetTransientHeatState error = %q, want save context", err)
+		}
+	})
 }
 
 func TestCaptureLiveSessionsReturnsSaveError(t *testing.T) {

@@ -15,8 +15,21 @@ import (
 )
 
 func ensureRestoredAndCaptured(ctx context.Context) error {
+	return ensureRestoredAndCapturedWithOptions(ctx, false)
+}
+
+func ensureRestoredAndCapturedOnStartup(ctx context.Context) error {
+	return ensureRestoredAndCapturedWithOptions(ctx, true)
+}
+
+func ensureRestoredAndCapturedWithOptions(ctx context.Context, resetTransientHeat bool) error {
 	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
 		service := runtimeServiceWithStore(store)
+		if resetTransientHeat {
+			if err := service.ResetTransientHeatState(ctx, "tmux"); err != nil {
+				return err
+			}
+		}
 		home, err := os.UserHomeDir()
 		if err != nil || home == "" {
 			if err == nil {
@@ -32,6 +45,12 @@ func ensureRestoredAndCaptured(ctx context.Context) error {
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed (session): %v\n", name, restoreErr)
 		}
 		return service.CaptureLiveSessions(ctx, "tmux")
+	})
+}
+
+func resetTransientHeatStateOnStartup(ctx context.Context) error {
+	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+		return runtimeServiceWithStore(store).ResetTransientHeatState(ctx, "tmux")
 	})
 }
 
@@ -78,6 +97,9 @@ func serveSidebarDaemon(ctx context.Context) error {
 	defer func() { _ = os.Remove(pidFile) }()
 
 	cfg := loadSidebarConfig(ctx)
+	if err := resetTransientHeatStateOnStartup(ctx); err != nil {
+		return err
+	}
 	// captureLiveSidebarSessionsWithConfig must succeed during daemon startup so the
 	// initial session snapshot is available; later captureLiveSidebarHeat ticks only log
 	// failures because stale heat/attention data is less critical than bootstrapping.
