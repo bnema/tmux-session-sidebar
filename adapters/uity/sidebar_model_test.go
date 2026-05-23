@@ -3,9 +3,46 @@ package uity
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
+
+func TestSidebarModelInitSchedulesRefreshWhenConfigured(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{RefreshInterval: time.Second})
+	if cmd := model.Init(); cmd == nil {
+		t.Fatal("Init() = nil, want refresh tick command")
+	}
+}
+
+func TestSidebarModelInitWithoutRefreshReturnsNil(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
+	if cmd := model.Init(); cmd != nil {
+		t.Fatal("Init() returned a command without a refresh interval")
+	}
+}
+
+func TestSidebarModelRefreshTickReloadsSessionsAndReschedules(t *testing.T) {
+	reloaded := 0
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{
+		ReloadSessions: func() []SessionItem {
+			reloaded++
+			return []SessionItem{{Name: "beta"}}
+		},
+	}, SidebarOptions{RefreshInterval: time.Second})
+
+	updated, cmd := model.Update(refreshTickMsg{})
+	model = requireSidebarModel(t, updated)
+	if reloaded != 1 {
+		t.Fatalf("ReloadSessions called %d times, want 1", reloaded)
+	}
+	if len(model.items) != 1 || model.items[0].Name != "beta" {
+		t.Fatalf("model items after refresh = %#v", model.items)
+	}
+	if cmd == nil {
+		t.Fatal("Update(refreshTickMsg) = nil command, want rescheduled tick")
+	}
+}
 
 func TestSidebarModelKillRequiresInlineConfirmation(t *testing.T) {
 	called := 0

@@ -171,7 +171,12 @@ When heat colors are enabled, sessions are colored by recent terminal activity:
 - warm / cool: progressively dimmer greens and slate tones
 - stale: dark gray after `@session-sidebar-heat-stale-hours`
 
-This heat is separate from the attention marker. When a session produces fresh output and then stays quiet for `@session-sidebar-attention-quiet-seconds` (120s by default), the sidebar shows a bell marker so you can revisit it. That quiet-after logic is intentionally transient: the bell is meant for recent activity, not for surviving daemon/plugin restarts. The marker clears when you switch back to that session. The bell uses a Nerd Font glyph; without one, your terminal may show a fallback box instead.
+Heat coloring is separate from the attention marker:
+
+- When a session produces fresh output and then stays quiet for `@session-sidebar-attention-quiet-seconds` (120s by default), the sidebar shows a bell marker.
+- The marker is intentionally transient: it tracks recent activity and does not survive daemon or plugin restarts.
+- The marker clears when you switch back to that session.
+- The bell uses a Nerd Font glyph; without one, your terminal may show a fallback box instead.
 
 For debugging state transitions, enable:
 
@@ -185,7 +190,7 @@ Then inspect:
 tail -f ~/.local/state/tmux-session-sidebar/activity.log
 ```
 
-You will see lines such as `activity-detected`, `detecting-inactivity`, `attention-started`, and `doing-nothing` with the session name, idle time, quiet threshold, and bucket.
+You will see lines such as `activity-detected`, `detecting-inactivity`, `attention-started`, `attention-cleared-on-visit`, `attention-expired-as-stale`, and `doing-nothing` with the session name, idle time, quiet threshold, and bucket.
 
 Heat decays over time. Lifetime visit counts are not used. Colors degrade by terminal capability: RGB, 256-color, basic color, then plain text.
 

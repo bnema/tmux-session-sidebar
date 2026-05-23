@@ -8,6 +8,12 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
+const (
+	testHalfLife             = 8 * time.Hour
+	testStaleAfter           = 24 * time.Hour
+	testAttentionQuietPeriod = 2 * time.Minute
+)
+
 func TestReconcileLiveSessionHeatRecordsPaneActivity(t *testing.T) {
 	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
 	got, traces := reconcileLiveSessionHeat(nil,
@@ -15,9 +21,9 @@ func TestReconcileLiveSessionHeatRecordsPaneActivity(t *testing.T) {
 		nil,
 		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true}},
 		now,
-		8*time.Hour,
-		24*time.Hour,
-		2*time.Minute,
+		testHalfLife,
+		testStaleAfter,
+		testAttentionQuietPeriod,
 	)
 
 	state, ok := got["alpha"]
@@ -36,7 +42,7 @@ func TestReconcileLiveSessionHeatRecordsPaneActivity(t *testing.T) {
 	if len(state.Panes) != 1 || state.Panes["%1"].Fingerprint != "fp-1" {
 		t.Fatalf("panes = %#v, want pane fingerprint to be persisted", state.Panes)
 	}
-	if bucket := heat.BucketFor(state, now, true, 8*time.Hour, 24*time.Hour); bucket != heat.BucketCurrent {
+	if bucket := heat.BucketFor(state, now, true, testHalfLife, testStaleAfter); bucket != heat.BucketCurrent {
 		t.Fatalf("bucket = %q, want %q", bucket, heat.BucketCurrent)
 	}
 }
@@ -66,12 +72,9 @@ func TestReconcileLiveSessionHeatLatchesQuietAttentionAndClearsVisitedSessions(t
 		{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true},
 		{SessionID: "$2", SessionName: "beta", PaneID: "%2", Fingerprint: "fp-2", Sampled: true},
 	}
-	run := func() (map[string]heat.State, map[string]heat.Trace) {
-		return reconcileLiveSessionHeat(current, live, clients, observations, now.Add(3*time.Minute), 8*time.Hour, 24*time.Hour, 2*time.Minute)
-	}
+	got, traces := reconcileLiveSessionHeat(current, live, clients, observations, now.Add(3*time.Minute), testHalfLife, testStaleAfter, testAttentionQuietPeriod)
 
 	t.Run("latch attention after quiet period", func(t *testing.T) {
-		got, traces := run()
 		if traces["alpha"].Status != heat.TraceStatusAttentionStarted {
 			t.Fatalf("alpha trace status = %q, want %q", traces["alpha"].Status, heat.TraceStatusAttentionStarted)
 		}
@@ -81,7 +84,6 @@ func TestReconcileLiveSessionHeatLatchesQuietAttentionAndClearsVisitedSessions(t
 	})
 
 	t.Run("clear attention on visit", func(t *testing.T) {
-		got, traces := run()
 		if traces["beta"].Status != heat.TraceStatusAttentionClearedOnVisit {
 			t.Fatalf("beta trace status = %q, want %q", traces["beta"].Status, heat.TraceStatusAttentionClearedOnVisit)
 		}
@@ -127,9 +129,9 @@ func TestReconcileLiveSessionHeatBootstrapsExistingStateWithoutFalseActivity(t *
 		nil,
 		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true}},
 		now,
-		8*time.Hour,
-		24*time.Hour,
-		2*time.Minute,
+		testHalfLife,
+		testStaleAfter,
+		testAttentionQuietPeriod,
 	)
 
 	if got["alpha"].Score != 600 {
@@ -145,9 +147,9 @@ func TestReconcileLiveSessionHeatKeepsUnsampledPaneBaseline(t *testing.T) {
 		nil,
 		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Sampled: false}},
 		now.Add(time.Minute),
-		8*time.Hour,
-		24*time.Hour,
-		2*time.Minute,
+		testHalfLife,
+		testStaleAfter,
+		testAttentionQuietPeriod,
 	)
 
 	if got["alpha"].Panes["%1"].Fingerprint != "fp-1" {
@@ -172,9 +174,9 @@ func TestReconcileLiveSessionHeatPrunesMissingPaneFingerprints(t *testing.T) {
 		nil,
 		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%live", Fingerprint: "same", Sampled: true}},
 		now.Add(time.Minute),
-		8*time.Hour,
-		24*time.Hour,
-		2*time.Minute,
+		testHalfLife,
+		testStaleAfter,
+		testAttentionQuietPeriod,
 	)
 
 	if len(got["alpha"].Panes) != 1 {
