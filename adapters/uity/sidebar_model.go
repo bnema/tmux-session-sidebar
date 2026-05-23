@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
 
+	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
 
@@ -399,7 +400,7 @@ func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
 	if item.Current {
 		return styles.active
 	}
-	if item.Heat == "" || item.Heat == "stale" {
+	if item.Heat == "" || item.Heat == string(heat.BucketStale) {
 		return styles.stale
 	}
 	return styles.recent
