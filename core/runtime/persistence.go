@@ -389,7 +389,7 @@ func applyPaneObservations(state *heat.State, observations []paneObservation) bo
 	}
 	nextPanes := make(map[string]heat.PaneState, len(observations))
 	active := false
-	bootstrapOnly := len(state.Panes) == 0 && (state.Score > 0 || !state.LastActiveAt.IsZero() || !state.RecentActivityAt.IsZero() || !state.LastVisitedAt.IsZero() || state.Attention)
+	bootstrapOnly := len(state.Panes) == 0 && (state.Score > 0 || !state.LastActiveAt.IsZero())
 	for _, observation := range observations {
 		if strings.TrimSpace(observation.PaneID) == "" {
 			continue

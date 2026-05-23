@@ -75,7 +75,7 @@ func serveSidebarDaemon(ctx context.Context) error {
 	}
 	defer func() { _ = os.Remove(pidFile) }()
 
-	cfg := loadSidebarConfig(context.Background())
+	cfg := loadSidebarConfig(ctx)
 	if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil {
 		return err
 	}

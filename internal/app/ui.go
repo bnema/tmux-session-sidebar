@@ -16,6 +16,10 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
+var newTmuxClient = func() tmuxcli.Client {
+	return tmuxcli.Client{Process: process.Runner{}}
+}
+
 func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 	current, err := tmux(ctx, "display-message", "-p", "#{session_name}")
 	if err != nil {
@@ -71,7 +75,7 @@ func sessionNames(views []sessions.View) []string {
 }
 
 func loadSidebarConfig(ctx context.Context) ports.ConfigSnapshot {
-	cfg, err := (tmuxcli.Client{Process: process.Runner{}}).LoadConfig(ctx)
+	cfg, err := newTmuxClient().LoadConfig(ctx)
 	if err == nil && cfg.Loaded {
 		return cfg
 	}
