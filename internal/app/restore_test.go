@@ -11,6 +11,7 @@ import (
 
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/ports/mocks"
 )
 
 func TestDaemonEnsureRestoresMissingPersistedNamedSessions(t *testing.T) {
@@ -263,6 +264,26 @@ func assertTransientHeatStateCleared(t *testing.T) {
 	}
 	if len(decoded.Panes) != 0 {
 		t.Fatalf("panes = %#v, want cleared transient pane fingerprints after startup reset", decoded.Panes)
+	}
+}
+
+func TestHookClientSessionChangedRefreshesSidebar(t *testing.T) {
+	ctx := t.Context()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaPath := t.TempDir()
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions) printf '$1\talpha\t1\t1\n' ;;
+  display-message) printf '%s\n' "$CAPTURE_PATH" ;;
+esac
+`)
+	t.Setenv("CAPTURE_PATH", alphaPath)
+	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar.EXPECT().RefreshSidebar(ctx, "%1").Return(nil)
+
+	if err := (runtimeRouter{sidebar: sidebar}).Handle(ctx, Route{Path: "hook/client-session-changed", Flags: map[string]string{"client": "%1"}}, nil, nil); err != nil {
+		t.Fatalf("hook client-session-changed error: %v", err)
 	}
 }
 

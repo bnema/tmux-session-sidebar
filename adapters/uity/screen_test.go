@@ -21,7 +21,7 @@ func TestRenderScreenIncludesControlsMarkersBadgesAndColors(t *testing.T) {
 				{Session: sessions.View{Name: "alpha", Current: true}, Bucket: heat.BucketCurrent, Slot: 1},
 				{Session: sessions.View{Name: "beta"}, Bucket: heat.BucketHot, Slot: 2},
 			}},
-			contains: []string{"sessions browse", "↵ switch", "M-n project", "M-a adhoc", "M-r rename", "M-x kill", "* [1] alpha", "[2] beta", "\033[1;38;2;152;251;152m"},
+			contains: []string{"sessions browse", "↵ switch", "M-n project", "M-a adhoc", "M-r rename", "M-x kill", "* [1] alpha", "[2] beta", "\033[38;2;220;252;231m"},
 		},
 		{
 			name:      "search screen with sanitized filter",

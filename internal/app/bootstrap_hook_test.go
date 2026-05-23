@@ -45,6 +45,10 @@ func TestInstallRuntimeHooksRegistersResizeCommands(t *testing.T) {
 		}
 	}
 
+	sessionChangedHook := hooks["client-session-changed[9703]"]
+	if sessionChangedHook == "" {
+		t.Fatalf("client-session-changed hook not registered, log=%q", string(content))
+	}
 	clientHook := hooks["client-resized[9704]"]
 	if clientHook == "" {
 		t.Fatalf("client-resized hook not registered, log=%q", string(content))
@@ -54,6 +58,9 @@ func TestInstallRuntimeHooksRegistersResizeCommands(t *testing.T) {
 		t.Fatalf("window-resized hook not registered, log=%q", string(content))
 	}
 
+	if !strings.Contains(sessionChangedHook, `run-shell -b "/tmp/runtime hook client-session-changed --client #{q:client_name}"`) {
+		t.Fatalf("unexpected client-session-changed hook %q", sessionChangedHook)
+	}
 	if !strings.Contains(clientHook, `run-shell -b "/tmp/runtime hook client-resized --client #{q:client_name}"`) {
 		t.Fatalf("unexpected client hook %q", clientHook)
 	}

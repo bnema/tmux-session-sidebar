@@ -44,7 +44,7 @@ install_runtime_hooks() {
   "$TMUX_BIN" set-hook -g client-detached[9702] \
     "run-shell \"$quoted_runtime hook client-detached --client #{q:client_name}\""
   "$TMUX_BIN" set-hook -g client-session-changed[9703] \
-    "run-shell \"$quoted_runtime hook client-session-changed --client #{q:client_name}\""
+    "run-shell -b \"$quoted_runtime hook client-session-changed --client #{q:client_name}\""
   "$TMUX_BIN" set-hook -g client-resized[9704] \
     "run-shell -b \"$quoted_runtime hook client-resized --client #{q:client_name}\""
   "$TMUX_BIN" set-hook -g window-resized[9705] \

@@ -59,8 +59,10 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 		return ensureRestoredAndCapturedOnStartup(ctx)
 	case "hook/client-attached":
 		return ensureRestoredAndCaptured(ctx)
-	case "hook/client-detached", "hook/client-session-changed":
+	case "hook/client-detached":
 		return captureLiveSidebarSessions(ctx)
+	case "hook/client-session-changed":
+		return captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], r.sidebar)
 	case "hook/client-resized", "hook/window-resized":
 		return syncSidebarWidth(ctx, route.Flags)
 	case "daemon/serve":
@@ -285,7 +287,7 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 			return items
 		},
 	}
-	options := uity.SidebarOptions{RefreshInterval: sidebarRefreshInterval(ctx)}
+	options := uity.SidebarOptions{}
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}
@@ -310,6 +312,16 @@ func handleActionError(ctx context.Context, action string, err error) bool {
 	}
 	_, _ = tmux(ctx, "display-message", fmt.Sprintf("tmux-session-sidebar: %s failed: %v", action, err))
 	return false
+}
+
+func captureLiveSidebarSessionsAndRefresh(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
+	if err := captureLiveSidebarSessions(ctx); err != nil {
+		return err
+	}
+	if sidebar == nil {
+		return nil
+	}
+	return refreshSidebar(ctx, client, sidebar)
 }
 
 func quickSwitch(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {

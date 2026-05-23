@@ -140,10 +140,6 @@ func withActivityDebugLogger(cfg ports.ConfigSnapshot, fn func(logger ports.Logg
 	return fn(adapterlogger.Logger{Out: file})
 }
 
-func sidebarRefreshInterval(ctx context.Context) time.Duration {
-	return sidebarRefreshIntervalFromConfig(loadSidebarConfig(ctx))
-}
-
 func sidebarRefreshIntervalFromConfig(cfg ports.ConfigSnapshot) time.Duration {
 	if cfg.HeatRefreshSeconds > 0 {
 		return time.Duration(cfg.HeatRefreshSeconds) * time.Second

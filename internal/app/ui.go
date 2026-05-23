@@ -104,24 +104,20 @@ func decodePersistedHeat(raw map[string][]byte) map[string]heat.State {
 	return decoded
 }
 
-func sessionHeatBucket(state heat.State, now time.Time, cfg ports.ConfigSnapshot) heat.Bucket {
-	halfLife := 8 * time.Hour
-	if cfg.HeatHalfLifeHours > 0 {
-		halfLife = time.Duration(cfg.HeatHalfLifeHours) * time.Hour
+func sessionHeatBucket(state heat.State, now time.Time, _ ports.ConfigSnapshot) heat.Bucket {
+	if recentSessionSwitch(state, now) {
+		return heat.BucketCurrent
 	}
-	staleAfter := 24 * time.Hour
-	if cfg.HeatStaleHours > 0 {
-		staleAfter = time.Duration(cfg.HeatStaleHours) * time.Hour
+	return heat.BucketStale
+}
+
+func recentSessionSwitch(state heat.State, now time.Time) bool {
+	if state.LastVisitedAt.IsZero() {
+		return false
 	}
-	refreshWindow := 6 * time.Second
-	if cfg.HeatRefreshSeconds > 0 {
-		// The +1s grace keeps the equality-based "current" state from flickering when
-		// the next daemon poll lands slightly late.
-		refreshWindow = time.Duration(cfg.HeatRefreshSeconds+1) * time.Second
+	age := now.Sub(state.LastVisitedAt)
+	if age < 0 {
+		return false
 	}
-	// Equality is intentional here: a session is only "current" when activity was observed
-	// in the same update cycle as the last state advance, and refreshWindow keeps that signal
-	// visible until the next daemon poll.
-	active := !state.UpdatedAt.IsZero() && !state.RecentActivityAt.IsZero() && state.RecentActivityAt.Equal(state.UpdatedAt) && now.Sub(state.UpdatedAt) <= refreshWindow
-	return heat.BucketFor(state, now, active, halfLife, staleAfter)
+	return age <= 30*time.Second
 }
