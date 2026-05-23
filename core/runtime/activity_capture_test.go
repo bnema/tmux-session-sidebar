@@ -101,10 +101,10 @@ func TestDecodeHeatStateMapKeepsLegacyScoreWithoutSynthesizingNewFields(t *testi
 
 	got := decodeHeatStateMap(map[string][]byte{"alpha": legacy})
 	if got["alpha"].Score != 7200 {
-		t.Fatalf("score = %f, want legacy score retained", got["alpha"].Score)
+		t.Fatalf("score = %f, want 7200 (legacy score retained)", got["alpha"].Score)
 	}
 	if !got["alpha"].LastActiveAt.IsZero() || !got["alpha"].LastVisitedAt.IsZero() {
-		t.Fatalf("unexpected synthesized fields from legacy blob: %#v", got["alpha"])
+		t.Fatalf("legacy decode synthesized fields unexpectedly: %#v (want zero LastActiveAt and LastVisitedAt)", got["alpha"])
 	}
 }
 
@@ -116,8 +116,17 @@ func TestDecodeHeatStateMapDropsTransientAttentionState(t *testing.T) {
 	if got.Score != 600 || !got.UpdatedAt.Equal(now) || !got.LastActiveAt.Equal(now.Add(-5*time.Minute)) {
 		t.Fatalf("persistent heat fields changed unexpectedly: %#v", got)
 	}
-	if got.Attention || !got.RecentActivityAt.IsZero() || !got.LastVisitedAt.IsZero() || len(got.Panes) != 0 {
-		t.Fatalf("transient attention state should be cleared on decode, got %#v", got)
+	if got.Attention {
+		t.Fatalf("attention = true, want false after decode")
+	}
+	if !got.RecentActivityAt.IsZero() {
+		t.Fatalf("recent activity at = %v, want zero after decode", got.RecentActivityAt)
+	}
+	if !got.LastVisitedAt.IsZero() {
+		t.Fatalf("last visited at = %v, want zero after decode", got.LastVisitedAt)
+	}
+	if len(got.Panes) != 0 {
+		t.Fatalf("panes = %#v, want cleared transient pane fingerprints", got.Panes)
 	}
 }
 

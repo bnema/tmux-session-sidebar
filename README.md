@@ -80,7 +80,7 @@ Configure tmux options in `~/.tmux.conf`.
 | `@session-sidebar-heat-colors` | `on` | Color sessions by recent terminal activity |
 | `@session-sidebar-heat-half-life-hours` | `8` | Heat decay half-life |
 | `@session-sidebar-heat-stale-hours` | `24` | Hours before a session fades to stale |
-| `@session-sidebar-heat-refresh-seconds` | `5` | Background activity polling interval and sidebar refresh cadence |
+| `@session-sidebar-heat-refresh-seconds` | `5` | Background activity polling interval and sidebar refresh cadence; lower values track attention faster but use more CPU/I/O |
 | `@session-sidebar-attention-quiet-seconds` | `120` | Quiet period before a newly observed activity burst can promote a session to the attention marker |
 | `@session-sidebar-activity-debug-log` | `off` | Append per-session activity trace lines to `~/.local/state/tmux-session-sidebar/activity.log` |
 | `@session-sidebar-use-fzf` | `on` | Compatibility option; ignored by the Go UI |
@@ -193,6 +193,8 @@ tail -f ~/.local/state/tmux-session-sidebar/activity.log
 You will see lines such as `activity-detected`, `detecting-inactivity`, `attention-started`, `attention-cleared-on-visit`, `attention-expired-as-stale`, and `doing-nothing` with the session name, idle time, quiet threshold, and bucket.
 
 Heat decays over time. Lifetime visit counts are not used. Colors degrade by terminal capability: RGB, 256-color, basic color, then plain text.
+
+If you need a lighter background footprint, increase `@session-sidebar-heat-refresh-seconds` to values such as `30` or `300`. Keep `5` when you want near-real-time attention tracking.
 
 Disable heat colors with:
 

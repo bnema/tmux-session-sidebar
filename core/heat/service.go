@@ -73,6 +73,8 @@ func Advance(state State, now time.Time, observedActivity bool, visited bool, ha
 	}
 	state.UpdatedAt = now
 
+	// Fresh unvisited activity means RecentActivityAt is non-zero and newer than the
+	// last visit; quiet-after can only latch attention once that unseen activity ages out.
 	hasFreshUnvisitedActivity := !state.RecentActivityAt.IsZero() && state.RecentActivityAt.After(state.LastVisitedAt)
 	shouldLatchAttention := !state.Attention && quietAfter > 0 && hasFreshUnvisitedActivity && now.Sub(state.RecentActivityAt) >= quietAfter
 

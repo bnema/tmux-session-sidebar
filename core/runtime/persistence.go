@@ -39,6 +39,9 @@ type paneObservation struct {
 	Sampled     bool
 }
 
+// paneActivityQuery is an optional extension over ports.TmuxQueryPort that enables
+// pane sampling. collectPaneObservations gracefully degrades to nil observations when
+// the query does not implement it.
 type paneActivityQuery interface {
 	ListPanes(ctx context.Context) ([]ports.TmuxPaneSnapshot, error)
 	CapturePaneText(ctx context.Context, paneID string, tailLines int) (string, error)
@@ -252,8 +255,8 @@ func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.Persist
 	clients, clientsErr := s.tmuxQuery.ListClients(ctx)
 	observations, observationsErr := collectPaneObservations(ctx, s.tmuxQuery)
 	// Heat collection is best-effort: if ListClients or collectPaneObservations fails,
-	// keep the session metadata update path resilient and skip reconcileLiveSessionHeat,
-	// state.Heat updates, and trace logging for this tick.
+	// return early so only reconcileLiveSessionHeat, state.Heat updates, and trace logging
+	// are skipped. Session metadata (Sessions, SessionOrder) is still persisted by callers.
 	if clientsErr != nil || observationsErr != nil {
 		return
 	}
@@ -341,6 +344,8 @@ func collectPaneObservations(ctx context.Context, query ports.TmuxQueryPort) ([]
 }
 
 func fingerprintPaneText(text string) string {
+	// SHA-256 gives stable, low-collision pane fingerprints for short sampled text
+	// without needing anything more specialized for this change-detection use case.
 	sum := sha256.Sum256([]byte(text))
 	return hex.EncodeToString(sum[:])
 }
@@ -392,8 +397,9 @@ func applyPaneObservations(state *heat.State, observations []paneObservation) bo
 	}
 	nextPanes := make(map[string]heat.PaneState, len(observations))
 	active := false
-	// bootstrapOnly means applyPaneObservations is seeing the first pane fingerprints for
-	// a session that already has prior heat, so do not treat the initial capture as new activity.
+	// bootstrapOnly suppresses activity detection when applyPaneObservations sees the first
+	// fingerprints for a session whose state.Panes is empty but whose state.Score/LastActiveAt
+	// already prove prior heat; later observations fall back to normal change detection.
 	bootstrapOnly := len(state.Panes) == 0 && (state.Score > 0 || !state.LastActiveAt.IsZero())
 	for _, observation := range observations {
 		if strings.TrimSpace(observation.PaneID) == "" {
