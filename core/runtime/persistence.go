@@ -251,6 +251,9 @@ func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.Persist
 	}
 	clients, clientsErr := s.tmuxQuery.ListClients(ctx)
 	observations, observationsErr := collectPaneObservations(ctx, s.tmuxQuery)
+	// Heat collection is best-effort: if ListClients or collectPaneObservations fails,
+	// keep the session metadata update path resilient and skip reconcileLiveSessionHeat,
+	// state.Heat updates, and trace logging for this tick.
 	if clientsErr != nil || observationsErr != nil {
 		return
 	}
@@ -389,6 +392,8 @@ func applyPaneObservations(state *heat.State, observations []paneObservation) bo
 	}
 	nextPanes := make(map[string]heat.PaneState, len(observations))
 	active := false
+	// bootstrapOnly means applyPaneObservations is seeing the first pane fingerprints for
+	// a session that already has prior heat, so do not treat the initial capture as new activity.
 	bootstrapOnly := len(state.Panes) == 0 && (state.Score > 0 || !state.LastActiveAt.IsZero())
 	for _, observation := range observations {
 		if strings.TrimSpace(observation.PaneID) == "" {

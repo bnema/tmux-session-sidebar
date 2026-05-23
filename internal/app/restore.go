@@ -63,6 +63,8 @@ func serveSidebarDaemon(ctx context.Context) error {
 	defer cancel()
 	lock, err := (locker.FileLocker{Dir: filepath.Join(store.Dir, "locks")}).Acquire(acquireCtx, "tmux-sidebar-daemon")
 	if err != nil {
+		// A timeout/cancel here usually means another daemon already holds the lock, so
+		// treat it as a no-op instead of failing startup and racing concurrent restores.
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return nil
 		}
@@ -98,9 +100,6 @@ func serveSidebarDaemon(ctx context.Context) error {
 }
 
 func withActivityDebugLogger(cfg ports.ConfigSnapshot, fn func(logger ports.LoggerPort) error) error {
-	if fn == nil {
-		return nil
-	}
 	if !cfg.ActivityDebugLog {
 		return fn(nil)
 	}

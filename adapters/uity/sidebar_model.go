@@ -14,7 +14,7 @@ import (
 
 const (
 	attentionMarkerSymbol = "\uf0f3"
-	heatCurrentColor      = "#86efac"
+	heatCurrentColor      = "#6ee7b7"
 	heatHotColor          = "#4ade80"
 	heatWarmColor         = "#86efac"
 	heatCoolColor         = "#94a3b8"

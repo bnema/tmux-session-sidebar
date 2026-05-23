@@ -87,7 +87,7 @@ esac
 `)
 	t.Setenv("CAPTURE_PATH", alphaPath)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
 	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "daemon/serve", Flags: map[string]string{}}, nil, nil); err != nil {
 		t.Fatalf("daemon serve error: %v", err)

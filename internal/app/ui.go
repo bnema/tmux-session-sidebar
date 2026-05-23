@@ -112,6 +112,8 @@ func sessionHeatBucket(state heat.State, now time.Time, cfg ports.ConfigSnapshot
 	}
 	refreshWindow := 6 * time.Second
 	if cfg.HeatRefreshSeconds > 0 {
+		// The +1s grace keeps the equality-based "current" state from flickering when
+		// the next daemon poll lands slightly late.
 		refreshWindow = time.Duration(cfg.HeatRefreshSeconds+1) * time.Second
 	}
 	// Equality is intentional here: a session is only "current" when activity was observed

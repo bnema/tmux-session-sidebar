@@ -100,7 +100,7 @@ test_stops_existing_matching_daemon_before_restart() {
   fi
   assert_file_contains "$root/state/runtime.log" "stop $old_pid" "old daemon should receive a stop signal"
   assert_file_contains "$root/state/runtime.log" "daemon ensure" "daemon control should re-run ensure before restart"
-  starts="$(grep -E '^start ' "$root/state/runtime.log" | wc -l | tr -d ' ')"
+  starts="$(grep -c -E '^start ' "$root/state/runtime.log" || true)"
   assert_eq "3" "$starts" "daemon control should record old, ensure, and new daemon starts"
 }
 

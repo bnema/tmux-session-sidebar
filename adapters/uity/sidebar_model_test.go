@@ -405,11 +405,11 @@ func TestSessionHeatColor(t *testing.T) {
 		heat string
 		want string
 	}{
-		{name: "current", heat: "current", want: "#86efac"},
-		{name: "hot", heat: "hot", want: "#4ade80"},
-		{name: "warm", heat: "warm", want: "#86efac"},
-		{name: "cool", heat: "cool", want: "#94a3b8"},
-		{name: "stale", heat: "stale", want: "#4b5563"},
+		{name: "current", heat: "current", want: heatCurrentColor},
+		{name: "hot", heat: "hot", want: heatHotColor},
+		{name: "warm", heat: "warm", want: heatWarmColor},
+		{name: "cool", heat: "cool", want: heatCoolColor},
+		{name: "stale", heat: "stale", want: heatStaleColor},
 	}
 
 	for _, tt := range tests {

@@ -146,6 +146,8 @@ func decayFactor(elapsed time.Duration, halfLife time.Duration) float64 {
 
 func activityImpulse(elapsed time.Duration, halfLife time.Duration) float64 {
 	impulse := elapsed.Seconds()
+	// Keep a minimum floor so very small poll intervals still register meaningful heat.
+	// With the default 8h half-life, halfLife/48 is about 10 minutes of heat.
 	minimum := halfLife.Seconds() / 48
 	if impulse < minimum {
 		return minimum
