@@ -92,9 +92,14 @@ func routePath(args []string) (string, error) {
 			return "", errors.New("missing hook command")
 		}
 		switch args[1] {
-		case "client-attached", "client-detached", "client-session-changed", "client-resized", "window-resized":
+		case "client-attached", "client-detached", "client-session-changed", "client-resized", "window-resized", "agent-event":
 			return "hook/" + args[1], nil
 		}
+	case "hooks":
+		if len(args) < 2 {
+			return "", errors.New("missing hooks command")
+		}
+		return "hooks/run", nil
 	case "sidebar":
 		if len(args) < 2 {
 			return "", errors.New("missing sidebar command")

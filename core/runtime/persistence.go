@@ -28,7 +28,6 @@ type RestoreReport struct {
 const (
 	defaultHeatHalfLife   = 8 * time.Hour
 	defaultHeatStaleAfter = 24 * time.Hour
-	defaultAttentionQuiet = 2 * time.Minute
 	paneSampleTailLines   = 8
 )
 
@@ -51,7 +50,6 @@ type paneActivityQuery interface {
 type heatConfig struct {
 	halfLife   time.Duration
 	staleAfter time.Duration
-	quietAfter time.Duration
 }
 
 func (s *Service) RestorePersistedSessions(ctx context.Context, serverID string, home string) RestoreReport {
@@ -289,7 +287,6 @@ func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.Persist
 		time.Now().UTC(),
 		cfg.halfLife,
 		cfg.staleAfter,
-		cfg.quietAfter,
 	)
 	state.Heat = encodeHeatStateMap(nextHeat)
 	for sessionName, trace := range traces {
@@ -306,23 +303,18 @@ func (s *Service) logHeatTrace(sessionName string, trace heat.Trace) {
 		{Key: "status", Value: trace.Status},
 		{Key: "bucket", Value: trace.Bucket},
 		{Key: "idle_for", Value: trace.IdleFor},
-		{Key: "quiet_after", Value: trace.QuietAfter},
-		{Key: "attention", Value: trace.Attention},
 		{Key: "observed_activity", Value: trace.ObservedActivity},
 		{Key: "visited", Value: trace.Visited},
 	})
 }
 
 func heatConfigFromSnapshot(snapshot ports.ConfigSnapshot) heatConfig {
-	cfg := heatConfig{halfLife: defaultHeatHalfLife, staleAfter: defaultHeatStaleAfter, quietAfter: defaultAttentionQuiet}
+	cfg := heatConfig{halfLife: defaultHeatHalfLife, staleAfter: defaultHeatStaleAfter}
 	if snapshot.HeatHalfLifeHours > 0 {
 		cfg.halfLife = time.Duration(snapshot.HeatHalfLifeHours) * time.Hour
 	}
 	if snapshot.HeatStaleHours > 0 {
 		cfg.staleAfter = time.Duration(snapshot.HeatStaleHours) * time.Hour
-	}
-	if snapshot.AttentionQuietSeconds > 0 {
-		cfg.quietAfter = time.Duration(snapshot.AttentionQuietSeconds) * time.Second
 	}
 	return cfg
 }
@@ -371,7 +363,7 @@ func fingerprintPaneText(text string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.TmuxSessionSnapshot, clients []ports.TmuxClientSnapshot, observations []paneObservation, now time.Time, halfLife time.Duration, staleAfter time.Duration, quietAfter time.Duration) (map[string]heat.State, map[string]heat.Trace) {
+func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.TmuxSessionSnapshot, clients []ports.TmuxClientSnapshot, observations []paneObservation, now time.Time, halfLife time.Duration, staleAfter time.Duration) (map[string]heat.State, map[string]heat.Trace) {
 	next := make(map[string]heat.State, len(current)+len(live))
 	traces := make(map[string]heat.Trace, len(live))
 	for name, state := range current {
@@ -399,7 +391,7 @@ func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.TmuxSe
 	for _, session := range live {
 		state := cloneHeatState(next[session.Name])
 		active := applyPaneObservations(&state, observationsBySession[session.Name])
-		nextState, trace := heat.Advance(state, now, active, visited[session.Name], halfLife, staleAfter, quietAfter)
+		nextState, trace := heat.Advance(state, now, active, visited[session.Name], halfLife, staleAfter)
 		next[session.Name] = nextState
 		traces[session.Name] = trace
 	}
@@ -468,7 +460,6 @@ func cloneHeatState(state heat.State) heat.State {
 func clearTransientHeatState(state heat.State) heat.State {
 	state.RecentActivityAt = time.Time{}
 	state.LastVisitedAt = time.Time{}
-	state.Attention = false
 	state.Panes = nil
 	return state
 }

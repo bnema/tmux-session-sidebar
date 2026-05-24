@@ -5,32 +5,28 @@ import (
 	"time"
 )
 
-func TestAdvanceTraceReportsInactivityAndBellTransitions(t *testing.T) {
+func TestAdvanceTraceReportsActivityAndIdleState(t *testing.T) {
 	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
 
-	_, trace := Advance(State{}, now, true, false, 8*time.Hour, 24*time.Hour, 2*time.Minute)
+	_, trace := Advance(State{}, now, true, false, 8*time.Hour, 24*time.Hour)
 	if trace.Status != TraceStatusActivityDetected {
 		t.Fatalf("activity status = %q, want %q", trace.Status, TraceStatusActivityDetected)
 	}
 
 	state := State{Score: 600, UpdatedAt: now, LastActiveAt: now, RecentActivityAt: now}
-	_, trace = Advance(state, now.Add(90*time.Second), false, false, 8*time.Hour, 24*time.Hour, 2*time.Minute)
-	if trace.Status != TraceStatusDetectingInactivity {
-		t.Fatalf("inactivity status = %q, want %q", trace.Status, TraceStatusDetectingInactivity)
+	_, trace = Advance(state, now.Add(90*time.Second), false, false, 8*time.Hour, 24*time.Hour)
+	if trace.Status != TraceStatusNoChange {
+		t.Fatalf("quiet status = %q, want %q", trace.Status, TraceStatusNoChange)
 	}
 	if trace.IdleFor != 90*time.Second {
 		t.Fatalf("idle for = %s, want 90s", trace.IdleFor)
 	}
 
-	state = State{Score: 600, UpdatedAt: now, LastActiveAt: now, RecentActivityAt: now}
-	_, trace = Advance(state, now.Add(2*time.Minute), false, false, 8*time.Hour, 24*time.Hour, 2*time.Minute)
-	if trace.Status != TraceStatusAttentionStarted {
-		t.Fatalf("attention status = %q, want %q", trace.Status, TraceStatusAttentionStarted)
+	_, trace = Advance(state, now.Add(2*time.Minute), false, true, 8*time.Hour, 24*time.Hour)
+	if !trace.Visited {
+		t.Fatal("visited = false, want true")
 	}
-
-	state = State{Score: 600, UpdatedAt: now, LastActiveAt: now.Add(-3 * time.Minute), RecentActivityAt: now.Add(-3 * time.Minute), Attention: true}
-	_, trace = Advance(state, now, false, true, 8*time.Hour, 24*time.Hour, 2*time.Minute)
-	if trace.Status != TraceStatusAttentionClearedOnVisit {
-		t.Fatalf("visit status = %q, want %q", trace.Status, TraceStatusAttentionClearedOnVisit)
+	if trace.Status != TraceStatusNoChange {
+		t.Fatalf("visit status = %q, want %q", trace.Status, TraceStatusNoChange)
 	}
 }

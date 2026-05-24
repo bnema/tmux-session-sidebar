@@ -12,8 +12,8 @@ type ConfigSnapshot struct {
 	HeatHalfLifeHours     int
 	HeatStaleHours        int
 	HeatRefreshSeconds    int
-	AttentionQuietSeconds int
 	ActivityDebugLog      bool
+	AgentAttentionEnabled bool
 }
 
 type TmuxSessionSnapshot struct {

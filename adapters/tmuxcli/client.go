@@ -74,11 +74,11 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	attentionQuietSeconds, err := c.optionInt(ctx, "@session-sidebar-attention-quiet-seconds")
+	activityDebugLog, err := c.option(ctx, "@session-sidebar-activity-debug-log")
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	activityDebugLog, err := c.option(ctx, "@session-sidebar-activity-debug-log")
+	agentAttention, err := c.option(ctx, "@session-sidebar-agent-attention")
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
@@ -92,8 +92,8 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		HeatHalfLifeHours:     halfLifeHours,
 		HeatStaleHours:        staleHours,
 		HeatRefreshSeconds:    refreshSeconds,
-		AttentionQuietSeconds: attentionQuietSeconds,
 		ActivityDebugLog:      parseTmuxBool(activityDebugLog),
+		AgentAttentionEnabled: agentAttention == "" || parseTmuxBool(agentAttention),
 	}, nil
 }
 

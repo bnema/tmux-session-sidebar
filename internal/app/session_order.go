@@ -32,12 +32,6 @@ func snapshotSidebarState(ctx context.Context) (ports.PersistedState, error) {
 	return snapshot, err
 }
 
-func restoreSidebarState(ctx context.Context, state ports.PersistedState) error {
-	return updateSidebarState(ctx, func(current *ports.PersistedState) {
-		*current = clonePersistedState(state)
-	})
-}
-
 func saveMovedSessionOrder(ctx context.Context, live []string, session string, delta int) error {
 	return saveMovedVisibleSessionOrder(ctx, live, session, delta, false)
 }
@@ -212,6 +206,12 @@ func clonePersistedState(state ports.PersistedState) ports.PersistedState {
 		clone.Heat = make(map[string][]byte, len(state.Heat))
 		for key, value := range state.Heat {
 			clone.Heat[key] = append([]byte(nil), value...)
+		}
+	}
+	if state.AgentAttention != nil {
+		clone.AgentAttention = make(map[string][]byte, len(state.AgentAttention))
+		for key, value := range state.AgentAttention {
+			clone.AgentAttention[key] = append([]byte(nil), value...)
 		}
 	}
 	return clone

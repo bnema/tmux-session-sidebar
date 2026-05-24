@@ -11,7 +11,6 @@ import (
 
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/ports"
-	"github.com/bnema/tmux-session-sidebar/ports/mocks"
 )
 
 func TestDaemonEnsureRestoresMissingPersistedNamedSessions(t *testing.T) {
@@ -76,8 +75,7 @@ case "$1" in
       @session-sidebar-heat-half-life-hours) printf '8\n' ;;
       @session-sidebar-heat-stale-hours) printf '24\n' ;;
       @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
-      @session-sidebar-attention-quiet-seconds) printf '120\n' ;;
-      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+            @session-sidebar-activity-debug-log) printf 'off\n' ;;
       *) printf '\n' ;;
     esac ;;
   list-sessions) printf '$1\talpha\t1\t0\n' ;;
@@ -118,7 +116,6 @@ func TestDaemonEnsureClearsTransientHeatStateOnStartup(t *testing.T) {
 		LastActiveAt:     time.Date(2026, 5, 23, 11, 55, 0, 0, time.UTC),
 		RecentActivityAt: time.Date(2026, 5, 23, 11, 59, 0, 0, time.UTC),
 		LastVisitedAt:    time.Date(2026, 5, 23, 11, 58, 0, 0, time.UTC),
-		Attention:        true,
 		Panes:            map[string]heat.PaneState{"%1": {Fingerprint: "abc"}},
 	})
 	if err != nil {
@@ -146,9 +143,6 @@ esac
 		t.Fatalf("loadSidebarState error: %v", err)
 	}
 	decoded := decodePersistedHeat(nextState.Heat)["alpha"]
-	if decoded.Attention {
-		t.Fatalf("attention = true, want false after startup reset")
-	}
 	if !decoded.RecentActivityAt.IsZero() {
 		t.Fatalf("recent activity at = %v, want zero after startup reset", decoded.RecentActivityAt)
 	}
@@ -175,8 +169,7 @@ case "$1" in
       @session-sidebar-heat-half-life-hours) printf '8\n' ;;
       @session-sidebar-heat-stale-hours) printf '24\n' ;;
       @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
-      @session-sidebar-attention-quiet-seconds) printf '120\n' ;;
-      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+            @session-sidebar-activity-debug-log) printf 'off\n' ;;
       *) printf '\n' ;;
     esac ;;
   list-sessions) ;;
@@ -206,7 +199,7 @@ case "$1" in
 esac
 `)
 
-	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, AttentionQuietSeconds: 120, ActivityDebugLog: true}
+	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, ActivityDebugLog: true}
 	if err := captureLiveSidebarHeat(context.Background(), cfg); err != nil {
 		t.Fatalf("captureLiveSidebarHeat error: %v", err)
 	}
@@ -234,7 +227,6 @@ func seedTransientHeatState(t *testing.T) {
 		LastActiveAt:     time.Date(2026, 5, 23, 11, 55, 0, 0, time.UTC),
 		RecentActivityAt: time.Date(2026, 5, 23, 11, 59, 0, 0, time.UTC),
 		LastVisitedAt:    time.Date(2026, 5, 23, 11, 58, 0, 0, time.UTC),
-		Attention:        true,
 		Panes:            map[string]heat.PaneState{"%1": {Fingerprint: "abc"}},
 	})
 	if err != nil {
@@ -253,9 +245,6 @@ func assertTransientHeatStateCleared(t *testing.T) {
 		t.Fatalf("loadSidebarState error: %v", err)
 	}
 	decoded := decodePersistedHeat(nextState.Heat)["alpha"]
-	if decoded.Attention {
-		t.Fatalf("attention = true, want false after startup reset")
-	}
 	if !decoded.RecentActivityAt.IsZero() {
 		t.Fatalf("recent activity at = %v, want zero after startup reset", decoded.RecentActivityAt)
 	}
@@ -267,23 +256,114 @@ func assertTransientHeatStateCleared(t *testing.T) {
 	}
 }
 
-func TestHookClientSessionChangedRefreshesSidebar(t *testing.T) {
-	ctx := t.Context()
+func TestHookClientAttachedCapturesVisitedAgentAttentionBaseline(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	alphaPath := t.TempDir()
-	installFakeTmux(t, `#!/usr/bin/env bash
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-colors) printf 'on\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'on\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) printf '$1\talpha\t1\t1\n' ;;
+  list-clients) printf '/dev/pts/1\t$1\t@1\t%%pane\t/dev/pts/1\n' ;;
+  display-message) printf '%s\n' "$CAPTURE_PATH" ;;
+  list-panes) printf '%%sidebar\n' ;;
+esac
+`)
+	t.Setenv("CAPTURE_PATH", alphaPath)
+
+	if err := (runtimeRouter{}).Handle(context.Background(), Route{Path: "hook/client-attached", Flags: map[string]string{"client": "/dev/pts/1"}}, nil, nil); err != nil {
+		t.Fatalf("hook client-attached error: %v", err)
+	}
+
+	state, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	raw := state.Clients["/dev/pts/1"]
+	if len(raw) == 0 {
+		t.Fatalf("client baseline missing from persisted state: %#v", state.Clients)
+	}
+	var clientState struct {
+		CurrentSessionID string `json:"currentSessionId,omitempty"`
+	}
+	if err := json.Unmarshal(raw, &clientState); err != nil {
+		t.Fatalf("unmarshal persisted client state: %v", err)
+	}
+	if clientState.CurrentSessionID != "$1" {
+		t.Fatalf("current session id = %q, want $1", clientState.CurrentSessionID)
+	}
+	if log := readLog(t, logPath); !strings.Contains(log, "send-keys -t %sidebar F5") {
+		t.Fatalf("expected hook client-attached to refresh open sidebars, log=%q", log)
+	}
+}
+
+func TestHookClientSessionChangedRefreshesAllOpenSidebars(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaPath := t.TempDir()
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
 case "$1" in
   list-sessions) printf '$1\talpha\t1\t1\n' ;;
   display-message) printf '%s\n' "$CAPTURE_PATH" ;;
+  list-panes) printf '%%sidebar\n' ;;
 esac
 `)
 	t.Setenv("CAPTURE_PATH", alphaPath)
-	sidebar := mocks.NewMockTmuxSidebarPort(t)
-	sidebar.EXPECT().RefreshSidebar(ctx, "%1").Return(nil)
 
-	if err := (runtimeRouter{sidebar: sidebar}).Handle(ctx, Route{Path: "hook/client-session-changed", Flags: map[string]string{"client": "%1"}}, nil, nil); err != nil {
+	if err := (runtimeRouter{}).Handle(context.Background(), Route{Path: "hook/client-session-changed", Flags: map[string]string{"client": "%1"}}, nil, nil); err != nil {
 		t.Fatalf("hook client-session-changed error: %v", err)
+	}
+	if log := readLog(t, logPath); !strings.Contains(log, "send-keys -t %sidebar F5") {
+		t.Fatalf("expected hook client-session-changed to refresh open sidebars, log=%q", log)
+	}
+}
+
+func TestHookClientSessionChangedStillRefreshesSidebarsWhenListClientsFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaPath := t.TempDir()
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-colors) printf 'on\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'on\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) printf '$1\talpha\t1\t1\n' ;;
+  list-clients) exit 1 ;;
+  display-message) printf '%s\n' "$CAPTURE_PATH" ;;
+  list-panes) printf '%%sidebar\n' ;;
+esac
+`)
+	t.Setenv("CAPTURE_PATH", alphaPath)
+
+	if err := (runtimeRouter{}).Handle(context.Background(), Route{Path: "hook/client-session-changed", Flags: map[string]string{"client": "%1"}}, nil, nil); err != nil {
+		t.Fatalf("hook client-session-changed error: %v", err)
+	}
+	if log := readLog(t, logPath); !strings.Contains(log, "send-keys -t %sidebar F5") {
+		t.Fatalf("expected refresh despite list-clients failure, log=%q", log)
 	}
 }
 

@@ -58,13 +58,17 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "daemon/ensure":
 		return ensureRestoredAndCapturedOnStartup(ctx)
 	case "hook/client-attached":
-		return ensureRestoredAndCaptured(ctx)
+		return ensureRestoredAndCapturedAndRefresh(ctx)
 	case "hook/client-detached":
-		return captureLiveSidebarSessions(ctx)
+		return captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], r.sidebar)
 	case "hook/client-session-changed":
 		return captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], r.sidebar)
 	case "hook/client-resized", "hook/window-resized":
 		return syncSidebarWidth(ctx, route.Flags)
+	case "hook/agent-event":
+		return recordAgentHookEvent(ctx, route.Flags)
+	case "hooks/run":
+		return runHooksCommand(ctx, route.Args, route.Flags, stdout, stderr)
 	case "daemon/serve":
 		return serveSidebarDaemon(ctx)
 	default:
@@ -314,14 +318,12 @@ func handleActionError(ctx context.Context, action string, err error) bool {
 	return false
 }
 
-func captureLiveSidebarSessionsAndRefresh(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
+func captureLiveSidebarSessionsAndRefresh(ctx context.Context, _ string, _ ports.TmuxSidebarPort) error {
 	if err := captureLiveSidebarSessions(ctx); err != nil {
 		return err
 	}
-	if sidebar == nil {
-		return nil
-	}
-	return refreshSidebar(ctx, client, sidebar)
+	refreshAllSidebarPanesBestEffort(ctx)
+	return nil
 }
 
 func quickSwitch(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {

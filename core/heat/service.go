@@ -16,12 +16,8 @@ const (
 	BucketCool    Bucket = "cool"
 	BucketStale   Bucket = "stale"
 
-	TraceStatusNoChange                TraceStatus = "doing-nothing"
-	TraceStatusActivityDetected        TraceStatus = "activity-detected"
-	TraceStatusDetectingInactivity     TraceStatus = "detecting-inactivity"
-	TraceStatusAttentionStarted        TraceStatus = "attention-started"
-	TraceStatusAttentionClearedOnVisit TraceStatus = "attention-cleared-on-visit"
-	TraceStatusAttentionExpiredAsStale TraceStatus = "attention-expired-as-stale"
+	TraceStatusNoChange         TraceStatus = "doing-nothing"
+	TraceStatusActivityDetected TraceStatus = "activity-detected"
 )
 
 type PaneState struct {
@@ -34,7 +30,6 @@ type State struct {
 	LastActiveAt     time.Time
 	RecentActivityAt time.Time
 	LastVisitedAt    time.Time
-	Attention        bool
 	Panes            map[string]PaneState
 }
 
@@ -42,14 +37,11 @@ type Trace struct {
 	Status           TraceStatus
 	Bucket           Bucket
 	IdleFor          time.Duration
-	QuietAfter       time.Duration
 	ObservedActivity bool
 	Visited          bool
-	Attention        bool
 }
 
-func Advance(state State, now time.Time, observedActivity bool, visited bool, halfLife time.Duration, staleAfter time.Duration, quietAfter time.Duration) (State, Trace) {
-	previous := state
+func Advance(state State, now time.Time, observedActivity bool, visited bool, halfLife time.Duration, staleAfter time.Duration) (State, Trace) {
 	if state.UpdatedAt.IsZero() {
 		state.UpdatedAt = now
 	}
@@ -69,49 +61,20 @@ func Advance(state State, now time.Time, observedActivity bool, visited bool, ha
 	}
 	if visited {
 		state.LastVisitedAt = now
-		state.Attention = false
 	}
 	state.UpdatedAt = now
 
-	// Fresh unvisited activity means RecentActivityAt is non-zero and newer than the
-	// last visit; quiet-after can only latch attention once that unseen activity ages out.
-	hasFreshUnvisitedActivity := !state.RecentActivityAt.IsZero() && state.RecentActivityAt.After(state.LastVisitedAt)
-	shouldLatchAttention := !state.Attention && quietAfter > 0 && hasFreshUnvisitedActivity && now.Sub(state.RecentActivityAt) >= quietAfter
-
-	// Attention is purely transient: stale sessions clear any latched attention, while
-	// quiet-period latching only considers activity that happened after the last visit.
-	// LastActiveAt feeds long-lived heat/staleness; RecentActivityAt drives quiet-after.
-	switch {
-	case staleAfter > 0 && !state.LastActiveAt.IsZero() && now.Sub(state.LastActiveAt) >= staleAfter:
-		state.Attention = false
-	case shouldLatchAttention:
-		state.Attention = true
-	}
-
 	trace := Trace{
 		Bucket:           BucketFor(state, now, observedActivity, halfLife, staleAfter),
-		QuietAfter:       quietAfter,
 		ObservedActivity: observedActivity,
 		Visited:          visited,
-		Attention:        state.Attention,
 	}
 	if !state.RecentActivityAt.IsZero() {
 		trace.IdleFor = max(now.Sub(state.RecentActivityAt), 0)
 	}
-	// Determine trace status with intentional precedence: activity > visit-clears-attention
-	// > attention transitions > inactivity detection > no change.
-	switch {
-	case observedActivity:
+	if observedActivity {
 		trace.Status = TraceStatusActivityDetected
-	case visited && previous.Attention:
-		trace.Status = TraceStatusAttentionClearedOnVisit
-	case !previous.Attention && state.Attention:
-		trace.Status = TraceStatusAttentionStarted
-	case previous.Attention && !state.Attention:
-		trace.Status = TraceStatusAttentionExpiredAsStale
-	case !state.RecentActivityAt.IsZero() && trace.IdleFor > 0 && quietAfter > 0 && trace.IdleFor < quietAfter:
-		trace.Status = TraceStatusDetectingInactivity
-	default:
+	} else {
 		trace.Status = TraceStatusNoChange
 	}
 
@@ -148,8 +111,6 @@ func decayFactor(elapsed time.Duration, halfLife time.Duration) float64 {
 
 func activityImpulse(elapsed time.Duration, halfLife time.Duration) float64 {
 	impulse := elapsed.Seconds()
-	// Keep a minimum floor so very small poll intervals still register meaningful heat.
-	// With the default 8h half-life, halfLife/48 is about 10 minutes of heat.
 	minimum := halfLife.Seconds() / 48
 	if impulse < minimum {
 		return minimum

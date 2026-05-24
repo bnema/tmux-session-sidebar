@@ -11,6 +11,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/adapters/process"
 	"github.com/bnema/tmux-session-sidebar/adapters/tmuxcli"
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
+	"github.com/bnema/tmux-session-sidebar/core/attention"
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -35,17 +36,24 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 	}
 	cfg := loadSidebarConfig(ctx)
 	heatStates := decodePersistedHeat(persisted.Heat)
+	attentionStates := attention.DecodeStateMap(persisted.AgentAttention)
 	now := time.Now().UTC()
 	current = strings.TrimSpace(current)
 	names := sessions.ApplyOrder(sessionNames(sessions.FilterVisible(views, true)), persisted.SessionOrder)
 	items := make([]uity.SessionItem, 0, len(names))
+	viewsByName := make(map[string]sessions.View, len(views))
+	for _, view := range views {
+		viewsByName[view.Name] = view
+	}
 	slot := 1
 	for _, name := range names {
 		item := uity.SessionItem{Name: name, Current: name == current}
-		if state, ok := heatStates[name]; ok {
-			item.Attention = state.Attention && !item.Current
-			if cfg.HeatColorsEnabled {
-				item.Heat = string(sessionHeatBucket(state, now, cfg))
+		if state, ok := heatStates[name]; ok && cfg.HeatColorsEnabled {
+			item.Heat = string(sessionHeatBucket(state, now, cfg))
+		}
+		if cfg.AgentAttentionEnabled {
+			if state, ok := attentionStateForSession(attentionStates, viewsByName[name]); ok {
+				item.Attention = state.Attention
 			}
 		}
 		if !sessions.IsNumericName(name) && slot <= 10 {
@@ -69,6 +77,14 @@ func loadProjectItems(ctx context.Context) []uity.ProjectItem {
 	return items
 }
 
+func attentionStateForSession(states map[string]attention.State, view sessions.View) (attention.State, bool) {
+	if state, ok := states[view.SessionID]; ok {
+		return state, true
+	}
+	state, ok := states[view.Name]
+	return state, ok
+}
+
 func sessionNames(views []sessions.View) []string {
 	names := make([]string, 0, len(views))
 	for _, view := range views {
@@ -86,7 +102,7 @@ func loadSidebarConfig(ctx context.Context) ports.ConfigSnapshot {
 }
 
 func defaultSidebarConfig() ports.ConfigSnapshot {
-	return ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, AttentionQuietSeconds: 120, ActivityDebugLog: false}
+	return ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, ActivityDebugLog: false, AgentAttentionEnabled: true}
 }
 
 func decodePersistedHeat(raw map[string][]byte) map[string]heat.State {
