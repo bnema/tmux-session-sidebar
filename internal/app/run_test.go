@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -20,13 +22,15 @@ func (r *recordingRouter) Handle(_ context.Context, route Route, _ io.Writer, _ 
 
 func TestRunDispatchesCommands(t *testing.T) {
 	tests := []struct {
-		name      string
-		args      []string
-		wantExit  int
-		wantRoute string
-		wantFlags map[string]string
+		name       string
+		args       []string
+		wantExit   int
+		wantRoute  string
+		wantArgs   []string
+		wantFlags  map[string]string
+		wantStderr string
 	}{
-		{name: "daemon serve", args: []string{"daemon", "serve"}, wantExit: 0, wantRoute: "daemon/serve"},
+		{name: "daemon serve", args: []string{"daemon", "serve"}, wantExit: 0, wantRoute: "daemon/serve", wantArgs: []string{"daemon", "serve"}},
 		{name: "daemon ensure", args: []string{"daemon", "ensure"}, wantExit: 0, wantRoute: "daemon/ensure"},
 		{name: "hook client attached", args: []string{"hook", "client-attached", "--client", "%1"}, wantExit: 0, wantRoute: "hook/client-attached", wantFlags: map[string]string{"client": "%1"}},
 		{name: "hook detached", args: []string{"hook", "client-detached", "--client", "%1"}, wantExit: 0, wantRoute: "hook/client-detached", wantFlags: map[string]string{"client": "%1"}},
@@ -34,8 +38,8 @@ func TestRunDispatchesCommands(t *testing.T) {
 		{name: "hook client resized", args: []string{"hook", "client-resized", "--client", "%1"}, wantExit: 0, wantRoute: "hook/client-resized", wantFlags: map[string]string{"client": "%1"}},
 		{name: "hook window resized", args: []string{"hook", "window-resized", "--window", "@1"}, wantExit: 0, wantRoute: "hook/window-resized", wantFlags: map[string]string{"window": "@1"}},
 		{name: "hook agent event", args: []string{"hook", "agent-event", "--agent", "pi", "--event", "end", "--pane", "%2"}, wantExit: 0, wantRoute: "hook/agent-event", wantFlags: map[string]string{"agent": "pi", "event": "end", "pane": "%2"}},
-		{name: "hooks setup", args: []string{"hooks", "setup", "--agent", "codex"}, wantExit: 0, wantRoute: "hooks/run", wantFlags: map[string]string{"agent": "codex"}},
-		{name: "hooks agent event", args: []string{"hooks", "codex", "stop", "--pane", "%2"}, wantExit: 0, wantRoute: "hooks/run", wantFlags: map[string]string{"pane": "%2"}},
+		{name: "hooks setup", args: []string{"hooks", "setup", "--agent", "codex"}, wantExit: 0, wantRoute: "hooks/run", wantArgs: []string{"hooks", "setup"}, wantFlags: map[string]string{"agent": "codex"}},
+		{name: "hooks agent event", args: []string{"hooks", "codex", "stop", "--pane", "%2"}, wantExit: 0, wantRoute: "hooks/run", wantArgs: []string{"hooks", "codex", "stop"}, wantFlags: map[string]string{"pane": "%2"}},
 		{name: "sidebar toggle", args: []string{"sidebar", "toggle", "--client", "%1"}, wantExit: 0, wantRoute: "sidebar/toggle", wantFlags: map[string]string{"client": "%1"}},
 		{name: "sidebar open", args: []string{"sidebar", "open", "--client=%1"}, wantExit: 0, wantRoute: "sidebar/open", wantFlags: map[string]string{"client": "%1"}},
 		{name: "sidebar close", args: []string{"sidebar", "close", "--client", "%1"}, wantExit: 0, wantRoute: "sidebar/close", wantFlags: map[string]string{"client": "%1"}},
@@ -49,8 +53,8 @@ func TestRunDispatchesCommands(t *testing.T) {
 		{name: "action kill", args: []string{"action", "kill", "--session", "old"}, wantExit: 0, wantRoute: "action/kill", wantFlags: map[string]string{"session": "old"}},
 		{name: "action toggle numeric", args: []string{"action", "toggle-numeric", "--client", "%1"}, wantExit: 0, wantRoute: "action/toggle-numeric", wantFlags: map[string]string{"client": "%1"}},
 		{name: "unknown command", args: []string{"nope"}, wantExit: 2},
-		{name: "missing command", args: nil, wantExit: 2},
-		{name: "router error", args: []string{"daemon", "serve"}, wantExit: 1, wantRoute: "daemon/serve"},
+		{name: "missing command shows help", args: nil, wantExit: 0},
+		{name: "router error", args: []string{"daemon", "serve"}, wantExit: 1, wantRoute: "daemon/serve", wantArgs: []string{"daemon", "serve"}, wantStderr: "Error: boom\n"},
 	}
 
 	for _, tt := range tests {
@@ -69,10 +73,70 @@ func TestRunDispatchesCommands(t *testing.T) {
 			if router.route.Path != tt.wantRoute {
 				t.Fatalf("route = %q, want %q", router.route.Path, tt.wantRoute)
 			}
+			if tt.wantArgs != nil && !slices.Equal(router.route.Args, tt.wantArgs) {
+				t.Fatalf("args = %#v, want %#v", router.route.Args, tt.wantArgs)
+			}
+			if tt.wantStderr != "" && stderr.String() != tt.wantStderr {
+				t.Fatalf("stderr = %q, want %q", stderr.String(), tt.wantStderr)
+			}
 			for key, want := range tt.wantFlags {
 				if got := router.route.Flags[key]; got != want {
 					t.Fatalf("flag %q = %q, want %q", key, got, want)
 				}
+			}
+		})
+	}
+}
+
+func TestRunShowsHelp(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantStdout []string
+		wantStderr string
+	}{
+		{
+			name:       "root help flag",
+			args:       []string{"--help"},
+			wantStdout: []string{"tmux-session-sidebar manages", "Available Commands:", "hooks"},
+		},
+		{
+			name:       "root with no args",
+			args:       nil,
+			wantStdout: []string{"tmux-session-sidebar manages", "Available Commands:"},
+		},
+		{
+			name:       "hook parent help",
+			args:       []string{"hook"},
+			wantStdout: []string{"Handle tmux runtime hooks", "client-attached", "agent-event"},
+		},
+		{
+			name:       "hooks parent help",
+			args:       []string{"hooks"},
+			wantStdout: []string{"Install agent integrations", "Usage:"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout := new(bytes.Buffer)
+			stderr := new(bytes.Buffer)
+			router := &recordingRouter{}
+
+			exitCode := Run(context.Background(), tt.args, stdout, stderr, router)
+			if exitCode != 0 {
+				t.Fatalf("exit code = %d, want 0; stderr=%q", exitCode, stderr.String())
+			}
+			if got := stderr.String(); got != tt.wantStderr {
+				t.Fatalf("stderr = %q, want %q", got, tt.wantStderr)
+			}
+			for _, want := range tt.wantStdout {
+				if !strings.Contains(stdout.String(), want) {
+					t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
+				}
+			}
+			if router.route.Path != "" {
+				t.Fatalf("route = %q, want no dispatch", router.route.Path)
 			}
 		})
 	}
