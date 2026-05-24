@@ -4,6 +4,16 @@
 
 ## Commands
 
+If `tmux-session-sidebar` is not on your `PATH`, call the plugin-local binary directly instead:
+
+```bash
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks setup --yes
+# or from a local checkout:
+./.bin/tmux-session-sidebar hooks setup --yes
+```
+
+Standard commands:
+
 ```bash
 tmux-session-sidebar hooks setup
 tmux-session-sidebar hooks setup <agent>
@@ -76,6 +86,8 @@ Generated plugin/extension files carry explicit attribution to cmux’s integrat
 ```bash
 tmux-session-sidebar hooks <agent> install
 tmux-session-sidebar hooks <agent> uninstall
+# plugin-local alternative:
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks <agent> install
 ```
 
 Re-run install after plugin upgrades or if you intentionally deleted a generated integration file.

@@ -1,10 +1,13 @@
 package uity
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/bnema/tmux-session-sidebar/core/heat"
 )
 
 func TestSidebarModelInitDoesNotSchedulePeriodicRefresh(t *testing.T) {
@@ -408,7 +411,7 @@ func TestSidebarModelFilterAcceptsSpace(t *testing.T) {
 
 func TestSidebarModelRenderShowsAttentionMarkerInPrimaryMarkerColumn(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{})
-	view := model.Render()
+	view := stripANSI(model.Render())
 	if !strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
 		t.Fatalf("render missing attention marker in primary marker column in %q", view)
 	}
@@ -419,12 +422,23 @@ func TestSidebarModelRenderShowsAttentionMarkerInPrimaryMarkerColumn(t *testing.
 
 func TestSidebarModelRenderUsesAttentionMarkerInsteadOfCurrentMarker(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true, Attention: true, Slot: 1}}, Actions{})
-	view := model.Render()
+	view := stripANSI(model.Render())
 	if !strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
 		t.Fatalf("render missing attention marker for current session in %q", view)
 	}
 	if strings.Contains(view, "* [1] alpha") {
 		t.Fatalf("render kept current marker instead of bell in %q", view)
+	}
+}
+
+func TestSidebarModelRenderKeepsAttentionMarkerWhiteWhenSessionTextIsStale(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Attention: true, Slot: 1, Heat: string(heat.BucketStale)}}, Actions{})
+	view := model.Render()
+	if !strings.Contains(view, "\x1b[1;38;2;255;255;255m"+attentionMarkerSymbol) {
+		t.Fatalf("render missing white attention marker in %q", view)
+	}
+	if !strings.Contains(view, "\x1b[38;2;75;85;99m[1] alpha") {
+		t.Fatalf("render missing stale session text color in %q", view)
 	}
 }
 
@@ -450,6 +464,12 @@ func TestSidebarModelHelpToggleHidesExpandedFooterByDefault(t *testing.T) {
 
 func keyPress(text string, mod tea.KeyMod) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Text: text, Code: []rune(text)[0], Mod: mod})
+}
+
+var ansiRegexp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(value string) string {
+	return ansiRegexp.ReplaceAllString(value, "")
 }
 
 func requireSidebarModel(t *testing.T, model tea.Model) SidebarModel {

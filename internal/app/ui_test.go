@@ -106,13 +106,19 @@ esac
 				t.Fatalf("loadSessionItems error: %v", err)
 			}
 			var alphaAttention, betaAttention bool
+			var foundAlpha, foundBeta bool
 			for _, item := range items {
 				if item.Name == "alpha" {
+					foundAlpha = true
 					alphaAttention = item.Attention
 				}
 				if item.Name == "beta" {
+					foundBeta = true
 					betaAttention = item.Attention
 				}
+			}
+			if !foundAlpha || !foundBeta {
+				t.Fatalf("missing expected items: foundAlpha=%v foundBeta=%v items=%#v", foundAlpha, foundBeta, items)
 			}
 			if enabled == "on" && (!alphaAttention || !betaAttention) {
 				t.Fatalf("attention = alpha:%v beta:%v, want both true when feature enabled", alphaAttention, betaAttention)

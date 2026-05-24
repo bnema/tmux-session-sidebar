@@ -213,7 +213,7 @@ export default function tmuxSessionSidebarAmpPlugin(amp: PluginAPI) {
 
 func installRovoHooks(stdout io.Writer, def agentHookDef, assumeYes bool) error {
 	path := def.configPath()
-	config, oldString, err := readYAMLConfig(path)
+	config, oldString, _, err := readYAMLConfig(path)
 	if err != nil {
 		return err
 	}
@@ -254,13 +254,13 @@ func installRovoHooks(stdout io.Writer, def agentHookDef, assumeYes bool) error 
 
 func uninstallRovoHooks(stdout io.Writer, def agentHookDef) error {
 	path := def.configPath()
-	config, _, err := readYAMLConfig(path)
+	config, _, exists, err := readYAMLConfig(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Fprintf(stdout, "    No %s hook config found at %s\n", def.DisplayName, path)
-			return nil
-		}
 		return err
+	}
+	if !exists {
+		fmt.Fprintf(stdout, "    No %s hook config found at %s\n", def.DisplayName, path)
+		return nil
 	}
 	eventHooks := mapSlice(config, "eventHooks")
 	events := sliceValue(eventHooks, "events")
@@ -339,23 +339,23 @@ func upsertRovoEvent(def agentHookDef, events []any, hookEvent agentHookEvent) [
 	return append(events, map[string]any{"name": hookEvent.AgentEvent, "commands": []any{map[string]any{"command": def.hookCommand(hookEvent)}}})
 }
 
-func readYAMLConfig(path string) (map[string]any, string, error) {
+func readYAMLConfig(path string) (map[string]any, string, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]any{}, "", nil
+			return map[string]any{}, "", false, nil
 		}
-		return nil, "", err
+		return nil, "", false, err
 	}
 	var decoded map[string]any
 	if err := yaml.Unmarshal(data, &decoded); err != nil {
-		return nil, "", fmt.Errorf("%s exists but is not valid YAML", path)
+		return nil, "", true, fmt.Errorf("%s exists but is not valid YAML", path)
 	}
 	pretty, err := prettyYAML(decoded)
 	if err != nil {
-		return nil, "", err
+		return nil, "", true, err
 	}
-	return decoded, pretty, nil
+	return decoded, pretty, true, nil
 }
 
 func prettyYAML(v any) (string, error) {

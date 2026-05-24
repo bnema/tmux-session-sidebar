@@ -37,8 +37,6 @@ type paneObservation struct {
 	PaneID      string
 	Fingerprint string
 	Sampled     bool
-	CurrentCmd  string
-	Text        string
 }
 
 // paneActivityQuery is an optional extension over ports.TmuxQueryPort that enables
@@ -349,9 +347,7 @@ func collectPaneObservations(ctx context.Context, query ports.TmuxQueryPort) ([]
 		}
 		observation := paneObservation{SessionID: pane.SessionID, SessionName: pane.SessionName, PaneID: pane.PaneID}
 		text, err := sampler.CapturePaneText(ctx, pane.PaneID, paneSampleTailLines)
-		observation.CurrentCmd = pane.CurrentCmd
 		if err == nil {
-			observation.Text = text
 			observation.Fingerprint = fingerprintPaneText(text)
 			observation.Sampled = true
 		}

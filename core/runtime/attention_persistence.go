@@ -176,6 +176,9 @@ func (s *Service) sessionCurrentlyAttached(ctx context.Context, sessionID string
 	}
 	clients, err := s.tmuxQuery.ListClients(ctx)
 	if err != nil {
+		if s.logger != nil {
+			s.logger.Error("agent-attention-list-clients-failed", []ports.LogField{{Key: "sessionID", Value: sessionID}, {Key: "error", Value: err.Error()}})
+		}
 		return true
 	}
 	for _, client := range clients {

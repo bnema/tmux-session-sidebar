@@ -225,6 +225,14 @@ set -g @session-sidebar-heat-colors 'off'
 
 The tmux plugin install and the agent hook install are separate steps. The plugin gives you the sidebar; `hooks setup` enables hook-driven agent bells.
 
+If `tmux-session-sidebar` is not on your `PATH` yet, use the plugin-local binary instead:
+
+```bash
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks setup --yes
+# or from a local checkout:
+./.bin/tmux-session-sidebar hooks setup --yes
+```
+
 Install every supported integration found on your `PATH`:
 
 ```bash
