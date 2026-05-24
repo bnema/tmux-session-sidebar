@@ -10,7 +10,7 @@ import (
 
 func TestSessionHeatBucketUsesRecentSessionSwitchSignal(t *testing.T) {
 	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
-	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, AttentionQuietSeconds: 60}
+	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5}
 
 	tests := []struct {
 		name  string

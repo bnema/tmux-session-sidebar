@@ -80,8 +80,7 @@ Configure tmux options in `~/.tmux.conf`.
 | `@session-sidebar-heat-colors` | `on` | Color sessions by recent terminal activity |
 | `@session-sidebar-heat-half-life-hours` | `8` | Heat decay half-life |
 | `@session-sidebar-heat-stale-hours` | `24` | Hours before a session fades to stale |
-| `@session-sidebar-heat-refresh-seconds` | `5` | Daemon activity-capture cadence; sidebar redraws come from tmux `client-session-changed` or manual `F5` |
-| `@session-sidebar-attention-quiet-seconds` | `120` | Quiet time after the last observed output before a non-current session can show the bell |
+| `@session-sidebar-heat-refresh-seconds` | `5` | Daemon agent/terminal sampling cadence; sidebar redraws come from tmux `client-session-changed` or manual `F5` |
 | `@session-sidebar-activity-debug-log` | `off` | Write activity trace lines to `~/.local/state/tmux-session-sidebar/activity.log` |
 | `@session-sidebar-use-fzf` | `on` | Compatibility option; ignored by the Go UI |
 
@@ -96,7 +95,6 @@ set -g @session-sidebar-heat-colors 'on'
 set -g @session-sidebar-heat-half-life-hours '8'
 set -g @session-sidebar-heat-stale-hours '24'
 set -g @session-sidebar-heat-refresh-seconds '5'
-set -g @session-sidebar-attention-quiet-seconds '120'
 set -g @session-sidebar-activity-debug-log 'off'
 ```
 
@@ -173,13 +171,14 @@ When heat colors are enabled, the sidebar shows only three visual states:
 
 Why: the sidebar is switch-driven now. It highlights the session you just left instead of rendering a multi-step heat gradient.
 
-The bell is separate from color:
+The bell is separate from color and is agent-driven:
 
-- fresh output that then stays quiet for `@session-sidebar-attention-quiet-seconds` can show the bell on a non-current session
+- known coding agents such as Codex, Claude, Gemini, Cursor Agent, Grok, OpenCode, Pi, Amp, Antigravity, Hermes, Factory, Qoder, and Rovo are tracked while their pane command is running
+- when the agent command exits, or when the pane prints a completion/attention cue such as `Turn completed`, `waiting for input`, or `approval needed`, the session shows the bell next to its name
 - the bell clears when you revisit that session
 - the bell does not survive daemon or plugin restarts
 
-Redraws come from tmux `client-session-changed` and manual `F5`. `@session-sidebar-heat-refresh-seconds` only controls background activity sampling for attention/debug state, so raise it to values such as `30` or `300` when you want less background work.
+Redraws come from tmux `client-session-changed` and manual `F5`. `@session-sidebar-heat-refresh-seconds` controls background agent/terminal sampling, so raise it to values such as `30` or `300` when you want less background work.
 
 For debugging, enable:
 

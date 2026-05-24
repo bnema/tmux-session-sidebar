@@ -18,14 +18,22 @@ const (
 
 	TraceStatusNoChange                TraceStatus = "doing-nothing"
 	TraceStatusActivityDetected        TraceStatus = "activity-detected"
-	TraceStatusDetectingInactivity     TraceStatus = "detecting-inactivity"
 	TraceStatusAttentionStarted        TraceStatus = "attention-started"
 	TraceStatusAttentionClearedOnVisit TraceStatus = "attention-cleared-on-visit"
 	TraceStatusAttentionExpiredAsStale TraceStatus = "attention-expired-as-stale"
 )
 
+type AgentPhase string
+
+const (
+	AgentPhaseRunning   AgentPhase = "running"
+	AgentPhaseCompleted AgentPhase = "completed"
+)
+
 type PaneState struct {
-	Fingerprint string `json:"fingerprint,omitempty"`
+	Fingerprint string     `json:"fingerprint,omitempty"`
+	AgentKind   string     `json:"agentKind,omitempty"`
+	AgentPhase  AgentPhase `json:"agentPhase,omitempty"`
 }
 
 type State struct {
@@ -42,13 +50,12 @@ type Trace struct {
 	Status           TraceStatus
 	Bucket           Bucket
 	IdleFor          time.Duration
-	QuietAfter       time.Duration
 	ObservedActivity bool
 	Visited          bool
 	Attention        bool
 }
 
-func Advance(state State, now time.Time, observedActivity bool, visited bool, halfLife time.Duration, staleAfter time.Duration, quietAfter time.Duration) (State, Trace) {
+func Advance(state State, now time.Time, observedActivity bool, observedAgentCompletion bool, visited bool, halfLife time.Duration, staleAfter time.Duration) (State, Trace) {
 	previous := state
 	if state.UpdatedAt.IsZero() {
 		state.UpdatedAt = now
@@ -73,24 +80,21 @@ func Advance(state State, now time.Time, observedActivity bool, visited bool, ha
 	}
 	state.UpdatedAt = now
 
-	// Fresh unvisited activity means RecentActivityAt is non-zero and newer than the
-	// last visit; quiet-after can only latch attention once that unseen activity ages out.
-	hasFreshUnvisitedActivity := !state.RecentActivityAt.IsZero() && state.RecentActivityAt.After(state.LastVisitedAt)
-	shouldLatchAttention := !state.Attention && quietAfter > 0 && hasFreshUnvisitedActivity && now.Sub(state.RecentActivityAt) >= quietAfter
-
-	// Attention is purely transient: stale sessions clear any latched attention, while
-	// quiet-period latching only considers activity that happened after the last visit.
-	// LastActiveAt feeds long-lived heat/staleness; RecentActivityAt drives quiet-after.
+	// Attention is explicit: terminal output keeps heat fresh, but the bell only
+	// rings when the runtime observes an agent completion/notification signal.
+	// A visit is the user's acknowledgement, so it wins over completion observed
+	// during the same sampling tick. Otherwise completion wins over stale heat.
 	switch {
+	case visited:
+		state.Attention = false
+	case observedAgentCompletion:
+		state.Attention = true
 	case staleAfter > 0 && !state.LastActiveAt.IsZero() && now.Sub(state.LastActiveAt) >= staleAfter:
 		state.Attention = false
-	case shouldLatchAttention:
-		state.Attention = true
 	}
 
 	trace := Trace{
 		Bucket:           BucketFor(state, now, observedActivity, halfLife, staleAfter),
-		QuietAfter:       quietAfter,
 		ObservedActivity: observedActivity,
 		Visited:          visited,
 		Attention:        state.Attention,
@@ -98,19 +102,17 @@ func Advance(state State, now time.Time, observedActivity bool, visited bool, ha
 	if !state.RecentActivityAt.IsZero() {
 		trace.IdleFor = max(now.Sub(state.RecentActivityAt), 0)
 	}
-	// Determine trace status with intentional precedence: activity > visit-clears-attention
-	// > attention transitions > inactivity detection > no change.
+	// Determine trace status with intentional precedence: visit clears first, then
+	// agent completion, activity, expiration, and no change.
 	switch {
-	case observedActivity:
-		trace.Status = TraceStatusActivityDetected
 	case visited && previous.Attention:
 		trace.Status = TraceStatusAttentionClearedOnVisit
-	case !previous.Attention && state.Attention:
+	case observedAgentCompletion && !previous.Attention && state.Attention:
 		trace.Status = TraceStatusAttentionStarted
+	case observedActivity:
+		trace.Status = TraceStatusActivityDetected
 	case previous.Attention && !state.Attention:
 		trace.Status = TraceStatusAttentionExpiredAsStale
-	case !state.RecentActivityAt.IsZero() && trace.IdleFor > 0 && quietAfter > 0 && trace.IdleFor < quietAfter:
-		trace.Status = TraceStatusDetectingInactivity
 	default:
 		trace.Status = TraceStatusNoChange
 	}

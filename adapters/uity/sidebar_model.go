@@ -410,10 +410,14 @@ func sessionMarker(item SessionItem) string {
 	if item.Current {
 		return "*"
 	}
-	if item.Attention {
-		return attentionMarkerSymbol
-	}
 	return " "
+}
+
+func attentionSuffix(item SessionItem) string {
+	if item.Attention && !item.Current {
+		return " " + attentionMarkerSymbol
+	}
+	return ""
 }
 
 func (m SidebarModel) statusLine() string {
@@ -438,7 +442,7 @@ func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
 			badge = fmt.Sprintf("[%s] ", slotLabel(item.Slot))
 		}
 		style := sessionRowStyle(styles, item)
-		row := style.Render(fmt.Sprintf("%s %s%s", sessionMarker(item), badge, item.Name))
+		row := style.Render(fmt.Sprintf("%s %s%s%s", sessionMarker(item), badge, item.Name, attentionSuffix(item)))
 		if i == m.cursor {
 			row = styles.selected.Render(row)
 		}

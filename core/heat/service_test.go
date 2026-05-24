@@ -12,10 +12,10 @@ func TestAdvanceHeat(t *testing.T) {
 		state              State
 		now                time.Time
 		observedActivity   bool
+		agentCompleted     bool
 		visited            bool
 		halfLife           time.Duration
 		staleAfter         time.Duration
-		quietAfter         time.Duration
 		wantBucket         Bucket
 		wantAttention      bool
 		wantVisitedAt      time.Time
@@ -32,7 +32,6 @@ func TestAdvanceHeat(t *testing.T) {
 			observedActivity:   true,
 			halfLife:           8 * time.Hour,
 			staleAfter:         24 * time.Hour,
-			quietAfter:         2 * time.Minute,
 			wantBucket:         BucketCurrent,
 			wantLastActiveAt:   now,
 			wantRecentActiveAt: now,
@@ -41,7 +40,7 @@ func TestAdvanceHeat(t *testing.T) {
 			wantTraceStatus:    TraceStatusActivityDetected,
 		},
 		{
-			name: "quiet latches attention after unseen recent activity",
+			name: "agent completion latches attention",
 			state: State{
 				Score:            600,
 				UpdatedAt:        now,
@@ -49,9 +48,9 @@ func TestAdvanceHeat(t *testing.T) {
 				RecentActivityAt: now,
 			},
 			now:                now.Add(3 * time.Minute),
+			agentCompleted:     true,
 			halfLife:           8 * time.Hour,
 			staleAfter:         24 * time.Hour,
-			quietAfter:         2 * time.Minute,
 			wantBucket:         BucketCool,
 			wantAttention:      true,
 			wantLastActiveAt:   now,
@@ -73,7 +72,6 @@ func TestAdvanceHeat(t *testing.T) {
 			visited:            true,
 			halfLife:           8 * time.Hour,
 			staleAfter:         24 * time.Hour,
-			quietAfter:         2 * time.Minute,
 			wantBucket:         BucketCool,
 			wantVisitedAt:      now,
 			wantLastActiveAt:   now.Add(-3 * time.Minute),
@@ -93,7 +91,6 @@ func TestAdvanceHeat(t *testing.T) {
 			now:                now,
 			halfLife:           8 * time.Hour,
 			staleAfter:         24 * time.Hour,
-			quietAfter:         2 * time.Minute,
 			wantBucket:         BucketStale,
 			wantLastActiveAt:   now.Add(-25 * time.Hour),
 			wantRecentActiveAt: now.Add(-25 * time.Hour),
@@ -113,7 +110,6 @@ func TestAdvanceHeat(t *testing.T) {
 			now:                now,
 			halfLife:           8 * time.Hour,
 			staleAfter:         24 * time.Hour,
-			quietAfter:         2 * time.Minute,
 			wantBucket:         BucketStale,
 			wantAttention:      false,
 			wantLastActiveAt:   now.Add(-25 * time.Hour),
@@ -126,7 +122,7 @@ func TestAdvanceHeat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, trace := Advance(tt.state, tt.now, tt.observedActivity, tt.visited, tt.halfLife, tt.staleAfter, tt.quietAfter)
+			got, trace := Advance(tt.state, tt.now, tt.observedActivity, tt.agentCompleted, tt.visited, tt.halfLife, tt.staleAfter)
 			if trace.Bucket != tt.wantBucket {
 				t.Fatalf("bucket = %q, want %q", trace.Bucket, tt.wantBucket)
 			}
@@ -152,6 +148,34 @@ func TestAdvanceHeat(t *testing.T) {
 	}
 }
 
+func TestAdvanceDoesNotRelatchCompletionForVisitedSession(t *testing.T) {
+	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+	state := State{Attention: true, UpdatedAt: now, LastActiveAt: now}
+
+	got, trace := Advance(state, now.Add(time.Minute), false, true, true, 8*time.Hour, 24*time.Hour)
+
+	if got.Attention {
+		t.Fatal("attention = true, want false because visited sessions clear the bell even if completion is observed")
+	}
+	if trace.Status != TraceStatusAttentionClearedOnVisit {
+		t.Fatalf("trace status = %q, want %q", trace.Status, TraceStatusAttentionClearedOnVisit)
+	}
+}
+
+func TestAdvanceCompletionLatchesEvenForStaleSession(t *testing.T) {
+	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+	state := State{UpdatedAt: now, LastActiveAt: now.Add(-25 * time.Hour)}
+
+	got, trace := Advance(state, now, false, true, false, 8*time.Hour, 24*time.Hour)
+
+	if !got.Attention {
+		t.Fatal("attention = false, want true when a stale long-running agent completes")
+	}
+	if trace.Status != TraceStatusAttentionStarted {
+		t.Fatalf("trace status = %q, want %q", trace.Status, TraceStatusAttentionStarted)
+	}
+}
+
 func TestAdvanceHeatKeepsAttentionLatchedUntilVisit(t *testing.T) {
 	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
 	state := State{
@@ -162,7 +186,7 @@ func TestAdvanceHeatKeepsAttentionLatchedUntilVisit(t *testing.T) {
 		Attention:        true,
 	}
 
-	got, _ := Advance(state, now.Add(30*time.Second), true, false, 8*time.Hour, 24*time.Hour, 2*time.Minute)
+	got, _ := Advance(state, now.Add(30*time.Second), true, false, false, 8*time.Hour, 24*time.Hour)
 	if !got.Attention {
 		t.Fatal("attention = false, want true until the session is visited")
 	}

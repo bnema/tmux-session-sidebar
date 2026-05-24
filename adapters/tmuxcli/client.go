@@ -74,26 +74,21 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	attentionQuietSeconds, err := c.optionInt(ctx, "@session-sidebar-attention-quiet-seconds")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
 	activityDebugLog, err := c.option(ctx, "@session-sidebar-activity-debug-log")
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
 	return ports.ConfigSnapshot{
-		Loaded:                true,
-		KeyBinding:            key,
-		Width:                 width,
-		ProjectRoots:          splitProjectRoots(roots),
-		CloseAfterSwitch:      parseTmuxBool(closeAfterSwitch),
-		HeatColorsEnabled:     parseTmuxBool(heatColors),
-		HeatHalfLifeHours:     halfLifeHours,
-		HeatStaleHours:        staleHours,
-		HeatRefreshSeconds:    refreshSeconds,
-		AttentionQuietSeconds: attentionQuietSeconds,
-		ActivityDebugLog:      parseTmuxBool(activityDebugLog),
+		Loaded:             true,
+		KeyBinding:         key,
+		Width:              width,
+		ProjectRoots:       splitProjectRoots(roots),
+		CloseAfterSwitch:   parseTmuxBool(closeAfterSwitch),
+		HeatColorsEnabled:  parseTmuxBool(heatColors),
+		HeatHalfLifeHours:  halfLifeHours,
+		HeatStaleHours:     staleHours,
+		HeatRefreshSeconds: refreshSeconds,
+		ActivityDebugLog:   parseTmuxBool(activityDebugLog),
 	}, nil
 }
 

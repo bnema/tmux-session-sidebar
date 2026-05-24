@@ -86,7 +86,7 @@ func loadSidebarConfig(ctx context.Context) ports.ConfigSnapshot {
 }
 
 func defaultSidebarConfig() ports.ConfigSnapshot {
-	return ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, AttentionQuietSeconds: 120, ActivityDebugLog: false}
+	return ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, ActivityDebugLog: false}
 }
 
 func decodePersistedHeat(raw map[string][]byte) map[string]heat.State {

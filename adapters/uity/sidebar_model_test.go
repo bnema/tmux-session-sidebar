@@ -406,14 +406,14 @@ func TestSidebarModelFilterAcceptsSpace(t *testing.T) {
 	}
 }
 
-func TestSidebarModelRenderShowsAttentionMarkerInPrimaryMarkerSlot(t *testing.T) {
+func TestSidebarModelRenderShowsAttentionMarkerNextToSessionName(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{})
 	view := model.Render()
-	if !strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
-		t.Fatalf("render missing compact attention marker in %q", view)
+	if !strings.Contains(view, "  [1] alpha "+attentionMarkerSymbol) {
+		t.Fatalf("render missing attention marker next to session name in %q", view)
 	}
-	if strings.Contains(view, "  [1] alpha") {
-		t.Fatalf("render kept a second empty marker column in %q", view)
+	if strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
+		t.Fatalf("render kept attention marker in primary marker column in %q", view)
 	}
 }
 

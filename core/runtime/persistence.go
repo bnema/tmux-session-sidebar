@@ -28,7 +28,6 @@ type RestoreReport struct {
 const (
 	defaultHeatHalfLife   = 8 * time.Hour
 	defaultHeatStaleAfter = 24 * time.Hour
-	defaultAttentionQuiet = 2 * time.Minute
 	paneSampleTailLines   = 8
 )
 
@@ -38,6 +37,8 @@ type paneObservation struct {
 	PaneID      string
 	Fingerprint string
 	Sampled     bool
+	CurrentCmd  string
+	Text        string
 }
 
 // paneActivityQuery is an optional extension over ports.TmuxQueryPort that enables
@@ -51,7 +52,6 @@ type paneActivityQuery interface {
 type heatConfig struct {
 	halfLife   time.Duration
 	staleAfter time.Duration
-	quietAfter time.Duration
 }
 
 func (s *Service) RestorePersistedSessions(ctx context.Context, serverID string, home string) RestoreReport {
@@ -289,7 +289,6 @@ func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.Persist
 		time.Now().UTC(),
 		cfg.halfLife,
 		cfg.staleAfter,
-		cfg.quietAfter,
 	)
 	state.Heat = encodeHeatStateMap(nextHeat)
 	for sessionName, trace := range traces {
@@ -306,7 +305,6 @@ func (s *Service) logHeatTrace(sessionName string, trace heat.Trace) {
 		{Key: "status", Value: trace.Status},
 		{Key: "bucket", Value: trace.Bucket},
 		{Key: "idle_for", Value: trace.IdleFor},
-		{Key: "quiet_after", Value: trace.QuietAfter},
 		{Key: "attention", Value: trace.Attention},
 		{Key: "observed_activity", Value: trace.ObservedActivity},
 		{Key: "visited", Value: trace.Visited},
@@ -314,15 +312,12 @@ func (s *Service) logHeatTrace(sessionName string, trace heat.Trace) {
 }
 
 func heatConfigFromSnapshot(snapshot ports.ConfigSnapshot) heatConfig {
-	cfg := heatConfig{halfLife: defaultHeatHalfLife, staleAfter: defaultHeatStaleAfter, quietAfter: defaultAttentionQuiet}
+	cfg := heatConfig{halfLife: defaultHeatHalfLife, staleAfter: defaultHeatStaleAfter}
 	if snapshot.HeatHalfLifeHours > 0 {
 		cfg.halfLife = time.Duration(snapshot.HeatHalfLifeHours) * time.Hour
 	}
 	if snapshot.HeatStaleHours > 0 {
 		cfg.staleAfter = time.Duration(snapshot.HeatStaleHours) * time.Hour
-	}
-	if snapshot.AttentionQuietSeconds > 0 {
-		cfg.quietAfter = time.Duration(snapshot.AttentionQuietSeconds) * time.Second
 	}
 	return cfg
 }
@@ -355,7 +350,9 @@ func collectPaneObservations(ctx context.Context, query ports.TmuxQueryPort) ([]
 		}
 		observation := paneObservation{SessionID: pane.SessionID, SessionName: pane.SessionName, PaneID: pane.PaneID}
 		text, err := sampler.CapturePaneText(ctx, pane.PaneID, paneSampleTailLines)
+		observation.CurrentCmd = pane.CurrentCmd
 		if err == nil {
+			observation.Text = text
 			observation.Fingerprint = fingerprintPaneText(text)
 			observation.Sampled = true
 		}
@@ -371,7 +368,7 @@ func fingerprintPaneText(text string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.TmuxSessionSnapshot, clients []ports.TmuxClientSnapshot, observations []paneObservation, now time.Time, halfLife time.Duration, staleAfter time.Duration, quietAfter time.Duration) (map[string]heat.State, map[string]heat.Trace) {
+func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.TmuxSessionSnapshot, clients []ports.TmuxClientSnapshot, observations []paneObservation, now time.Time, halfLife time.Duration, staleAfter time.Duration) (map[string]heat.State, map[string]heat.Trace) {
 	next := make(map[string]heat.State, len(current)+len(live))
 	traces := make(map[string]heat.Trace, len(live))
 	for name, state := range current {
@@ -398,26 +395,27 @@ func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.TmuxSe
 
 	for _, session := range live {
 		state := cloneHeatState(next[session.Name])
-		active := applyPaneObservations(&state, observationsBySession[session.Name])
-		nextState, trace := heat.Advance(state, now, active, visited[session.Name], halfLife, staleAfter, quietAfter)
+		active, agentCompleted := applyPaneObservations(&state, observationsBySession[session.Name])
+		nextState, trace := heat.Advance(state, now, active, agentCompleted, visited[session.Name], halfLife, staleAfter)
 		next[session.Name] = nextState
 		traces[session.Name] = trace
 	}
 	return next, traces
 }
 
-func applyPaneObservations(state *heat.State, observations []paneObservation) bool {
+func applyPaneObservations(state *heat.State, observations []paneObservation) (bool, bool) {
 	if state == nil {
-		return false
+		return false, false
 	}
 	if state.Panes == nil {
 		state.Panes = map[string]heat.PaneState{}
 	}
 	if len(observations) == 0 {
-		return false
+		return false, false
 	}
 	nextPanes := make(map[string]heat.PaneState, len(observations))
 	active := false
+	agentCompleted := false
 	// bootstrapOnly suppresses activity detection when applyPaneObservations sees the first
 	// fingerprints for a session whose state.Panes is empty but whose state.Score/LastActiveAt
 	// already prove prior heat; later observations fall back to normal change detection.
@@ -436,10 +434,50 @@ func applyPaneObservations(state *heat.State, observations []paneObservation) bo
 		if !bootstrapOnly && (!hadPrevious || previous.Fingerprint != observation.Fingerprint) {
 			active = true
 		}
-		nextPanes[observation.PaneID] = heat.PaneState{Fingerprint: observation.Fingerprint}
+		next := heat.PaneState{Fingerprint: observation.Fingerprint}
+		if kind, running := runningAgentKind(observation.CurrentCmd); running {
+			next.AgentKind = kind
+			completionCue := agentCompletionCue(observation.Text)
+			newSampledOutput := hadPrevious && previous.Fingerprint != observation.Fingerprint
+			if completionCue && newSampledOutput && previous.AgentPhase != heat.AgentPhaseCompleted {
+				agentCompleted = true
+				next.AgentPhase = heat.AgentPhaseCompleted
+			} else if completionCue {
+				next.AgentPhase = heat.AgentPhaseCompleted
+			} else {
+				next.AgentPhase = heat.AgentPhaseRunning
+			}
+		} else if previous.AgentPhase == heat.AgentPhaseRunning {
+			agentCompleted = true
+			next.AgentKind = previous.AgentKind
+			next.AgentPhase = heat.AgentPhaseCompleted
+		}
+		nextPanes[observation.PaneID] = next
 	}
 	state.Panes = nextPanes
-	return active
+	return active, agentCompleted
+}
+
+func runningAgentKind(command string) (string, bool) {
+	cmd := strings.ToLower(strings.TrimSpace(command))
+	switch cmd {
+	case "claude", "codex", "cursor-agent", "gemini", "grok", "opencode", "pi", "amp", "agy", "hermes", "droid", "qodercli", "acli":
+		return cmd, true
+	default:
+		return "", false
+	}
+}
+
+func agentCompletionCue(text string) bool {
+	lower := strings.ToLower(text)
+	return strings.Contains(lower, "turn complete") ||
+		strings.Contains(lower, "turn completed") ||
+		strings.Contains(lower, "task complete") ||
+		strings.Contains(lower, "task completed") ||
+		strings.Contains(lower, "session completed") ||
+		strings.Contains(lower, "needs your attention") ||
+		strings.Contains(lower, "waiting for input") ||
+		strings.Contains(lower, "approval needed")
 }
 
 func visitedSessionNames(clients []ports.TmuxClientSnapshot, sessionNamesByID map[string]string) map[string]bool {

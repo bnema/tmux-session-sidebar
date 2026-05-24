@@ -241,7 +241,6 @@ func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key s
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-half-life-hours"}).Return(ports.Result{Stdout: "8\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-stale-hours"}).Return(ports.Result{Stdout: "24\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-refresh-seconds"}).Return(ports.Result{Stdout: "5\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-attention-quiet-seconds"}).Return(ports.Result{Stdout: "120\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-activity-debug-log"}).Return(ports.Result{Stdout: "off\n"}, nil)
 }
 

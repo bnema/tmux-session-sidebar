@@ -9,9 +9,8 @@ import (
 )
 
 const (
-	testHalfLife             = 8 * time.Hour
-	testStaleAfter           = 24 * time.Hour
-	testAttentionQuietPeriod = 2 * time.Minute
+	testHalfLife   = 8 * time.Hour
+	testStaleAfter = 24 * time.Hour
 )
 
 func TestReconcileLiveSessionHeatRecordsPaneActivity(t *testing.T) {
@@ -23,7 +22,6 @@ func TestReconcileLiveSessionHeatRecordsPaneActivity(t *testing.T) {
 		now,
 		testHalfLife,
 		testStaleAfter,
-		testAttentionQuietPeriod,
 	)
 
 	state, ok := got["alpha"]
@@ -47,7 +45,7 @@ func TestReconcileLiveSessionHeatRecordsPaneActivity(t *testing.T) {
 	}
 }
 
-func TestReconcileLiveSessionHeatLatchesQuietAttentionAndClearsVisitedSessions(t *testing.T) {
+func TestReconcileLiveSessionHeatDoesNotTreatQuietOutputAsAttention(t *testing.T) {
 	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
 	current := map[string]heat.State{
 		"alpha": {
@@ -57,6 +55,90 @@ func TestReconcileLiveSessionHeatLatchesQuietAttentionAndClearsVisitedSessions(t
 			RecentActivityAt: now,
 			Panes:            map[string]heat.PaneState{"%1": {Fingerprint: "fp-1"}},
 		},
+	}
+	live := []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}
+	observations := []paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true}}
+
+	got, traces := reconcileLiveSessionHeat(current, live, nil, observations, now.Add(3*time.Minute), testHalfLife, testStaleAfter)
+
+	if traces["alpha"].Status == heat.TraceStatusAttentionStarted {
+		t.Fatalf("trace status = %q, quiet output must not become attention", traces["alpha"].Status)
+	}
+	if got["alpha"].Attention {
+		t.Fatal("attention = true, want false; only agent completion should ring the bell")
+	}
+}
+
+func TestReconcileLiveSessionHeatLatchesAttentionWhenAgentCompletes(t *testing.T) {
+	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+	current := map[string]heat.State{
+		"alpha": {
+			UpdatedAt: now,
+			Panes: map[string]heat.PaneState{
+				"%1": {Fingerprint: "running", AgentKind: "codex", AgentPhase: heat.AgentPhaseRunning},
+			},
+		},
+	}
+	live := []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}
+	observations := []paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "shell", Sampled: true, CurrentCmd: "zsh"}}
+
+	got, traces := reconcileLiveSessionHeat(current, live, nil, observations, now.Add(time.Minute), testHalfLife, testStaleAfter)
+
+	if traces["alpha"].Status != heat.TraceStatusAttentionStarted {
+		t.Fatalf("trace status = %q, want %q", traces["alpha"].Status, heat.TraceStatusAttentionStarted)
+	}
+	if !got["alpha"].Attention {
+		t.Fatal("attention = false, want true after agent command exits")
+	}
+}
+
+func TestReconcileLiveSessionHeatLatchesAttentionWhenAgentPrintsCompletionCue(t *testing.T) {
+	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+	current := map[string]heat.State{
+		"alpha": {
+			UpdatedAt: now,
+			Panes: map[string]heat.PaneState{
+				"%1": {Fingerprint: "working", AgentKind: "codex", AgentPhase: heat.AgentPhaseRunning},
+			},
+		},
+	}
+	live := []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}
+	observations := []paneObservation{{
+		SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "completed", Sampled: true,
+		CurrentCmd: "codex", Text: "Working...\nTurn completed in 12.4s.",
+	}}
+
+	got, traces := reconcileLiveSessionHeat(current, live, nil, observations, now, testHalfLife, testStaleAfter)
+
+	if traces["alpha"].Status != heat.TraceStatusAttentionStarted {
+		t.Fatalf("trace status = %q, want %q", traces["alpha"].Status, heat.TraceStatusAttentionStarted)
+	}
+	if !got["alpha"].Attention {
+		t.Fatal("attention = false, want true for agent completion cue")
+	}
+}
+
+func TestReconcileLiveSessionHeatIgnoresHistoricalCompletionCueOnFirstSample(t *testing.T) {
+	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+	live := []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}
+	observations := []paneObservation{{
+		SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "already-complete", Sampled: true,
+		CurrentCmd: "codex", Text: "Turn completed in 12.4s.",
+	}}
+
+	got, traces := reconcileLiveSessionHeat(nil, live, nil, observations, now, testHalfLife, testStaleAfter)
+
+	if traces["alpha"].Status == heat.TraceStatusAttentionStarted {
+		t.Fatalf("trace status = %q, historical cue on first sample must not latch attention", traces["alpha"].Status)
+	}
+	if got["alpha"].Attention {
+		t.Fatal("attention = true, want false for historical completion cue without prior baseline")
+	}
+}
+
+func TestReconcileLiveSessionHeatClearsAttentionOnVisit(t *testing.T) {
+	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+	current := map[string]heat.State{
 		"beta": {
 			Score:            600,
 			UpdatedAt:        now,
@@ -66,34 +148,21 @@ func TestReconcileLiveSessionHeatLatchesQuietAttentionAndClearsVisitedSessions(t
 			Panes:            map[string]heat.PaneState{"%2": {Fingerprint: "fp-2"}},
 		},
 	}
-	live := []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}, {ID: "$2", Name: "beta"}}
+	live := []ports.TmuxSessionSnapshot{{ID: "$2", Name: "beta"}}
 	clients := []ports.TmuxClientSnapshot{{ID: "%client", CurrentSessionID: "$2", Attached: true}}
-	observations := []paneObservation{
-		{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true},
-		{SessionID: "$2", SessionName: "beta", PaneID: "%2", Fingerprint: "fp-2", Sampled: true},
+	observations := []paneObservation{{SessionID: "$2", SessionName: "beta", PaneID: "%2", Fingerprint: "fp-2", Sampled: true}}
+
+	got, traces := reconcileLiveSessionHeat(current, live, clients, observations, now.Add(3*time.Minute), testHalfLife, testStaleAfter)
+
+	if traces["beta"].Status != heat.TraceStatusAttentionClearedOnVisit {
+		t.Fatalf("trace status = %q, want %q", traces["beta"].Status, heat.TraceStatusAttentionClearedOnVisit)
 	}
-	got, traces := reconcileLiveSessionHeat(current, live, clients, observations, now.Add(3*time.Minute), testHalfLife, testStaleAfter, testAttentionQuietPeriod)
-
-	t.Run("latch attention after quiet period", func(t *testing.T) {
-		if traces["alpha"].Status != heat.TraceStatusAttentionStarted {
-			t.Fatalf("alpha trace status = %q, want %q", traces["alpha"].Status, heat.TraceStatusAttentionStarted)
-		}
-		if !got["alpha"].Attention {
-			t.Fatal("alpha attention = false, want true after unseen quiet period")
-		}
-	})
-
-	t.Run("clear attention on visit", func(t *testing.T) {
-		if traces["beta"].Status != heat.TraceStatusAttentionClearedOnVisit {
-			t.Fatalf("beta trace status = %q, want %q", traces["beta"].Status, heat.TraceStatusAttentionClearedOnVisit)
-		}
-		if got["beta"].Attention {
-			t.Fatal("beta attention = true, want false after the user visits the session")
-		}
-		if !got["beta"].LastVisitedAt.Equal(now.Add(3 * time.Minute)) {
-			t.Fatalf("beta last visited at = %v, want %v", got["beta"].LastVisitedAt, now.Add(3*time.Minute))
-		}
-	})
+	if got["beta"].Attention {
+		t.Fatal("attention = true, want false after the user visits the session")
+	}
+	if !got["beta"].LastVisitedAt.Equal(now.Add(3 * time.Minute)) {
+		t.Fatalf("last visited at = %v, want %v", got["beta"].LastVisitedAt, now.Add(3*time.Minute))
+	}
 }
 
 func TestDecodeHeatStateMapKeepsLegacyScoreWithoutSynthesizingNewFields(t *testing.T) {
@@ -148,7 +217,6 @@ func TestReconcileLiveSessionHeatBootstrapsExistingStateWithoutFalseActivity(t *
 		now,
 		testHalfLife,
 		testStaleAfter,
-		testAttentionQuietPeriod,
 	)
 
 	if got["alpha"].Score != 600 {
@@ -166,7 +234,6 @@ func TestReconcileLiveSessionHeatKeepsUnsampledPaneBaseline(t *testing.T) {
 		now.Add(time.Minute),
 		testHalfLife,
 		testStaleAfter,
-		testAttentionQuietPeriod,
 	)
 
 	if got["alpha"].Panes["%1"].Fingerprint != "fp-1" {
@@ -186,7 +253,6 @@ func TestReconcileLiveSessionHeatContinuesTrackingPaneChangesAcrossPersistedTick
 		now,
 		testHalfLife,
 		testStaleAfter,
-		testAttentionQuietPeriod,
 	)
 	persisted := encodeHeatStateMap(first)
 
@@ -198,7 +264,6 @@ func TestReconcileLiveSessionHeatContinuesTrackingPaneChangesAcrossPersistedTick
 		now.Add(5*time.Second),
 		testHalfLife,
 		testStaleAfter,
-		testAttentionQuietPeriod,
 	)
 
 	if traces["alpha"].Status != heat.TraceStatusActivityDetected {
@@ -212,7 +277,7 @@ func TestReconcileLiveSessionHeatContinuesTrackingPaneChangesAcrossPersistedTick
 	}
 }
 
-func TestReconcileLiveSessionHeatPreservesQuietTimerAcrossPersistedTicks(t *testing.T) {
+func TestReconcileLiveSessionHeatDoesNotPreserveQuietTimerAcrossPersistedTicks(t *testing.T) {
 	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
 	live := []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}
 
@@ -224,7 +289,6 @@ func TestReconcileLiveSessionHeatPreservesQuietTimerAcrossPersistedTicks(t *test
 		now,
 		testHalfLife,
 		testStaleAfter,
-		testAttentionQuietPeriod,
 	)
 	persisted := encodeHeatStateMap(first)
 
@@ -233,17 +297,16 @@ func TestReconcileLiveSessionHeatPreservesQuietTimerAcrossPersistedTicks(t *test
 		live,
 		nil,
 		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true}},
-		now.Add(testAttentionQuietPeriod+5*time.Second),
+		now.Add(3*time.Minute),
 		testHalfLife,
 		testStaleAfter,
-		testAttentionQuietPeriod,
 	)
 
-	if traces["alpha"].Status != heat.TraceStatusAttentionStarted {
-		t.Fatalf("trace status = %q, want %q", traces["alpha"].Status, heat.TraceStatusAttentionStarted)
+	if traces["alpha"].Status == heat.TraceStatusAttentionStarted {
+		t.Fatalf("trace status = %q, quiet output must not become attention across persisted ticks", traces["alpha"].Status)
 	}
-	if !next["alpha"].Attention {
-		t.Fatal("attention = false, want true after quiet period across persisted ticks")
+	if next["alpha"].Attention {
+		t.Fatal("attention = true, want false; only agent completion should ring the bell")
 	}
 	if !next["alpha"].RecentActivityAt.Equal(now) {
 		t.Fatalf("recent activity at = %v, want %v", next["alpha"].RecentActivityAt, now)
@@ -269,7 +332,6 @@ func TestReconcileLiveSessionHeatPrunesMissingPaneFingerprints(t *testing.T) {
 		now.Add(time.Minute),
 		testHalfLife,
 		testStaleAfter,
-		testAttentionQuietPeriod,
 	)
 
 	if len(got["alpha"].Panes) != 1 {
