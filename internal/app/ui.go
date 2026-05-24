@@ -121,19 +121,23 @@ func decodePersistedHeat(raw map[string][]byte) map[string]heat.State {
 }
 
 func sessionHeatBucket(state heat.State, now time.Time, _ ports.ConfigSnapshot) heat.Bucket {
-	if recentSessionSwitch(state, now) {
+	if recentSessionActivity(state, now) {
 		return heat.BucketCurrent
 	}
 	return heat.BucketStale
 }
 
-func recentSessionSwitch(state heat.State, now time.Time) bool {
-	if state.LastVisitedAt.IsZero() {
+func recentSessionActivity(state heat.State, now time.Time) bool {
+	return recentHeatTimestamp(state.LastVisitedAt, now) || recentHeatTimestamp(state.LastActiveAt, now)
+}
+
+func recentHeatTimestamp(timestamp time.Time, now time.Time) bool {
+	if timestamp.IsZero() {
 		return false
 	}
-	age := now.Sub(state.LastVisitedAt)
+	age := now.Sub(timestamp)
 	if age < 0 {
 		return false
 	}
-	return age <= 30*time.Second
+	return age <= time.Hour
 }

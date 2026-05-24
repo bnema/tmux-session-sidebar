@@ -27,27 +27,34 @@ func TestSessionHeatBucketUsesRecentSessionSwitchSignal(t *testing.T) {
 			want: heat.BucketCurrent,
 		},
 		{
-			name: "recent activity without switch signal stays gray",
+			name: "recent terminal activity without switch signal stays highlighted",
 			state: heat.State{
 				UpdatedAt:        now,
 				LastActiveAt:     now.Add(-5 * time.Second),
 				RecentActivityAt: now.Add(-5 * time.Second),
 			},
-			want: heat.BucketStale,
+			want: heat.BucketCurrent,
 		},
 		{
-			name: "historical heat without switch signal stays gray",
+			name: "historical heat older than an hour stays gray",
 			state: heat.State{
 				Score:        50000,
 				UpdatedAt:    now,
-				LastActiveAt: now.Add(-10 * time.Minute),
+				LastActiveAt: now.Add(-2 * time.Hour),
 			},
 			want: heat.BucketStale,
 		},
 		{
-			name: "old switch signal expires back to gray",
+			name: "active within the last hour stays highlighted",
 			state: heat.State{
-				LastVisitedAt: now.Add(-45 * time.Second),
+				LastVisitedAt: now.Add(-59 * time.Minute),
+			},
+			want: heat.BucketCurrent,
+		},
+		{
+			name: "switch signal older than an hour expires back to gray",
+			state: heat.State{
+				LastVisitedAt: now.Add(-61 * time.Minute),
 			},
 			want: heat.BucketStale,
 		},
