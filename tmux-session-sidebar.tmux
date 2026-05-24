@@ -62,6 +62,7 @@ main() {
   set_default @session-sidebar-heat-stale-hours     24
   set_default @session-sidebar-heat-refresh-seconds 5
   set_default @session-sidebar-activity-debug-log off
+  set_default @session-sidebar-agent-attention on
 
   local sidebar_key previous_key quoted_daemon_control quoted_runtime quoted_state_dir runtime_bin slot state_dir
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"

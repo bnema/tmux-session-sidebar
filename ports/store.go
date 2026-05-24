@@ -3,11 +3,12 @@ package ports
 import "context"
 
 type PersistedState struct {
-	Sessions     map[string]SessionMetadata `json:"sessions,omitempty"`
-	SessionOrder []string                   `json:"sessionOrder,omitempty"`
-	Sidebar      *SidebarState              `json:"sidebar,omitempty"`
-	Clients      map[string][]byte          `json:"clients,omitempty"`
-	Heat         map[string][]byte          `json:"heat,omitempty"`
+	Sessions       map[string]SessionMetadata `json:"sessions,omitempty"`
+	SessionOrder   []string                   `json:"sessionOrder,omitempty"`
+	Sidebar        *SidebarState              `json:"sidebar,omitempty"`
+	Clients        map[string][]byte          `json:"clients,omitempty"`
+	Heat           map[string][]byte          `json:"heat,omitempty"`
+	AgentAttention map[string][]byte          `json:"agentAttention,omitempty"`
 }
 
 type SidebarState struct {

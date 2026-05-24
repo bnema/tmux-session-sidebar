@@ -29,6 +29,12 @@ run '~/.tmux/plugins/tpm/tpm'
 
 Reload tmux or press `prefix + I`.
 
+If you want hook-driven agent notification bells, reload once so the plugin runtime exists, then install the agent hooks:
+
+```bash
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks setup --yes
+```
+
 ### Manual
 
 ```bash
@@ -47,6 +53,12 @@ Reload tmux:
 tmux source-file ~/.tmux.conf
 ```
 
+If you want hook-driven agent notification bells, reload once so the plugin runtime exists, then install the agent hooks:
+
+```bash
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks setup --yes
+```
+
 The bootstrap uses `scripts/ensure-runtime.sh`. It builds a plugin-local Go runtime at `.bin/tmux-session-sidebar` and records a build fingerprint. After TPM updates the plugin checkout, the next reload rebuilds the runtime automatically when the fingerprint changes.
 
 ## Local development install
@@ -60,6 +72,12 @@ make install
 This symlinks the repo into `~/.tmux/plugins/tmux-session-sidebar`.
 
 The Go runtime is built automatically into the plugin checkout when tmux loads the plugin. To force a rebuild during local development, remove `.bin/tmux-session-sidebar` or `.bin/.build-fingerprint`, then reload tmux.
+
+To enable hook-driven agent notification bells in a local development install:
+
+```bash
+./.bin/tmux-session-sidebar hooks setup --yes
+```
 
 Remove the local plugin symlink with:
 
@@ -82,6 +100,7 @@ Configure tmux options in `~/.tmux.conf`.
 | `@session-sidebar-heat-stale-hours` | `24` | Hours before a session fades to stale |
 | `@session-sidebar-heat-refresh-seconds` | `5` | Daemon agent/terminal sampling cadence; sidebar redraws come from tmux `client-session-changed` or manual `F5` |
 | `@session-sidebar-activity-debug-log` | `off` | Write activity trace lines to `~/.local/state/tmux-session-sidebar/activity.log` |
+| `@session-sidebar-agent-attention` | `on` | Enable hook-driven agent attention bells in the sidebar |
 | `@session-sidebar-use-fzf` | `on` | Compatibility option; ignored by the Go UI |
 
 Example:
@@ -96,6 +115,7 @@ set -g @session-sidebar-heat-half-life-hours '8'
 set -g @session-sidebar-heat-stale-hours '24'
 set -g @session-sidebar-heat-refresh-seconds '5'
 set -g @session-sidebar-activity-debug-log 'off'
+set -g @session-sidebar-agent-attention 'on'
 ```
 
 ## Usage
@@ -171,14 +191,17 @@ When heat colors are enabled, the sidebar shows only three visual states:
 
 Why: the sidebar is switch-driven now. It highlights the session you just left instead of rendering a multi-step heat gradient.
 
-The bell is separate from color and is agent-driven:
+The bell is separate from color and is now hook-driven:
 
-- known coding agents such as Codex, Claude, Gemini, Cursor Agent, Grok, OpenCode, Pi, Amp, Antigravity, Hermes, Factory, Qoder, and Rovo are tracked while their pane command is running
-- when the agent command exits, or when the pane prints a completion/attention cue such as `Turn completed`, `waiting for input`, or `approval needed`, the session shows the bell next to its name
-- the bell clears when you revisit that session
-- the bell does not survive daemon or plugin restarts
+- install agent integrations with `tmux-session-sidebar hooks setup`
+- the sidebar installs supported CLI hooks/plugins/extensions and listens for explicit running / stop / notification events
+- when an agent reports completion or asks for attention, the session shows the bell marker
+- the bell clears when that session becomes current again in any attached tmux client
+- disable the feature globally with `@session-sidebar-agent-attention 'off'`
 
-Redraws come from tmux `client-session-changed` and manual `F5`. `@session-sidebar-heat-refresh-seconds` controls background agent/terminal sampling, so raise it to values such as `30` or `300` when you want less background work.
+Supported agents and install details are documented in [docs/agent-hooks.md](docs/agent-hooks.md).
+
+Redraws come from tmux `client-session-changed` and manual `F5`. `@session-sidebar-heat-refresh-seconds` still controls background terminal heat sampling for color state, but bell attention no longer depends on terminal output scraping.
 
 For debugging, enable:
 
@@ -197,6 +220,31 @@ Disable heat colors with:
 ```tmux
 set -g @session-sidebar-heat-colors 'off'
 ```
+
+## Agent hook install quick start
+
+The tmux plugin install and the agent hook install are separate steps. The plugin gives you the sidebar; `hooks setup` enables hook-driven agent bells.
+
+Install every supported integration found on your `PATH`:
+
+```bash
+tmux-session-sidebar hooks setup
+```
+
+Install or reinstall one integration:
+
+```bash
+tmux-session-sidebar hooks codex install
+tmux-session-sidebar hooks pi install
+```
+
+Remove one integration:
+
+```bash
+tmux-session-sidebar hooks codex uninstall
+```
+
+See [docs/agent-hooks.md](docs/agent-hooks.md) for the supported-agent matrix and disable flags.
 
 ## Troubleshooting
 

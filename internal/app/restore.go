@@ -18,11 +18,20 @@ func ensureRestoredAndCaptured(ctx context.Context) error {
 	return ensureRestoredAndCapturedWithOptions(ctx, false)
 }
 
+func ensureRestoredAndCapturedAndRefresh(ctx context.Context) error {
+	if err := ensureRestoredAndCaptured(ctx); err != nil {
+		return err
+	}
+	refreshAllSidebarPanesBestEffort(ctx)
+	return nil
+}
+
 func ensureRestoredAndCapturedOnStartup(ctx context.Context) error {
 	return ensureRestoredAndCapturedWithOptions(ctx, true)
 }
 
 func ensureRestoredAndCapturedWithOptions(ctx context.Context, resetTransientHeat bool) error {
+	cfg := loadSidebarConfig(ctx)
 	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
 		service := runtimeServiceWithStore(store)
 		if resetTransientHeat {
@@ -44,7 +53,10 @@ func ensureRestoredAndCapturedWithOptions(ctx context.Context, resetTransientHea
 		for name, restoreErr := range report.Failed {
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed (session): %v\n", name, restoreErr)
 		}
-		return service.CaptureLiveSessions(ctx, "tmux")
+		if err := service.CaptureLiveSessions(ctx, "tmux"); err != nil {
+			return err
+		}
+		return captureVisitedAgentAttentionIfEnabled(ctx, service, cfg)
 	})
 }
 
@@ -55,15 +67,24 @@ func resetTransientHeatStateOnStartup(ctx context.Context) error {
 }
 
 func captureLiveSidebarSessions(ctx context.Context) error {
+	cfg := loadSidebarConfig(ctx)
 	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
-		return runtimeServiceWithStore(store).CaptureLiveSessions(ctx, "tmux")
+		service := runtimeServiceWithStore(store)
+		if err := service.CaptureLiveSessions(ctx, "tmux"); err != nil {
+			return err
+		}
+		return captureVisitedAgentAttentionIfEnabled(ctx, service, cfg)
 	})
 }
 
 func captureLiveSidebarSessionsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) error {
 	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
 		return withActivityDebugLogger(cfg, func(logger ports.LoggerPort) error {
-			return runtimeServiceWithStore(store).WithLogger(logger).CaptureLiveSessionsWithConfig(ctx, "tmux", cfg)
+			service := runtimeServiceWithStore(store).WithLogger(logger)
+			if err := service.CaptureLiveSessionsWithConfig(ctx, "tmux", cfg); err != nil {
+				return err
+			}
+			return captureVisitedAgentAttentionIfEnabled(ctx, service, cfg)
 		})
 	})
 }
@@ -71,7 +92,8 @@ func captureLiveSidebarSessionsWithConfig(ctx context.Context, cfg ports.ConfigS
 func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) error {
 	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
 		return withActivityDebugLogger(cfg, func(logger ports.LoggerPort) error {
-			return runtimeServiceWithStore(store).WithLogger(logger).CaptureSessionHeatWithConfig(ctx, "tmux", cfg)
+			service := runtimeServiceWithStore(store).WithLogger(logger)
+			return service.CaptureSessionHeatWithConfig(ctx, "tmux", cfg)
 		})
 	})
 }
@@ -122,6 +144,15 @@ func serveSidebarDaemon(ctx context.Context) error {
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
 		}
 	}
+}
+
+func captureVisitedAgentAttentionIfEnabled(ctx context.Context, service interface {
+	CaptureVisitedAgentAttention(context.Context, string) error
+}, cfg ports.ConfigSnapshot) error {
+	if !cfg.AgentAttentionEnabled {
+		return nil
+	}
+	return service.CaptureVisitedAgentAttention(ctx, "tmux")
 }
 
 func withActivityDebugLogger(cfg ports.ConfigSnapshot, fn func(logger ports.LoggerPort) error) error {

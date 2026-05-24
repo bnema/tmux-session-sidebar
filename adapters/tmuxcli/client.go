@@ -78,17 +78,22 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
+	agentAttention, err := c.option(ctx, "@session-sidebar-agent-attention")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
 	return ports.ConfigSnapshot{
-		Loaded:             true,
-		KeyBinding:         key,
-		Width:              width,
-		ProjectRoots:       splitProjectRoots(roots),
-		CloseAfterSwitch:   parseTmuxBool(closeAfterSwitch),
-		HeatColorsEnabled:  parseTmuxBool(heatColors),
-		HeatHalfLifeHours:  halfLifeHours,
-		HeatStaleHours:     staleHours,
-		HeatRefreshSeconds: refreshSeconds,
-		ActivityDebugLog:   parseTmuxBool(activityDebugLog),
+		Loaded:                true,
+		KeyBinding:            key,
+		Width:                 width,
+		ProjectRoots:          splitProjectRoots(roots),
+		CloseAfterSwitch:      parseTmuxBool(closeAfterSwitch),
+		HeatColorsEnabled:     parseTmuxBool(heatColors),
+		HeatHalfLifeHours:     halfLifeHours,
+		HeatStaleHours:        staleHours,
+		HeatRefreshSeconds:    refreshSeconds,
+		ActivityDebugLog:      parseTmuxBool(activityDebugLog),
+		AgentAttentionEnabled: agentAttention == "" || parseTmuxBool(agentAttention),
 	}, nil
 }
 

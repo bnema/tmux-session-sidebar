@@ -407,16 +407,16 @@ func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
 }
 
 func sessionMarker(item SessionItem) string {
+	if item.Attention {
+		return attentionMarkerSymbol
+	}
 	if item.Current {
 		return "*"
 	}
 	return " "
 }
 
-func attentionSuffix(item SessionItem) string {
-	if item.Attention && !item.Current {
-		return " " + attentionMarkerSymbol
-	}
+func attentionSuffix() string {
 	return ""
 }
 
@@ -442,7 +442,7 @@ func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
 			badge = fmt.Sprintf("[%s] ", slotLabel(item.Slot))
 		}
 		style := sessionRowStyle(styles, item)
-		row := style.Render(fmt.Sprintf("%s %s%s%s", sessionMarker(item), badge, item.Name, attentionSuffix(item)))
+		row := style.Render(fmt.Sprintf("%s %s%s%s", sessionMarker(item), badge, item.Name, attentionSuffix()))
 		if i == m.cursor {
 			row = styles.selected.Render(row)
 		}

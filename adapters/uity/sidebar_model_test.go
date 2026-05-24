@@ -406,25 +406,25 @@ func TestSidebarModelFilterAcceptsSpace(t *testing.T) {
 	}
 }
 
-func TestSidebarModelRenderShowsAttentionMarkerNextToSessionName(t *testing.T) {
+func TestSidebarModelRenderShowsAttentionMarkerInPrimaryMarkerColumn(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{})
 	view := model.Render()
-	if !strings.Contains(view, "  [1] alpha "+attentionMarkerSymbol) {
-		t.Fatalf("render missing attention marker next to session name in %q", view)
+	if !strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
+		t.Fatalf("render missing attention marker in primary marker column in %q", view)
 	}
-	if strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
-		t.Fatalf("render kept attention marker in primary marker column in %q", view)
+	if strings.Contains(view, "alpha "+attentionMarkerSymbol) {
+		t.Fatalf("render kept attention marker as a suffix in %q", view)
 	}
 }
 
-func TestSidebarModelRenderPrefersCurrentMarkerOverAttention(t *testing.T) {
+func TestSidebarModelRenderUsesAttentionMarkerInsteadOfCurrentMarker(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true, Attention: true, Slot: 1}}, Actions{})
 	view := model.Render()
-	if !strings.Contains(view, "* [1] alpha") {
-		t.Fatalf("render missing current marker in %q", view)
+	if !strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
+		t.Fatalf("render missing attention marker for current session in %q", view)
 	}
-	if strings.Contains(view, attentionMarkerSymbol) {
-		t.Fatalf("render should not show attention marker for current session in %q", view)
+	if strings.Contains(view, "* [1] alpha") {
+		t.Fatalf("render kept current marker instead of bell in %q", view)
 	}
 }
 

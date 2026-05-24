@@ -305,7 +305,6 @@ func (s *Service) logHeatTrace(sessionName string, trace heat.Trace) {
 		{Key: "status", Value: trace.Status},
 		{Key: "bucket", Value: trace.Bucket},
 		{Key: "idle_for", Value: trace.IdleFor},
-		{Key: "attention", Value: trace.Attention},
 		{Key: "observed_activity", Value: trace.ObservedActivity},
 		{Key: "visited", Value: trace.Visited},
 	})
@@ -395,27 +394,26 @@ func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.TmuxSe
 
 	for _, session := range live {
 		state := cloneHeatState(next[session.Name])
-		active, agentCompleted := applyPaneObservations(&state, observationsBySession[session.Name])
-		nextState, trace := heat.Advance(state, now, active, agentCompleted, visited[session.Name], halfLife, staleAfter)
+		active := applyPaneObservations(&state, observationsBySession[session.Name])
+		nextState, trace := heat.Advance(state, now, active, visited[session.Name], halfLife, staleAfter)
 		next[session.Name] = nextState
 		traces[session.Name] = trace
 	}
 	return next, traces
 }
 
-func applyPaneObservations(state *heat.State, observations []paneObservation) (bool, bool) {
+func applyPaneObservations(state *heat.State, observations []paneObservation) bool {
 	if state == nil {
-		return false, false
+		return false
 	}
 	if state.Panes == nil {
 		state.Panes = map[string]heat.PaneState{}
 	}
 	if len(observations) == 0 {
-		return false, false
+		return false
 	}
 	nextPanes := make(map[string]heat.PaneState, len(observations))
 	active := false
-	agentCompleted := false
 	// bootstrapOnly suppresses activity detection when applyPaneObservations sees the first
 	// fingerprints for a session whose state.Panes is empty but whose state.Score/LastActiveAt
 	// already prove prior heat; later observations fall back to normal change detection.
@@ -434,50 +432,10 @@ func applyPaneObservations(state *heat.State, observations []paneObservation) (b
 		if !bootstrapOnly && (!hadPrevious || previous.Fingerprint != observation.Fingerprint) {
 			active = true
 		}
-		next := heat.PaneState{Fingerprint: observation.Fingerprint}
-		if kind, running := runningAgentKind(observation.CurrentCmd); running {
-			next.AgentKind = kind
-			completionCue := agentCompletionCue(observation.Text)
-			newSampledOutput := hadPrevious && previous.Fingerprint != observation.Fingerprint
-			if completionCue && newSampledOutput && previous.AgentPhase != heat.AgentPhaseCompleted {
-				agentCompleted = true
-				next.AgentPhase = heat.AgentPhaseCompleted
-			} else if completionCue {
-				next.AgentPhase = heat.AgentPhaseCompleted
-			} else {
-				next.AgentPhase = heat.AgentPhaseRunning
-			}
-		} else if previous.AgentPhase == heat.AgentPhaseRunning {
-			agentCompleted = true
-			next.AgentKind = previous.AgentKind
-			next.AgentPhase = heat.AgentPhaseCompleted
-		}
-		nextPanes[observation.PaneID] = next
+		nextPanes[observation.PaneID] = heat.PaneState{Fingerprint: observation.Fingerprint}
 	}
 	state.Panes = nextPanes
-	return active, agentCompleted
-}
-
-func runningAgentKind(command string) (string, bool) {
-	cmd := strings.ToLower(strings.TrimSpace(command))
-	switch cmd {
-	case "claude", "codex", "cursor-agent", "gemini", "grok", "opencode", "pi", "amp", "agy", "hermes", "droid", "qodercli", "acli":
-		return cmd, true
-	default:
-		return "", false
-	}
-}
-
-func agentCompletionCue(text string) bool {
-	lower := strings.ToLower(text)
-	return strings.Contains(lower, "turn complete") ||
-		strings.Contains(lower, "turn completed") ||
-		strings.Contains(lower, "task complete") ||
-		strings.Contains(lower, "task completed") ||
-		strings.Contains(lower, "session completed") ||
-		strings.Contains(lower, "needs your attention") ||
-		strings.Contains(lower, "waiting for input") ||
-		strings.Contains(lower, "approval needed")
+	return active
 }
 
 func visitedSessionNames(clients []ports.TmuxClientSnapshot, sessionNamesByID map[string]string) map[string]bool {
@@ -506,7 +464,6 @@ func cloneHeatState(state heat.State) heat.State {
 func clearTransientHeatState(state heat.State) heat.State {
 	state.RecentActivityAt = time.Time{}
 	state.LastVisitedAt = time.Time{}
-	state.Attention = false
 	state.Panes = nil
 	return state
 }

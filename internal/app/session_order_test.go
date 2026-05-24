@@ -154,6 +154,21 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	}
 }
 
+func TestClonePersistedStatePreservesAgentAttention(t *testing.T) {
+	original := ports.PersistedState{
+		AgentAttention: map[string][]byte{"$1": []byte("attention")},
+	}
+
+	clone := clonePersistedState(original)
+	if !reflect.DeepEqual(clone.AgentAttention, original.AgentAttention) {
+		t.Fatalf("AgentAttention = %#v, want %#v", clone.AgentAttention, original.AgentAttention)
+	}
+	clone.AgentAttention["$1"][0] = 'A'
+	if string(original.AgentAttention["$1"]) != "attention" {
+		t.Fatalf("original AgentAttention mutated: %q", string(original.AgentAttention["$1"]))
+	}
+}
+
 func TestSaveShowNumericSessions(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	if err := saveShowNumericSessions(context.Background(), true); err != nil {
