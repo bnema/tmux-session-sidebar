@@ -12,6 +12,7 @@ type ConfigSnapshot struct {
 	HeatHalfLifeHours     int
 	HeatStaleHours        int
 	HeatRefreshSeconds    int
+	HeatRecentHours       int
 	ActivityDebugLog      bool
 	AgentAttentionEnabled bool
 }

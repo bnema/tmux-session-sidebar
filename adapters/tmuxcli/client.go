@@ -74,6 +74,10 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
+	recentHours, err := c.optionInt(ctx, "@session-sidebar-heat-recent-hours")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
 	activityDebugLog, err := c.option(ctx, "@session-sidebar-activity-debug-log")
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
@@ -92,6 +96,7 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		HeatHalfLifeHours:     halfLifeHours,
 		HeatStaleHours:        staleHours,
 		HeatRefreshSeconds:    refreshSeconds,
+		HeatRecentHours:       recentHours,
 		ActivityDebugLog:      parseTmuxBool(activityDebugLog),
 		AgentAttentionEnabled: agentAttention == "" || parseTmuxBool(agentAttention),
 	}, nil
