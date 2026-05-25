@@ -431,14 +431,38 @@ func TestSidebarModelRenderUsesAttentionMarkerInsteadOfCurrentMarker(t *testing.
 	}
 }
 
+func TestSidebarModelRenderDisplaysDoubleDigitSlots(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 10}, {Name: "beta", Slot: 11}}, Actions{})
+	view := stripANSI(model.Render())
+	for _, want := range []string{"[10] alpha", "[11] beta"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("render missing slot label %q in %q", want, view)
+		}
+	}
+	if strings.Contains(view, "[0] alpha") {
+		t.Fatalf("render used keyboard shortcut label instead of slot number in %q", view)
+	}
+}
+
 func TestSidebarModelRenderKeepsAttentionMarkerWhiteWhenSessionTextIsStale(t *testing.T) {
-	model := NewSidebarModel([]SessionItem{{Name: "alpha", Attention: true, Slot: 1, Heat: string(heat.BucketStale)}}, Actions{})
+	model := NewSidebarModel([]SessionItem{{Name: "selected"}, {Name: "alpha", Attention: true, Slot: 1, Heat: string(heat.BucketStale)}}, Actions{})
 	view := model.Render()
 	if !strings.Contains(view, "\x1b[1;38;2;255;255;255m"+attentionMarkerSymbol) {
 		t.Fatalf("render missing white attention marker in %q", view)
 	}
 	if !strings.Contains(view, "\x1b[38;2;75;85;99m[1] alpha") {
 		t.Fatalf("render missing stale session text color in %q", view)
+	}
+}
+
+func TestSidebarModelRenderAppliesSelectedStyleAcrossEntireRow(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1, Heat: string(heat.BucketStale)}}, Actions{})
+	view := model.Render()
+	if !strings.Contains(view, "48;2;6;95;70") {
+		t.Fatalf("render missing selected row green background in %q", view)
+	}
+	if strings.Contains(view, "\x1b[38;2;75;85;99m[1] alpha") {
+		t.Fatalf("selected row kept nested stale style that resets selected background in %q", view)
 	}
 }
 

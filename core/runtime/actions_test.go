@@ -181,7 +181,12 @@ func TestProjectSessionDecision(t *testing.T) {
 }
 
 func TestQuickSwitchTarget(t *testing.T) {
-	visible := []sessions.View{{Name: "123", Visible: true}, {Name: "alpha", Visible: true}, {Name: "beta", Visible: true}}
+	visible := []sessions.View{
+		{Name: "123", Visible: true}, {Name: "alpha", Visible: true}, {Name: "beta", Visible: true},
+		{Name: "gamma", Visible: true}, {Name: "delta", Visible: true}, {Name: "epsilon", Visible: true},
+		{Name: "zeta", Visible: true}, {Name: "eta", Visible: true}, {Name: "theta", Visible: true},
+		{Name: "iota", Visible: true}, {Name: "kappa", Visible: true}, {Name: "lambda", Visible: true},
+	}
 	tests := []struct {
 		name    string
 		slot    int
@@ -190,7 +195,8 @@ func TestQuickSwitchTarget(t *testing.T) {
 	}{
 		{name: "slot one skips numeric", slot: 1, want: "alpha"},
 		{name: "slot two", slot: 2, want: "beta"},
-		{name: "missing slot", slot: 3, wantErr: coreerrors.ErrNoQuickSwitchSlot},
+		{name: "slot eleven", slot: 11, want: "lambda"},
+		{name: "missing slot", slot: 12, wantErr: coreerrors.ErrNoQuickSwitchSlot},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

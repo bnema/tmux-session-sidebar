@@ -392,7 +392,7 @@ func newSidebarStyles() sidebarStyles {
 		active:   lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
 		recent:   lipgloss.NewStyle().Foreground(lipgloss.Color(recentSignalColor)),
 		stale:    lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionColor)),
-		selected: lipgloss.NewStyle().Background(lipgloss.Color("#1f2937")).Foreground(lipgloss.Color("#ffffff")).Bold(true),
+		selected: lipgloss.NewStyle().Background(lipgloss.Color("#065f46")).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
 	}
 }
 
@@ -444,11 +444,13 @@ func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
 		if item.Slot > 0 {
 			badge = fmt.Sprintf("[%s] ", slotLabel(item.Slot))
 		}
-		marker := sessionMarkerStyle(styles, item).Render(sessionMarker(item))
-		body := sessionRowStyle(styles, item).Render(fmt.Sprintf("%s%s", badge, item.Name))
-		row := marker + " " + body
+		var row string
 		if i == m.cursor {
-			row = styles.selected.Render(row)
+			row = styles.selected.Render(fmt.Sprintf("%s %s%s", sessionMarker(item), badge, item.Name))
+		} else {
+			marker := sessionMarkerStyle(styles, item).Render(sessionMarker(item))
+			body := sessionRowStyle(styles, item).Render(fmt.Sprintf("%s%s", badge, item.Name))
+			row = marker + " " + body
 		}
 		lines = append(lines, row)
 	}
@@ -533,8 +535,5 @@ func trimLastRune(value string) string {
 	return string(r[:len(r)-1])
 }
 func slotLabel(slot int) string {
-	if slot == 10 {
-		return "0"
-	}
 	return fmt.Sprintf("%d", slot)
 }
