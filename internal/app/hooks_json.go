@@ -97,8 +97,7 @@ func installJSONHooks(stdout io.Writer, def agentHookDef, assumeYes bool) error 
 		return err
 	}
 	if newString == oldString {
-		fmt.Fprintf(stdout, "    %s hooks already up to date at %s\n", def.DisplayName, path)
-		return nil
+		return writef(stdout, "    %s hooks already up to date at %s\n", def.DisplayName, path)
 	}
 	if !assumeYes {
 		ok, err := confirmWrite(path)
@@ -106,8 +105,7 @@ func installJSONHooks(stdout io.Writer, def agentHookDef, assumeYes bool) error 
 			return err
 		}
 		if !ok {
-			fmt.Fprintln(stdout, "    Aborted.")
-			return nil
+			return writeln(stdout, "    Aborted.")
 		}
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -116,8 +114,7 @@ func installJSONHooks(stdout io.Writer, def agentHookDef, assumeYes bool) error 
 	if err := os.WriteFile(path, []byte(newString), 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "    %s hooks installed at %s\n", def.DisplayName, path)
-	return nil
+	return writef(stdout, "    %s hooks installed at %s\n", def.DisplayName, path)
 }
 
 func uninstallJSONHooks(stdout io.Writer, def agentHookDef) error {
@@ -125,15 +122,13 @@ func uninstallJSONHooks(stdout io.Writer, def agentHookDef) error {
 	current, _, err := readJSONConfig(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Fprintf(stdout, "    No %s hook config found at %s\n", def.DisplayName, path)
-			return nil
+			return writef(stdout, "    No %s hook config found at %s\n", def.DisplayName, path)
 		}
 		return err
 	}
 	hooks, _ := current["hooks"].(map[string]any)
 	if hooks == nil {
-		fmt.Fprintf(stdout, "    Removed 0 tmux-session-sidebar hook(s) from %s\n", path)
-		return nil
+		return writef(stdout, "    Removed 0 tmux-session-sidebar hook(s) from %s\n", path)
 	}
 	changed := false
 	for event, value := range hooks {
@@ -197,8 +192,7 @@ func uninstallJSONHooks(stdout io.Writer, def agentHookDef) error {
 		}
 	}
 	if !changed {
-		fmt.Fprintf(stdout, "    Removed 0 tmux-session-sidebar hook(s) from %s\n", path)
-		return nil
+		return writef(stdout, "    Removed 0 tmux-session-sidebar hook(s) from %s\n", path)
 	}
 	current["hooks"] = hooks
 	newString, err := prettyJSON(current)
@@ -208,8 +202,7 @@ func uninstallJSONHooks(stdout io.Writer, def agentHookDef) error {
 	if err := os.WriteFile(path, []byte(newString), 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "    Removed %s hooks from %s\n", def.DisplayName, path)
-	return nil
+	return writef(stdout, "    Removed %s hooks from %s\n", def.DisplayName, path)
 }
 
 func readJSONConfig(path string) (map[string]any, string, error) {

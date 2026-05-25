@@ -229,8 +229,7 @@ func installRovoHooks(stdout io.Writer, def agentHookDef, assumeYes bool) error 
 		return err
 	}
 	if newString == oldString {
-		fmt.Fprintf(stdout, "    %s hooks already up to date at %s\n", def.DisplayName, path)
-		return nil
+		return writef(stdout, "    %s hooks already up to date at %s\n", def.DisplayName, path)
 	}
 	if !assumeYes {
 		ok, err := confirmWrite(path)
@@ -238,8 +237,7 @@ func installRovoHooks(stdout io.Writer, def agentHookDef, assumeYes bool) error 
 			return err
 		}
 		if !ok {
-			fmt.Fprintln(stdout, "    Aborted.")
-			return nil
+			return writeln(stdout, "    Aborted.")
 		}
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -248,8 +246,7 @@ func installRovoHooks(stdout io.Writer, def agentHookDef, assumeYes bool) error 
 	if err := os.WriteFile(path, []byte(newString), 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "    %s hooks installed at %s\n", def.DisplayName, path)
-	return nil
+	return writef(stdout, "    %s hooks installed at %s\n", def.DisplayName, path)
 }
 
 func uninstallRovoHooks(stdout io.Writer, def agentHookDef) error {
@@ -259,8 +256,7 @@ func uninstallRovoHooks(stdout io.Writer, def agentHookDef) error {
 		return err
 	}
 	if !exists {
-		fmt.Fprintf(stdout, "    No %s hook config found at %s\n", def.DisplayName, path)
-		return nil
+		return writef(stdout, "    No %s hook config found at %s\n", def.DisplayName, path)
 	}
 	eventHooks := mapSlice(config, "eventHooks")
 	events := sliceValue(eventHooks, "events")
@@ -294,8 +290,7 @@ func uninstallRovoHooks(stdout io.Writer, def agentHookDef) error {
 		rewritten = append(rewritten, eventMap)
 	}
 	if !changed {
-		fmt.Fprintf(stdout, "    Removed 0 tmux-session-sidebar hook(s) from %s\n", path)
-		return nil
+		return writef(stdout, "    Removed 0 tmux-session-sidebar hook(s) from %s\n", path)
 	}
 	eventHooks["events"] = rewritten
 	config["eventHooks"] = eventHooks
@@ -306,8 +301,7 @@ func uninstallRovoHooks(stdout io.Writer, def agentHookDef) error {
 	if err := os.WriteFile(path, []byte(newString), 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "    Removed %s hooks from %s\n", def.DisplayName, path)
-	return nil
+	return writef(stdout, "    Removed %s hooks from %s\n", def.DisplayName, path)
 }
 
 func upsertRovoEvent(def agentHookDef, events []any, hookEvent agentHookEvent) []any {
