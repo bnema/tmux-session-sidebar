@@ -1,35 +1,30 @@
-name: CI
+name: Go CI
 
 on:
   push:
     branches: [main]
-    paths:
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Makefile'
-      - 'scripts/**'
-      - '.github/workflows/**'
-      - '.goreleaser.yaml'
-      - '.golangci.yml'
   pull_request:
-    paths:
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Makefile'
-      - 'scripts/**'
-      - '.github/workflows/**'
-      - '.goreleaser.yaml'
-      - '.golangci.yml'
 
 permissions:
+  # Required by checkout/cache in the reusable Go CI workflow.
   contents: read
+  # Required by dorny/paths-filter in the reusable workflow to classify PR file changes.
   pull-requests: read
 
 jobs:
-  ci:
+  go:
     uses: bnema/gh-actions/.github/workflows/go-ci.yml@main
     with:
       go-version: stable
+      paths-filter: true
+      paths-filter-patterns: |
+        go:
+          - '**.go'
+          - 'go.mod'
+          - 'go.sum'
+          - 'Makefile'
+          - 'scripts/**'
+          - '.github/workflows/**'
+          - '.goreleaser.yaml'
+          - '.golangci.yml'
       test-command: make test-runtime-bootstrap && go test -race ./...

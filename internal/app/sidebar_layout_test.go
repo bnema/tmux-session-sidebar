@@ -41,8 +41,8 @@ func TestRuntimeRouterRequiresSidebarPortForSidebarRoutes(t *testing.T) {
 }
 
 func TestRuntimeRouterAllowsNonSidebarRoutesWithoutSidebarPort(t *testing.T) {
-	if err := (runtimeRouter{}).Handle(t.Context(), Route{Path: "daemon/ensure"}, nil, nil); err != nil {
-		t.Fatalf("Handle daemon route error: %v", err)
+	if err := (runtimeRouter{}).Handle(t.Context(), Route{Path: "hook/client-resized"}, nil, nil); err != nil {
+		t.Fatalf("Handle non-sidebar route error: %v", err)
 	}
 }
 
