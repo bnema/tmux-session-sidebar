@@ -30,14 +30,14 @@ func TestBuildSlotMapSkipsNumericSessions(t *testing.T) {
 			want: map[int]string{1: "beta"},
 		},
 		{
-			name: "caps at ten",
+			name: "continues beyond keyboard shortcuts",
 			sessions: []sessions.View{
 				{Name: "a", Visible: true}, {Name: "b", Visible: true}, {Name: "c", Visible: true},
 				{Name: "d", Visible: true}, {Name: "e", Visible: true}, {Name: "f", Visible: true},
 				{Name: "g", Visible: true}, {Name: "h", Visible: true}, {Name: "i", Visible: true},
 				{Name: "j", Visible: true}, {Name: "k", Visible: true},
 			},
-			want: map[int]string{1: "a", 2: "b", 3: "c", 4: "d", 5: "e", 6: "f", 7: "g", 8: "h", 9: "i", 10: "j"},
+			want: map[int]string{1: "a", 2: "b", 3: "c", 4: "d", 5: "e", 6: "f", 7: "g", 8: "h", 9: "i", 10: "j", 11: "k"},
 		},
 	}
 

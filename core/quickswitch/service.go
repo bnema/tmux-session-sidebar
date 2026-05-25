@@ -6,8 +6,6 @@ import (
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
 
-const maxSlots = 10
-
 func BuildSlotMap(visible []sessions.View) map[int]string {
 	slots := make(map[int]string)
 	nextSlot := 1
@@ -17,9 +15,6 @@ func BuildSlotMap(visible []sessions.View) map[int]string {
 		}
 		slots[nextSlot] = session.Name
 		nextSlot++
-		if nextSlot > maxSlots {
-			break
-		}
 	}
 	return slots
 }
