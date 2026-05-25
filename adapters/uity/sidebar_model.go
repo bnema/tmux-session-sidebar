@@ -444,11 +444,13 @@ func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
 		if item.Slot > 0 {
 			badge = fmt.Sprintf("[%s] ", slotLabel(item.Slot))
 		}
-		marker := sessionMarkerStyle(styles, item).Render(sessionMarker(item))
-		body := sessionRowStyle(styles, item).Render(fmt.Sprintf("%s%s", badge, item.Name))
-		row := marker + " " + body
+		var row string
 		if i == m.cursor {
-			row = styles.selected.Render(row)
+			row = styles.selected.Render(fmt.Sprintf("%s %s%s", sessionMarker(item), badge, item.Name))
+		} else {
+			marker := sessionMarkerStyle(styles, item).Render(sessionMarker(item))
+			body := sessionRowStyle(styles, item).Render(fmt.Sprintf("%s%s", badge, item.Name))
+			row = marker + " " + body
 		}
 		lines = append(lines, row)
 	}
