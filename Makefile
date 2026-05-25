@@ -2,13 +2,8 @@ PLUGIN_NAME ?= tmux-session-sidebar
 PLUGIN_REPO ?= bnema/$(PLUGIN_NAME)
 TPM_DIR ?= $(HOME)/.tmux/plugins
 TARGET_DIR ?= $(TPM_DIR)/$(PLUGIN_NAME)
-GO_BIN_DIR ?= $(shell go env GOBIN 2>/dev/null || true)
-ifeq ($(GO_BIN_DIR),)
-GO_BIN_DIR := $(shell go env GOPATH)/bin
-endif
-GO_BIN_PATH ?= $(GO_BIN_DIR)/tmux-session-sidebar
 
-.PHONY: install uninstall mocks test-go test-runtime-bootstrap go-install
+.PHONY: install uninstall mocks test-go test-runtime-bootstrap build-runtime
 
 install:
 	@mkdir -p "$(TPM_DIR)"
@@ -30,15 +25,12 @@ test-runtime-bootstrap:
 	@bash scripts/install-git-update-hook_test.sh
 	@bash scripts/daemon-control_test.sh
 
-go-install:
-	@mkdir -p "$(GO_BIN_DIR)"
-	@go install ./cmd/tmux-session-sidebar
+build-runtime:
 	@runtime_bin="$$(bash scripts/ensure-runtime.sh)"; status=$$?; \
 		if [ $$status -ne 0 ] || [ -z "$$runtime_bin" ]; then \
 			echo "Failed to update tmux plugin runtime" >&2; \
 			exit 1; \
 		fi; \
-		echo "Installed Go runtime -> $(GO_BIN_PATH)"; \
 		echo "Updated tmux plugin runtime -> $$runtime_bin"
 
 uninstall:

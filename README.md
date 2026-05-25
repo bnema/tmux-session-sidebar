@@ -198,8 +198,9 @@ For local development:
 
 ```bash
 make install
+make build-runtime
 make test-go
 make test-runtime-bootstrap
 ```
 
-`make install` symlinks the current checkout into `~/.tmux/plugins/tmux-session-sidebar`. `make uninstall` removes that symlink. `make go-install` installs the CLI with `go install` and updates the plugin-local runtime.
+`make install` symlinks the current checkout into `~/.tmux/plugins/tmux-session-sidebar`. `make build-runtime` updates the plugin-local `.bin/tmux-session-sidebar` runtime for fast local testing. `make uninstall` removes the symlink.
