@@ -1,0 +1,51 @@
+version: 2
+
+project_name: tmux-session-sidebar
+
+builds:
+  - id: tmux-session-sidebar
+    main: ./cmd/tmux-session-sidebar
+    binary: tmux-session-sidebar
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/bnema/tmux-session-sidebar/internal/app.version={{ .Version }}
+        -X github.com/bnema/tmux-session-sidebar/internal/app.commit={{ .Commit }}
+        -X github.com/bnema/tmux-session-sidebar/internal/app.date={{ .CommitDate }}
+        -X github.com/bnema/tmux-session-sidebar/internal/app.builtBy=goreleaser
+
+archives:
+  - id: tmux-session-sidebar
+    ids:
+      - tmux-session-sidebar
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  prerelease: auto
+  make_latest: true
+
+git:
+  tag_sort: smartsemver

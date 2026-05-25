@@ -27,6 +27,7 @@ test-go:
 
 test-runtime-bootstrap:
 	@bash scripts/ensure-runtime_test.sh
+	@bash scripts/install-git-update-hook_test.sh
 	@bash scripts/daemon-control_test.sh
 
 go-install:

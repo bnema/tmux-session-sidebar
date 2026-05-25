@@ -96,6 +96,17 @@ run_ensure() {
   TEST_ROOT="$root" PATH="$root/fakebin:$PATH" "$root/plugin/scripts/ensure-runtime.sh"
 }
 
+run_ensure_without_go() {
+  local root="$1" nogobin
+  nogobin="$root/nogobin"
+  mkdir -p "$nogobin"
+  ln -s /usr/bin/bash "$nogobin/bash"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/dirname "$@"\n' >"$nogobin/dirname"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/pwd "$@"\n' >"$nogobin/pwd"
+  chmod +x "$nogobin/dirname" "$nogobin/pwd"
+  TEST_ROOT="$root" PATH="$nogobin" "$root/plugin/scripts/ensure-runtime.sh"
+}
+
 test_uses_plugin_local_binary_even_when_path_has_stale_runtime() {
   local root output expected
   root="$(new_fixture)"
@@ -129,6 +140,85 @@ test_runtime_rebuilds_after_commit_changes() {
   assert_eq "2" "$builds" "changed fingerprint should rebuild"
 }
 
+test_existing_runtime_is_reused_when_go_is_unavailable() {
+  local root expected output
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  mkdir -p "$root/plugin/.bin"
+  printf '#!/usr/bin/env bash\necho cached-runtime\n' >"$expected"
+  chmod +x "$expected"
+
+  output="$(run_ensure_without_go "$root")"
+  assert_eq "$expected" "$output" "existing plugin-local runtime should be returned when go is unavailable"
+}
+
+prepare_release_download_fixture() {
+  local root="$1"
+  rm -f "$root/fakebin/go"
+  mkdir -p "$root/fakebin" "$root/download-src"
+  printf '#!/usr/bin/env bash\necho downloaded-runtime\n' >"$root/download-src/tmux-session-sidebar"
+  chmod +x "$root/download-src/tmux-session-sidebar"
+  tar -C "$root/download-src" -czf "$root/release.tar.gz" tmux-session-sidebar
+  ln -s /usr/bin/bash "$root/fakebin/bash"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/dirname "$@"\n' >"$root/fakebin/dirname"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/pwd "$@"\n' >"$root/fakebin/pwd"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/uname "$@"\n' >"$root/fakebin/uname"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/tar "$@"\n' >"$root/fakebin/tar"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/rm "$@"\n' >"$root/fakebin/rm"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/mkdir "$@"\n' >"$root/fakebin/mkdir"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/mv "$@"\n' >"$root/fakebin/mv"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/chmod "$@"\n' >"$root/fakebin/chmod"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/cp "$@"\n' >"$root/fakebin/cp"
+  ln -s /usr/bin/gzip "$root/fakebin/gzip"
+  chmod +x "$root/fakebin/dirname" "$root/fakebin/pwd" "$root/fakebin/uname" "$root/fakebin/tar" "$root/fakebin/rm" "$root/fakebin/mkdir" "$root/fakebin/mv" "$root/fakebin/chmod" "$root/fakebin/cp"
+  cat >"$root/fakebin/curl" <<'CURLFAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+url=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) shift; out="$1" ;;
+    http*) url="$1" ;;
+  esac
+  shift || true
+done
+[ -n "$out" ] || { echo "missing output" >&2; exit 1; }
+printf '%s\n' "$url" >>"$TEST_ROOT/curl.log"
+cp "$TEST_ROOT/release.tar.gz" "$out"
+CURLFAKE
+  chmod +x "$root/fakebin/curl"
+}
+
+test_downloads_latest_release_when_go_is_unavailable_and_runtime_missing() {
+  local root expected output
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  rm -rf "$root/plugin/.bin"
+  prepare_release_download_fixture "$root"
+
+  output="$(TEST_ROOT="$root" PATH="$root/fakebin" "$root/plugin/scripts/ensure-runtime.sh")"
+  assert_eq "$expected" "$output" "downloaded release runtime should be installed when go is unavailable"
+  assert_file_contains "$root/curl.log" "https://github.com/bnema/tmux-session-sidebar/releases/latest/download/tmux-session-sidebar_Linux_x86_64.tar.gz" "ensure-runtime should request the Linux x86_64 latest release asset"
+  assert_eq "downloaded-runtime" "$($expected)" "downloaded runtime should be executable"
+}
+
+test_refreshes_existing_release_runtime_when_requested() {
+  local root expected output
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  mkdir -p "$root/plugin/.bin"
+  printf '#!/usr/bin/env bash\necho stale-runtime\n' >"$expected"
+  chmod +x "$expected"
+  prepare_release_download_fixture "$root"
+
+  output="$(TEST_ROOT="$root" PATH="$root/fakebin" TMUX_SESSION_SIDEBAR_REFRESH_RELEASE=1 "$root/plugin/scripts/ensure-runtime.sh")"
+
+  assert_eq "$expected" "$output" "forced refresh should still return plugin-local runtime"
+  assert_file_contains "$root/curl.log" "tmux-session-sidebar_Linux_x86_64.tar.gz" "forced refresh should download the release asset"
+  assert_eq "downloaded-runtime" "$($expected)" "forced refresh should replace stale runtime"
+}
+
 test_runtime_rebuilds_for_untracked_source_files() {
   local root builds
   root="$(new_fixture)"
@@ -146,5 +236,8 @@ test_uses_plugin_local_binary_even_when_path_has_stale_runtime
 test_cached_runtime_is_reused_when_fingerprint_matches
 test_runtime_rebuilds_after_commit_changes
 test_runtime_rebuilds_for_untracked_source_files
+test_existing_runtime_is_reused_when_go_is_unavailable
+test_downloads_latest_release_when_go_is_unavailable_and_runtime_missing
+test_refreshes_existing_release_runtime_when_requested
 
 echo "ensure-runtime tests passed"

@@ -1,0 +1,15 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    uses: bnema/gh-actions/.github/workflows/go-release.yml@main
+    with:
+      go-version: stable
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

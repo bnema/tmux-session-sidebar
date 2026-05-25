@@ -88,6 +88,32 @@ func TestRunDispatchesCommands(t *testing.T) {
 	}
 }
 
+func TestRunShowsVersion(t *testing.T) {
+	oldVersion, oldCommit, oldDate, oldBuiltBy := version, commit, date, builtBy
+	version, commit, date, builtBy = "1.2.3", "abc123", "2026-05-25T07:00:00Z", "test"
+	defer func() { version, commit, date, builtBy = oldVersion, oldCommit, oldDate, oldBuiltBy }()
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	router := &recordingRouter{}
+
+	exitCode := Run(context.Background(), []string{"version"}, stdout, stderr, router)
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%q", exitCode, stderr.String())
+	}
+	if got := stderr.String(); got != "" {
+		t.Fatalf("stderr = %q, want empty", got)
+	}
+	for _, want := range []string{"tmux-session-sidebar 1.2.3", "commit: abc123", "date: 2026-05-25T07:00:00Z", "builtBy: test"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+	if router.route.Path != "" {
+		t.Fatalf("route = %q, want no dispatch", router.route.Path)
+	}
+}
+
 func TestRunShowsHelp(t *testing.T) {
 	tests := []struct {
 		name       string

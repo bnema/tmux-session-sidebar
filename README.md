@@ -7,8 +7,8 @@ The current implementation is a Go runtime started by the tmux plugin script. It
 ## Requirements
 
 - tmux with support for user options, hooks, and format quoting
-- Go 1.26 or newer, used to build the plugin-local runtime
 - bash, plus standard Unix tools used by the bootstrap script
+- either Go 1.26 or newer to build from source, or `curl`/`tar` to install the latest released runtime binary
 - git for TPM/manual installation and the current-repository session action
 - optional: fzf for the non-sidebar `action create-project` picker
 - optional: a Nerd Font for the bell marker glyph
@@ -44,7 +44,7 @@ Then reload tmux:
 tmux source-file ~/.tmux.conf
 ```
 
-On load, `scripts/ensure-runtime.sh` builds `.bin/tmux-session-sidebar` inside the plugin checkout. It uses a build fingerprint so the runtime is rebuilt after source changes or plugin updates.
+On load, `scripts/ensure-runtime.sh` prepares `.bin/tmux-session-sidebar` inside the plugin checkout. If Go is available, it builds from source and uses a build fingerprint so the runtime is rebuilt after source changes or plugin updates. If Go is unavailable but a cached runtime exists, it reuses it; otherwise it downloads the latest GitHub release for Linux/macOS amd64/arm64. The plugin also installs a managed git `post-merge` hook in its checkout so future TPM `prefix + U` updates refresh the runtime immediately after `git pull`.
 
 ## Configuration
 
@@ -165,6 +165,19 @@ Check the runtime binary:
 
 ```bash
 ~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar --help
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar version
+```
+
+Force a runtime refresh after a TPM update:
+
+```bash
+~/.tmux/plugins/tmux-session-sidebar/scripts/ensure-runtime.sh
+```
+
+If TPM updates still leave an old binary, reload tmux once so the plugin can install its managed git update hook:
+
+```bash
+tmux source-file ~/.tmux.conf
 ```
 
 Enable activity debug logging:
