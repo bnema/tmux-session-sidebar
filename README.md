@@ -1,15 +1,17 @@
 # tmux Session Sidebar
 
-A TPM plugin for fast tmux session switching. It opens a full-height left sidebar so you can switch sessions, create project sessions, create ad-hoc sessions, rename sessions, and kill sessions without leaving tmux.
+A TPM plugin that opens a left-hand tmux sidebar for switching and managing sessions.
+
+The current implementation is a Go runtime started by the tmux plugin script. It does not use fzf for the sidebar UI.
 
 ## Requirements
 
-- tmux 3.6+
-- Go 1.26+
-- bash for the TPM bootstrap script
-- a Nerd Font if you want the bell attention marker (`\uf0f3`, U+F0F3 / nf-fa-bell) to render as the intended glyph
-
-`fzf` is not required. The old `@session-sidebar-use-fzf` option is still accepted for compatibility, but the Go UI ignores it.
+- tmux with support for user options, hooks, and format quoting
+- Go 1.26 or newer, used to build the plugin-local runtime
+- bash, plus standard Unix tools used by the bootstrap script
+- git for TPM/manual installation and the current-repository session action
+- optional: fzf for the non-sidebar `action create-project` picker
+- optional: a Nerd Font for the bell marker glyph
 
 ## Install
 
@@ -19,21 +21,10 @@ Add the plugin to `~/.tmux.conf`:
 
 ```tmux
 set -g @plugin 'bnema/tmux-session-sidebar'
-```
-
-Keep TPM loaded at the bottom of the file:
-
-```tmux
 run '~/.tmux/plugins/tpm/tpm'
 ```
 
 Reload tmux or press `prefix + I`.
-
-If you want hook-driven agent notification bells, reload once so the plugin runtime exists, then install the agent hooks:
-
-```bash
-~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks setup --yes
-```
 
 ### Manual
 
@@ -47,63 +38,17 @@ Add this to `~/.tmux.conf`:
 run-shell ~/.tmux/plugins/tmux-session-sidebar/tmux-session-sidebar.tmux
 ```
 
-Reload tmux:
+Then reload tmux:
 
 ```bash
 tmux source-file ~/.tmux.conf
 ```
 
-If you want hook-driven agent notification bells, reload once so the plugin runtime exists, then install the agent hooks:
-
-```bash
-~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks setup --yes
-```
-
-The bootstrap uses `scripts/ensure-runtime.sh`. It builds a plugin-local Go runtime at `.bin/tmux-session-sidebar` and records a build fingerprint. After TPM updates the plugin checkout, the next reload rebuilds the runtime automatically when the fingerprint changes.
-
-## Local development install
-
-From this checkout:
-
-```bash
-make install
-```
-
-This symlinks the repo into `~/.tmux/plugins/tmux-session-sidebar`.
-
-The Go runtime is built automatically into the plugin checkout when tmux loads the plugin. To force a rebuild during local development, remove `.bin/tmux-session-sidebar` or `.bin/.build-fingerprint`, then reload tmux.
-
-To enable hook-driven agent notification bells in a local development install:
-
-```bash
-./.bin/tmux-session-sidebar hooks setup --yes
-```
-
-Remove the local plugin symlink with:
-
-```bash
-make uninstall
-```
+On load, `scripts/ensure-runtime.sh` builds `.bin/tmux-session-sidebar` inside the plugin checkout. It uses a build fingerprint so the runtime is rebuilt after source changes or plugin updates.
 
 ## Configuration
 
-Configure tmux options in `~/.tmux.conf`.
-
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `@session-sidebar-key` | `M-b` | Global key for opening or closing the sidebar |
-| `@session-sidebar-width` | `20` | Fixed sidebar width passed to `tmux split-window -l` and reapplied after window resizes |
-| `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated roots for project sessions |
-| `@session-sidebar-close-after-switch` | `off` | Close the sidebar after switching when set to `on` |
-| `@session-sidebar-heat-colors` | `on` | Color sessions by recent terminal activity |
-| `@session-sidebar-heat-half-life-hours` | `8` | Heat decay half-life |
-| `@session-sidebar-heat-stale-hours` | `24` | Hours before a session fades to stale |
-| `@session-sidebar-heat-refresh-seconds` | `5` | Daemon agent/terminal sampling cadence; sidebar redraws come from tmux `client-session-changed` or manual `F5` |
-| `@session-sidebar-activity-debug-log` | `off` | Write activity trace lines to `~/.local/state/tmux-session-sidebar/activity.log` |
-| `@session-sidebar-agent-attention` | `on` | Enable hook-driven agent attention bells in the sidebar |
-| `@session-sidebar-use-fzf` | `on` | Compatibility option; ignored by the Go UI |
-
-Example:
+Set options before the plugin is loaded.
 
 ```tmux
 set -g @session-sidebar-key 'M-b'
@@ -111,99 +56,118 @@ set -g @session-sidebar-width '20'
 set -g @session-sidebar-project-roots "$HOME/projects:$HOME/dev/projects"
 set -g @session-sidebar-close-after-switch 'off'
 set -g @session-sidebar-heat-colors 'on'
-set -g @session-sidebar-heat-half-life-hours '8'
-set -g @session-sidebar-heat-stale-hours '24'
-set -g @session-sidebar-heat-refresh-seconds '5'
-set -g @session-sidebar-activity-debug-log 'off'
+set -g @session-sidebar-heat-recent-hours '1'
 set -g @session-sidebar-agent-attention 'on'
 ```
 
+| Option | Default | Used for |
+| --- | --- | --- |
+| `@session-sidebar-key` | `M-b` | Global key that toggles the sidebar |
+| `@session-sidebar-width` | `20` | Sidebar pane width |
+| `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated directories scanned by the project picker |
+| `@session-sidebar-close-after-switch` | `off` | Close the sidebar after selecting a session when set to `on` |
+| `@session-sidebar-heat-colors` | `on` | Enable activity-based session colors |
+| `@session-sidebar-heat-recent-hours` | `1` | Hours a visited or active session stays highlighted |
+| `@session-sidebar-agent-attention` | `on` | Enable bell markers from supported agent hooks |
+
+Persistent state is stored under `${XDG_STATE_HOME:-~/.local/state}/tmux-session-sidebar`.
+
 ## Usage
 
-### Open and close
+Press `Alt+b` to open or close the sidebar. It opens as a full-height left split in the current tmux window. By default it stays open across session switches; set `@session-sidebar-close-after-switch` to `on` if you want it to close after switching.
 
-Press `Alt+b` to open or close the sidebar.
-
-The sidebar opens as a full-height left split in the current tmux window. If `@session-sidebar-close-after-switch` is `off`, the sidebar stays logically open and follows the client after session switches. Its configured width is also reapplied after tmux window resizes.
-
-### Sidebar keys
-
-The footer is compact by default. Press `M-?` inside the sidebar to show or hide the full key list.
+Inside the sidebar:
 
 | Key | Action |
 | --- | --- |
-| `j` / `k` or arrows | Move selection |
+| `j` / `k`, arrows | Move selection |
 | `/` | Filter sessions |
-| `Enter` | Switch session, apply filter, or choose project |
-| `Esc` | Leave filter/project/confirmation mode, or close the sidebar |
-| `M-n` | Open the inline project picker |
-| `M-g` | Create or switch to a session for the current git repo |
-| `M-a` | Create or switch to an ad-hoc session for the current directory |
+| `Enter` | Switch to the selected session, apply a filter, or choose a project |
+| `Esc` | Leave the current mode, or close the sidebar |
+| `F5` | Reload the session list |
+| `M-n` | Open the project picker |
+| `M-g` | Create or switch to a session for the current pane's git repository |
+| `M-a` | Create or switch to a session for the current pane's directory |
 | `M-r` | Rename the selected session |
-| `M-x` | Kill the selected session after inline confirmation |
+| `M-x` | Kill the selected session after confirmation |
+| `M-j` / `M-k` or `M-Down` / `M-Up` | Move the selected session in the sidebar order |
 | `M-h` | Show or hide numeric session names |
 | `M-?` | Show or hide key help |
+| `Ctrl+c` | Quit the sidebar UI |
 
-Kill confirmation happens inside the sidebar: press `y` to confirm, `n`, `Enter`, or `Esc` to cancel.
+Global quick-switch keys are also installed:
 
-### Global quick switch
+- `Ctrl+1` through `Ctrl+9` switch to visible sidebar slots 1 through 9
+- `Ctrl+0` switches to visible slot 10
 
-These work without opening the sidebar:
+Session names that are all digits, or that start with `__`, are hidden by default. `M-h` toggles numeric names. Hidden `__` sessions are not shown.
 
-- `Ctrl+1` through `Ctrl+9` switch to visible sessions 1 through 9
-- `Ctrl+0` switches to visible session 10
+## Session actions
 
-Numeric session names and names beginning with `__` are hidden from the sidebar by default. `M-h` toggles numeric session visibility.
+### Project sessions
 
-### Session restore
+`M-n` lists one directory level under each configured project root. Selecting a project creates or switches to a tmux session named from the directory basename.
 
-The sidebar remembers named sessions that it creates or observes and recreates them with their original working directory paths when the tmux server is restarted.
+`M-g` uses `git rev-parse --show-toplevel` from the current pane path and creates or switches to that repository session.
 
-Each restored session starts with a single pane running a shell in its remembered directory. When that directory no longer exists, restore falls back to your home directory or the system default working directory and logs a short warning.
+Generated names are lowercased and normalized to letters, digits, `_`, and `-`. Invalid or empty names fall back to `session`.
 
-Numeric sessions and sessions beginning with `__` are ignored. Killing a session with `M-x` removes it from future restore.
+### Ad-hoc sessions
 
-## Project sessions
+`M-a` creates or switches to a session for the current pane path, using the normalized directory basename as the session name.
 
-`M-n` opens an inline project picker using the directories under `@session-sidebar-project-roots`. The picker filters by project name. Press `Enter` to create or switch to that project session.
+### Rename, kill, and reorder
 
-`M-g` creates or switches to a session for the current pane's git repository root, even if it is outside the configured project roots.
+`M-r` uses tmux `command-prompt` for the new name. `M-x` asks for inline confirmation before killing, and the runtime refuses to kill the last remaining session. Reordering is saved in the plugin state file.
 
-Project session names are derived from directory basenames and normalized for tmux. If the name already exists, the plugin switches to it instead of creating a duplicate.
+## Session restore
 
-## Ad-hoc sessions
+The plugin records persistable session names and paths in its state file. On daemon startup or client attach, it recreates missing remembered sessions.
 
-`M-a` starts a session in the current pane path, named after that path's normalized directory basename. If the session already exists, the plugin switches to it.
+Restore skips sessions with numeric names, names beginning with `__`, invalid names, and sessions that already exist. A restored session starts in its last recorded path, then its project path, then the home directory, then `.` if no usable absolute directory is available.
 
-## Rename and kill
+Killing a session through the sidebar removes it from future restore. Renaming through the sidebar updates persisted state.
 
-`M-r` prompts for a new name for the selected session.
+## Heat colors and agent bells
 
-`M-x` asks for inline confirmation before killing the selected session. The plugin refuses to kill the last remaining session.
+The sidebar can color recently active sessions. The current session is bright with `*`, sessions active or visited within `@session-sidebar-heat-recent-hours` are light green, and inactive sessions are gray.
 
-## Heat colors and attention markers
+```tmux
+set -g @session-sidebar-heat-colors 'off'
+```
 
-When heat colors are enabled, the sidebar shows only three visual states:
+Agent bells are separate. If enabled, supported agent hooks can mark a session with a bell when an agent stops or needs attention. The bell clears when that session becomes current in any attached tmux client.
 
-- current session: white text with the `*` marker
-- recently switched non-current session: near-white green for 30 seconds after the last visit
-- every other non-current session: dark gray
+Install hooks for supported agents found on `PATH`:
 
-Why: the sidebar is switch-driven now. It highlights the session you just left instead of rendering a multi-step heat gradient.
+```bash
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks setup --yes
+```
 
-The bell is separate from color and is now hook-driven:
+Or install one integration:
 
-- install agent integrations with `tmux-session-sidebar hooks setup`
-- the sidebar installs supported CLI hooks/plugins/extensions and listens for explicit running / stop / notification events
-- when an agent reports completion or asks for attention, the session shows the bell marker
-- the bell clears when that session becomes current again in any attached tmux client
-- disable the feature globally with `@session-sidebar-agent-attention 'off'`
+```bash
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks codex install
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks pi install
+```
 
-Supported agents and install details are documented in [docs/agent-hooks.md](docs/agent-hooks.md).
+See [docs/agent-hooks.md](docs/agent-hooks.md) for the supported-agent list and uninstall commands.
 
-Redraws come from tmux `client-session-changed` and manual `F5`. `@session-sidebar-heat-refresh-seconds` still controls background terminal heat sampling for color state, but bell attention no longer depends on terminal output scraping.
+## Troubleshooting
 
-For debugging, enable:
+Check the toggle binding:
+
+```bash
+tmux list-keys -T root M-b
+```
+
+Check the runtime binary:
+
+```bash
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar --help
+```
+
+Enable activity debug logging:
 
 ```tmux
 set -g @session-sidebar-activity-debug-log 'on'
@@ -215,85 +179,14 @@ Then inspect:
 tail -f ~/.local/state/tmux-session-sidebar/activity.log
 ```
 
-Disable heat colors with:
-
-```tmux
-set -g @session-sidebar-heat-colors 'off'
-```
-
-## Agent hook install quick start
-
-The tmux plugin install and the agent hook install are separate steps. The plugin gives you the sidebar; `hooks setup` enables hook-driven agent bells.
-
-If `tmux-session-sidebar` is not on your `PATH` yet, use the plugin-local binary instead:
-
-```bash
-~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks setup --yes
-# or from a local checkout:
-./.bin/tmux-session-sidebar hooks setup --yes
-```
-
-Install every supported integration found on your `PATH`:
-
-```bash
-tmux-session-sidebar hooks setup
-```
-
-Install or reinstall one integration:
-
-```bash
-tmux-session-sidebar hooks codex install
-tmux-session-sidebar hooks pi install
-```
-
-Remove one integration:
-
-```bash
-tmux-session-sidebar hooks codex uninstall
-```
-
-See [docs/agent-hooks.md](docs/agent-hooks.md) for the supported-agent matrix and disable flags.
-
-## Troubleshooting
-
-### Alt+b does nothing
-
-Check that the plugin is loaded and the global binding exists:
-
-```bash
-tmux list-keys -T root M-b
-```
-
-You should see a `run-shell` binding for `tmux-session-sidebar sidebar toggle`.
-
-If you changed `@session-sidebar-key`, check that key instead.
-
-### The sidebar disappeared after switching
-
-That is expected when this option is enabled:
-
-```tmux
-set -g @session-sidebar-close-after-switch 'on'
-```
-
-Set it to `off` to keep the sidebar open across switches.
-
-### Project roots are ignored
-
-Use colon-separated directories that already exist:
-
-```tmux
-set -g @session-sidebar-project-roots "$HOME/projects:$HOME/dev/projects"
-```
-
 ## Development
 
-Useful checks:
+For local development:
 
 ```bash
-go test ./...
-go vet ./...
+make install
+make test-go
 make test-runtime-bootstrap
 ```
 
-The current runtime is Go-first. Shell is only used for TPM/bootstrap integration.
+`make install` symlinks the current checkout into `~/.tmux/plugins/tmux-session-sidebar`. `make uninstall` removes that symlink. `make go-install` installs the CLI with `go install` and updates the plugin-local runtime.

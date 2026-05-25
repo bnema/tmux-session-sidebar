@@ -230,6 +230,9 @@ func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	if got.HeatRefreshSeconds != 5 {
 		t.Fatalf("HeatRefreshSeconds = %d, want 5", got.HeatRefreshSeconds)
 	}
+	if got.HeatRecentHours != 1 {
+		t.Fatalf("HeatRecentHours = %d, want 1", got.HeatRecentHours)
+	}
 	if !got.AgentAttentionEnabled {
 		t.Fatal("AgentAttentionEnabled = false, want true")
 	}
@@ -244,6 +247,7 @@ func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key s
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-half-life-hours"}).Return(ports.Result{Stdout: "8\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-stale-hours"}).Return(ports.Result{Stdout: "24\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-refresh-seconds"}).Return(ports.Result{Stdout: "5\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-recent-hours"}).Return(ports.Result{Stdout: "1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-activity-debug-log"}).Return(ports.Result{Stdout: "off\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-agent-attention"}).Return(ports.Result{Stdout: "on\n"}, nil)
 }

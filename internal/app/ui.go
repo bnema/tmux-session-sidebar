@@ -102,7 +102,7 @@ func loadSidebarConfig(ctx context.Context) ports.ConfigSnapshot {
 }
 
 func defaultSidebarConfig() ports.ConfigSnapshot {
-	return ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, ActivityDebugLog: false, AgentAttentionEnabled: true}
+	return ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, HeatRecentHours: 1, ActivityDebugLog: false, AgentAttentionEnabled: true}
 }
 
 func decodePersistedHeat(raw map[string][]byte) map[string]heat.State {
@@ -120,18 +120,25 @@ func decodePersistedHeat(raw map[string][]byte) map[string]heat.State {
 	return decoded
 }
 
-func sessionHeatBucket(state heat.State, now time.Time, _ ports.ConfigSnapshot) heat.Bucket {
-	if recentSessionActivity(state, now) {
+func sessionHeatBucket(state heat.State, now time.Time, cfg ports.ConfigSnapshot) heat.Bucket {
+	if recentSessionActivity(state, now, recentHeatWindow(cfg)) {
 		return heat.BucketCurrent
 	}
 	return heat.BucketStale
 }
 
-func recentSessionActivity(state heat.State, now time.Time) bool {
-	return recentHeatTimestamp(state.LastVisitedAt, now) || recentHeatTimestamp(state.LastActiveAt, now)
+func recentHeatWindow(cfg ports.ConfigSnapshot) time.Duration {
+	if cfg.HeatRecentHours > 0 {
+		return time.Duration(cfg.HeatRecentHours) * time.Hour
+	}
+	return time.Hour
 }
 
-func recentHeatTimestamp(timestamp time.Time, now time.Time) bool {
+func recentSessionActivity(state heat.State, now time.Time, window time.Duration) bool {
+	return recentHeatTimestamp(state.LastVisitedAt, now, window) || recentHeatTimestamp(state.LastActiveAt, now, window)
+}
+
+func recentHeatTimestamp(timestamp time.Time, now time.Time, window time.Duration) bool {
 	if timestamp.IsZero() {
 		return false
 	}
@@ -139,5 +146,5 @@ func recentHeatTimestamp(timestamp time.Time, now time.Time) bool {
 	if age < 0 {
 		return false
 	}
-	return age <= time.Hour
+	return age <= window
 }

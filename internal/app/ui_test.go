@@ -12,12 +12,13 @@ import (
 
 func TestSessionHeatBucketUsesRecentSessionSwitchSignal(t *testing.T) {
 	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
-	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5}
+	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, HeatRecentHours: 1}
 
 	tests := []struct {
-		name  string
-		state heat.State
-		want  heat.Bucket
+		name            string
+		heatRecentHours int
+		state           heat.State
+		want            heat.Bucket
 	}{
 		{
 			name: "recent switch stays highlighted",
@@ -58,11 +59,23 @@ func TestSessionHeatBucketUsesRecentSessionSwitchSignal(t *testing.T) {
 			},
 			want: heat.BucketStale,
 		},
+		{
+			name:            "configured two hour window keeps older signal highlighted",
+			heatRecentHours: 2,
+			state: heat.State{
+				LastVisitedAt: now.Add(-90 * time.Minute),
+			},
+			want: heat.BucketCurrent,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := sessionHeatBucket(tt.state, now, cfg); got != tt.want {
+			testCfg := cfg
+			if tt.heatRecentHours > 0 {
+				testCfg.HeatRecentHours = tt.heatRecentHours
+			}
+			if got := sessionHeatBucket(tt.state, now, testCfg); got != tt.want {
 				t.Fatalf("sessionHeatBucket() = %q, want %q", got, tt.want)
 			}
 		})
@@ -86,6 +99,7 @@ case "$1" in
       @session-sidebar-heat-half-life-hours) printf '8\n' ;;
       @session-sidebar-heat-stale-hours) printf '24\n' ;;
       @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-heat-recent-hours) printf '1\n' ;;
       @session-sidebar-activity-debug-log) printf 'off\n' ;;
       @session-sidebar-agent-attention) printf '%s\n' "$AGENT_ATTENTION" ;;
       *) printf '\n' ;;
