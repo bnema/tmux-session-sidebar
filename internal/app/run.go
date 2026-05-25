@@ -17,6 +17,13 @@ type Router interface {
 	Handle(ctx context.Context, route Route, stdout io.Writer, stderr io.Writer) error
 }
 
+var (
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
+	builtBy = "source"
+)
+
 type runtimeError struct {
 	err error
 }
@@ -60,6 +67,16 @@ func newRootCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, rou
 		}
 	}
 	showHelp := func(cmd *cobra.Command, _ []string) error { return cmd.Help() }
+
+	command.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			_, _ = fmt.Fprintf(stdout, "tmux-session-sidebar %s\ncommit: %s\ndate: %s\nbuiltBy: %s\n", version, commit, date, builtBy)
+			return nil
+		},
+	})
 
 	command.AddCommand(groupCommand("daemon", "Manage the background sidebar daemon",
 		leafCommand("serve", "Run the sidebar daemon", runRoute("daemon/serve")),
