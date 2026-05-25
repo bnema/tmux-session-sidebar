@@ -64,9 +64,10 @@ func TestBadgeForSlot(t *testing.T) {
 	}{
 		{name: "one", slot: 1, want: "[1]"},
 		{name: "nine", slot: 9, want: "[9]"},
-		{name: "ten maps to zero", slot: 10, want: "[0]"},
+		{name: "ten displays as ten", slot: 10, want: "[10]"},
+		{name: "eleven displays as label only", slot: 11, want: "[11]"},
 		{name: "zero invalid", slot: 0, want: ""},
-		{name: "eleven invalid", slot: 11, want: ""},
+		{name: "negative invalid", slot: -1, want: ""},
 	}
 
 	for _, tt := range tests {

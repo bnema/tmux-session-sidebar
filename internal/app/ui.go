@@ -56,7 +56,7 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 				item.Attention = state.Attention
 			}
 		}
-		if !sessions.IsNumericName(name) && slot <= 10 {
+		if !sessions.IsNumericName(name) {
 			item.Slot = slot
 			slot++
 		}

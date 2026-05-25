@@ -25,12 +25,8 @@ func BuildSlotMap(visible []sessions.View) map[int]string {
 }
 
 func BadgeForSlot(slot int) string {
-	switch slot {
-	case 1, 2, 3, 4, 5, 6, 7, 8, 9:
-		return fmt.Sprintf("[%d]", slot)
-	case 10:
-		return "[0]"
-	default:
+	if slot <= 0 {
 		return ""
 	}
+	return fmt.Sprintf("[%d]", slot)
 }

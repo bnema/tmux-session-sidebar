@@ -392,7 +392,7 @@ func newSidebarStyles() sidebarStyles {
 		active:   lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
 		recent:   lipgloss.NewStyle().Foreground(lipgloss.Color(recentSignalColor)),
 		stale:    lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionColor)),
-		selected: lipgloss.NewStyle().Background(lipgloss.Color("#1f2937")).Foreground(lipgloss.Color("#ffffff")).Bold(true),
+		selected: lipgloss.NewStyle().Background(lipgloss.Color("#065f46")).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
 	}
 }
 
@@ -533,8 +533,5 @@ func trimLastRune(value string) string {
 	return string(r[:len(r)-1])
 }
 func slotLabel(slot int) string {
-	if slot == 10 {
-		return "0"
-	}
 	return fmt.Sprintf("%d", slot)
 }

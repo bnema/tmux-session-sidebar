@@ -431,6 +431,19 @@ func TestSidebarModelRenderUsesAttentionMarkerInsteadOfCurrentMarker(t *testing.
 	}
 }
 
+func TestSidebarModelRenderDisplaysDoubleDigitSlots(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 10}, {Name: "beta", Slot: 11}}, Actions{})
+	view := stripANSI(model.Render())
+	for _, want := range []string{"[10] alpha", "[11] beta"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("render missing slot label %q in %q", want, view)
+		}
+	}
+	if strings.Contains(view, "[0] alpha") {
+		t.Fatalf("render used keyboard shortcut label instead of slot number in %q", view)
+	}
+}
+
 func TestSidebarModelRenderKeepsAttentionMarkerWhiteWhenSessionTextIsStale(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha", Attention: true, Slot: 1, Heat: string(heat.BucketStale)}}, Actions{})
 	view := model.Render()
