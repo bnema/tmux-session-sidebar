@@ -89,13 +89,14 @@ download_release_runtime() {
 }
 
 if [ -z "$GO_BIN" ]; then
-  if [ -x "$runtime_bin" ] && [ "${TMUX_SESSION_SIDEBAR_REFRESH_RELEASE:-}" != "1" ]; then
+  release_stamp="release:$RELEASE_REPO:latest"
+  if [ -x "$runtime_bin" ] && [ "${TMUX_SESSION_SIDEBAR_REFRESH_RELEASE:-}" != "1" ] && [ "$(cat "$stamp_file" 2>/dev/null || true)" = "$release_stamp" ]; then
     printf '%s\n' "$runtime_bin"
     exit 0
   fi
   mkdir -p "$BIN_DIR"
   if download_release_runtime; then
-    printf 'release:%s:latest\n' "$RELEASE_REPO" >"$stamp_file"
+    printf '%s\n' "$release_stamp" >"$stamp_file"
     printf '%s\n' "$runtime_bin"
     exit 0
   fi

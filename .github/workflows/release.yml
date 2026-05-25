@@ -7,6 +7,7 @@ on:
 jobs:
   release:
     permissions:
+      # Required to create GitHub releases and upload release assets; this workflow only runs on v* tag pushes.
       contents: write
     uses: bnema/gh-actions/.github/workflows/go-release.yml@main
     with:

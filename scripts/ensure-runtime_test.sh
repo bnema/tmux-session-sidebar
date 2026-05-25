@@ -103,7 +103,8 @@ run_ensure_without_go() {
   ln -s /usr/bin/bash "$nogobin/bash"
   printf '#!/usr/bin/env bash\nexec /usr/bin/dirname "$@"\n' >"$nogobin/dirname"
   printf '#!/usr/bin/env bash\nexec /usr/bin/pwd "$@"\n' >"$nogobin/pwd"
-  chmod +x "$nogobin/dirname" "$nogobin/pwd"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/cat "$@"\n' >"$nogobin/cat"
+  chmod +x "$nogobin/dirname" "$nogobin/pwd" "$nogobin/cat"
   TEST_ROOT="$root" PATH="$nogobin" "$root/plugin/scripts/ensure-runtime.sh"
 }
 
@@ -147,30 +148,62 @@ test_existing_runtime_is_reused_when_go_is_unavailable() {
   mkdir -p "$root/plugin/.bin"
   printf '#!/usr/bin/env bash\necho cached-runtime\n' >"$expected"
   chmod +x "$expected"
+  printf 'release:bnema/tmux-session-sidebar:latest\n' >"$root/plugin/.bin/.build-fingerprint"
 
   output="$(run_ensure_without_go "$root")"
   assert_eq "$expected" "$output" "existing plugin-local runtime should be returned when go is unavailable"
 }
 
+real_command() {
+  command -v "$1" 2>/dev/null || printf '/usr/bin/%s\n' "$1"
+}
+
+write_exec_wrapper() {
+  local path="$1" target="$2"
+  cat >"$path" <<WRAPPER
+#!/usr/bin/env bash
+exec $target "\$@"
+WRAPPER
+  chmod +x "$path"
+}
+
 prepare_release_download_fixture() {
-  local root="$1"
+  local root="$1" bash_bin chmod_bin cp_bin dirname_bin gzip_bin mkdir_bin mv_bin pwd_bin rm_bin tar_bin
+  bash_bin="$(real_command bash)"
+  chmod_bin="$(real_command chmod)"
+  cp_bin="$(real_command cp)"
+  dirname_bin="$(real_command dirname)"
+  gzip_bin="$(real_command gzip)"
+  mkdir_bin="$(real_command mkdir)"
+  mv_bin="$(real_command mv)"
+  pwd_bin="$(real_command pwd)"
+  rm_bin="$(real_command rm)"
+  tar_bin="$(real_command tar)"
+
   rm -f "$root/fakebin/go"
   mkdir -p "$root/fakebin" "$root/download-src"
   printf '#!/usr/bin/env bash\necho downloaded-runtime\n' >"$root/download-src/tmux-session-sidebar"
   chmod +x "$root/download-src/tmux-session-sidebar"
   tar -C "$root/download-src" -czf "$root/release.tar.gz" tmux-session-sidebar
-  ln -s /usr/bin/bash "$root/fakebin/bash"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/dirname "$@"\n' >"$root/fakebin/dirname"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/pwd "$@"\n' >"$root/fakebin/pwd"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/uname "$@"\n' >"$root/fakebin/uname"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/tar "$@"\n' >"$root/fakebin/tar"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/rm "$@"\n' >"$root/fakebin/rm"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/mkdir "$@"\n' >"$root/fakebin/mkdir"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/mv "$@"\n' >"$root/fakebin/mv"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/chmod "$@"\n' >"$root/fakebin/chmod"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/cp "$@"\n' >"$root/fakebin/cp"
-  ln -s /usr/bin/gzip "$root/fakebin/gzip"
-  chmod +x "$root/fakebin/dirname" "$root/fakebin/pwd" "$root/fakebin/uname" "$root/fakebin/tar" "$root/fakebin/rm" "$root/fakebin/mkdir" "$root/fakebin/mv" "$root/fakebin/chmod" "$root/fakebin/cp"
+  ln -s "$bash_bin" "$root/fakebin/bash"
+  write_exec_wrapper "$root/fakebin/dirname" "$dirname_bin"
+  write_exec_wrapper "$root/fakebin/pwd" "$pwd_bin"
+  cat >"$root/fakebin/uname" <<'UNAMEFAKE'
+#!/usr/bin/env bash
+case "${1:-}" in
+  -s) printf 'Linux\n' ;;
+  -m) printf 'x86_64\n' ;;
+  *) printf 'Linux\n' ;;
+esac
+UNAMEFAKE
+  chmod +x "$root/fakebin/uname"
+  write_exec_wrapper "$root/fakebin/tar" "$tar_bin"
+  write_exec_wrapper "$root/fakebin/rm" "$rm_bin"
+  write_exec_wrapper "$root/fakebin/mkdir" "$mkdir_bin"
+  write_exec_wrapper "$root/fakebin/mv" "$mv_bin"
+  write_exec_wrapper "$root/fakebin/chmod" "$chmod_bin"
+  write_exec_wrapper "$root/fakebin/cp" "$cp_bin"
+  ln -s "$gzip_bin" "$root/fakebin/gzip"
   cat >"$root/fakebin/curl" <<'CURLFAKE'
 #!/usr/bin/env bash
 set -euo pipefail
