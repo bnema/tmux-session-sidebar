@@ -174,7 +174,3 @@ func routeArgs(cmd *cobra.Command, args []string) []string {
 	}
 	return append(path, args...)
 }
-
-func writeError(stderr io.Writer, message string) {
-	_, _ = fmt.Fprintln(stderr, message)
-}
