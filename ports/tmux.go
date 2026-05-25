@@ -84,9 +84,10 @@ type TmuxControlPort interface {
 type TmuxSidebarPort interface {
 	CloseAfterSwitch(ctx context.Context) (bool, error)
 	FindSidebarPane(ctx context.Context, target string) (PaneRef, error)
-	OpenSidebar(ctx context.Context, clientID string, command []string) (PaneRef, error)
-	CloseSidebar(ctx context.Context, clientID string) error
-	CloseSidebarPane(ctx context.Context, paneID string) error
+	FindSingletonSidebar(ctx context.Context) (PaneRef, error)
+	EnsureSingletonSidebar(ctx context.Context, command []string) (PaneRef, error)
+	AttachSingletonSidebar(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
+	ParkSingletonSidebar(ctx context.Context, paneID string) error
 	RefreshSidebar(ctx context.Context, clientID string) error
 	ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error
 }

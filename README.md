@@ -2,7 +2,7 @@
 
 A TPM plugin that opens a left-hand tmux sidebar for switching and managing sessions.
 
-The current implementation is a Go runtime started by the tmux plugin script. It does not use fzf for the sidebar UI.
+The sidebar is owned by a single Go runtime process. The process keeps one tmux pane for the UI, parks it in a hidden `__tmux-session-sidebar` session when hidden, and joins it into the active tmux window when opened.
 
 ## Requirements
 
@@ -70,11 +70,11 @@ set -g @session-sidebar-agent-attention 'on'
 | `@session-sidebar-heat-recent-hours` | `1` | Hours a visited or active session stays highlighted |
 | `@session-sidebar-agent-attention` | `on` | Enable bell markers from supported agent hooks |
 
-Persistent state is stored under `${XDG_STATE_HOME:-~/.local/state}/tmux-session-sidebar`.
+Persistent state and the daemon IPC socket are stored under `${XDG_STATE_HOME:-~/.local/state}/tmux-session-sidebar`.
 
 ## Usage
 
-Press `Alt+b` to open or close the sidebar. It opens as a full-height left split in the current tmux window. By default it stays open across session switches; set `@session-sidebar-close-after-switch` to `on` if you want it to close after switching.
+Press `Alt+b` to open or close the sidebar. It opens as a full-height left split in the current tmux window. By default the singleton sidebar follows session switches by moving its tmux pane; set `@session-sidebar-close-after-switch` to `on` if you want it to park when switching.
 
 Inside the sidebar:
 

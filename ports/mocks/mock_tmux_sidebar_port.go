@@ -38,6 +38,84 @@ func (_m *MockTmuxSidebarPort) EXPECT() *MockTmuxSidebarPort_Expecter {
 	return &MockTmuxSidebarPort_Expecter{mock: &_m.Mock}
 }
 
+// AttachSingletonSidebar provides a mock function for the type MockTmuxSidebarPort
+func (_mock *MockTmuxSidebarPort) AttachSingletonSidebar(ctx context.Context, clientID string, paneID string, width string) (ports.PaneRef, error) {
+	ret := _mock.Called(ctx, clientID, paneID, width)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AttachSingletonSidebar")
+	}
+
+	var r0 ports.PaneRef
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (ports.PaneRef, error)); ok {
+		return returnFunc(ctx, clientID, paneID, width)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) ports.PaneRef); ok {
+		r0 = returnFunc(ctx, clientID, paneID, width)
+	} else {
+		r0 = ret.Get(0).(ports.PaneRef)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
+		r1 = returnFunc(ctx, clientID, paneID, width)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTmuxSidebarPort_AttachSingletonSidebar_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AttachSingletonSidebar'
+type MockTmuxSidebarPort_AttachSingletonSidebar_Call struct {
+	*mock.Call
+}
+
+// AttachSingletonSidebar is a helper method to define mock.On call
+//   - ctx context.Context
+//   - clientID string
+//   - paneID string
+//   - width string
+func (_e *MockTmuxSidebarPort_Expecter) AttachSingletonSidebar(ctx interface{}, clientID interface{}, paneID interface{}, width interface{}) *MockTmuxSidebarPort_AttachSingletonSidebar_Call {
+	return &MockTmuxSidebarPort_AttachSingletonSidebar_Call{Call: _e.mock.On("AttachSingletonSidebar", ctx, clientID, paneID, width)}
+}
+
+func (_c *MockTmuxSidebarPort_AttachSingletonSidebar_Call) Run(run func(ctx context.Context, clientID string, paneID string, width string)) *MockTmuxSidebarPort_AttachSingletonSidebar_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTmuxSidebarPort_AttachSingletonSidebar_Call) Return(paneRef ports.PaneRef, err error) *MockTmuxSidebarPort_AttachSingletonSidebar_Call {
+	_c.Call.Return(paneRef, err)
+	return _c
+}
+
+func (_c *MockTmuxSidebarPort_AttachSingletonSidebar_Call) RunAndReturn(run func(ctx context.Context, clientID string, paneID string, width string) (ports.PaneRef, error)) *MockTmuxSidebarPort_AttachSingletonSidebar_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CloseAfterSwitch provides a mock function for the type MockTmuxSidebarPort
 func (_mock *MockTmuxSidebarPort) CloseAfterSwitch(ctx context.Context) (bool, error) {
 	ret := _mock.Called(ctx)
@@ -98,44 +176,53 @@ func (_c *MockTmuxSidebarPort_CloseAfterSwitch_Call) RunAndReturn(run func(ctx c
 	return _c
 }
 
-// CloseSidebar provides a mock function for the type MockTmuxSidebarPort
-func (_mock *MockTmuxSidebarPort) CloseSidebar(ctx context.Context, clientID string) error {
-	ret := _mock.Called(ctx, clientID)
+// EnsureSingletonSidebar provides a mock function for the type MockTmuxSidebarPort
+func (_mock *MockTmuxSidebarPort) EnsureSingletonSidebar(ctx context.Context, command []string) (ports.PaneRef, error) {
+	ret := _mock.Called(ctx, command)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CloseSidebar")
+		panic("no return value specified for EnsureSingletonSidebar")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, clientID)
-	} else {
-		r0 = ret.Error(0)
+	var r0 ports.PaneRef
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) (ports.PaneRef, error)); ok {
+		return returnFunc(ctx, command)
 	}
-	return r0
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) ports.PaneRef); ok {
+		r0 = returnFunc(ctx, command)
+	} else {
+		r0 = ret.Get(0).(ports.PaneRef)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string) error); ok {
+		r1 = returnFunc(ctx, command)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
-// MockTmuxSidebarPort_CloseSidebar_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CloseSidebar'
-type MockTmuxSidebarPort_CloseSidebar_Call struct {
+// MockTmuxSidebarPort_EnsureSingletonSidebar_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EnsureSingletonSidebar'
+type MockTmuxSidebarPort_EnsureSingletonSidebar_Call struct {
 	*mock.Call
 }
 
-// CloseSidebar is a helper method to define mock.On call
+// EnsureSingletonSidebar is a helper method to define mock.On call
 //   - ctx context.Context
-//   - clientID string
-func (_e *MockTmuxSidebarPort_Expecter) CloseSidebar(ctx interface{}, clientID interface{}) *MockTmuxSidebarPort_CloseSidebar_Call {
-	return &MockTmuxSidebarPort_CloseSidebar_Call{Call: _e.mock.On("CloseSidebar", ctx, clientID)}
+//   - command []string
+func (_e *MockTmuxSidebarPort_Expecter) EnsureSingletonSidebar(ctx interface{}, command interface{}) *MockTmuxSidebarPort_EnsureSingletonSidebar_Call {
+	return &MockTmuxSidebarPort_EnsureSingletonSidebar_Call{Call: _e.mock.On("EnsureSingletonSidebar", ctx, command)}
 }
 
-func (_c *MockTmuxSidebarPort_CloseSidebar_Call) Run(run func(ctx context.Context, clientID string)) *MockTmuxSidebarPort_CloseSidebar_Call {
+func (_c *MockTmuxSidebarPort_EnsureSingletonSidebar_Call) Run(run func(ctx context.Context, command []string)) *MockTmuxSidebarPort_EnsureSingletonSidebar_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 string
+		var arg1 []string
 		if args[1] != nil {
-			arg1 = args[1].(string)
+			arg1 = args[1].([]string)
 		}
 		run(
 			arg0,
@@ -145,69 +232,12 @@ func (_c *MockTmuxSidebarPort_CloseSidebar_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *MockTmuxSidebarPort_CloseSidebar_Call) Return(err error) *MockTmuxSidebarPort_CloseSidebar_Call {
-	_c.Call.Return(err)
+func (_c *MockTmuxSidebarPort_EnsureSingletonSidebar_Call) Return(paneRef ports.PaneRef, err error) *MockTmuxSidebarPort_EnsureSingletonSidebar_Call {
+	_c.Call.Return(paneRef, err)
 	return _c
 }
 
-func (_c *MockTmuxSidebarPort_CloseSidebar_Call) RunAndReturn(run func(ctx context.Context, clientID string) error) *MockTmuxSidebarPort_CloseSidebar_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// CloseSidebarPane provides a mock function for the type MockTmuxSidebarPort
-func (_mock *MockTmuxSidebarPort) CloseSidebarPane(ctx context.Context, paneID string) error {
-	ret := _mock.Called(ctx, paneID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for CloseSidebarPane")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, paneID)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockTmuxSidebarPort_CloseSidebarPane_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CloseSidebarPane'
-type MockTmuxSidebarPort_CloseSidebarPane_Call struct {
-	*mock.Call
-}
-
-// CloseSidebarPane is a helper method to define mock.On call
-//   - ctx context.Context
-//   - paneID string
-func (_e *MockTmuxSidebarPort_Expecter) CloseSidebarPane(ctx interface{}, paneID interface{}) *MockTmuxSidebarPort_CloseSidebarPane_Call {
-	return &MockTmuxSidebarPort_CloseSidebarPane_Call{Call: _e.mock.On("CloseSidebarPane", ctx, paneID)}
-}
-
-func (_c *MockTmuxSidebarPort_CloseSidebarPane_Call) Run(run func(ctx context.Context, paneID string)) *MockTmuxSidebarPort_CloseSidebarPane_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockTmuxSidebarPort_CloseSidebarPane_Call) Return(err error) *MockTmuxSidebarPort_CloseSidebarPane_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockTmuxSidebarPort_CloseSidebarPane_Call) RunAndReturn(run func(ctx context.Context, paneID string) error) *MockTmuxSidebarPort_CloseSidebarPane_Call {
+func (_c *MockTmuxSidebarPort_EnsureSingletonSidebar_Call) RunAndReturn(run func(ctx context.Context, command []string) (ports.PaneRef, error)) *MockTmuxSidebarPort_EnsureSingletonSidebar_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -278,46 +308,96 @@ func (_c *MockTmuxSidebarPort_FindSidebarPane_Call) RunAndReturn(run func(ctx co
 	return _c
 }
 
-// OpenSidebar provides a mock function for the type MockTmuxSidebarPort
-func (_mock *MockTmuxSidebarPort) OpenSidebar(ctx context.Context, clientID string, command []string) (ports.PaneRef, error) {
-	ret := _mock.Called(ctx, clientID, command)
+// FindSingletonSidebar provides a mock function for the type MockTmuxSidebarPort
+func (_mock *MockTmuxSidebarPort) FindSingletonSidebar(ctx context.Context) (ports.PaneRef, error) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
-		panic("no return value specified for OpenSidebar")
+		panic("no return value specified for FindSingletonSidebar")
 	}
 
 	var r0 ports.PaneRef
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) (ports.PaneRef, error)); ok {
-		return returnFunc(ctx, clientID, command)
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (ports.PaneRef, error)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) ports.PaneRef); ok {
-		r0 = returnFunc(ctx, clientID, command)
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ports.PaneRef); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(ports.PaneRef)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string) error); ok {
-		r1 = returnFunc(ctx, clientID, command)
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// MockTmuxSidebarPort_OpenSidebar_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OpenSidebar'
-type MockTmuxSidebarPort_OpenSidebar_Call struct {
+// MockTmuxSidebarPort_FindSingletonSidebar_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindSingletonSidebar'
+type MockTmuxSidebarPort_FindSingletonSidebar_Call struct {
 	*mock.Call
 }
 
-// OpenSidebar is a helper method to define mock.On call
+// FindSingletonSidebar is a helper method to define mock.On call
 //   - ctx context.Context
-//   - clientID string
-//   - command []string
-func (_e *MockTmuxSidebarPort_Expecter) OpenSidebar(ctx interface{}, clientID interface{}, command interface{}) *MockTmuxSidebarPort_OpenSidebar_Call {
-	return &MockTmuxSidebarPort_OpenSidebar_Call{Call: _e.mock.On("OpenSidebar", ctx, clientID, command)}
+func (_e *MockTmuxSidebarPort_Expecter) FindSingletonSidebar(ctx interface{}) *MockTmuxSidebarPort_FindSingletonSidebar_Call {
+	return &MockTmuxSidebarPort_FindSingletonSidebar_Call{Call: _e.mock.On("FindSingletonSidebar", ctx)}
 }
 
-func (_c *MockTmuxSidebarPort_OpenSidebar_Call) Run(run func(ctx context.Context, clientID string, command []string)) *MockTmuxSidebarPort_OpenSidebar_Call {
+func (_c *MockTmuxSidebarPort_FindSingletonSidebar_Call) Run(run func(ctx context.Context)) *MockTmuxSidebarPort_FindSingletonSidebar_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTmuxSidebarPort_FindSingletonSidebar_Call) Return(paneRef ports.PaneRef, err error) *MockTmuxSidebarPort_FindSingletonSidebar_Call {
+	_c.Call.Return(paneRef, err)
+	return _c
+}
+
+func (_c *MockTmuxSidebarPort_FindSingletonSidebar_Call) RunAndReturn(run func(ctx context.Context) (ports.PaneRef, error)) *MockTmuxSidebarPort_FindSingletonSidebar_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ParkSingletonSidebar provides a mock function for the type MockTmuxSidebarPort
+func (_mock *MockTmuxSidebarPort) ParkSingletonSidebar(ctx context.Context, paneID string) error {
+	ret := _mock.Called(ctx, paneID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ParkSingletonSidebar")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, paneID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockTmuxSidebarPort_ParkSingletonSidebar_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ParkSingletonSidebar'
+type MockTmuxSidebarPort_ParkSingletonSidebar_Call struct {
+	*mock.Call
+}
+
+// ParkSingletonSidebar is a helper method to define mock.On call
+//   - ctx context.Context
+//   - paneID string
+func (_e *MockTmuxSidebarPort_Expecter) ParkSingletonSidebar(ctx interface{}, paneID interface{}) *MockTmuxSidebarPort_ParkSingletonSidebar_Call {
+	return &MockTmuxSidebarPort_ParkSingletonSidebar_Call{Call: _e.mock.On("ParkSingletonSidebar", ctx, paneID)}
+}
+
+func (_c *MockTmuxSidebarPort_ParkSingletonSidebar_Call) Run(run func(ctx context.Context, paneID string)) *MockTmuxSidebarPort_ParkSingletonSidebar_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -327,25 +407,20 @@ func (_c *MockTmuxSidebarPort_OpenSidebar_Call) Run(run func(ctx context.Context
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 []string
-		if args[2] != nil {
-			arg2 = args[2].([]string)
-		}
 		run(
 			arg0,
 			arg1,
-			arg2,
 		)
 	})
 	return _c
 }
 
-func (_c *MockTmuxSidebarPort_OpenSidebar_Call) Return(paneRef ports.PaneRef, err error) *MockTmuxSidebarPort_OpenSidebar_Call {
-	_c.Call.Return(paneRef, err)
+func (_c *MockTmuxSidebarPort_ParkSingletonSidebar_Call) Return(err error) *MockTmuxSidebarPort_ParkSingletonSidebar_Call {
+	_c.Call.Return(err)
 	return _c
 }
 
-func (_c *MockTmuxSidebarPort_OpenSidebar_Call) RunAndReturn(run func(ctx context.Context, clientID string, command []string) (ports.PaneRef, error)) *MockTmuxSidebarPort_OpenSidebar_Call {
+func (_c *MockTmuxSidebarPort_ParkSingletonSidebar_Call) RunAndReturn(run func(ctx context.Context, paneID string) error) *MockTmuxSidebarPort_ParkSingletonSidebar_Call {
 	_c.Call.Return(run)
 	return _c
 }

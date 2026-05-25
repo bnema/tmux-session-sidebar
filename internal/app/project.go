@@ -138,9 +138,24 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 }
 
 func switchClient(ctx context.Context, client string, sessionName string, sidebar ports.TmuxSidebarPort) error {
+	if err := sessions.ValidateName(sessionName); err != nil {
+		return err
+	}
 	return withSidebarFollow(ctx, client, sidebar, func() error {
-		return runtimeService().SwitchSession(ctx, client, sessionName)
+		output, err := tmux(ctx, appendSwitchClientArgs(client, sessionName)...)
+		if err != nil {
+			return tmuxCommandError("switch client session", output, err)
+		}
+		return nil
 	})
+}
+
+func appendSwitchClientArgs(client string, sessionName string) []string {
+	args := []string{"switch-client"}
+	if client != "" {
+		args = append(args, "-c", client)
+	}
+	return append(args, "-t", sessionName)
 }
 
 func loadSessionViews(ctx context.Context) ([]sessions.View, error) {

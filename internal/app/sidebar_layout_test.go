@@ -11,25 +11,63 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestOpenSidebarDelegatesToPortWithClientArg(t *testing.T) {
+func TestOpenSidebarAttachesSingletonPaneToClient(t *testing.T) {
 	ctx := t.Context()
 	tmux := mocks.NewMockTmuxSidebarPort(t)
 
-	tmux.EXPECT().OpenSidebar(ctx, "client-1", mock.MatchedBy(matchesUIRunCommand("client-1"))).Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
+	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
+	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "20").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
 
-	if err := openSidebar(ctx, map[string]string{"client": "client-1"}, tmux); err != nil {
+	if err := openSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux); err != nil {
 		t.Fatalf("openSidebar returned error: %v", err)
 	}
 }
 
-func TestCloseSidebarDelegatesToPort(t *testing.T) {
+func TestCloseSidebarParksVisibleSingletonPane(t *testing.T) {
 	ctx := t.Context()
 	tmux := mocks.NewMockTmuxSidebarPort(t)
 
-	tmux.EXPECT().CloseSidebar(ctx, "client-1").Return(nil)
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
+	tmux.EXPECT().ParkSingletonSidebar(ctx, "%10").Return(nil)
 
 	if err := closeSidebar(ctx, map[string]string{"client": "client-1"}, tmux); err != nil {
 		t.Fatalf("closeSidebar returned error: %v", err)
+	}
+}
+
+func TestRuntimeRouterProxiesSidebarRoutesThroughIPCClient(t *testing.T) {
+	ctx := t.Context()
+	ipc := mocks.NewMockIPCClientPort(t)
+	ipc.EXPECT().Send(ctx, ports.SidebarToggleRequest("client-1")).Return(ports.Response{OK: true}, nil)
+
+	router := NewRuntimeRouter(nil, ipc, nil)
+	if err := router.Handle(ctx, Route{Path: "sidebar/toggle", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {
+		t.Fatalf("Handle sidebar/toggle error: %v", err)
+	}
+}
+
+func TestRuntimeRouterReturnsAmbiguousIPCErrorWithoutDirectFallback(t *testing.T) {
+	ctx := t.Context()
+	ipc := mocks.NewMockIPCClientPort(t)
+	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, errors.New("daemon timeout"))
+
+	router := NewRuntimeRouter(nil, ipc, nil)
+	if err := router.Handle(ctx, Route{Path: "sidebar/close", Flags: map[string]string{"client": "client-1"}}, nil, nil); err == nil {
+		t.Fatal("Handle sidebar/close error = nil, want IPC error")
+	}
+}
+
+func TestRuntimeRouterUsesDirectFallbackForUnavailableIPCSocket(t *testing.T) {
+	ctx := t.Context()
+	ipc := mocks.NewMockIPCClientPort(t)
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, errors.New("dial unix sidebar.sock: connect: connection refused"))
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
+	tmux.EXPECT().ParkSingletonSidebar(ctx, "%9").Return(nil)
+
+	router := NewRuntimeRouter(tmux, ipc, nil)
+	if err := router.Handle(ctx, Route{Path: "sidebar/close", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {
+		t.Fatalf("Handle sidebar/close error: %v", err)
 	}
 }
 

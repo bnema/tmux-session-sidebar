@@ -13,17 +13,19 @@ import (
 const (
 	tmuxBinary = "tmux"
 
+	cmdBreakPane      = "break-pane"
 	cmdCapturePane    = "capture-pane"
 	cmdDisplayMessage = "display-message"
-	cmdKillPane       = "kill-pane"
+	cmdJoinPane       = "join-pane"
 	cmdListPanes      = "list-panes"
+	cmdNewSession     = "new-session"
+	cmdNewWindow      = "new-window"
 	cmdResizePane     = "resize-pane"
 	cmdRunShell       = "run-shell"
 	cmdSelectLayout   = "select-layout"
 	cmdSendKeys       = "send-keys"
 	cmdSetOption      = "set-option"
 	cmdShowOptions    = "show-options"
-	cmdSplitWindow    = "split-window"
 
 	formatPaneCurrentPath = "#{pane_current_path}"
 	formatPaneID          = "#{pane_id}"
@@ -35,6 +37,9 @@ const (
 
 	optionSidebarPane         = "@session-sidebar-pane"
 	optionSidebarWindowLayout = "@session-sidebar-window-layout"
+
+	singletonSidebarSessionName = "__tmux-session-sidebar"
+	singletonSidebarWindowName  = "sidebar"
 )
 
 type Client struct {
@@ -228,34 +233,6 @@ func (c Client) CloseAfterSwitch(ctx context.Context) (bool, error) {
 	return config.CloseAfterSwitch, err
 }
 
-func (c Client) OpenSidebar(ctx context.Context, clientID string, command []string) (ports.PaneRef, error) {
-	config, err := c.LoadConfig(ctx)
-	width := config.Width
-	if err != nil || strings.TrimSpace(width) == "" {
-		width = "20"
-	}
-	windowID, err := c.WindowID(ctx, clientID)
-	if err != nil {
-		return ports.PaneRef{}, err
-	}
-	if err := c.SaveWindowLayout(ctx, windowID); err != nil {
-		return ports.PaneRef{}, err
-	}
-	path, err := c.CurrentPanePath(ctx, clientID)
-	if err != nil {
-		path = ""
-	}
-	return c.openMarkedSidebarPane(ctx, windowID, width, path, command)
-}
-
-func (c Client) CloseSidebar(ctx context.Context, clientID string) error {
-	pane, err := c.FindSidebarPane(ctx, clientID)
-	if err != nil || pane.PaneID == "" {
-		return err
-	}
-	return c.CloseSidebarPane(ctx, pane.PaneID)
-}
-
 func (c Client) PaneSize(ctx context.Context, paneID string) (ports.PaneSize, error) {
 	out, err := c.displayTarget(ctx, paneID, "#{pane_width}\t#{pane_height}")
 	if err != nil {
@@ -306,55 +283,8 @@ func (c Client) KillSession(ctx context.Context, sessionName string) error {
 	return err
 }
 
-func (c Client) OpenSidebarPane(ctx context.Context, clientID string, width string, command []string) (ports.PaneRef, error) {
-	args := []string{cmdSplitWindow, "-P", "-F", formatPaneID + "\t" + formatWindowID}
-	if clientID != "" {
-		args = append(args, "-t", clientID)
-	}
-	args = append(args, "-hbf", "-l", width)
-	args = append(args, command...)
-	result, err := c.Process.Exec(ctx, tmuxBinary, args)
-	if err != nil {
-		return ports.PaneRef{}, err
-	}
-	return parsePaneRef(strings.TrimRight(result.Stdout, "\r\n"))
-}
-
-func (c Client) openMarkedSidebarPane(ctx context.Context, windowID string, width string, path string, command []string) (ports.PaneRef, error) {
-	args := []string{cmdSplitWindow, "-P", "-F", formatPaneID + "\t" + formatWindowID, "-t", strings.TrimSpace(windowID), "-hbf", "-l", strings.TrimSpace(width)}
-	if strings.TrimSpace(path) != "" {
-		args = append(args, "-c", strings.TrimSpace(path))
-	}
-	args = append(args, command...)
-	result, err := c.Process.Exec(ctx, tmuxBinary, args)
-	if err != nil {
-		return ports.PaneRef{}, err
-	}
-	ref, err := parsePaneRef(strings.TrimRight(result.Stdout, "\r\n"))
-	if err != nil {
-		_ = c.RestoreWindowLayout(ctx, windowID)
-		return ports.PaneRef{}, err
-	}
-	if err := c.markSidebarPane(ctx, ref.PaneID); err != nil {
-		_ = c.ClosePane(ctx, ref.PaneID)
-		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
-		return ports.PaneRef{}, err
-	}
-	if err := c.resizePaneWidth(ctx, ref.PaneID, width); err != nil {
-		_ = c.ClosePane(ctx, ref.PaneID)
-		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
-		return ports.PaneRef{}, err
-	}
-	return ref, nil
-}
-
 func (c Client) markSidebarPane(ctx context.Context, paneID string) error {
 	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-p", "-t", strings.TrimSpace(paneID), optionSidebarPane, "1"})
-	return err
-}
-
-func (c Client) ClosePane(ctx context.Context, paneID string) error {
-	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdKillPane, "-t", paneID})
 	return err
 }
 
@@ -365,22 +295,6 @@ func (c Client) resizePaneWidth(ctx context.Context, paneID string, width string
 	}
 	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdResizePane, "-t", strings.TrimSpace(paneID), "-x", width})
 	return err
-}
-
-func (c Client) CloseSidebarPane(ctx context.Context, paneID string) error {
-	windowID, err := c.WindowID(ctx, paneID)
-	if err != nil {
-		return err
-	}
-	_ = c.ScheduleSidebarRestoreOnExit(ctx, "", paneID)
-	if err := c.ClosePane(ctx, strings.TrimSpace(paneID)); err != nil {
-		return err
-	}
-	// The user may have changed the pane layout while the sidebar was open.
-	// In that case the saved pre-sidebar layout can be invalid for the new pane
-	// count, but closing the sidebar itself still succeeded.
-	_ = c.RestoreWindowLayout(ctx, windowID)
-	return nil
 }
 
 func (c Client) RefreshSidebar(ctx context.Context, clientID string) error {
@@ -561,7 +475,7 @@ func (c Client) display(ctx context.Context, format string) (string, error) {
 func (c Client) displayTarget(ctx context.Context, target string, format string) (string, error) {
 	args := []string{cmdDisplayMessage, "-p"}
 	if strings.TrimSpace(target) != "" {
-		args = append(args, "-t", target)
+		args = append(args, tmuxTargetFlag(target), target)
 	}
 	args = append(args, format)
 	result, err := c.Process.Exec(ctx, tmuxBinary, args)
@@ -569,6 +483,13 @@ func (c Client) displayTarget(ctx context.Context, target string, format string)
 		return "", wrapTmuxError(result, err)
 	}
 	return strings.TrimSpace(result.Stdout), nil
+}
+
+func tmuxTargetFlag(target string) string {
+	if strings.HasPrefix(strings.TrimSpace(target), "/dev/") {
+		return "-c"
+	}
+	return "-t"
 }
 
 type tmuxError struct {

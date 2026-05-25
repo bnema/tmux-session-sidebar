@@ -31,6 +31,7 @@ func TestRunDispatchesCommands(t *testing.T) {
 		wantStderr string
 	}{
 		{name: "daemon serve", args: []string{"daemon", "serve"}, wantExit: 0, wantRoute: "daemon/serve", wantArgs: []string{"daemon", "serve"}},
+		{name: "daemon serve ui", args: []string{"daemon", "serve-ui"}, wantExit: 0, wantRoute: "daemon/serve-ui", wantArgs: []string{"daemon", "serve-ui"}},
 		{name: "daemon ensure", args: []string{"daemon", "ensure"}, wantExit: 0, wantRoute: "daemon/ensure"},
 		{name: "hook client attached", args: []string{"hook", "client-attached", "--client", "%1"}, wantExit: 0, wantRoute: "hook/client-attached", wantFlags: map[string]string{"client": "%1"}},
 		{name: "hook detached", args: []string{"hook", "client-detached", "--client", "%1"}, wantExit: 0, wantRoute: "hook/client-detached", wantFlags: map[string]string{"client": "%1"}},
@@ -43,7 +44,6 @@ func TestRunDispatchesCommands(t *testing.T) {
 		{name: "sidebar toggle", args: []string{"sidebar", "toggle", "--client", "%1"}, wantExit: 0, wantRoute: "sidebar/toggle", wantFlags: map[string]string{"client": "%1"}},
 		{name: "sidebar open", args: []string{"sidebar", "open", "--client=%1"}, wantExit: 0, wantRoute: "sidebar/open", wantFlags: map[string]string{"client": "%1"}},
 		{name: "sidebar close", args: []string{"sidebar", "close", "--client", "%1"}, wantExit: 0, wantRoute: "sidebar/close", wantFlags: map[string]string{"client": "%1"}},
-		{name: "ui run", args: []string{"ui", "run", "--client", "%1", "--pane", "%9"}, wantExit: 0, wantRoute: "ui/run", wantFlags: map[string]string{"client": "%1", "pane": "%9"}},
 		{name: "action switch", args: []string{"action", "switch", "--client", "%1", "--session", "alpha"}, wantExit: 0, wantRoute: "action/switch", wantFlags: map[string]string{"client": "%1", "session": "alpha"}},
 		{name: "action quick switch", args: []string{"action", "quick-switch", "--slot", "1"}, wantExit: 0, wantRoute: "action/quick-switch", wantFlags: map[string]string{"slot": "1"}},
 		{name: "action create project", args: []string{"action", "create-project", "--client", "%1"}, wantExit: 0, wantRoute: "action/create-project", wantFlags: map[string]string{"client": "%1"}},
