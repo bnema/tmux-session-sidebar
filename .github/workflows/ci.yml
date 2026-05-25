@@ -1,4 +1,4 @@
-name: Go CI
+name: CI
 
 on:
   push:
@@ -6,25 +6,70 @@ on:
   pull_request:
 
 permissions:
-  # Required by checkout/cache in the reusable Go CI workflow.
+  # Required by checkout/cache in the Go CI jobs.
   contents: read
-  # Required by dorny/paths-filter in the reusable workflow to classify PR file changes.
+  # Required by dorny/paths-filter to classify PR file changes.
   pull-requests: read
 
 jobs:
-  go:
-    uses: bnema/gh-actions/.github/workflows/go-ci.yml@main
-    with:
-      go-version: stable
-      paths-filter: true
-      paths-filter-patterns: |
-        go:
-          - '**.go'
-          - 'go.mod'
-          - 'go.sum'
-          - 'Makefile'
-          - 'scripts/**'
-          - '.github/workflows/**'
-          - '.goreleaser.yaml'
-          - '.golangci.yml'
-      test-command: make test-runtime-bootstrap && go test -race ./...
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            go:
+              - '**.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Makefile'
+              - 'scripts/**'
+              - '.github/workflows/**'
+              - '.goreleaser.yaml'
+              - '.golangci.yml'
+
+  lint:
+    name: Go Lint
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          args: --timeout=5m
+
+  test:
+    name: Go Test
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - name: Cache Go modules
+        uses: actions/cache@v5
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
+      - name: Cache Go build
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-build-
+      - run: make test-runtime-bootstrap && go test -race ./...
