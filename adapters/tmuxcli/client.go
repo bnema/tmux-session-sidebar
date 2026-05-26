@@ -268,7 +268,7 @@ func (c Client) PaneSize(ctx context.Context, paneID string) (ports.PaneSize, er
 }
 
 func (c Client) SwitchClientSession(ctx context.Context, clientID string, sessionName string) error {
-	args := switchClientArgs(clientID, sessionName)
+	args := switchClientArgs(clientID, exactSessionWindowTarget(sessionName))
 	_, err := c.Process.Exec(ctx, tmuxBinary, args)
 	return err
 }

@@ -221,6 +221,16 @@ func TestSessionPathUsesExactSessionTarget(t *testing.T) {
 	}
 }
 
+func TestSwitchClientSessionUsesExactSessionTarget(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	process.EXPECT().Exec(ctx, "tmux", []string{"switch-client", "-c", "client-1", "-t", "=alpha:"}).Return(ports.Result{}, nil)
+
+	if err := (Client{Process: process}).SwitchClientSession(ctx, "client-1", "alpha"); err != nil {
+		t.Fatalf("SwitchClientSession error: %v", err)
+	}
+}
+
 func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
@@ -496,8 +506,9 @@ func TestAttachSingletonSidebarAndSwitchClientRollsBackWhenCombinedCommandFails(
 		";", "switch-client", "-c", "client-1", "-t", "=beta:",
 	}).Return(ports.Result{Stderr: "can't find client\n"}, boom)
 
+	process.On("Exec", ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stderr: "can't find client\n"}, boom).Maybe()
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil).Once()
-	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil).Once()
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_layout}"}).Return(ports.Result{Stdout: "source-layout\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@1", "@session-sidebar-window-layout", "source-layout"}).Return(ports.Result{}, nil)
@@ -509,6 +520,7 @@ func TestAttachSingletonSidebarAndSwitchClientRollsBackWhenCombinedCommandFails(
 	if !errors.Is(err, boom) {
 		t.Fatalf("AttachSingletonSidebarAndSwitchClient error = %v, want %v", err, boom)
 	}
+	process.AssertNotCalled(t, "Exec", ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"})
 }
 
 func TestParkSingletonSidebar(t *testing.T) {

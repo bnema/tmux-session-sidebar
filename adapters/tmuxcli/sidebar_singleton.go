@@ -129,7 +129,7 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 	args = append(args, switchClientArgs(clientID, target)...)
 	result, err := c.Process.Exec(ctx, tmuxBinary, args)
 	if err != nil {
-		if _, rollbackErr := c.AttachSingletonSidebar(ctx, clientID, paneID, width); rollbackErr != nil {
+		if _, rollbackErr := c.AttachSingletonSidebar(ctx, currentWindowID, paneID, width); rollbackErr != nil {
 			return errors.Join(wrapTmuxError(result, err), fmt.Errorf("restore sidebar after failed switch to %q: %w", sessionName, rollbackErr))
 		}
 		return wrapTmuxError(result, err)
