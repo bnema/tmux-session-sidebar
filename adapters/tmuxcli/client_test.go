@@ -224,7 +224,7 @@ func TestSessionPathUsesExactSessionTarget(t *testing.T) {
 func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
-	expectLoadConfig(process, ctx, "b\n", "20\n", ":/a::/b:\n", "on\n")
+	expectLoadConfig(process, ctx, "b\n", "20\n", ":/a::/b:\n", "on\n", "on\n")
 	got, err := (Client{Process: process}).LoadConfig(ctx)
 	if err != nil {
 		t.Fatalf("LoadConfig error: %v", err)
@@ -247,9 +247,31 @@ func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	if !got.AgentAttentionEnabled {
 		t.Fatal("AgentAttentionEnabled = false, want true")
 	}
+	if !got.AutoSortRecentEnabled {
+		t.Fatal("AutoSortRecentEnabled = false, want true")
+	}
 }
 
-func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string) {
+func TestLoadConfigDisablesAutoSortRecentWhenOptionIsOffOrEmpty(t *testing.T) {
+	tests := map[string]string{"off": "off\n", "empty": "\n"}
+	for name, raw := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			process := mocks.NewMockProcessPort(t)
+			expectLoadConfig(process, ctx, "b\n", "20\n", "\n", "off\n", raw)
+
+			got, err := (Client{Process: process}).LoadConfig(ctx)
+			if err != nil {
+				t.Fatalf("LoadConfig error: %v", err)
+			}
+			if got.AutoSortRecentEnabled {
+				t.Fatalf("AutoSortRecentEnabled = true for %q, want false", raw)
+			}
+		})
+	}
+}
+
+func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string) {
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-key"}).Return(ports.Result{Stdout: key}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-width"}).Return(ports.Result{Stdout: width}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-project-roots"}).Return(ports.Result{Stdout: roots}, nil)
@@ -261,6 +283,7 @@ func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key s
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-recent-hours"}).Return(ports.Result{Stdout: "1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-activity-debug-log"}).Return(ports.Result{Stdout: "off\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-agent-attention"}).Return(ports.Result{Stdout: "on\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-auto-sort-recent"}).Return(ports.Result{Stdout: autoSortRecent}, nil)
 }
 
 func TestSingletonSidebarPaneLifecycle(t *testing.T) {

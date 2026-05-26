@@ -28,6 +28,7 @@ type RestoreReport struct {
 const (
 	defaultHeatHalfLife   = 8 * time.Hour
 	defaultHeatStaleAfter = 24 * time.Hour
+	recentOrderDayFormat  = "2006-01-02"
 	paneSampleTailLines   = 8
 )
 
@@ -158,7 +159,9 @@ func (s *Service) CaptureLiveSessionsWithConfig(ctx context.Context, serverID st
 	}
 	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
 	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
-	s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot))
+	if s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot)) {
+		applyDailyRecentSessionOrder(&state, live, snapshot, time.Now())
+	}
 	return s.store.Save(ctx, serverID, state)
 }
 
@@ -178,7 +181,9 @@ func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID str
 	if err != nil {
 		return err
 	}
-	s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot))
+	if s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot)) {
+		applyDailyRecentSessionOrder(&state, live, snapshot, time.Now())
+	}
 	return s.store.Save(ctx, serverID, state)
 }
 
@@ -242,6 +247,40 @@ func orderedPersistedSessionNames(state ports.PersistedState) []string {
 	return sessions.ApplyOrder(names, state.SessionOrder)
 }
 
+func applyDailyRecentSessionOrder(state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg ports.ConfigSnapshot, now time.Time) {
+	if state == nil || !cfg.AutoSortRecentEnabled {
+		return
+	}
+	if state.Sidebar == nil {
+		state.Sidebar = &ports.SidebarState{}
+	}
+	today := now.Format(recentOrderDayFormat)
+	if state.Sidebar.AutoSortRecentRunDate == today {
+		return
+	}
+	state.SessionOrder = orderSessionsByRecentActivity(state.SessionOrder, live, decodeHeatStateMap(state.Heat))
+	state.Sidebar.AutoSortRecentRunDate = today
+}
+
+func orderSessionsByRecentActivity(order []string, live []ports.TmuxSessionSnapshot, heatStates map[string]heat.State) []string {
+	ordered := reconcileSessionOrder(order, live)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left := heatStates[ordered[i]].LastActiveAt
+		right := heatStates[ordered[j]].LastActiveAt
+		switch {
+		case left.IsZero() && right.IsZero():
+			return false
+		case left.IsZero():
+			return false
+		case right.IsZero():
+			return true
+		default:
+			return left.After(right)
+		}
+	})
+	return ordered
+}
+
 func isRestorableSessionName(name string) bool {
 	return sessions.IsPersistableName(name)
 }
@@ -267,9 +306,9 @@ func usefulPath(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg heatConfig) {
+func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg heatConfig) bool {
 	if state == nil {
-		return
+		return false
 	}
 	clients, clientsErr := s.tmuxQuery.ListClients(ctx)
 	observations, observationsErr := collectPaneObservations(ctx, s.tmuxQuery)
@@ -277,7 +316,7 @@ func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.Persist
 	// return early so only reconcileLiveSessionHeat, state.Heat updates, and trace logging
 	// are skipped. Session metadata (Sessions, SessionOrder) is still persisted by callers.
 	if clientsErr != nil || observationsErr != nil {
-		return
+		return false
 	}
 	nextHeat, traces := reconcileLiveSessionHeat(
 		decodeHeatStateMap(state.Heat),
@@ -292,6 +331,16 @@ func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.Persist
 	for sessionName, trace := range traces {
 		s.logHeatTrace(sessionName, trace)
 	}
+	return paneObservationsComplete(observations)
+}
+
+func paneObservationsComplete(observations []paneObservation) bool {
+	for _, observation := range observations {
+		if !observation.Sampled {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) logHeatTrace(sessionName string, trace heat.Trace) {

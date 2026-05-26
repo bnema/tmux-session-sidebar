@@ -15,6 +15,7 @@ type ConfigSnapshot struct {
 	HeatRecentHours       int
 	ActivityDebugLog      bool
 	AgentAttentionEnabled bool
+	AutoSortRecentEnabled bool
 }
 
 type TmuxSessionSnapshot struct {

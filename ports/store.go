@@ -12,9 +12,10 @@ type PersistedState struct {
 }
 
 type SidebarState struct {
-	ShowNumericSessions bool   `json:"showNumericSessions,omitempty"`
-	Open                bool   `json:"open,omitempty"`
-	OwnerClient         string `json:"ownerClient,omitempty"`
+	ShowNumericSessions   bool   `json:"showNumericSessions,omitempty"`
+	Open                  bool   `json:"open,omitempty"`
+	OwnerClient           string `json:"ownerClient,omitempty"`
+	AutoSortRecentRunDate string `json:"autoSortRecentRunDate,omitempty"`
 }
 
 type StateStorePort interface {

@@ -58,6 +58,7 @@ set -g @session-sidebar-close-after-switch 'off'
 set -g @session-sidebar-heat-colors 'on'
 set -g @session-sidebar-heat-recent-hours '1'
 set -g @session-sidebar-agent-attention 'on'
+set -g @session-sidebar-auto-sort-recent 'off'
 ```
 
 | Option | Default | Used for |
@@ -69,6 +70,7 @@ set -g @session-sidebar-agent-attention 'on'
 | `@session-sidebar-heat-colors` | `on` | Enable activity-based session colors |
 | `@session-sidebar-heat-recent-hours` | `1` | Hours a visited or active session stays highlighted |
 | `@session-sidebar-agent-attention` | `on` | Enable bell markers from supported agent hooks |
+| `@session-sidebar-auto-sort-recent` | `off` | Once per day, reorder sessions by most recent real pane activity |
 
 Persistent state and the daemon IPC socket are stored under `${XDG_STATE_HOME:-~/.local/state}/tmux-session-sidebar`.
 
@@ -156,6 +158,14 @@ The sidebar can color recently active sessions. The current session is bright wi
 ```tmux
 set -g @session-sidebar-heat-colors 'off'
 ```
+
+To keep recently used projects near the top, enable daily sorting:
+
+```tmux
+set -g @session-sidebar-auto-sort-recent 'on'
+```
+
+This uses real pane activity tracked by the heat state, not a simple session switch. Accidentally switching to a session and switching back does not move it up unless pane output changes there.
 
 Agent bells are separate. If enabled, supported agent hooks can mark a session with a bell when an agent stops or needs attention. The bell clears when that session becomes current in any attached tmux client.
 

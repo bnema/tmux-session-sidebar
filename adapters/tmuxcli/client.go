@@ -93,6 +93,10 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
+	autoSortRecent, err := c.option(ctx, "@session-sidebar-auto-sort-recent")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
 	return ports.ConfigSnapshot{
 		Loaded:                true,
 		KeyBinding:            key,
@@ -106,6 +110,7 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		HeatRecentHours:       recentHours,
 		ActivityDebugLog:      parseTmuxBool(activityDebugLog),
 		AgentAttentionEnabled: agentAttention == "" || parseTmuxBool(agentAttention),
+		AutoSortRecentEnabled: parseTmuxBool(autoSortRecent),
 	}, nil
 }
 
