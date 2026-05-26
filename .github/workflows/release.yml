@@ -12,5 +12,3 @@ jobs:
     uses: bnema/gh-actions/.github/workflows/go-release.yml@main
     with:
       go-version: stable
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
