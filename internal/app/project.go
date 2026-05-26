@@ -130,11 +130,13 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 		return err
 	}
 	metadata := ports.SessionMetadata{Kind: "project", ProjectPath: candidate.Path, LastPath: candidate.Path}
-	return withSidebarFollow(ctx, client, sidebar, func() error {
-		return withPersistedSessionDuringTmuxAction(ctx, candidate.SessionName, metadata, func() error {
-			return runtimeService().CreateProjectSession(ctx, client, existing, candidate)
-		})
-	})
+	plan := coreruntime.ProjectSessionDecision(existing, candidate)
+	if err := withPersistedSessionDuringTmuxAction(ctx, plan.SessionName, metadata, func() error {
+		return runtimeService().CreateDetachedProjectSession(ctx, existing, plan)
+	}); err != nil {
+		return err
+	}
+	return switchClient(ctx, client, plan.SessionName, sidebar)
 }
 
 func switchClient(ctx context.Context, client string, sessionName string, sidebar ports.TmuxSidebarPort) error {
@@ -164,6 +166,12 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 				if err != nil {
 					return err
 				}
+			}
+			if mover, ok := sidebar.(ports.TmuxSidebarSwitchPort); ok {
+				if err := mover.AttachSingletonSidebarAndSwitchClient(ctx, client, sessionName, singleton.PaneID, cfg.Width); err != nil {
+					return fmt.Errorf("preposition sidebar and switch to %q: %w", sessionName, err)
+				}
+				return saveSidebarVisibility(ctx, true, client)
 			}
 			target := exactSessionWindowTarget(sessionName)
 			if _, err := sidebar.AttachSingletonSidebar(ctx, target, singleton.PaneID, cfg.Width); err != nil {

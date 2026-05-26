@@ -42,21 +42,32 @@ func (s *Service) CreateProjectSession(ctx context.Context, clientID string, exi
 		return ErrMissingTmuxControl
 	}
 	plan := ProjectSessionDecision(existing, candidate)
-	if plan.Create {
-		if err := ValidateCreateSession(existing, plan.SessionName); err != nil {
-			return err
-		}
-		if err := s.tmuxCtl.CreateSession(ctx, plan.SessionName, plan.ProjectPath); err != nil {
-			return err
-		}
-		if s.tmuxMeta != nil {
-			metadata := ports.SessionMetadata{Kind: "project", ProjectPath: plan.ProjectPath}
-			if err := s.tmuxMeta.SaveSessionMetadata(ctx, plan.SessionName, metadata); err != nil {
-				return s.rollbackCreatedSession(ctx, plan.SessionName, fmt.Errorf("save project metadata for %s: %w", plan.SessionName, err))
-			}
-		}
+	if err := s.CreateDetachedProjectSession(ctx, existing, plan); err != nil {
+		return err
 	}
 	return s.tmuxCtl.SwitchClientSession(ctx, clientID, plan.SessionName)
+}
+
+func (s *Service) CreateDetachedProjectSession(ctx context.Context, existing []sessions.View, plan ProjectSessionPlan) error {
+	if !plan.Create {
+		return sessions.ValidateName(plan.SessionName)
+	}
+	if s.tmuxCtl == nil {
+		return ErrMissingTmuxControl
+	}
+	if err := ValidateCreateSession(existing, plan.SessionName); err != nil {
+		return err
+	}
+	if err := s.tmuxCtl.CreateSession(ctx, plan.SessionName, plan.ProjectPath); err != nil {
+		return err
+	}
+	if s.tmuxMeta != nil {
+		metadata := ports.SessionMetadata{Kind: "project", ProjectPath: plan.ProjectPath}
+		if err := s.tmuxMeta.SaveSessionMetadata(ctx, plan.SessionName, metadata); err != nil {
+			return s.rollbackCreatedSession(ctx, plan.SessionName, fmt.Errorf("save project metadata for %s: %w", plan.SessionName, err))
+		}
+	}
+	return nil
 }
 
 func (s *Service) CreateAdhocSession(ctx context.Context, clientID string, existing []sessions.View, name string, path string) error {

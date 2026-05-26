@@ -52,6 +52,63 @@ func TestSwitchClientPrepositionsGlobalSidebarBeforeSwitchingSession(t *testing.
 	assertOps(t, ops, []string{"find-singleton", "attach-target", "switch-client"})
 }
 
+func TestCreateProjectSwitchPrepositionsGlobalSidebarBeforeSwitchingSession(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	var ops []string
+	var logPath string
+
+	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	tmuxPort.EXPECT().FindSingletonSidebar(ctx).Run(func(context.Context) {
+		ops = append(ops, "find-singleton")
+	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil).Once()
+	tmuxPort.EXPECT().AttachSingletonSidebar(ctx, "=beta:", "%9", mock.Anything).Run(func(context.Context, string, string, string) {
+		log, err := os.ReadFile(logPath)
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatalf("read fake tmux log: %v", err)
+		}
+		if strings.Contains(string(log), "switch-client") {
+			t.Fatal("sidebar attach happened after switch-client; want preposition before switching")
+		}
+		ops = append(ops, "attach-target")
+	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@new"}, nil)
+
+	logPath = installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  list-sessions)
+    printf '$2\tbeta\t1\t0\n'
+    ;;
+  show-options)
+    case "${@: -1}" in
+      @session-sidebar-width) printf '20\n' ;;
+      *) printf '\n' ;;
+    esac
+    ;;
+  switch-client)
+    printf 'switch-client\n' >> "$TMUX_LOG"
+    ;;
+  *)
+    printf 'unexpected tmux args: %s\n' "$*" >&2
+    exit 1
+    ;;
+esac
+`)
+
+	if err := createProject(ctx, map[string]string{"client": "client-1", "project-path": "/work/beta"}, nil, tmuxPort); err != nil {
+		t.Fatalf("createProject error: %v", err)
+	}
+	assertOps(t, ops, []string{"find-singleton", "attach-target"})
+	if !strings.Contains(readLog(t, logPath), "switch-client") {
+		t.Fatal("tmux switch-client was not called")
+	}
+}
+
 func TestSwitchClientRestoresSidebarIfPrepositionedSwitchFails(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()

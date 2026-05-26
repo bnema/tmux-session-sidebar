@@ -15,6 +15,7 @@ type ConfigSnapshot struct {
 	HeatRecentHours       int
 	ActivityDebugLog      bool
 	AgentAttentionEnabled bool
+	AutoSortRecentEnabled bool
 }
 
 type TmuxSessionSnapshot struct {
@@ -90,6 +91,10 @@ type TmuxSidebarPort interface {
 	ParkSingletonSidebar(ctx context.Context, paneID string) error
 	RefreshSidebar(ctx context.Context, clientID string) error
 	ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error
+}
+
+type TmuxSidebarSwitchPort interface {
+	AttachSingletonSidebarAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error
 }
 
 type TmuxMetadataPort interface {

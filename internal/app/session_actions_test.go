@@ -106,7 +106,7 @@ esac
 	if strings.Contains(log, "command-prompt") {
 		t.Fatalf("expected no ad-hoc prompt, log=%q", log)
 	}
-	for _, want := range []string{"display-message -p #{pane_current_path}", "new-session -d -s scratch -c /tmp/worktree/scratch", "switch-client -t scratch"} {
+	for _, want := range []string{"display-message -p #{pane_current_path}", "new-session -d -s scratch -c /tmp/worktree/scratch", "switch-client -t =scratch:"} {
 		if !strings.Contains(log, want) {
 			t.Fatalf("expected log to contain %q, log=%q", want, log)
 		}
@@ -141,7 +141,7 @@ esac
 		t.Fatalf("createAdhoc returned error: %v", err)
 	}
 	log := readLog(t, logPath)
-	for _, want := range []string{"list-panes -t @1", "new-session -d -s fresh -c /tmp/worktree/fresh", "switch-client -c /dev/pts/99 -t fresh"} {
+	for _, want := range []string{"list-panes -t @1", "new-session -d -s fresh -c /tmp/worktree/fresh", "switch-client -c /dev/pts/99 -t =fresh:"} {
 		if !strings.Contains(log, want) {
 			t.Fatalf("expected log to contain %q, log=%q", want, log)
 		}

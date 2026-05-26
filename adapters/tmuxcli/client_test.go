@@ -221,10 +221,20 @@ func TestSessionPathUsesExactSessionTarget(t *testing.T) {
 	}
 }
 
+func TestSwitchClientSessionUsesExactSessionTarget(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	process.EXPECT().Exec(ctx, "tmux", []string{"switch-client", "-c", "client-1", "-t", "=alpha:"}).Return(ports.Result{}, nil)
+
+	if err := (Client{Process: process}).SwitchClientSession(ctx, "client-1", "alpha"); err != nil {
+		t.Fatalf("SwitchClientSession error: %v", err)
+	}
+}
+
 func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
-	expectLoadConfig(process, ctx, "b\n", "20\n", ":/a::/b:\n", "on\n")
+	expectLoadConfig(process, ctx, "b\n", "20\n", ":/a::/b:\n", "on\n", "on\n")
 	got, err := (Client{Process: process}).LoadConfig(ctx)
 	if err != nil {
 		t.Fatalf("LoadConfig error: %v", err)
@@ -247,9 +257,31 @@ func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	if !got.AgentAttentionEnabled {
 		t.Fatal("AgentAttentionEnabled = false, want true")
 	}
+	if !got.AutoSortRecentEnabled {
+		t.Fatal("AutoSortRecentEnabled = false, want true")
+	}
 }
 
-func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string) {
+func TestLoadConfigDisablesAutoSortRecentWhenOptionIsOffOrEmpty(t *testing.T) {
+	tests := map[string]string{"off": "off\n", "empty": "\n"}
+	for name, raw := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			process := mocks.NewMockProcessPort(t)
+			expectLoadConfig(process, ctx, "b\n", "20\n", "\n", "off\n", raw)
+
+			got, err := (Client{Process: process}).LoadConfig(ctx)
+			if err != nil {
+				t.Fatalf("LoadConfig error: %v", err)
+			}
+			if got.AutoSortRecentEnabled {
+				t.Fatalf("AutoSortRecentEnabled = true for %q, want false", raw)
+			}
+		})
+	}
+}
+
+func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string) {
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-key"}).Return(ports.Result{Stdout: key}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-width"}).Return(ports.Result{Stdout: width}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-project-roots"}).Return(ports.Result{Stdout: roots}, nil)
@@ -261,6 +293,7 @@ func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key s
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-recent-hours"}).Return(ports.Result{Stdout: "1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-activity-debug-log"}).Return(ports.Result{Stdout: "off\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-agent-attention"}).Return(ports.Result{Stdout: "on\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-auto-sort-recent"}).Return(ports.Result{Stdout: autoSortRecent}, nil)
 }
 
 func TestSingletonSidebarPaneLifecycle(t *testing.T) {
@@ -426,6 +459,68 @@ func TestSingletonSidebarPaneLifecycle(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAttachSingletonSidebarAndSwitchClientRunsMoveAndSwitchInOneTmuxCommand(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	var ops []string
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "=beta:", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@2", "#{window_layout}"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@2", "@session-sidebar-window-layout", "layout-before-sidebar"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{
+		"join-pane", "-hbf", "-l", "20", "-s", "%9", "-t", "@2",
+		";", "set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1",
+		";", "resize-pane", "-t", "%9", "-x", "20",
+		";", "switch-client", "-c", "client-1", "-t", "=beta:",
+	}).Run(func(context.Context, string, []string) {
+		ops = append(ops, "move-and-switch")
+	}).Return(ports.Result{}, nil)
+
+	err := (Client{Process: process}).AttachSingletonSidebarAndSwitchClient(ctx, "client-1", "beta", "%9", "20")
+	if err != nil {
+		t.Fatalf("AttachSingletonSidebarAndSwitchClient error: %v", err)
+	}
+	if !reflect.DeepEqual(ops, []string{"move-and-switch"}) {
+		t.Fatalf("ops = %#v, want one combined move/switch command", ops)
+	}
+}
+
+func TestAttachSingletonSidebarAndSwitchClientRollsBackWhenCombinedCommandFails(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	boom := errors.New("switch failed")
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil).Once()
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "=beta:", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil).Once()
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@2", "#{window_layout}"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@2", "@session-sidebar-window-layout", "layout-before-sidebar"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{
+		"join-pane", "-hbf", "-l", "20", "-s", "%9", "-t", "@2",
+		";", "set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1",
+		";", "resize-pane", "-t", "%9", "-x", "20",
+		";", "switch-client", "-c", "client-1", "-t", "=beta:",
+	}).Return(ports.Result{Stderr: "can't find client\n"}, boom)
+
+	process.On("Exec", ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stderr: "can't find client\n"}, boom).Maybe()
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil).Once()
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil).Once()
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_layout}"}).Return(ports.Result{Stdout: "source-layout\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@1", "@session-sidebar-window-layout", "source-layout"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"join-pane", "-hbf", "-l", "20", "-s", "%9", "-t", "@1"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
+
+	err := (Client{Process: process}).AttachSingletonSidebarAndSwitchClient(ctx, "client-1", "beta", "%9", "20")
+	if !errors.Is(err, boom) {
+		t.Fatalf("AttachSingletonSidebarAndSwitchClient error = %v, want %v", err, boom)
+	}
+	process.AssertNotCalled(t, "Exec", ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"})
 }
 
 func TestParkSingletonSidebar(t *testing.T) {

@@ -40,13 +40,13 @@ unbind_plugin_binding() {
 install_runtime_hooks() {
   local quoted_runtime="$1"
   "$TMUX_BIN" set-hook -g client-attached[9701] \
-    "run-shell \"$quoted_runtime hook client-attached --client #{q:client_name}\""
+    "run-shell \"$quoted_runtime hook client-attached --client=#{q:hook_client} --session=#{q:hook_session_name}\""
   "$TMUX_BIN" set-hook -g client-detached[9702] \
-    "run-shell \"$quoted_runtime hook client-detached --client #{q:client_name}\""
+    "run-shell \"$quoted_runtime hook client-detached --client=#{q:hook_client} --session=#{q:hook_session_name}\""
   "$TMUX_BIN" set-hook -g client-session-changed[9703] \
-    "run-shell -b \"$quoted_runtime hook client-session-changed --client #{q:client_name}\""
+    "run-shell -b \"$quoted_runtime hook client-session-changed --client=#{q:hook_client} --session=#{q:hook_session_name}\""
   "$TMUX_BIN" set-hook -g client-resized[9704] \
-    "run-shell -b \"$quoted_runtime hook client-resized --client #{q:client_name}\""
+    "run-shell -b \"$quoted_runtime hook client-resized --client #{q:hook_client}\""
   "$TMUX_BIN" set-hook -g window-resized[9705] \
     "run-shell -b \"$quoted_runtime hook window-resized --window #{q:hook_window}\""
 }
@@ -64,6 +64,7 @@ main() {
   set_default @session-sidebar-heat-recent-hours   1
   set_default @session-sidebar-activity-debug-log off
   set_default @session-sidebar-agent-attention on
+  set_default @session-sidebar-auto-sort-recent off
 
   local sidebar_key previous_key quoted_daemon_control quoted_runtime quoted_state_dir runtime_bin slot state_dir
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"

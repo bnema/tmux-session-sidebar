@@ -7,7 +7,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/ports"
 	"github.com/bnema/tmux-session-sidebar/ports/mocks"
 	"github.com/stretchr/testify/mock"
@@ -227,6 +229,166 @@ func TestCaptureLiveSessionsStillSavesMetadataWhenHeatCollectionFails(t *testing
 	}
 }
 
+func TestApplyDailyRecentSessionOrderUsesLastActiveAt(t *testing.T) {
+	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
+	state := ports.PersistedState{
+		SessionOrder: []string{"gamma", "alpha", "beta"},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastVisitedAt: now, LastActiveAt: now.Add(-30 * time.Minute)},
+			"beta":  {LastActiveAt: now.Add(-5 * time.Minute)},
+			"gamma": {LastVisitedAt: now},
+		}),
+	}
+	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}
+
+	applyDailyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentEnabled: true}, now)
+
+	if want := []string{"beta", "alpha", "gamma"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
+	}
+	if state.Sidebar == nil || state.Sidebar.AutoSortRecentRunDate != "2026-05-26" {
+		t.Fatalf("AutoSortRecentRunDate = %#v, want 2026-05-26", state.Sidebar)
+	}
+}
+
+func TestApplyDailyRecentSessionOrderRunsOncePerDay(t *testing.T) {
+	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
+	state := ports.PersistedState{
+		SessionOrder: []string{"beta", "alpha"},
+		Sidebar:      &ports.SidebarState{AutoSortRecentRunDate: "2026-05-26"},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: now},
+			"beta":  {LastActiveAt: now.Add(-time.Hour)},
+		}),
+	}
+	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}
+
+	applyDailyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentEnabled: true}, now)
+
+	if want := []string{"beta", "alpha"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder = %#v, want unchanged %#v", state.SessionOrder, want)
+	}
+}
+
+func TestApplyDailyRecentSessionOrderSkipsWhenDisabled(t *testing.T) {
+	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
+	state := ports.PersistedState{
+		SessionOrder: []string{"beta", "alpha"},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: now},
+		}),
+	}
+	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}
+
+	applyDailyRecentSessionOrder(&state, live, ports.ConfigSnapshot{}, now)
+
+	if want := []string{"beta", "alpha"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder = %#v, want unchanged %#v", state.SessionOrder, want)
+	}
+	if state.Sidebar != nil {
+		t.Fatalf("Sidebar = %#v, want nil when disabled", state.Sidebar)
+	}
+}
+
+func TestCaptureLiveSessionsWithConfigReconcilesLiveSessionsBeforeDailyRecentOrder(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	alphaPath := t.TempDir()
+	betaPath := t.TempDir()
+	deltaPath := t.TempDir()
+	now := time.Now()
+	store := mocks.NewMockStateStorePort(t)
+	query := runtimeTestQuery{
+		live: []ports.TmuxSessionSnapshot{
+			{ID: "$1", Name: "alpha"},
+			{ID: "$2", Name: "beta"},
+			{ID: "$3", Name: "delta"},
+		},
+		sessionPaths: map[string]string{"alpha": alphaPath, "beta": betaPath, "delta": deltaPath},
+	}
+
+	initial := ports.PersistedState{
+		Sessions:     map[string]ports.SessionMetadata{"gamma": {Kind: "captured", LastPath: t.TempDir()}},
+		SessionOrder: []string{"gamma", "alpha", "beta"},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-30 * time.Minute)},
+			"beta":  {LastActiveAt: now.Add(-5 * time.Minute)},
+			"delta": {},
+		}),
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		wantOrder := []string{"beta", "alpha", "delta"}
+		wantSessions := map[string]ports.SessionMetadata{
+			"alpha": {Kind: "captured", LastPath: alphaPath},
+			"beta":  {Kind: "captured", LastPath: betaPath},
+			"delta": {Kind: "captured", LastPath: deltaPath},
+		}
+		return reflect.DeepEqual(state.SessionOrder, wantOrder) &&
+			reflect.DeepEqual(state.Sessions, wantSessions) &&
+			state.Sidebar != nil && state.Sidebar.AutoSortRecentRunDate != ""
+	})).Return(nil)
+
+	if err := NewService(nil, query, nil, store).CaptureLiveSessionsWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentEnabled: true}); err != nil {
+		t.Fatalf("CaptureLiveSessionsWithConfig error: %v", err)
+	}
+}
+
+func TestCaptureSessionHeatWithConfigDoesNotConsumeDailyRecentOrderWhenHeatCaptureFails(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	boom := errors.New("list clients failed")
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	initial := ports.PersistedState{
+		SessionOrder: []string{"beta", "alpha"},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: time.Now().Add(-5 * time.Minute)},
+			"beta":  {LastActiveAt: time.Now().Add(-time.Hour)},
+		}),
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, boom)
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		return reflect.DeepEqual(state.SessionOrder, []string{"beta", "alpha"}) && state.Sidebar == nil
+	})).Return(nil)
+
+	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentEnabled: true}); err != nil {
+		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
+	}
+}
+
+func TestCaptureSessionHeatWithConfigDoesNotConsumeDailyRecentOrderWhenPaneSampleFails(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	now := time.Now()
+	store := mocks.NewMockStateStorePort(t)
+	query := runtimeTestQuery{
+		live:         []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}, {ID: "$2", Name: "beta"}},
+		clients:      []ports.TmuxClientSnapshot{},
+		panes:        []ports.TmuxPaneSnapshot{{PaneID: "%1", SessionID: "$1", SessionName: "alpha"}},
+		captureError: errors.New("capture-pane failed"),
+	}
+
+	initial := ports.PersistedState{
+		SessionOrder: []string{"beta", "alpha"},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-5 * time.Minute)},
+			"beta":  {LastActiveAt: now.Add(-time.Hour)},
+		}),
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		return reflect.DeepEqual(state.SessionOrder, []string{"beta", "alpha"}) && state.Sidebar == nil
+	})).Return(nil)
+
+	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentEnabled: true}); err != nil {
+		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
+	}
+}
+
 func TestResetTransientHeatStateWrapsInfrastructureErrors(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
@@ -289,4 +451,45 @@ func assertStringSet(t *testing.T, got []string, want []string) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("strings = %#v, want %#v", got, want)
 	}
+}
+
+type runtimeTestQuery struct {
+	live         []ports.TmuxSessionSnapshot
+	clients      []ports.TmuxClientSnapshot
+	panes        []ports.TmuxPaneSnapshot
+	sessionPaths map[string]string
+	captureText  string
+	captureError error
+}
+
+func (q runtimeTestQuery) ServerID(context.Context) (string, error) {
+	return "server", nil
+}
+
+func (q runtimeTestQuery) ListSessions(context.Context) ([]ports.TmuxSessionSnapshot, error) {
+	return q.live, nil
+}
+
+func (q runtimeTestQuery) ListClients(context.Context) ([]ports.TmuxClientSnapshot, error) {
+	return q.clients, nil
+}
+
+func (q runtimeTestQuery) CurrentPanePath(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (q runtimeTestQuery) SessionPath(_ context.Context, sessionName string) (string, error) {
+	return q.sessionPaths[sessionName], nil
+}
+
+func (q runtimeTestQuery) PaneSize(context.Context, string) (ports.PaneSize, error) {
+	return ports.PaneSize{}, nil
+}
+
+func (q runtimeTestQuery) ListPanes(context.Context) ([]ports.TmuxPaneSnapshot, error) {
+	return q.panes, nil
+}
+
+func (q runtimeTestQuery) CapturePaneText(context.Context, string, int) (string, error) {
+	return q.captureText, q.captureError
 }
