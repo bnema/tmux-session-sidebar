@@ -70,7 +70,13 @@ case "$1" in
     done
     [ -n "$out" ] || { echo 'missing -o' >&2; exit 1; }
     mkdir -p "$(dirname "$out")"
-    cat >"$out" <<'RUNTIME'
+    if [ "${TEST_INVALID_GO_BUILD:-}" = 1 ]; then
+      cat >"$out" <<'RUNTIME'
+#!/usr/bin/env bash
+echo invalid-runtime
+RUNTIME
+    else
+      cat >"$out" <<'RUNTIME'
 #!/usr/bin/env bash
 if [ "${1:-}" = version ]; then
   echo "tmux-session-sidebar test"
@@ -78,6 +84,7 @@ else
   echo built-runtime
 fi
 RUNTIME
+    fi
     chmod +x "$out"
     printf 'build %s\n' "$out" >>"$TEST_ROOT/go-build.log"
     ;;
@@ -347,6 +354,25 @@ test_rejects_downloaded_runtime_without_version_output() {
   [ ! -e "$expected" ] || fail "invalid downloaded runtime should not be installed"
 }
 
+test_rejects_go_build_runtime_without_version_output() {
+  local root expected output status
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+
+  set +e
+  output="$(TEST_ROOT="$root" TEST_INVALID_GO_BUILD=1 PATH="$root/fakebin:$PATH" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
+  status="$?"
+  set -e
+
+  [ "$status" -ne 0 ] || fail "invalid built runtime should fail installation"
+  case "$output" in
+    *"valid output (expected 'tmux-session-sidebar <version>')"*) ;;
+    *) fail "invalid built runtime should report validation failure, got: $output" ;;
+  esac
+  [ -x "$expected" ] || fail "go build should have produced the runtime before validation failed"
+  [ ! -e "$root/plugin/.bin/.build-fingerprint" ] || fail "invalid built runtime should not be stamped"
+}
+
 test_rejects_downloaded_runtime_with_checksum_mismatch() {
   local root expected output status
   root="$(new_fixture)"
@@ -366,6 +392,27 @@ test_rejects_downloaded_runtime_with_checksum_mismatch() {
     *) fail "checksum mismatch should be reported, got: $output" ;;
   esac
   [ ! -e "$expected" ] || fail "checksum mismatch should not install runtime"
+}
+
+test_rejects_downloaded_runtime_without_checksum_entry() {
+  local root expected output status
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  rm -rf "$root/plugin/.bin"
+  prepare_release_download_fixture "$root"
+  printf '0000000000000000000000000000000000000000000000000000000000000000  other.tar.gz\n' >"$root/checksums.txt"
+
+  set +e
+  output="$(TEST_ROOT="$root" PATH="$root/fakebin" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
+  status="$?"
+  set -e
+
+  [ "$status" -ne 0 ] || fail "missing checksum entry should fail installation"
+  case "$output" in
+    *"checksum not found"*) ;;
+    *) fail "missing checksum entry should be reported, got: $output" ;;
+  esac
+  [ ! -e "$expected" ] || fail "missing checksum entry should not install runtime"
 }
 
 test_runtime_rebuilds_for_untracked_source_files() {
@@ -390,6 +437,8 @@ test_downloads_latest_release_when_go_is_unavailable_and_runtime_missing
 test_refreshes_existing_release_runtime_when_requested
 test_matching_release_stamp_refreshes_invalid_cached_runtime
 test_rejects_downloaded_runtime_without_version_output
+test_rejects_go_build_runtime_without_version_output
 test_rejects_downloaded_runtime_with_checksum_mismatch
+test_rejects_downloaded_runtime_without_checksum_entry
 
 echo "ensure-runtime tests passed"
