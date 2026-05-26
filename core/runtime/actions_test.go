@@ -123,6 +123,20 @@ func TestCreateSessionRollsBackWhenMetadataSaveFails(t *testing.T) {
 	}
 }
 
+func TestCreateDetachedProjectSessionDoesNotSwitchClient(t *testing.T) {
+	ctx := context.Background()
+	control := mocks.NewMockTmuxControlPort(t)
+	meta := mocks.NewMockTmuxMetadataPort(t)
+	plan := ProjectSessionPlan{SessionName: "project", ProjectPath: "/tmp/project", Create: true}
+
+	control.EXPECT().CreateSession(ctx, "project", "/tmp/project").Return(nil)
+	meta.EXPECT().SaveSessionMetadata(ctx, "project", mock.Anything).Return(nil)
+
+	if err := NewService(nil, nil, control, nil).WithMetadata(meta).CreateDetachedProjectSession(ctx, []sessions.View{{Name: "alpha"}}, plan); err != nil {
+		t.Fatalf("CreateDetachedProjectSession error: %v", err)
+	}
+}
+
 func TestRenameSessionRequiresExistingOldName(t *testing.T) {
 	ctx := context.Background()
 	control := mocks.NewMockTmuxControlPort(t)

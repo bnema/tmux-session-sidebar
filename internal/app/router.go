@@ -88,9 +88,9 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "hook/client-attached":
 		return ensureRestoredAndCapturedAndRefresh(ctx)
 	case "hook/client-detached":
-		return captureLiveSidebarSessionsAndRefresh(ctx, "", "", r.sidebar)
+		return captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar, false)
 	case "hook/client-session-changed":
-		return captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar)
+		return captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar, true)
 	case "hook/client-resized", "hook/window-resized":
 		return syncSidebarWidth(ctx, route.Flags)
 	case "hook/agent-event":
@@ -421,11 +421,11 @@ func handleActionError(ctx context.Context, action string, err error) bool {
 	return false
 }
 
-func captureLiveSidebarSessionsAndRefresh(ctx context.Context, client string, session string, sidebar ports.TmuxSidebarPort) error {
+func captureLiveSidebarSessionsAndRefresh(ctx context.Context, client string, session string, sidebar ports.TmuxSidebarPort, reconcile bool) error {
 	if err := captureLiveSidebarSessions(ctx); err != nil {
 		return err
 	}
-	if !isInternalHookSession(session) {
+	if reconcile && !isInternalHookSession(session) {
 		if err := reconcileSidebarVisibilityForClient(ctx, client, sidebar); err != nil {
 			return err
 		}

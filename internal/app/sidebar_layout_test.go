@@ -65,8 +65,9 @@ func TestHookClientSessionChangedSkipsSidebarReconcileForInternalHookSession(t *
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
 	installFakeTmux(t, fakeHookCaptureTmuxScript())
+	sidebar := mocks.NewMockTmuxSidebarPort(t)
 
-	err := (runtimeRouter{}).Handle(ctx, Route{
+	err := (runtimeRouter{sidebar: sidebar}).Handle(ctx, Route{
 		Path:  "hook/client-session-changed",
 		Flags: map[string]string{"client": "popup-client", "session": "__floating-popup-1"},
 	}, nil, nil)
@@ -79,15 +80,16 @@ func TestHookClientDetachedDoesNotReconcileSidebarForDetachingClient(t *testing.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
-		state.Sidebar = &ports.SidebarState{Open: true}
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "popup-client"}
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
 	installFakeTmux(t, fakeHookCaptureTmuxScript())
+	sidebar := mocks.NewMockTmuxSidebarPort(t)
 
-	err := (runtimeRouter{}).Handle(ctx, Route{
+	err := (runtimeRouter{sidebar: sidebar}).Handle(ctx, Route{
 		Path:  "hook/client-detached",
-		Flags: map[string]string{"client": "popup-client", "session": "__floating-popup-1"},
+		Flags: map[string]string{"client": "popup-client", "session": "alpha"},
 	}, nil, nil)
 	if err != nil {
 		t.Fatalf("hook client-detached error: %v", err)

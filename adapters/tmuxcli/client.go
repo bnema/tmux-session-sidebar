@@ -27,6 +27,7 @@ const (
 	cmdSendKeys       = "send-keys"
 	cmdSetOption      = "set-option"
 	cmdShowOptions    = "show-options"
+	cmdSwitchClient   = "switch-client"
 
 	formatPaneCurrentPath = "#{pane_current_path}"
 	formatPaneID          = "#{pane_id}"
@@ -262,13 +263,22 @@ func (c Client) PaneSize(ctx context.Context, paneID string) (ports.PaneSize, er
 }
 
 func (c Client) SwitchClientSession(ctx context.Context, clientID string, sessionName string) error {
-	args := []string{"switch-client"}
+	args := switchClientArgs(clientID, sessionName)
+	_, err := c.Process.Exec(ctx, tmuxBinary, args)
+	return err
+}
+
+func (c Client) switchClientToExactTarget(ctx context.Context, clientID string, target string) error {
+	_, err := c.Process.Exec(ctx, tmuxBinary, switchClientArgs(clientID, target))
+	return err
+}
+
+func switchClientArgs(clientID string, target string) []string {
+	args := []string{cmdSwitchClient}
 	if clientID != "" {
 		args = append(args, "-c", clientID)
 	}
-	args = append(args, "-t", sessionName)
-	_, err := c.Process.Exec(ctx, tmuxBinary, args)
-	return err
+	return append(args, "-t", target)
 }
 
 func (c Client) DisplayMessage(ctx context.Context, clientID string, message string) error {

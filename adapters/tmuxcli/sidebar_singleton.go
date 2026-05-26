@@ -93,6 +93,50 @@ func (c Client) AttachSingletonSidebar(ctx context.Context, clientID string, pan
 	return ref, nil
 }
 
+func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error {
+	paneID = strings.TrimSpace(paneID)
+	if err := c.requireSidebarPane(ctx, paneID); err != nil {
+		return err
+	}
+	target := exactSessionWindowTarget(sessionName)
+	windowID, err := c.WindowID(ctx, target)
+	if err != nil {
+		return err
+	}
+	currentWindowID, err := c.WindowID(ctx, paneID)
+	if err != nil {
+		return err
+	}
+	width = strings.TrimSpace(width)
+	if width == "" {
+		width = "20"
+	}
+	if currentWindowID == windowID {
+		if err := c.resizePaneWidth(ctx, paneID, width); err != nil {
+			return err
+		}
+		return c.switchClientToExactTarget(ctx, clientID, target)
+	}
+	if err := c.SaveWindowLayout(ctx, windowID); err != nil {
+		return err
+	}
+	args := []string{
+		cmdJoinPane, "-hbf", "-l", width, "-s", paneID, "-t", windowID,
+		";", cmdSetOption, "-p", "-t", paneID, optionSidebarPane, "1",
+		";", cmdResizePane, "-t", paneID, "-x", width,
+	}
+	args = append(args, ";")
+	args = append(args, switchClientArgs(clientID, target)...)
+	result, err := c.Process.Exec(ctx, tmuxBinary, args)
+	if err != nil {
+		if _, rollbackErr := c.AttachSingletonSidebar(ctx, clientID, paneID, width); rollbackErr != nil {
+			return errors.Join(wrapTmuxError(result, err), fmt.Errorf("restore sidebar after failed switch to %q: %w", sessionName, rollbackErr))
+		}
+		return wrapTmuxError(result, err)
+	}
+	return nil
+}
+
 func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	paneID = strings.TrimSpace(paneID)
 	if err := c.requireSidebarPane(ctx, paneID); err != nil {
@@ -165,6 +209,10 @@ func isTmuxMissingSessionResult(err error) bool {
 	}
 	message := strings.ToLower(tmuxErr.result.Stderr + tmuxErr.result.Stdout)
 	return strings.Contains(message, "can't find session") || strings.Contains(message, "no such session")
+}
+
+func exactSessionWindowTarget(sessionName string) string {
+	return "=" + sessionName + ":"
 }
 
 func (c Client) requireSidebarPane(ctx context.Context, paneID string) error {

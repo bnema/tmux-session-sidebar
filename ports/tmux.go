@@ -92,6 +92,10 @@ type TmuxSidebarPort interface {
 	ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error
 }
 
+type TmuxSidebarSwitchPort interface {
+	AttachSingletonSidebarAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error
+}
+
 type TmuxMetadataPort interface {
 	LoadSessionMetadata(ctx context.Context, sessionName string) (SessionMetadata, error)
 	SaveSessionMetadata(ctx context.Context, sessionName string, metadata SessionMetadata) error
