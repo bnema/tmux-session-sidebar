@@ -77,7 +77,7 @@ validate_runtime() {
   case "$output" in
     tmux-session-sidebar\ *) return 0 ;;
     *)
-      echo "tmux-session-sidebar: runtime validation failed: $bin version did not report tmux-session-sidebar" >&2
+      echo "tmux-session-sidebar: runtime validation failed: $bin version did not produce valid output (expected 'tmux-session-sidebar <version>')" >&2
       return 1
       ;;
   esac
@@ -86,15 +86,17 @@ validate_runtime() {
 sha256_file() {
   local checksum file="$1" ignored
   if [ -n "$SHA256SUM_BIN" ]; then
+    checksum="$($SHA256SUM_BIN "$file")" || return 1
     read -r checksum ignored <<EOF
-$($SHA256SUM_BIN "$file")
+$checksum
 EOF
     printf '%s\n' "$checksum"
     return 0
   fi
   if [ -n "$SHASUM_BIN" ]; then
+    checksum="$($SHASUM_BIN -a 256 "$file")" || return 1
     read -r checksum ignored <<EOF
-$($SHASUM_BIN -a 256 "$file")
+$checksum
 EOF
     printf '%s\n' "$checksum"
     return 0
@@ -104,10 +106,15 @@ EOF
 }
 
 verify_release_checksum() {
-  local archive="$1" asset="$2" checksums_file="$3" actual expected filename
+  local archive="$1" asset="$2" checksums_file="$3" actual expected filename line
   expected=""
-  while read -r expected filename; do
-    [ "$filename" = "$asset" ] && break
+  while read -r line; do
+    read -r expected filename <<EOF
+$line
+EOF
+    if [ "$filename" = "$asset" ]; then
+      break
+    fi
     expected=""
   done <"$checksums_file"
   if [ -z "$expected" ]; then
