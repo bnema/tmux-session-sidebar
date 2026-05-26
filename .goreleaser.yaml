@@ -48,4 +48,4 @@ release:
   make_latest: true
 
 git:
-  tag_sort: smartsemver
+  tag_sort: -version:refname
