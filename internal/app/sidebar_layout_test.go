@@ -12,6 +12,7 @@ import (
 )
 
 func TestOpenSidebarAttachesSingletonPaneToClient(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	tmux := mocks.NewMockTmuxSidebarPort(t)
 
@@ -21,17 +22,75 @@ func TestOpenSidebarAttachesSingletonPaneToClient(t *testing.T) {
 	if err := openSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux); err != nil {
 		t.Fatalf("openSidebar returned error: %v", err)
 	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if state.Sidebar == nil || !state.Sidebar.Open || state.Sidebar.OwnerClient != "client-1" {
+		t.Fatalf("sidebar state = %#v, want open for client-1", state.Sidebar)
+	}
 }
 
-func TestCloseSidebarParksVisibleSingletonPane(t *testing.T) {
+func TestCloseSidebarParksGlobalSingletonPane(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
 	tmux := mocks.NewMockTmuxSidebarPort(t)
 
-	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
+	tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
 	tmux.EXPECT().ParkSingletonSidebar(ctx, "%10").Return(nil)
 
-	if err := closeSidebar(ctx, map[string]string{"client": "client-1"}, tmux); err != nil {
+	if err := closeSidebar(ctx, tmux); err != nil {
 		t.Fatalf("closeSidebar returned error: %v", err)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if state.Sidebar == nil || state.Sidebar.Open || state.Sidebar.OwnerClient != "" {
+		t.Fatalf("sidebar state = %#v, want closed", state.Sidebar)
+	}
+}
+
+func TestReconcileSidebarVisibilityForClientReopensGlobalSidebarForOwnerClient(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-colors) printf 'on\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-heat-recent-hours) printf '1\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'on\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  *) ;;
+esac
+`)
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
+	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "20").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
+
+	if err := reconcileSidebarVisibilityForClient(ctx, "client-1", tmux); err != nil {
+		t.Fatalf("reconcileSidebarVisibilityForClient error: %v", err)
 	}
 }
 
@@ -61,8 +120,8 @@ func TestRuntimeRouterUsesDirectFallbackForUnavailableIPCSocket(t *testing.T) {
 	ctx := t.Context()
 	ipc := mocks.NewMockIPCClientPort(t)
 	tmux := mocks.NewMockTmuxSidebarPort(t)
-	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, errors.New("dial unix sidebar.sock: connect: connection refused"))
-	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
+	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, ports.ErrIPCConnectionRefused)
+	tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 	tmux.EXPECT().ParkSingletonSidebar(ctx, "%9").Return(nil)
 
 	router := NewRuntimeRouter(tmux, ipc, nil)

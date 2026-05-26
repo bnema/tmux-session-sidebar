@@ -207,7 +207,14 @@ func (c Client) SessionPath(ctx context.Context, sessionName string) (string, er
 }
 
 func (c Client) WindowID(ctx context.Context, target string) (string, error) {
-	return c.displayTarget(ctx, target, formatWindowID)
+	windowID, err := c.displayTarget(ctx, target, formatWindowID)
+	if err != nil {
+		return "", err
+	}
+	if windowID == "" {
+		return "", fmt.Errorf("resolve tmux window id for target %q: empty output", strings.TrimSpace(target))
+	}
+	return windowID, nil
 }
 
 func (c Client) FindSidebarPane(ctx context.Context, target string) (ports.PaneRef, error) {

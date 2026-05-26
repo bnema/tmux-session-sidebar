@@ -130,12 +130,13 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 	if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil {
 		return err
 	}
+	var ipcWG sync.WaitGroup
 	if ipcServer != nil && router != nil {
-		go func() {
+		ipcWG.Go(func() {
 			if err := ipcServer.Serve(ctx, daemonIPCHandler{router: router, stdout: io.Discard, stderr: os.Stderr, mu: &sync.Mutex{}}); err != nil && !errors.Is(err, context.Canceled) {
 				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: ipc server failed: %v\n", err)
 			}
-		}()
+		})
 	}
 
 	for {
@@ -146,6 +147,7 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 			if !timer.Stop() {
 				<-timer.C
 			}
+			ipcWG.Wait()
 			return nil
 		case <-timer.C:
 		}

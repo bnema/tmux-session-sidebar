@@ -136,7 +136,6 @@ esac
 `)
 
 	sidebar := mocks.NewMockTmuxSidebarPort(t)
-	sidebar.EXPECT().FindSidebarPane(t.Context(), "/dev/pts/99").Return(ports.PaneRef{}, nil)
 
 	if err := createAdhoc(t.Context(), map[string]string{"client": "/dev/pts/99"}, sidebar); err != nil {
 		t.Fatalf("createAdhoc returned error: %v", err)

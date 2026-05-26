@@ -44,7 +44,7 @@ func saveMovedVisibleSessionOrder(ctx context.Context, live []string, session st
 
 func saveShowNumericSessions(ctx context.Context, show bool) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		state.Sidebar = &ports.SidebarState{ShowNumericSessions: show}
+		ensurePersistedSidebarState(state).ShowNumericSessions = show
 	})
 }
 

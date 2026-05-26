@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -44,7 +45,8 @@ func (r runtimeRouter) direct() runtimeRouter {
 func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer, stderr io.Writer) error {
 	if r.ipcClient != nil && routeUsesIPC(route.Path) {
 		if err := r.sendIPC(ctx, route); err != nil {
-			if r.sidebar == nil || !ipcUnavailableForBootstrap(err) {
+			shouldFallback := r.sidebar != nil && ipcUnavailableForBootstrap(err)
+			if !shouldFallback {
 				return err
 			}
 		} else {
@@ -60,7 +62,7 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "sidebar/open":
 		return openSidebar(ctx, route.Flags, r.sidebar)
 	case "sidebar/close":
-		return closeSidebar(ctx, route.Flags, r.sidebar)
+		return closeSidebar(ctx, r.sidebar)
 	case "sidebar/refresh":
 		return refreshSidebar(ctx, route.Flags["client"], r.sidebar)
 	case "action/quick-switch":
@@ -104,8 +106,7 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 }
 
 func ipcUnavailableForBootstrap(err error) bool {
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "connection refused") || strings.Contains(message, "no such file") || strings.Contains(message, "connect: connection reset")
+	return errors.Is(err, ports.ErrIPCConnectionRefused) || errors.Is(err, ports.ErrIPCSocketMissing) || errors.Is(err, ports.ErrIPCConnectionReset)
 }
 
 func routeUsesIPC(path string) bool {
@@ -165,42 +166,61 @@ func routeRequiresSidebar(path string) bool {
 }
 
 func toggleSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
-	pane, err := sidebar.FindSidebarPane(ctx, flags["client"])
+	client := strings.TrimSpace(flags["client"])
+	logical, err := persistedSidebarState(ctx)
+	if err != nil {
+		return err
+	}
+	if logical.Open && strings.TrimSpace(logical.OwnerClient) == client {
+		return closeSidebar(ctx, sidebar)
+	}
+	pane, err := sidebar.FindSidebarPane(ctx, client)
 	if err != nil {
 		return err
 	}
 	if pane.PaneID != "" {
-		return parkVisibleSidebar(ctx, sidebar, pane.PaneID)
+		return closeSidebar(ctx, sidebar)
 	}
 	return openSidebar(ctx, flags, sidebar)
 }
 
 func openSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
-	client := flags["client"]
-	exe, err := os.Executable()
+	return openSidebarForClient(ctx, flags["client"], flags["width"], sidebar)
+}
+
+func openSidebarForClient(ctx context.Context, client string, width string, sidebar ports.TmuxSidebarPort) error {
+	singleton, err := ensureSingletonSidebarPane(ctx, sidebar)
 	if err != nil {
 		return err
 	}
-	uiArgs := []string{exe, "daemon", "serve-ui"}
-	singleton, err := sidebar.EnsureSingletonSidebar(ctx, uiArgs)
-	if err != nil {
-		return err
-	}
-	width := strings.TrimSpace(flags["width"])
+	width = strings.TrimSpace(width)
 	if width == "" {
 		cfg := loadSidebarConfig(ctx)
 		width = cfg.Width
 	}
-	_, err = sidebar.AttachSingletonSidebar(ctx, client, singleton.PaneID, width)
-	return err
+	if _, err = sidebar.AttachSingletonSidebar(ctx, client, singleton.PaneID, width); err != nil {
+		return err
+	}
+	return saveSidebarVisibility(ctx, true, client)
 }
 
-func closeSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
-	pane, err := sidebar.FindSidebarPane(ctx, flags["client"])
+func closeSidebar(ctx context.Context, sidebar ports.TmuxSidebarPort) error {
+	singleton, err := sidebar.FindSingletonSidebar(ctx)
 	if err != nil {
 		return err
 	}
-	return parkVisibleSidebar(ctx, sidebar, pane.PaneID)
+	if err := parkVisibleSidebar(ctx, sidebar, singleton.PaneID); err != nil {
+		return err
+	}
+	return saveSidebarVisibility(ctx, false, "")
+}
+
+func ensureSingletonSidebarPane(ctx context.Context, sidebar ports.TmuxSidebarPort) (ports.PaneRef, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return ports.PaneRef{}, err
+	}
+	return sidebar.EnsureSingletonSidebar(ctx, []string{exe, "daemon", "serve-ui"})
 }
 
 func parkVisibleSidebar(ctx context.Context, sidebar ports.TmuxSidebarPort, paneID string) error {
@@ -310,14 +330,6 @@ func tmuxTargetGoneOutput(output string) bool {
 		strings.Contains(message, "can't find client")
 }
 
-func existingSidebarPane(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) (string, error) {
-	pane, err := sidebar.FindSidebarPane(ctx, client)
-	if err != nil {
-		return "", err
-	}
-	return pane.PaneID, nil
-}
-
 var runSidebarUI = runUI
 
 func serveSidebarUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort) error {
@@ -409,8 +421,11 @@ func handleActionError(ctx context.Context, action string, err error) bool {
 	return false
 }
 
-func captureLiveSidebarSessionsAndRefresh(ctx context.Context, _ string, _ ports.TmuxSidebarPort) error {
+func captureLiveSidebarSessionsAndRefresh(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
 	if err := captureLiveSidebarSessions(ctx); err != nil {
+		return err
+	}
+	if err := reconcileSidebarVisibilityForClient(ctx, client, sidebar); err != nil {
 		return err
 	}
 	refreshAllSidebarPanesBestEffort(ctx)

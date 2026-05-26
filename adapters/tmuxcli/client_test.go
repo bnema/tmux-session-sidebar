@@ -182,6 +182,17 @@ func TestWindowIDUsesDisplayWhenTargetIsEmpty(t *testing.T) {
 	}
 }
 
+func TestWindowIDReturnsHelpfulErrorWhenTargetResolvesNoWindow(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "=alpha", "#{window_id}"}).Return(ports.Result{Stdout: "\n"}, nil)
+
+	_, err := (Client{Process: process}).WindowID(ctx, "=alpha")
+	if err == nil || !strings.Contains(err.Error(), "resolve tmux window id for target \"=alpha\": empty output") {
+		t.Fatalf("WindowID error = %v, want helpful empty-output error", err)
+	}
+}
+
 func TestCurrentPanePathUsesDisplayWhenTargetIsEmpty(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)

@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"maps"
 )
 
@@ -13,6 +14,12 @@ const (
 	IPCActiveClient   = "sidebar.active-client"
 	IPCHealth         = "daemon.health"
 	IPCShutdown       = "daemon.shutdown"
+)
+
+var (
+	ErrIPCSocketMissing     = errors.New("ipc socket missing")
+	ErrIPCConnectionRefused = errors.New("ipc connection refused")
+	ErrIPCConnectionReset   = errors.New("ipc connection reset")
 )
 
 type Request struct {

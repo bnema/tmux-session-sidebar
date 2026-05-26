@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
+	"os"
+	"syscall"
 	"time"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -20,7 +23,7 @@ func (c Client) Send(ctx context.Context, req ports.Request) (resp ports.Respons
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "unix", c.SocketPath)
 	if err != nil {
-		return ports.Response{}, err
+		return ports.Response{}, wrapIPCClientError(err)
 	}
 	defer func() {
 		if err := conn.Close(); err != nil {
@@ -41,4 +44,17 @@ func (c Client) Send(ctx context.Context, req ports.Request) (resp ports.Respons
 		return ports.Response{}, err
 	}
 	return resp, nil
+}
+
+func wrapIPCClientError(err error) error {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return fmt.Errorf("%w: %v", ports.ErrIPCSocketMissing, err)
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return fmt.Errorf("%w: %v", ports.ErrIPCConnectionRefused, err)
+	case errors.Is(err, syscall.ECONNRESET):
+		return fmt.Errorf("%w: %v", ports.ErrIPCConnectionReset, err)
+	default:
+		return err
+	}
 }

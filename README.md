@@ -2,7 +2,7 @@
 
 A TPM plugin that opens a left-hand tmux sidebar for switching and managing sessions.
 
-The sidebar is owned by a single Go runtime process. The process keeps one tmux pane for the UI, parks it in a hidden `__tmux-session-sidebar` session when hidden, and joins it into the active tmux window when opened.
+The sidebar is owned by a single Go runtime process. The process keeps one tmux pane for the UI, parks it in a hidden `__tmux-session-sidebar` session (keeps it alive but detached) when hidden, and joins it into the active tmux window when opened.
 
 ## Requirements
 
@@ -72,9 +72,30 @@ set -g @session-sidebar-agent-attention 'on'
 
 Persistent state and the daemon IPC socket are stored under `${XDG_STATE_HOME:-~/.local/state}/tmux-session-sidebar`.
 
+## Daemon lifecycle
+
+Reloading tmux starts or restarts the Go runtime daemon through the plugin bootstrap:
+
+```bash
+tmux source-file ~/.tmux.conf
+```
+
+If the daemon exits later, it is not restarted automatically; reload tmux to start it again. To stop it manually, kill the PID recorded in the state directory:
+
+```bash
+kill "$(cat ~/.local/state/tmux-session-sidebar/daemon.pid)"
+```
+
+To inspect the hidden sidebar session:
+
+```bash
+tmux list-windows -t __tmux-session-sidebar
+tmux list-panes -t __tmux-session-sidebar -F '#{pane_id} #{window_id} #{pane_current_command}'
+```
+
 ## Usage
 
-Press `Alt+b` to open or close the sidebar. It opens as a full-height left split in the current tmux window. By default the singleton sidebar follows session switches by moving its tmux pane; set `@session-sidebar-close-after-switch` to `on` if you want it to park when switching.
+Press `Alt+b` to open or close the sidebar. It opens as a full-height left split in the current tmux window. By default the sidebar stays open and follows you when you switch sessions; set `@session-sidebar-close-after-switch` to `on` if you want it to park instead.
 
 Inside the sidebar:
 
@@ -199,8 +220,9 @@ For local development:
 ```bash
 make install
 make build-runtime
+make restart-runtime
 make test-go
 make test-runtime-bootstrap
 ```
 
-`make install` symlinks the current checkout into `~/.tmux/plugins/tmux-session-sidebar`. `make build-runtime` updates the plugin-local `.bin/tmux-session-sidebar` runtime for fast local testing. `make uninstall` removes the symlink.
+`make install` symlinks the current checkout into `~/.tmux/plugins/tmux-session-sidebar`. `make build-runtime` updates the plugin-local `.bin/tmux-session-sidebar` runtime for fast local testing. `make restart-runtime` rebuilds the runtime, stops old daemon/UI processes, removes the hidden singleton session, and reloads tmux config so the next sidebar launch uses the new binary. `make uninstall` removes the symlink.

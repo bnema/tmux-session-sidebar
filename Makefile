@@ -3,7 +3,7 @@ PLUGIN_REPO ?= bnema/$(PLUGIN_NAME)
 TPM_DIR ?= $(HOME)/.tmux/plugins
 TARGET_DIR ?= $(TPM_DIR)/$(PLUGIN_NAME)
 
-.PHONY: install uninstall mocks test-go test-runtime-bootstrap build-runtime
+.PHONY: install uninstall mocks test-go test-runtime-bootstrap build-runtime restart-runtime
 
 install:
 	@mkdir -p "$(TPM_DIR)"
@@ -24,6 +24,7 @@ test-runtime-bootstrap:
 	@bash scripts/ensure-runtime_test.sh
 	@bash scripts/install-git-update-hook_test.sh
 	@bash scripts/daemon-control_test.sh
+	@bash scripts/restart-runtime_test.sh
 
 build-runtime:
 	@runtime_bin="$$(bash scripts/ensure-runtime.sh)"; status=$$?; \
@@ -32,6 +33,9 @@ build-runtime:
 			exit 1; \
 		fi; \
 		echo "Updated tmux plugin runtime -> $$runtime_bin"
+
+restart-runtime: build-runtime
+	@bash scripts/restart-runtime.sh
 
 uninstall:
 	@[ -n "$(TARGET_DIR)" ] || { echo "Error: TARGET_DIR is empty" >&2; exit 1; }
