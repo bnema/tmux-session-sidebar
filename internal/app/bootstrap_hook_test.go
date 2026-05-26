@@ -45,6 +45,14 @@ func TestInstallRuntimeHooksRegistersResizeCommands(t *testing.T) {
 		}
 	}
 
+	attachedHook := hooks["client-attached[9701]"]
+	if attachedHook == "" {
+		t.Fatalf("client-attached hook not registered, log=%q", string(content))
+	}
+	detachedHook := hooks["client-detached[9702]"]
+	if detachedHook == "" {
+		t.Fatalf("client-detached hook not registered, log=%q", string(content))
+	}
 	sessionChangedHook := hooks["client-session-changed[9703]"]
 	if sessionChangedHook == "" {
 		t.Fatalf("client-session-changed hook not registered, log=%q", string(content))
@@ -58,10 +66,19 @@ func TestInstallRuntimeHooksRegistersResizeCommands(t *testing.T) {
 		t.Fatalf("window-resized hook not registered, log=%q", string(content))
 	}
 
-	if !strings.Contains(sessionChangedHook, `run-shell -b "/tmp/runtime hook client-session-changed --client #{q:client_name}"`) {
+	for name, hook := range map[string]string{
+		"client-attached":        attachedHook,
+		"client-detached":        detachedHook,
+		"client-session-changed": sessionChangedHook,
+	} {
+		if !strings.Contains(hook, `--client=#{q:hook_client} --session=#{q:hook_session_name}`) {
+			t.Fatalf("unexpected %s hook %q", name, hook)
+		}
+	}
+	if !strings.Contains(sessionChangedHook, `run-shell -b "/tmp/runtime hook client-session-changed`) {
 		t.Fatalf("unexpected client-session-changed hook %q", sessionChangedHook)
 	}
-	if !strings.Contains(clientHook, `run-shell -b "/tmp/runtime hook client-resized --client #{q:client_name}"`) {
+	if !strings.Contains(clientHook, `run-shell -b "/tmp/runtime hook client-resized --client #{q:hook_client}"`) {
 		t.Fatalf("unexpected client hook %q", clientHook)
 	}
 	if !strings.Contains(windowHook, `run-shell -b "/tmp/runtime hook window-resized --window #{q:hook_window}"`) {

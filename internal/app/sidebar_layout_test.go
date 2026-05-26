@@ -56,6 +56,71 @@ func TestCloseSidebarParksGlobalSingletonPane(t *testing.T) {
 	}
 }
 
+func TestHookClientSessionChangedSkipsSidebarReconcileForInternalHookSession(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	installFakeTmux(t, fakeHookCaptureTmuxScript())
+
+	err := (runtimeRouter{}).Handle(ctx, Route{
+		Path:  "hook/client-session-changed",
+		Flags: map[string]string{"client": "popup-client", "session": "__floating-popup-1"},
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("hook client-session-changed error: %v", err)
+	}
+}
+
+func TestHookClientDetachedDoesNotReconcileSidebarForDetachingClient(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	installFakeTmux(t, fakeHookCaptureTmuxScript())
+
+	err := (runtimeRouter{}).Handle(ctx, Route{
+		Path:  "hook/client-detached",
+		Flags: map[string]string{"client": "popup-client", "session": "__floating-popup-1"},
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("hook client-detached error: %v", err)
+	}
+}
+
+func fakeHookCaptureTmuxScript() string {
+	return `#!/usr/bin/env bash
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-colors) printf 'on\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-heat-recent-hours) printf '1\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'on\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) printf '$1\talpha\t1\t1\n$2\t__floating-popup-1\t1\t1\n' ;;
+  list-clients) printf 'popup-client\t$2\t@2\t%2\t__floating-popup-1\n' ;;
+  display-message) printf '%s\n' "$PWD" ;;
+  list-panes) ;;
+  *) ;;
+esac
+`
+}
+
 func TestReconcileSidebarVisibilityForClientReopensGlobalSidebarForOwnerClient(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
