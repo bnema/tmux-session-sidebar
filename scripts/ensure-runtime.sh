@@ -11,6 +11,8 @@ CKSUM_BIN="$(command -v cksum 2>/dev/null || true)"
 CURL_BIN="$(command -v curl 2>/dev/null || true)"
 TAR_BIN="$(command -v tar 2>/dev/null || true)"
 UNAME_BIN="$(command -v uname 2>/dev/null || true)"
+SHA256SUM_BIN="$(command -v sha256sum 2>/dev/null || true)"
+SHASUM_BIN="$(command -v shasum 2>/dev/null || true)"
 [ -n "$DIRNAME_BIN" ] || { echo 'tmux-session-sidebar: dirname not found' >&2; exit 1; }
 [ -n "$PWD_BIN" ] || { echo 'tmux-session-sidebar: pwd not found' >&2; exit 1; }
 PLUGIN_DIR="$(cd "$("$DIRNAME_BIN" "${BASH_SOURCE[0]}")/.." && "$PWD_BIN")" || exit 1
@@ -81,20 +83,63 @@ validate_runtime() {
   esac
 }
 
+sha256_file() {
+  local checksum file="$1" ignored
+  if [ -n "$SHA256SUM_BIN" ]; then
+    read -r checksum ignored <<EOF
+$($SHA256SUM_BIN "$file")
+EOF
+    printf '%s\n' "$checksum"
+    return 0
+  fi
+  if [ -n "$SHASUM_BIN" ]; then
+    read -r checksum ignored <<EOF
+$($SHASUM_BIN -a 256 "$file")
+EOF
+    printf '%s\n' "$checksum"
+    return 0
+  fi
+  echo 'tmux-session-sidebar: sha256sum or shasum not found' >&2
+  return 1
+}
+
+verify_release_checksum() {
+  local archive="$1" asset="$2" checksums_file="$3" actual expected filename
+  expected=""
+  while read -r expected filename; do
+    [ "$filename" = "$asset" ] && break
+    expected=""
+  done <"$checksums_file"
+  if [ -z "$expected" ]; then
+    echo "tmux-session-sidebar: checksum not found for $asset" >&2
+    return 1
+  fi
+  actual="$(sha256_file "$archive")" || return 1
+  if [ "$actual" != "$expected" ]; then
+    echo "tmux-session-sidebar: checksum mismatch for $asset" >&2
+    return 1
+  fi
+}
+
 download_release_runtime() {
-  local archive arch os tmp_dir tmp_runtime url
+  local archive arch asset checksums os tmp_dir tmp_runtime url checksums_url
   [ -n "$CURL_BIN" ] || return 1
   [ -n "$TAR_BIN" ] || return 1
   [ -n "$UNAME_BIN" ] || return 1
   os="$(release_os)" || return 1
   arch="$(release_arch)" || return 1
-  url="https://github.com/$RELEASE_REPO/releases/latest/download/tmux-session-sidebar_${os}_${arch}.tar.gz"
+  asset="tmux-session-sidebar_${os}_${arch}.tar.gz"
+  url="https://github.com/$RELEASE_REPO/releases/latest/download/$asset"
+  checksums_url="https://github.com/$RELEASE_REPO/releases/latest/download/checksums.txt"
   tmp_dir="$BIN_DIR/download.$$"
-  archive="$tmp_dir/runtime.tar.gz"
+  archive="$tmp_dir/$asset"
+  checksums="$tmp_dir/checksums.txt"
   rm -rf "$tmp_dir"
   mkdir -p "$tmp_dir" || return 1
   echo "tmux-session-sidebar: downloading runtime from $url" >&2
   "$CURL_BIN" -fsSL -o "$archive" "$url" || { rm -rf "$tmp_dir"; return 1; }
+  "$CURL_BIN" -fsSL -o "$checksums" "$checksums_url" || { rm -rf "$tmp_dir"; return 1; }
+  verify_release_checksum "$archive" "$asset" "$checksums" || { rm -rf "$tmp_dir"; return 1; }
   "$TAR_BIN" -xzf "$archive" -C "$tmp_dir" tmux-session-sidebar || { rm -rf "$tmp_dir"; return 1; }
   tmp_runtime="$tmp_dir/tmux-session-sidebar"
   chmod +x "$tmp_runtime" || { rm -rf "$tmp_dir"; return 1; }
