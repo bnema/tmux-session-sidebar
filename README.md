@@ -83,7 +83,7 @@ tmux source-file ~/.tmux.conf
 If the daemon exits later, it is not restarted automatically; reload tmux to start it again. To stop it manually, kill the PID recorded in the state directory:
 
 ```bash
-kill "$(cat ~/.local/state/tmux-session-sidebar/daemon.pid)"
+kill "$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar/daemon.pid")"
 ```
 
 To inspect the hidden sidebar session:

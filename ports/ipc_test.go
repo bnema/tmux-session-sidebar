@@ -11,6 +11,7 @@ func TestSidebarIPCRequests(t *testing.T) {
 		args   map[string]string
 	}{
 		{name: "open", got: SidebarOpenRequest("%1"), kind: IPCSidebarOpen, client: "%1"},
+		{name: "open with width", got: SidebarOpenRequest("%1", "30"), kind: IPCSidebarOpen, client: "%1", args: map[string]string{"width": "30"}},
 		{name: "close", got: SidebarCloseRequest("%1"), kind: IPCSidebarClose, client: "%1"},
 		{name: "toggle", got: SidebarToggleRequest("%1"), kind: IPCSidebarToggle, client: "%1"},
 		{name: "refresh", got: SidebarRefreshRequest("%1"), kind: IPCSidebarRefresh, client: "%1"},
@@ -26,8 +27,19 @@ func TestSidebarIPCRequests(t *testing.T) {
 			if tt.got.ClientID != tt.client {
 				t.Fatalf("ClientID = %q, want %q", tt.got.ClientID, tt.client)
 			}
-			if len(tt.args) == 0 && len(tt.got.Args) != 0 {
-				t.Fatalf("Args = %#v, want empty", tt.got.Args)
+			if len(tt.args) == 0 {
+				if len(tt.got.Args) != 0 {
+					t.Fatalf("Args = %#v, want empty", tt.got.Args)
+				}
+				return
+			}
+			if len(tt.got.Args) != len(tt.args) {
+				t.Fatalf("Args = %#v, want %#v", tt.got.Args, tt.args)
+			}
+			for key, want := range tt.args {
+				if tt.got.Args[key] != want {
+					t.Fatalf("Args[%q] = %q, want %q", key, tt.got.Args[key], want)
+				}
 			}
 		})
 	}

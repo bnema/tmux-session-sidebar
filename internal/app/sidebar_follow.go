@@ -23,7 +23,7 @@ func withSidebarFollow(ctx context.Context, client string, sidebar ports.TmuxSid
 	if err := action(); err != nil {
 		return err
 	}
-	if !shouldFollow {
+	if !shouldFollow || sidebar == nil {
 		return nil
 	}
 	return applySidebarVisibilityForClient(ctx, client, sidebar)

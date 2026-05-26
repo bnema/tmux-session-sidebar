@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"maps"
+	"strings"
 )
 
 const (
@@ -13,7 +14,6 @@ const (
 	IPCSidebarRefresh = "sidebar.refresh"
 	IPCActiveClient   = "sidebar.active-client"
 	IPCHealth         = "daemon.health"
-	IPCShutdown       = "daemon.shutdown"
 )
 
 var (
@@ -43,8 +43,15 @@ func SidebarRequest(kind string, clientID string, args map[string]string) Reques
 	return Request{Kind: kind, ClientID: clientID, Args: cloned}
 }
 
-func SidebarOpenRequest(clientID string) Request {
-	return SidebarRequest(IPCSidebarOpen, clientID, nil)
+func SidebarOpenRequest(clientID string, width ...string) Request {
+	var args map[string]string
+	if len(width) > 0 {
+		trimmed := strings.TrimSpace(width[0])
+		if trimmed != "" {
+			args = map[string]string{"width": trimmed}
+		}
+	}
+	return SidebarRequest(IPCSidebarOpen, clientID, args)
 }
 
 func SidebarCloseRequest(clientID string) Request {
@@ -65,10 +72,6 @@ func ActiveClientRequest(clientID string) Request {
 
 func HealthRequest() Request {
 	return Request{Kind: IPCHealth}
-}
-
-func ShutdownRequest() Request {
-	return Request{Kind: IPCShutdown}
 }
 
 type IPCHandler interface {

@@ -108,15 +108,21 @@ func TestRuntimeRouterProxiesSidebarRoutesThroughIPCClient(t *testing.T) {
 func TestRuntimeRouterReturnsAmbiguousIPCErrorWithoutDirectFallback(t *testing.T) {
 	ctx := t.Context()
 	ipc := mocks.NewMockIPCClientPort(t)
-	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, errors.New("daemon timeout"))
+	timeoutErr := errors.New("daemon timeout")
+	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, timeoutErr)
 
 	router := NewRuntimeRouter(nil, ipc, nil)
-	if err := router.Handle(ctx, Route{Path: "sidebar/close", Flags: map[string]string{"client": "client-1"}}, nil, nil); err == nil {
-		t.Fatal("Handle sidebar/close error = nil, want IPC error")
+	err := router.Handle(ctx, Route{Path: "sidebar/close", Flags: map[string]string{"client": "client-1"}}, nil, nil)
+	if !errors.Is(err, timeoutErr) {
+		t.Fatalf("Handle sidebar/close error = %v, want timeout error", err)
+	}
+	if err != nil && strings.Contains(err.Error(), "sidebar port is required") {
+		t.Fatalf("Handle sidebar/close error = %v, want no direct fallback", err)
 	}
 }
 
 func TestRuntimeRouterUsesDirectFallbackForUnavailableIPCSocket(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	ipc := mocks.NewMockIPCClientPort(t)
 	tmux := mocks.NewMockTmuxSidebarPort(t)
@@ -127,6 +133,17 @@ func TestRuntimeRouterUsesDirectFallbackForUnavailableIPCSocket(t *testing.T) {
 	router := NewRuntimeRouter(tmux, ipc, nil)
 	if err := router.Handle(ctx, Route{Path: "sidebar/close", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {
 		t.Fatalf("Handle sidebar/close error: %v", err)
+	}
+}
+
+func TestRuntimeRouterProxiesSidebarOpenWidthThroughIPCClient(t *testing.T) {
+	ctx := t.Context()
+	ipc := mocks.NewMockIPCClientPort(t)
+	ipc.EXPECT().Send(ctx, ports.SidebarOpenRequest("client-1", "30")).Return(ports.Response{OK: true}, nil)
+
+	router := NewRuntimeRouter(nil, ipc, nil)
+	if err := router.Handle(ctx, Route{Path: "sidebar/open", Flags: map[string]string{"client": "client-1", "width": "30"}}, nil, nil); err != nil {
+		t.Fatalf("Handle sidebar/open error: %v", err)
 	}
 }
 

@@ -67,6 +67,23 @@ func TestDaemonIPCHandlerDispatchesSidebarRequests(t *testing.T) {
 	}
 }
 
+func TestDaemonIPCHandlerPreservesSidebarOpenWidth(t *testing.T) {
+	router := &recordingIPCRouter{}
+	resp, err := daemonIPCHandler{router: router}.HandleIPC(t.Context(), ports.SidebarOpenRequest("%1", "30"))
+	if err != nil {
+		t.Fatalf("HandleIPC error: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("response OK = false, message=%q", resp.Message)
+	}
+	if len(router.routes) != 1 {
+		t.Fatalf("routes = %d, want 1", len(router.routes))
+	}
+	if router.routes[0].Flags["width"] != "30" {
+		t.Fatalf("width flag = %q, want 30", router.routes[0].Flags["width"])
+	}
+}
+
 func TestDaemonIPCHandlerHandlesHealthAndUnknownRequests(t *testing.T) {
 	health, err := (daemonIPCHandler{}).HandleIPC(t.Context(), ports.HealthRequest())
 	if err != nil || !health.OK {

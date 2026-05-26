@@ -230,6 +230,28 @@ func TestWithSidebarFollowReturnsPersistedSidebarStateError(t *testing.T) {
 	}
 }
 
+func TestWithSidebarFollowAllowsNilSidebarAfterActionWhenStateSaysFollow(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	called := false
+
+	err := withSidebarFollow(ctx, "client-1", nil, func() error {
+		called = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withSidebarFollow error: %v", err)
+	}
+	if !called {
+		t.Fatal("action was not called")
+	}
+}
+
 func stubCommandRunner(t *testing.T, runner func(context.Context, string, ...string) (string, error)) func() {
 	t.Helper()
 	old := commandRunner

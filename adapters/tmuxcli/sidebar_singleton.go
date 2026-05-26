@@ -43,6 +43,9 @@ func (c Client) EnsureSingletonSidebar(ctx context.Context, command []string) (p
 		return ports.PaneRef{}, err
 	}
 	if err := c.markSidebarPane(ctx, ref.PaneID); err != nil {
+		if cleanupErr := c.killPane(ctx, ref.PaneID); cleanupErr != nil {
+			return ports.PaneRef{}, errors.Join(err, fmt.Errorf("cleanup unmarked singleton sidebar pane %s: %w", ref.PaneID, cleanupErr))
+		}
 		return ports.PaneRef{}, err
 	}
 	return ref, nil
@@ -178,10 +181,31 @@ func (c Client) requireSidebarPane(ctx context.Context, paneID string) error {
 	return nil
 }
 
+func (c Client) killPane(ctx context.Context, paneID string) error {
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdKillPane, "-t", strings.TrimSpace(paneID)})
+	if err != nil {
+		return wrapTmuxError(result, err)
+	}
+	return nil
+}
+
 func parseOptionalPaneRef(output string) (ports.PaneRef, error) {
-	if output == "" {
+	trimmed := strings.TrimSpace(output)
+	if trimmed == "" {
 		return ports.PaneRef{}, nil
 	}
-	line, _, _ := strings.Cut(output, "\n")
-	return parsePaneRef(strings.TrimSpace(line))
+	lines := make([]string, 0, 2)
+	for line := range strings.SplitSeq(trimmed, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) == 0 {
+		return ports.PaneRef{}, nil
+	}
+	if len(lines) > 1 {
+		return ports.PaneRef{}, fmt.Errorf("parseOptionalPaneRef: multiple marked sidebar panes found: %q", trimmed)
+	}
+	return parsePaneRef(lines[0])
 }

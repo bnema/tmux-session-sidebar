@@ -128,7 +128,7 @@ func (r runtimeRouter) sendIPC(ctx context.Context, route Route) error {
 	case "sidebar/toggle":
 		resp, err = r.ipcClient.Send(ctx, ports.SidebarToggleRequest(client))
 	case "sidebar/open":
-		resp, err = r.ipcClient.Send(ctx, ports.SidebarOpenRequest(client))
+		resp, err = r.ipcClient.Send(ctx, ports.SidebarOpenRequest(client, route.Flags["width"]))
 	case "sidebar/close":
 		resp, err = r.ipcClient.Send(ctx, ports.SidebarCloseRequest(client))
 	case "sidebar/refresh":

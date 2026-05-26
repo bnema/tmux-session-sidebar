@@ -283,6 +283,16 @@ func TestSingletonSidebarPaneLifecycle(t *testing.T) {
 			want: ports.PaneRef{PaneID: "%9", WindowID: "@1"},
 		},
 		{
+			name: "find errors on duplicate marked panes",
+			setup: func(ctx context.Context, process *mocks.MockProcessPort) {
+				process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-a", "-f", "#{==:#{@session-sidebar-pane},1}", "-F", "#{pane_id}\t#{window_id}"}).Return(ports.Result{Stdout: "%9\t@1\n%10\t@2\n"}, nil)
+			},
+			call: func(ctx context.Context, client Client) (ports.PaneRef, error) {
+				return client.FindSingletonSidebar(ctx)
+			},
+			wantErr: true,
+		},
+		{
 			name: "find propagates tmux error",
 			setup: func(ctx context.Context, process *mocks.MockProcessPort) {
 				process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-a", "-f", "#{==:#{@session-sidebar-pane},1}", "-F", "#{pane_id}\t#{window_id}"}).Return(ports.Result{Stderr: "server exited\n"}, errors.New("tmux failed"))
@@ -322,6 +332,20 @@ func TestSingletonSidebarPaneLifecycle(t *testing.T) {
 				return client.EnsureSingletonSidebar(ctx, command)
 			},
 			want: ports.PaneRef{PaneID: "%9", WindowID: "@hidden"},
+		},
+		{
+			name: "ensure cleans up created pane when marking fails",
+			setup: func(ctx context.Context, process *mocks.MockProcessPort) {
+				process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-a", "-f", "#{==:#{@session-sidebar-pane},1}", "-F", "#{pane_id}\t#{window_id}"}).Return(ports.Result{}, nil)
+				process.EXPECT().Exec(ctx, "tmux", []string{"has-session", "-t", "__tmux-session-sidebar"}).Return(ports.Result{Stderr: "can't find session\n"}, errors.New("missing"))
+				process.EXPECT().Exec(ctx, "tmux", []string{"new-session", "-d", "-s", "__tmux-session-sidebar", "-n", "sidebar", "-P", "-F", "#{pane_id}\t#{window_id}", "tmux-session-sidebar", "daemon", "serve-ui"}).Return(ports.Result{Stdout: "%9\t@hidden\n"}, nil)
+				process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1"}).Return(ports.Result{Stderr: "set failed\n"}, errors.New("set failed"))
+				process.EXPECT().Exec(ctx, "tmux", []string{"kill-pane", "-t", "%9"}).Return(ports.Result{}, nil)
+			},
+			call: func(ctx context.Context, client Client) (ports.PaneRef, error) {
+				return client.EnsureSingletonSidebar(ctx, command)
+			},
+			wantErr: true,
 		},
 		{
 			name: "ensure creates window when parking session already exists without marked pane",

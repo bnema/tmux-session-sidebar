@@ -17,6 +17,7 @@ const (
 	cmdCapturePane    = "capture-pane"
 	cmdDisplayMessage = "display-message"
 	cmdJoinPane       = "join-pane"
+	cmdKillPane       = "kill-pane"
 	cmdListPanes      = "list-panes"
 	cmdNewSession     = "new-session"
 	cmdNewWindow      = "new-window"
