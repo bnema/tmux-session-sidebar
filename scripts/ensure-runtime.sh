@@ -68,8 +68,21 @@ release_arch() {
   esac
 }
 
+validate_runtime() {
+  local bin="$1" output
+  [ -x "$bin" ] || return 1
+  output="$($bin version 2>/dev/null || true)"
+  case "$output" in
+    tmux-session-sidebar\ *) return 0 ;;
+    *)
+      echo "tmux-session-sidebar: runtime validation failed: $bin version did not report tmux-session-sidebar" >&2
+      return 1
+      ;;
+  esac
+}
+
 download_release_runtime() {
-  local archive arch os tmp_dir url
+  local archive arch os tmp_dir tmp_runtime url
   [ -n "$CURL_BIN" ] || return 1
   [ -n "$TAR_BIN" ] || return 1
   [ -n "$UNAME_BIN" ] || return 1
@@ -83,14 +96,16 @@ download_release_runtime() {
   echo "tmux-session-sidebar: downloading runtime from $url" >&2
   "$CURL_BIN" -fsSL -o "$archive" "$url" || { rm -rf "$tmp_dir"; return 1; }
   "$TAR_BIN" -xzf "$archive" -C "$tmp_dir" tmux-session-sidebar || { rm -rf "$tmp_dir"; return 1; }
-  mv "$tmp_dir/tmux-session-sidebar" "$runtime_bin" || { rm -rf "$tmp_dir"; return 1; }
-  chmod +x "$runtime_bin" || { rm -rf "$tmp_dir"; return 1; }
+  tmp_runtime="$tmp_dir/tmux-session-sidebar"
+  chmod +x "$tmp_runtime" || { rm -rf "$tmp_dir"; return 1; }
+  validate_runtime "$tmp_runtime" || { rm -rf "$tmp_dir"; return 1; }
+  mv "$tmp_runtime" "$runtime_bin" || { rm -rf "$tmp_dir"; return 1; }
   rm -rf "$tmp_dir"
 }
 
 if [ -z "$GO_BIN" ]; then
   release_stamp="release:$RELEASE_REPO:latest"
-  if [ -x "$runtime_bin" ] && [ "${TMUX_SESSION_SIDEBAR_REFRESH_RELEASE:-}" != "1" ] && [ "$(cat "$stamp_file" 2>/dev/null || true)" = "$release_stamp" ]; then
+  if [ -x "$runtime_bin" ] && [ "${TMUX_SESSION_SIDEBAR_REFRESH_RELEASE:-}" != "1" ] && [ "$(cat "$stamp_file" 2>/dev/null || true)" = "$release_stamp" ] && validate_runtime "$runtime_bin"; then
     printf '%s\n' "$runtime_bin"
     exit 0
   fi
@@ -100,7 +115,7 @@ if [ -z "$GO_BIN" ]; then
     printf '%s\n' "$runtime_bin"
     exit 0
   fi
-  if [ -x "$runtime_bin" ]; then
+  if validate_runtime "$runtime_bin"; then
     echo 'tmux-session-sidebar: release refresh failed; using cached runtime' >&2
     printf '%s\n' "$runtime_bin"
     exit 0
@@ -115,6 +130,7 @@ fingerprint="$(source_fingerprint)"
 if [ ! -x "$runtime_bin" ] || [ ! -f "$stamp_file" ] || [ "$(cat "$stamp_file" 2>/dev/null || true)" != "$fingerprint" ]; then
   echo "tmux-session-sidebar: building runtime at $runtime_bin" >&2
   (cd "$PLUGIN_DIR" && "$GO_BIN" build -o "$runtime_bin" ./cmd/tmux-session-sidebar)
+  validate_runtime "$runtime_bin"
   printf '%s\n' "$fingerprint" >"$stamp_file"
 fi
 

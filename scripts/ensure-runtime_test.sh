@@ -70,7 +70,14 @@ case "$1" in
     done
     [ -n "$out" ] || { echo 'missing -o' >&2; exit 1; }
     mkdir -p "$(dirname "$out")"
-    printf '#!/usr/bin/env bash\necho built-runtime\n' >"$out"
+    cat >"$out" <<'RUNTIME'
+#!/usr/bin/env bash
+if [ "${1:-}" = version ]; then
+  echo "tmux-session-sidebar test"
+else
+  echo built-runtime
+fi
+RUNTIME
     chmod +x "$out"
     printf 'build %s\n' "$out" >>"$TEST_ROOT/go-build.log"
     ;;
@@ -146,7 +153,14 @@ test_existing_runtime_is_reused_when_go_is_unavailable() {
   root="$(new_fixture)"
   expected="$root/plugin/.bin/tmux-session-sidebar"
   mkdir -p "$root/plugin/.bin"
-  printf '#!/usr/bin/env bash\necho cached-runtime\n' >"$expected"
+  cat >"$expected" <<'RUNTIME'
+#!/usr/bin/env bash
+if [ "${1:-}" = version ]; then
+  echo "tmux-session-sidebar cached"
+else
+  echo cached-runtime
+fi
+RUNTIME
   chmod +x "$expected"
   printf 'release:bnema/tmux-session-sidebar:latest\n' >"$root/plugin/.bin/.build-fingerprint"
 
@@ -182,7 +196,14 @@ prepare_release_download_fixture() {
 
   rm -f "$root/fakebin/go"
   mkdir -p "$root/fakebin" "$root/download-src"
-  printf '#!/usr/bin/env bash\necho downloaded-runtime\n' >"$root/download-src/tmux-session-sidebar"
+  cat >"$root/download-src/tmux-session-sidebar" <<'RUNTIME'
+#!/usr/bin/env bash
+if [ "${1:-}" = version ]; then
+  echo "tmux-session-sidebar downloaded"
+else
+  echo downloaded-runtime
+fi
+RUNTIME
   chmod +x "$root/download-src/tmux-session-sidebar"
   tar -C "$root/download-src" -czf "$root/release.tar.gz" tmux-session-sidebar
   ln -s "$bash_bin" "$root/fakebin/bash"
@@ -241,7 +262,14 @@ test_refreshes_existing_release_runtime_when_requested() {
   root="$(new_fixture)"
   expected="$root/plugin/.bin/tmux-session-sidebar"
   mkdir -p "$root/plugin/.bin"
-  printf '#!/usr/bin/env bash\necho stale-runtime\n' >"$expected"
+  cat >"$expected" <<'RUNTIME'
+#!/usr/bin/env bash
+if [ "${1:-}" = version ]; then
+  echo stale-runtime
+else
+  echo stale-runtime
+fi
+RUNTIME
   chmod +x "$expected"
   prepare_release_download_fixture "$root"
 
@@ -250,6 +278,49 @@ test_refreshes_existing_release_runtime_when_requested() {
   assert_eq "$expected" "$output" "forced refresh should still return plugin-local runtime"
   assert_file_contains "$root/curl.log" "tmux-session-sidebar_Linux_x86_64.tar.gz" "forced refresh should download the release asset"
   assert_eq "downloaded-runtime" "$($expected)" "forced refresh should replace stale runtime"
+}
+
+test_matching_release_stamp_refreshes_invalid_cached_runtime() {
+  local root expected output
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  mkdir -p "$root/plugin/.bin"
+  cat >"$expected" <<'RUNTIME'
+#!/usr/bin/env bash
+echo invalid-runtime
+RUNTIME
+  chmod +x "$expected"
+  printf 'release:bnema/tmux-session-sidebar:latest\n' >"$root/plugin/.bin/.build-fingerprint"
+  prepare_release_download_fixture "$root"
+
+  output="$(TEST_ROOT="$root" PATH="$root/fakebin" "$root/plugin/scripts/ensure-runtime.sh")"
+
+  assert_eq "$expected" "$output" "invalid cached runtime should be refreshed even when release stamp matches"
+  assert_file_contains "$root/curl.log" "tmux-session-sidebar_Linux_x86_64.tar.gz" "invalid cached runtime should trigger release download"
+  assert_eq "downloaded-runtime" "$($expected)" "invalid cached runtime should be replaced with validated release runtime"
+}
+
+test_rejects_downloaded_runtime_without_version_output() {
+  local root expected output status
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  rm -rf "$root/plugin/.bin"
+  prepare_release_download_fixture "$root"
+  printf '#!/usr/bin/env bash\necho invalid-runtime\n' >"$root/download-src/tmux-session-sidebar"
+  chmod +x "$root/download-src/tmux-session-sidebar"
+  tar -C "$root/download-src" -czf "$root/release.tar.gz" tmux-session-sidebar
+
+  set +e
+  output="$(TEST_ROOT="$root" PATH="$root/fakebin" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
+  status="$?"
+  set -e
+
+  [ "$status" -ne 0 ] || fail "invalid downloaded runtime should fail installation"
+  case "$output" in
+    *"runtime validation failed"*) ;;
+    *) fail "invalid downloaded runtime should report validation failure, got: $output" ;;
+  esac
+  [ ! -e "$expected" ] || fail "invalid downloaded runtime should not be installed"
 }
 
 test_runtime_rebuilds_for_untracked_source_files() {
@@ -272,5 +343,7 @@ test_runtime_rebuilds_for_untracked_source_files
 test_existing_runtime_is_reused_when_go_is_unavailable
 test_downloads_latest_release_when_go_is_unavailable_and_runtime_missing
 test_refreshes_existing_release_runtime_when_requested
+test_matching_release_stamp_refreshes_invalid_cached_runtime
+test_rejects_downloaded_runtime_without_version_output
 
 echo "ensure-runtime tests passed"
