@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/locker"
@@ -98,7 +100,7 @@ func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) error
 	})
 }
 
-func serveSidebarDaemon(ctx context.Context) error {
+func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, router Router) error {
 	store := sessionOrderStore()
 	acquireCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -128,6 +130,14 @@ func serveSidebarDaemon(ctx context.Context) error {
 	if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil {
 		return err
 	}
+	var ipcWG sync.WaitGroup
+	if ipcServer != nil && router != nil {
+		ipcWG.Go(func() {
+			if err := ipcServer.Serve(ctx, daemonIPCHandler{router: router, stdout: io.Discard, stderr: os.Stderr, mu: &sync.Mutex{}}); err != nil && !errors.Is(err, context.Canceled) {
+				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: ipc server failed: %v\n", err)
+			}
+		})
+	}
 
 	for {
 		cfg = loadSidebarConfig(ctx)
@@ -137,6 +147,7 @@ func serveSidebarDaemon(ctx context.Context) error {
 			if !timer.Stop() {
 				<-timer.C
 			}
+			ipcWG.Wait()
 			return nil
 		case <-timer.C:
 		}

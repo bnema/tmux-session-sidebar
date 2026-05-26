@@ -44,7 +44,7 @@ func saveMovedVisibleSessionOrder(ctx context.Context, live []string, session st
 
 func saveShowNumericSessions(ctx context.Context, show bool) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		state.Sidebar = &ports.SidebarState{ShowNumericSessions: show}
+		ensurePersistedSidebarState(state).ShowNumericSessions = show
 	})
 }
 
@@ -139,7 +139,7 @@ func updateSidebarStateWithSnapshot(ctx context.Context, update func(*ports.Pers
 	return previous, err
 }
 
-func sessionOrderStore() storefs.Store {
+func StateDir() string {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
 		if home, err := os.UserHomeDir(); err == nil && home != "" {
@@ -148,7 +148,11 @@ func sessionOrderStore() storefs.Store {
 			base = os.TempDir()
 		}
 	}
-	return storefs.New(filepath.Join(base, "tmux-session-sidebar"))
+	return filepath.Join(base, "tmux-session-sidebar")
+}
+
+func sessionOrderStore() storefs.Store {
+	return storefs.New(StateDir())
 }
 
 func withLoadedSidebarState(ctx context.Context, fn func(store storefs.Store, state *ports.PersistedState) error) error {

@@ -37,8 +37,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	cmd := newRootCommand(ctx, stdout, stderr, router)
 	cmd.SetArgs(args)
 	if err := cmd.Execute(); err != nil {
-		var runtimeErr runtimeError
-		if errors.As(err, &runtimeErr) {
+		if _, ok := errors.AsType[runtimeError](err); ok {
 			return 1
 		}
 		return 2
@@ -80,6 +79,7 @@ func newRootCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, rou
 
 	command.AddCommand(groupCommand("daemon", "Manage the background sidebar daemon",
 		leafCommand("serve", "Run the sidebar daemon", runRoute("daemon/serve")),
+		leafCommand("serve-ui", "Run the singleton sidebar UI", runRoute("daemon/serve-ui")),
 		leafCommand("ensure", "Ensure restored sidebar state is captured", runRoute("daemon/ensure")),
 	))
 	command.AddCommand(groupCommand("hook", "Handle tmux runtime hooks",
@@ -106,9 +106,6 @@ func newRootCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, rou
 		leafCommand("toggle", "Toggle the sidebar for a tmux client", runRoute("sidebar/toggle")),
 		leafCommand("open", "Open the sidebar for a tmux client", runRoute("sidebar/open")),
 		leafCommand("close", "Close the sidebar for a tmux client", runRoute("sidebar/close")),
-	))
-	command.AddCommand(groupCommand("ui", "Run sidebar UI commands",
-		leafCommand("run", "Run the interactive sidebar UI", runRoute("ui/run")),
 	))
 	command.AddCommand(groupCommand("action", "Run sidebar session actions",
 		leafCommand("switch", "Switch the tmux client to a session", runRoute("action/switch")),

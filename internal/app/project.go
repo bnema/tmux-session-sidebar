@@ -138,9 +138,65 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 }
 
 func switchClient(ctx context.Context, client string, sessionName string, sidebar ports.TmuxSidebarPort) error {
-	return withSidebarFollow(ctx, client, sidebar, func() error {
-		return runtimeService().SwitchSession(ctx, client, sessionName)
-	})
+	if err := sessions.ValidateName(sessionName); err != nil {
+		return err
+	}
+	if client != "" && sidebar != nil {
+		shouldFollow, err := sidebarShouldBeVisibleForClient(ctx, client)
+		if err != nil {
+			return err
+		}
+		if shouldFollow {
+			if closeAfterSwitch(ctx, sidebar) {
+				output, err := tmux(ctx, appendSwitchClientArgs(client, sessionName)...)
+				if err != nil {
+					return tmuxCommandError("switch client session", output, err)
+				}
+				return closeSidebar(ctx, sidebar)
+			}
+			singleton, err := sidebar.FindSingletonSidebar(ctx)
+			if err != nil {
+				return err
+			}
+			cfg := loadSidebarConfig(ctx)
+			if singleton.PaneID == "" {
+				singleton, err = ensureSingletonSidebarPane(ctx, sidebar)
+				if err != nil {
+					return err
+				}
+			}
+			target := exactSessionWindowTarget(sessionName)
+			if _, err := sidebar.AttachSingletonSidebar(ctx, target, singleton.PaneID, cfg.Width); err != nil {
+				return fmt.Errorf("preposition sidebar into target session %q: %w", sessionName, err)
+			}
+			output, err := tmux(ctx, appendSwitchClientArgs(client, sessionName)...)
+			if err != nil {
+				switchErr := tmuxCommandError("switch client session", output, err)
+				if _, rollbackErr := sidebar.AttachSingletonSidebar(ctx, client, singleton.PaneID, cfg.Width); rollbackErr != nil {
+					return errors.Join(switchErr, fmt.Errorf("restore sidebar after failed switch to %q: %w", sessionName, rollbackErr))
+				}
+				return switchErr
+			}
+			return saveSidebarVisibility(ctx, true, client)
+		}
+	}
+	output, err := tmux(ctx, appendSwitchClientArgs(client, sessionName)...)
+	if err != nil {
+		return tmuxCommandError("switch client session", output, err)
+	}
+	return nil
+}
+
+func appendSwitchClientArgs(client string, sessionName string) []string {
+	args := []string{"switch-client"}
+	if client != "" {
+		args = append(args, "-c", client)
+	}
+	return append(args, "-t", exactSessionWindowTarget(sessionName))
+}
+
+func exactSessionWindowTarget(sessionName string) string {
+	return "=" + sessionName + ":"
 }
 
 func loadSessionViews(ctx context.Context) ([]sessions.View, error) {

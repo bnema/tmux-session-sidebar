@@ -13,6 +13,20 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
+type delayedIPCServer struct {
+	started chan struct{}
+	done    chan struct{}
+	delay   time.Duration
+}
+
+func (s *delayedIPCServer) Serve(ctx context.Context, _ ports.IPCHandler) error {
+	close(s.started)
+	<-ctx.Done()
+	time.Sleep(s.delay)
+	close(s.done)
+	return nil
+}
+
 func TestDaemonEnsureRestoresMissingPersistedNamedSessions(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	restorePath := t.TempDir()
@@ -185,6 +199,47 @@ esac
 	}
 
 	assertTransientHeatStateCleared(t)
+}
+
+func TestDaemonServeWaitsForIPCServerShutdown(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) ;;
+  list-clients) ;;
+  list-panes) ;;
+esac
+`)
+
+	server := &delayedIPCServer{started: make(chan struct{}), done: make(chan struct{}), delay: 25 * time.Millisecond}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if err := serveSidebarDaemon(ctx, server, runtimeRouter{}); err != nil {
+		t.Fatalf("serveSidebarDaemon error: %v", err)
+	}
+	select {
+	case <-server.started:
+	default:
+		t.Fatal("ipc server never started")
+	}
+	select {
+	case <-server.done:
+	default:
+		t.Fatal("serveSidebarDaemon returned before ipc server shutdown finished")
+	}
 }
 
 func TestCaptureLiveSidebarHeatWritesActivityDebugLogWhenEnabled(t *testing.T) {

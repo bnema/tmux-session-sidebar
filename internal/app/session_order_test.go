@@ -171,15 +171,24 @@ func TestClonePersistedStatePreservesAgentAttention(t *testing.T) {
 
 func TestSaveShowNumericSessions(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	if err := saveShowNumericSessions(context.Background(), true); err != nil {
+	ctx := context.Background()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+	}); err != nil {
+		t.Fatalf("updateSidebarState() error = %v", err)
+	}
+	if err := saveShowNumericSessions(ctx, true); err != nil {
 		t.Fatalf("saveShowNumericSessions() error = %v", err)
 	}
-	state, err := loadSidebarState(context.Background())
+	state, err := loadSidebarState(ctx)
 	if err != nil {
 		t.Fatalf("loadSidebarState() error = %v", err)
 	}
 	if state.Sidebar == nil || !state.Sidebar.ShowNumericSessions {
 		t.Fatalf("ShowNumericSessions = false, want true")
+	}
+	if !state.Sidebar.Open || state.Sidebar.OwnerClient != "client-1" {
+		t.Fatalf("sidebar state = %#v, want open owner preserved", state.Sidebar)
 	}
 }
 

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,7 +19,9 @@ import (
 )
 
 type runtimeRouter struct {
-	sidebar ports.TmuxSidebarPort
+	sidebar   ports.TmuxSidebarPort
+	ipcClient ports.IPCClientPort
+	ipcServer ports.IPCServerPort
 }
 
 // NewRouter composes the production command router used by the tmux bootstrap.
@@ -26,7 +29,30 @@ func NewRouter(sidebar ports.TmuxSidebarPort) Router {
 	return runtimeRouter{sidebar: sidebar}
 }
 
+func NewRuntimeRouter(sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort, ipcServer ports.IPCServerPort) Router {
+	return runtimeRouter{sidebar: sidebar, ipcClient: ipcClient, ipcServer: ipcServer}
+}
+
+func NewDaemonRouter(sidebar ports.TmuxSidebarPort, ipcServer ports.IPCServerPort) Router {
+	return NewRuntimeRouter(sidebar, nil, ipcServer)
+}
+
+func (r runtimeRouter) direct() runtimeRouter {
+	r.ipcClient = nil
+	return r
+}
+
 func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer, stderr io.Writer) error {
+	if r.ipcClient != nil && routeUsesIPC(route.Path) {
+		if err := r.sendIPC(ctx, route); err != nil {
+			shouldFallback := r.sidebar != nil && ipcUnavailableForBootstrap(err)
+			if !shouldFallback {
+				return err
+			}
+		} else {
+			return nil
+		}
+	}
 	if routeRequiresSidebar(route.Path) && r.sidebar == nil {
 		return fmt.Errorf("runtime router: sidebar port is required for %s", route.Path)
 	}
@@ -36,9 +62,9 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "sidebar/open":
 		return openSidebar(ctx, route.Flags, r.sidebar)
 	case "sidebar/close":
-		return closeSidebar(ctx, route.Flags, r.sidebar)
-	case "ui/run":
-		return runUI(ctx, route.Flags, stdout, r.sidebar)
+		return closeSidebar(ctx, r.sidebar)
+	case "sidebar/refresh":
+		return refreshSidebar(ctx, route.Flags["client"], r.sidebar)
 	case "action/quick-switch":
 		return quickSwitch(ctx, route.Flags, r.sidebar)
 	case "action/switch":
@@ -57,6 +83,8 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 		return killSession(ctx, route.Flags, r.sidebar)
 	case "daemon/ensure":
 		return ensureRestoredAndCapturedOnStartup(ctx)
+	case "daemon/serve-ui":
+		return serveSidebarUI(ctx, route.Flags, stdout, r.sidebar)
 	case "hook/client-attached":
 		return ensureRestoredAndCapturedAndRefresh(ctx)
 	case "hook/client-detached":
@@ -70,11 +98,51 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "hooks/run":
 		return runHooksCommand(ctx, route.Args, route.Flags, stdout, stderr)
 	case "daemon/serve":
-		return serveSidebarDaemon(ctx)
+		return serveSidebarDaemon(ctx, r.ipcServer, r.direct())
 	default:
 		_, _ = fmt.Fprintf(stderr, "%s not implemented yet\n", route.Path)
 		return fmt.Errorf("unimplemented route: %s", route.Path)
 	}
+}
+
+func ipcUnavailableForBootstrap(err error) bool {
+	return errors.Is(err, ports.ErrIPCConnectionRefused) || errors.Is(err, ports.ErrIPCSocketMissing) || errors.Is(err, ports.ErrIPCConnectionReset)
+}
+
+func routeUsesIPC(path string) bool {
+	switch path {
+	case "sidebar/toggle", "sidebar/open", "sidebar/close", "sidebar/refresh":
+		return true
+	default:
+		return false
+	}
+}
+
+func (r runtimeRouter) sendIPC(ctx context.Context, route Route) error {
+	client := route.Flags["client"]
+	var (
+		resp ports.Response
+		err  error
+	)
+	switch route.Path {
+	case "sidebar/toggle":
+		resp, err = r.ipcClient.Send(ctx, ports.SidebarToggleRequest(client))
+	case "sidebar/open":
+		resp, err = r.ipcClient.Send(ctx, ports.SidebarOpenRequest(client, route.Flags["width"]))
+	case "sidebar/close":
+		resp, err = r.ipcClient.Send(ctx, ports.SidebarCloseRequest(client))
+	case "sidebar/refresh":
+		resp, err = r.ipcClient.Send(ctx, ports.SidebarRefreshRequest(client))
+	default:
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !resp.OK {
+		return fmt.Errorf("daemon IPC %s failed: %s", route.Path, strings.TrimSpace(resp.Message))
+	}
+	return nil
 }
 
 func routeRequiresSidebar(path string) bool {
@@ -82,7 +150,8 @@ func routeRequiresSidebar(path string) bool {
 	case "sidebar/toggle",
 		"sidebar/open",
 		"sidebar/close",
-		"ui/run",
+		"sidebar/refresh",
+		"daemon/serve-ui",
 		"action/quick-switch",
 		"action/switch",
 		"action/create-project",
@@ -97,32 +166,68 @@ func routeRequiresSidebar(path string) bool {
 }
 
 func toggleSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
-	pane, err := sidebar.FindSidebarPane(ctx, flags["client"])
+	client := strings.TrimSpace(flags["client"])
+	logical, err := persistedSidebarState(ctx)
+	if err != nil {
+		return err
+	}
+	if logical.Open && strings.TrimSpace(logical.OwnerClient) == client {
+		return closeSidebar(ctx, sidebar)
+	}
+	pane, err := sidebar.FindSidebarPane(ctx, client)
 	if err != nil {
 		return err
 	}
 	if pane.PaneID != "" {
-		return sidebar.CloseSidebarPane(ctx, pane.PaneID)
+		return closeSidebar(ctx, sidebar)
 	}
 	return openSidebar(ctx, flags, sidebar)
 }
 
 func openSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
-	client := flags["client"]
-	exe, err := os.Executable()
+	return openSidebarForClient(ctx, flags["client"], flags["width"], sidebar)
+}
+
+func openSidebarForClient(ctx context.Context, client string, width string, sidebar ports.TmuxSidebarPort) error {
+	singleton, err := ensureSingletonSidebarPane(ctx, sidebar)
 	if err != nil {
 		return err
 	}
-	uiArgs := []string{exe, "ui", "run"}
-	if client != "" {
-		uiArgs = append(uiArgs, "--client", client)
+	width = strings.TrimSpace(width)
+	if width == "" {
+		cfg := loadSidebarConfig(ctx)
+		width = cfg.Width
 	}
-	_, err = sidebar.OpenSidebar(ctx, client, uiArgs)
-	return err
+	if _, err = sidebar.AttachSingletonSidebar(ctx, client, singleton.PaneID, width); err != nil {
+		return err
+	}
+	return saveSidebarVisibility(ctx, true, client)
 }
 
-func closeSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
-	return sidebar.CloseSidebar(ctx, flags["client"])
+func closeSidebar(ctx context.Context, sidebar ports.TmuxSidebarPort) error {
+	singleton, err := sidebar.FindSingletonSidebar(ctx)
+	if err != nil {
+		return err
+	}
+	if err := parkVisibleSidebar(ctx, sidebar, singleton.PaneID); err != nil {
+		return err
+	}
+	return saveSidebarVisibility(ctx, false, "")
+}
+
+func ensureSingletonSidebarPane(ctx context.Context, sidebar ports.TmuxSidebarPort) (ports.PaneRef, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return ports.PaneRef{}, err
+	}
+	return sidebar.EnsureSingletonSidebar(ctx, []string{exe, "daemon", "serve-ui"})
+}
+
+func parkVisibleSidebar(ctx context.Context, sidebar ports.TmuxSidebarPort, paneID string) error {
+	if strings.TrimSpace(paneID) == "" {
+		return nil
+	}
+	return sidebar.ParkSingletonSidebar(ctx, paneID)
 }
 
 func syncSidebarWidth(ctx context.Context, flags map[string]string) error {
@@ -225,12 +330,10 @@ func tmuxTargetGoneOutput(output string) bool {
 		strings.Contains(message, "can't find client")
 }
 
-func existingSidebarPane(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) (string, error) {
-	pane, err := sidebar.FindSidebarPane(ctx, client)
-	if err != nil {
-		return "", err
-	}
-	return pane.PaneID, nil
+var runSidebarUI = runUI
+
+func serveSidebarUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort) error {
+	return runSidebarUI(ctx, flags, stdout, sidebar)
 }
 
 func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort) error {
@@ -318,8 +421,11 @@ func handleActionError(ctx context.Context, action string, err error) bool {
 	return false
 }
 
-func captureLiveSidebarSessionsAndRefresh(ctx context.Context, _ string, _ ports.TmuxSidebarPort) error {
+func captureLiveSidebarSessionsAndRefresh(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
 	if err := captureLiveSidebarSessions(ctx); err != nil {
+		return err
+	}
+	if err := reconcileSidebarVisibilityForClient(ctx, client, sidebar); err != nil {
 		return err
 	}
 	refreshAllSidebarPanesBestEffort(ctx)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
@@ -15,29 +16,38 @@ func withSidebarFollow(ctx context.Context, client string, sidebar ports.TmuxSid
 	if client == "" {
 		return action()
 	}
-
-	oldPane, err := existingSidebarPane(ctx, client, sidebar)
+	shouldFollow, err := sidebarShouldBeVisibleForClient(ctx, client)
 	if err != nil {
 		return err
 	}
-	wasOpen := oldPane != ""
 	if err := action(); err != nil {
 		return err
 	}
-	if !wasOpen {
+	if !shouldFollow || sidebar == nil {
 		return nil
 	}
-	if closeAfterSwitch(ctx, sidebar) {
-		return sidebar.CloseSidebarPane(ctx, oldPane)
+	return applySidebarVisibilityForClient(ctx, client, sidebar)
+}
+
+func reconcileSidebarVisibilityForClient(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
+	if strings.TrimSpace(client) == "" || sidebar == nil {
+		return nil
 	}
-	targetPane, err := existingSidebarPane(ctx, client, sidebar)
+	shouldFollow, err := sidebarShouldBeVisibleForClient(ctx, client)
 	if err != nil {
 		return err
 	}
-	if targetPane != "" {
-		return sidebar.RefreshSidebar(ctx, client)
+	if !shouldFollow {
+		return nil
 	}
-	return openSidebar(ctx, map[string]string{"client": client}, sidebar)
+	return applySidebarVisibilityForClient(ctx, client, sidebar)
+}
+
+func applySidebarVisibilityForClient(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
+	if closeAfterSwitch(ctx, sidebar) {
+		return closeSidebar(ctx, sidebar)
+	}
+	return openSidebarForClient(ctx, client, "", sidebar)
 }
 
 func closeAfterSwitch(ctx context.Context, sidebar ports.TmuxSidebarPort) bool {

@@ -7,6 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"path/filepath"
+
+	"github.com/bnema/tmux-session-sidebar/adapters/ipcunix"
 	"github.com/bnema/tmux-session-sidebar/adapters/process"
 	"github.com/bnema/tmux-session-sidebar/adapters/tmuxcli"
 	"github.com/bnema/tmux-session-sidebar/internal/app"
@@ -17,7 +20,8 @@ var (
 	runApp        = app.Run
 	newRouter     = func() app.Router {
 		tmux := tmuxcli.Client{Process: process.Runner{}}
-		return app.NewRouter(tmux)
+		socketPath := filepath.Join(app.StateDir(), "sidebar.sock")
+		return app.NewRuntimeRouter(tmux, ipcunix.NewClient(socketPath), ipcunix.NewServer(socketPath))
 	}
 )
 
