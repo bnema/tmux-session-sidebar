@@ -77,7 +77,7 @@ func (c Client) AttachSingletonSidebar(ctx context.Context, clientID string, pan
 	if err := c.SaveWindowLayout(ctx, windowID); err != nil {
 		return ports.PaneRef{}, err
 	}
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdJoinPane, "-hbf", "-l", width, "-s", paneID, "-t", windowID})
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdJoinPane, "-hbf", "-d", "-l", width, "-s", paneID, "-t", windowID})
 	if err != nil {
 		return ports.PaneRef{}, wrapTmuxError(result, err)
 	}
@@ -121,7 +121,7 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 		return err
 	}
 	args := []string{
-		cmdJoinPane, "-hbf", "-l", width, "-s", paneID, "-t", windowID,
+		cmdJoinPane, "-hbf", "-d", "-l", width, "-s", paneID, "-t", windowID,
 		";", cmdSetOption, "-p", "-t", paneID, optionSidebarPane, "1",
 		";", cmdResizePane, "-t", paneID, "-x", width,
 	}

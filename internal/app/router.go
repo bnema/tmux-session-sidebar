@@ -189,8 +189,12 @@ func openSidebar(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 }
 
 func openSidebarForClient(ctx context.Context, client string, width string, sidebar ports.TmuxSidebarPort) error {
+	if err := saveSidebarVisibility(ctx, true, client); err != nil {
+		return err
+	}
 	singleton, err := ensureSingletonSidebarPane(ctx, sidebar)
 	if err != nil {
+		rollbackSidebarVisibility(ctx, client, err)
 		return err
 	}
 	width = strings.TrimSpace(width)
@@ -199,9 +203,16 @@ func openSidebarForClient(ctx context.Context, client string, width string, side
 		width = cfg.Width
 	}
 	if _, err = sidebar.AttachSingletonSidebar(ctx, client, singleton.PaneID, width); err != nil {
+		rollbackSidebarVisibility(ctx, client, err)
 		return err
 	}
-	return saveSidebarVisibility(ctx, true, client)
+	return nil
+}
+
+func rollbackSidebarVisibility(ctx context.Context, client string, original error) {
+	if err := saveSidebarVisibility(ctx, false, client); err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: rollback sidebar visibility after open failure failed: %v (original error: %v)\n", err, original)
+	}
 }
 
 func closeSidebar(ctx context.Context, sidebar ports.TmuxSidebarPort) error {
@@ -343,24 +354,25 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 		return err
 	}
 	persisted, _ := loadSidebarState(ctx)
+	client := effectiveUIClient(ctx, flags)
 	actions := uity.Actions{
 		SwitchSession: func(name string) bool {
-			return handleActionError(ctx, "switch session", switchClient(ctx, flags["client"], name, sidebar))
+			return handleActionError(ctx, "switch session", switchClient(ctx, client, name, sidebar))
 		},
 		CreateProject: func(project uity.ProjectItem) bool {
-			return handleActionError(ctx, "create project session", createProject(ctx, map[string]string{"client": flags["client"], "project-path": project.Path}, stdout, sidebar))
+			return handleActionError(ctx, "create project session", createProject(ctx, map[string]string{"client": client, "project-path": project.Path}, stdout, sidebar))
 		},
 		CreateGitProject: func() bool {
-			return handleActionError(ctx, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": flags["client"]}, sidebar))
+			return handleActionError(ctx, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": client}, sidebar))
 		},
 		CreateAdhoc: func() bool {
-			return handleActionError(ctx, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": flags["client"]}, sidebar))
+			return handleActionError(ctx, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": client}, sidebar))
 		},
 		RenameSession: func(name string) bool {
-			return handleActionError(ctx, "rename session", renameSession(ctx, map[string]string{"client": flags["client"], "session": name}, sidebar))
+			return handleActionError(ctx, "rename session", renameSession(ctx, map[string]string{"client": client, "session": name}, sidebar))
 		},
 		KillSession: func(name string) bool {
-			return handleActionError(ctx, "kill session", killSession(ctx, map[string]string{"client": flags["client"], "session": name, "confirmed": "yes"}, sidebar))
+			return handleActionError(ctx, "kill session", killSession(ctx, map[string]string{"client": client, "session": name, "confirmed": "yes"}, sidebar))
 		},
 		ReorderSession: func(name string, delta int) bool {
 			items, err := loadSessionItems(ctx)

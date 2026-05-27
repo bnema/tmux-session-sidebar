@@ -16,7 +16,15 @@ func TestOpenSidebarAttachesSingletonPaneToClient(t *testing.T) {
 	ctx := t.Context()
 	tmux := mocks.NewMockTmuxSidebarPort(t)
 
-	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
+	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Run(func(context.Context, []string) {
+		state, err := loadSidebarState(ctx)
+		if err != nil {
+			t.Fatalf("loadSidebarState during ensure: %v", err)
+		}
+		if state.Sidebar == nil || !state.Sidebar.Open || state.Sidebar.OwnerClient != "client-1" {
+			t.Fatalf("sidebar state during ensure = %#v, want already open for client-1", state.Sidebar)
+		}
+	}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
 	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "20").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
 
 	if err := openSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux); err != nil {
@@ -28,6 +36,47 @@ func TestOpenSidebarAttachesSingletonPaneToClient(t *testing.T) {
 	}
 	if state.Sidebar == nil || !state.Sidebar.Open || state.Sidebar.OwnerClient != "client-1" {
 		t.Fatalf("sidebar state = %#v, want open for client-1", state.Sidebar)
+	}
+}
+
+func TestOpenSidebarRollsBackVisibilityWhenEnsureFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	boom := errors.New("ensure failed")
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{}, boom)
+
+	err := openSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux)
+	if !errors.Is(err, boom) {
+		t.Fatalf("openSidebar error = %v, want %v", err, boom)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if state.Sidebar == nil || state.Sidebar.Open || state.Sidebar.OwnerClient != "" {
+		t.Fatalf("sidebar state after ensure failure = %#v, want closed", state.Sidebar)
+	}
+}
+
+func TestOpenSidebarRollsBackVisibilityWhenAttachFails(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	boom := errors.New("attach failed")
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
+	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "20").Return(ports.PaneRef{}, boom)
+
+	err := openSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux)
+	if !errors.Is(err, boom) {
+		t.Fatalf("openSidebar error = %v, want %v", err, boom)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if state.Sidebar == nil || state.Sidebar.Open || state.Sidebar.OwnerClient != "" {
+		t.Fatalf("sidebar state after attach failure = %#v, want closed", state.Sidebar)
 	}
 }
 

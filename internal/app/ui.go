@@ -21,6 +21,17 @@ var newTmuxClient = func() tmuxcli.Client {
 	return tmuxcli.Client{Process: process.Runner{}}
 }
 
+func effectiveUIClient(ctx context.Context, flags map[string]string) string {
+	if client := strings.TrimSpace(flags["client"]); client != "" {
+		return client
+	}
+	state, err := persistedSidebarState(ctx)
+	if err != nil || !state.Open {
+		return ""
+	}
+	return strings.TrimSpace(state.OwnerClient)
+}
+
 func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 	current, err := tmux(ctx, "display-message", "-p", "#{session_name}")
 	if err != nil {
