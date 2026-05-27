@@ -120,6 +120,7 @@ func TestMoveVisibleOrder(t *testing.T) {
 		{name: "moves visible session above previous visible despite hidden first", live: []string{"1", "alpha", "beta"}, order: nil, session: "beta", delta: -1, want: []string{"1", "beta", "alpha"}},
 		{name: "includes numeric when shown", live: []string{"1", "alpha", "beta"}, order: nil, session: "alpha", delta: -1, showNumeric: true, want: []string{"alpha", "1", "beta"}},
 		{name: "hidden sessions are always skipped", live: []string{"__scratch", "alpha", "beta"}, order: nil, session: "beta", delta: -1, showNumeric: true, want: []string{"__scratch", "beta", "alpha"}},
+		{name: "invalid sessions are skipped", live: []string{"alpha", "bad name", "beta"}, order: nil, session: "beta", delta: -1, showNumeric: true, want: []string{"beta", "bad name", "alpha"}},
 	}
 
 	for _, tt := range tests {
@@ -164,8 +165,8 @@ func TestVisibleNames(t *testing.T) {
 		showNumeric bool
 		want        []string
 	}{
-		{name: "hides numeric and internal by default", names: []string{"alpha", "123", "__scratch", "beta"}, showNumeric: false, want: []string{"alpha", "beta"}},
-		{name: "shows numeric when requested", names: []string{"alpha", "123", "__scratch"}, showNumeric: true, want: []string{"alpha", "123"}},
+		{name: "hides numeric internal and invalid by default", names: []string{"alpha", "123", "__scratch", "bad name", "beta"}, showNumeric: false, want: []string{"alpha", "beta"}},
+		{name: "shows numeric but still hides invalid when requested", names: []string{"alpha", "123", "__scratch", "bad name"}, showNumeric: true, want: []string{"alpha", "123"}},
 	}
 
 	for _, tt := range tests {
@@ -188,6 +189,7 @@ func TestFilterVisible(t *testing.T) {
 		{SessionID: "1", Name: "alpha", Visible: true},
 		{SessionID: "2", Name: "123", Visible: true},
 		{SessionID: "3", Name: "hidden", Visible: false},
+		{SessionID: "4", Name: "bad name", Visible: true},
 	}
 	tests := []struct {
 		name        string
