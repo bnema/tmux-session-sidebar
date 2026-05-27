@@ -72,6 +72,9 @@ func MoveVisibleOrder(live []string, order []string, session string, delta int, 
 	ordered := ApplyOrder(live, order)
 	indices := make([]int, 0, len(ordered))
 	for i, name := range ordered {
+		if ValidateName(name) != nil {
+			continue
+		}
 		if IsHiddenName(name) {
 			continue
 		}
@@ -115,6 +118,9 @@ func allIndices(values []string) []int {
 func VisibleNames(names []string, showNumeric bool) []string {
 	visible := make([]string, 0, len(names))
 	for _, name := range names {
+		if ValidateName(name) != nil {
+			continue
+		}
 		if IsHiddenName(name) {
 			continue
 		}
@@ -130,6 +136,9 @@ func FilterVisible(all []View, showNumeric bool) []View {
 	visible := make([]View, 0, len(all))
 	for _, session := range all {
 		if !session.Visible {
+			continue
+		}
+		if ValidateName(session.Name) != nil {
 			continue
 		}
 		if IsHiddenName(session.Name) {
