@@ -329,6 +329,42 @@ func TestSidebarModelRenderOmitsHeaderAndMovesFilterAboveHelp(t *testing.T) {
 	}
 }
 
+func TestSidebarModelEnterSwitchesAndRefreshesCurrentMarker(t *testing.T) {
+	called := 0
+	reloaded := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true}, {Name: "beta"}}, Actions{
+		SwitchSession: func(name string) bool {
+			called++
+			if name != "beta" {
+				t.Fatalf("SwitchSession called with %q, want beta", name)
+			}
+			return true
+		},
+		ReloadSessions: func() []SessionItem {
+			reloaded++
+			return []SessionItem{{Name: "alpha"}, {Name: "beta", Current: true}}
+		},
+	})
+
+	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+	model = requireSidebarModel(t, updated)
+	updated, cmd := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+
+	if called != 1 {
+		t.Fatalf("SwitchSession called %d times, want 1", called)
+	}
+	if reloaded != 1 {
+		t.Fatalf("ReloadSessions called %d times after switch, want 1", reloaded)
+	}
+	if cmd != nil {
+		t.Fatal("Update(Enter) returned an unexpected follow-up command")
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
+		t.Fatalf("selection after switch = %#v ok=%v, want beta current", item, ok)
+	}
+}
+
 func TestSidebarModelEnterOnCurrentSessionDoesNothing(t *testing.T) {
 	called := 0
 	reloaded := 0

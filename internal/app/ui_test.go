@@ -10,6 +10,23 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
+func TestEffectiveUIClientFallsBackToPersistedSidebarOwner(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+
+	if got := effectiveUIClient(ctx, map[string]string{}); got != "client-1" {
+		t.Fatalf("effectiveUIClient without flag = %q, want persisted owner", got)
+	}
+	if got := effectiveUIClient(ctx, map[string]string{"client": "client-2"}); got != "client-2" {
+		t.Fatalf("effectiveUIClient with flag = %q, want explicit client", got)
+	}
+}
+
 func TestSessionHeatBucketUsesRecentSessionSwitchSignal(t *testing.T) {
 	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
 	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, HeatRecentHours: 1}
