@@ -72,6 +72,9 @@ func (c Client) AttachSingletonSidebar(ctx context.Context, clientID string, pan
 		if err := c.resizePaneWidth(ctx, paneID, width); err != nil {
 			return ports.PaneRef{}, err
 		}
+		if err := c.selectPane(ctx, paneID); err != nil {
+			return ports.PaneRef{}, err
+		}
 		return ports.PaneRef{PaneID: paneID, WindowID: windowID}, nil
 	}
 	if err := c.SaveWindowLayout(ctx, windowID); err != nil {
@@ -87,6 +90,10 @@ func (c Client) AttachSingletonSidebar(ctx context.Context, clientID string, pan
 		return ports.PaneRef{}, err
 	}
 	if err := c.resizePaneWidth(ctx, ref.PaneID, width); err != nil {
+		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
+		return ports.PaneRef{}, err
+	}
+	if err := c.selectPane(ctx, ref.PaneID); err != nil {
 		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
 		return ports.PaneRef{}, err
 	}
@@ -115,7 +122,10 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 		if err := c.resizePaneWidth(ctx, paneID, width); err != nil {
 			return err
 		}
-		return c.switchClientToExactTarget(ctx, clientID, target)
+		if err := c.switchClientToExactTarget(ctx, clientID, target); err != nil {
+			return err
+		}
+		return c.selectPane(ctx, paneID)
 	}
 	if err := c.SaveWindowLayout(ctx, windowID); err != nil {
 		return err
@@ -124,6 +134,7 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 		cmdJoinPane, "-hbf", "-d", "-l", width, "-s", paneID, "-t", windowID,
 		";", cmdSetOption, "-p", "-t", paneID, optionSidebarPane, "1",
 		";", cmdResizePane, "-t", paneID, "-x", width,
+		";", cmdSelectPane, "-t", paneID,
 	}
 	args = append(args, ";")
 	args = append(args, switchClientArgs(clientID, target)...)

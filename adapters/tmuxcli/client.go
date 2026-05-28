@@ -24,6 +24,7 @@ const (
 	cmdResizePane     = "resize-pane"
 	cmdRunShell       = "run-shell"
 	cmdSelectLayout   = "select-layout"
+	cmdSelectPane     = "select-pane"
 	cmdSendKeys       = "send-keys"
 	cmdSetOption      = "set-option"
 	cmdShowOptions    = "show-options"
@@ -317,6 +318,11 @@ func (c Client) resizePaneWidth(ctx context.Context, paneID string, width string
 		return nil
 	}
 	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdResizePane, "-t", strings.TrimSpace(paneID), "-x", width})
+	return err
+}
+
+func (c Client) selectPane(ctx context.Context, paneID string) error {
+	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSelectPane, "-t", strings.TrimSpace(paneID)})
 	return err
 }
 

@@ -113,6 +113,10 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showNumeric = next
 			return m, nil
 		}
+		if slot, ok := numericSlotKey(msg); ok && m.mode == ModeBrowse {
+			m.switchSlot(slot)
+			return m, nil
+		}
 		switch key {
 		case "ctrl+c":
 			return m, tea.Quit
@@ -247,7 +251,23 @@ func (m SidebarModel) selectedSession() (SessionItem, bool) {
 
 func (m *SidebarModel) switchSelected() {
 	item, ok := m.selectedSession()
-	if !ok || item.Current || m.actions.SwitchSession == nil {
+	if !ok {
+		return
+	}
+	m.switchItem(item)
+}
+
+func (m *SidebarModel) switchSlot(slot int) {
+	for _, item := range m.visibleItems() {
+		if item.Slot == slot {
+			m.switchItem(item)
+			return
+		}
+	}
+}
+
+func (m *SidebarModel) switchItem(item SessionItem) {
+	if item.Current || m.actions.SwitchSession == nil {
 		return
 	}
 	if m.actions.SwitchSession(item.Name) {
@@ -508,6 +528,23 @@ func toggleNumericKey(msg tea.KeyPressMsg) bool {
 		return false
 	}
 	return key.Text == "h" || key.Text == "H" || key.Code == 'h' || key.Code == 'H'
+}
+
+func numericSlotKey(msg tea.KeyPressMsg) (int, bool) {
+	key := msg.Key()
+	if key.Mod != 0 {
+		return 0, false
+	}
+	if key.Text == "0" || key.Code == '0' {
+		return 10, true
+	}
+	for slot := 1; slot <= 9; slot++ {
+		digit := rune('0' + slot)
+		if key.Text == string(digit) || key.Code == digit {
+			return slot, true
+		}
+	}
+	return 0, false
 }
 
 func isKillConfirmYes(msg tea.KeyPressMsg) bool {
