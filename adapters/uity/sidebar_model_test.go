@@ -218,7 +218,9 @@ func TestSidebarModelZeroKeySwitchesDisplayedSlotTen(t *testing.T) {
 			}
 			return true
 		},
-		ReloadSessions: func() []SessionItem { return []SessionItem{{Name: "alpha", Slot: 1}, {Name: "kappa", Slot: 10, Current: true}} },
+		ReloadSessions: func() []SessionItem {
+			return []SessionItem{{Name: "alpha", Slot: 1}, {Name: "kappa", Slot: 10, Current: true}}
+		},
 	})
 
 	updated, _ := model.Update(keyPress("0", 0))
@@ -236,7 +238,7 @@ func TestSidebarModelNumberKeyDoesNothingWhenSlotMissing(t *testing.T) {
 	called := 0
 	reloaded := 0
 	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
-		SwitchSession: func(string) bool { called++; return true },
+		SwitchSession:  func(string) bool { called++; return true },
 		ReloadSessions: func() []SessionItem { reloaded++; return nil },
 	})
 	model.cursor = 1
