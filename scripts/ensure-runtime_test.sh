@@ -110,6 +110,11 @@ run_ensure() {
   TEST_ROOT="$root" PATH="$root/fakebin:$PATH" "$root/plugin/scripts/ensure-runtime.sh"
 }
 
+run_ensure_from_source() {
+  local root="$1"
+  TEST_ROOT="$root" TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1 PATH="$root/fakebin:$PATH" "$root/plugin/scripts/ensure-runtime.sh"
+}
+
 run_ensure_without_go() {
   local root="$1" nogobin
   nogobin="$root/nogobin"
@@ -125,18 +130,18 @@ run_ensure_without_go() {
 test_uses_plugin_local_binary_even_when_path_has_stale_runtime() {
   local root output expected
   root="$(new_fixture)"
-  output="$(run_ensure "$root")"
+  output="$(run_ensure_from_source "$root")"
   expected="$root/plugin/.bin/tmux-session-sidebar"
   assert_eq "$expected" "$output" "ensure-runtime should return plugin-local binary"
-  assert_file_contains "$root/go-build.log" "build $expected" "ensure-runtime should build plugin-local binary"
+  assert_file_contains "$root/go-build.log" "build $expected" "source build should build plugin-local binary"
 }
 
 test_cached_runtime_is_reused_when_fingerprint_matches() {
   local root expected first second builds
   root="$(new_fixture)"
   expected="$root/plugin/.bin/tmux-session-sidebar"
-  first="$(run_ensure "$root")"
-  second="$(run_ensure "$root")"
+  first="$(run_ensure_from_source "$root")"
+  second="$(run_ensure_from_source "$root")"
   assert_eq "$expected" "$first" "first run should return plugin-local binary"
   assert_eq "$expected" "$second" "second run should return plugin-local binary"
   builds="$(wc -l <"$root/go-build.log" | tr -d ' ')"
@@ -147,10 +152,10 @@ test_runtime_rebuilds_after_commit_changes() {
   local root expected builds
   root="$(new_fixture)"
   expected="$root/plugin/.bin/tmux-session-sidebar"
-  run_ensure "$root" >/dev/null
+  run_ensure_from_source "$root" >/dev/null
   printf '\n// changed\n' >>"$root/plugin/cmd/tmux-session-sidebar/main.go"
   (cd "$root/plugin" && git add . && git commit -qm changed)
-  assert_eq "$expected" "$(run_ensure "$root")" "changed checkout should still return plugin-local binary"
+  assert_eq "$expected" "$(run_ensure_from_source "$root")" "changed checkout should still return plugin-local binary"
   builds="$(wc -l <"$root/go-build.log" | tr -d ' ')"
   assert_eq "2" "$builds" "changed fingerprint should rebuild"
 }
@@ -203,7 +208,9 @@ prepare_release_download_fixture() {
   shasum_bin="$(real_command shasum)"
   tar_bin="$(real_command tar)"
 
-  rm -f "$root/fakebin/go"
+  if [ "${2:-}" != keep-go ]; then
+    rm -f "$root/fakebin/go"
+  fi
   mkdir -p "$root/fakebin" "$root/download-src"
   cat >"$root/download-src/tmux-session-sidebar" <<'RUNTIME'
 #!/usr/bin/env bash
@@ -280,6 +287,37 @@ test_downloads_latest_release_when_go_is_unavailable_and_runtime_missing() {
   assert_file_contains "$root/curl.log" "https://github.com/bnema/tmux-session-sidebar/releases/latest/download/tmux-session-sidebar_Linux_x86_64.tar.gz" "ensure-runtime should request the Linux x86_64 latest release asset"
   assert_file_contains "$root/curl.log" "https://github.com/bnema/tmux-session-sidebar/releases/latest/download/checksums.txt" "ensure-runtime should request release checksums"
   assert_eq "downloaded-runtime" "$($expected)" "downloaded runtime should be executable"
+}
+
+test_downloads_latest_release_even_when_go_is_available() {
+  local root expected output
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  rm -rf "$root/plugin/.bin"
+  prepare_release_download_fixture "$root" keep-go
+
+  output="$(run_ensure "$root")"
+
+  assert_eq "$expected" "$output" "release runtime should be installed by default even when go is available"
+  assert_file_contains "$root/curl.log" "https://github.com/bnema/tmux-session-sidebar/releases/latest/download/tmux-session-sidebar_Linux_x86_64.tar.gz" "ensure-runtime should prefer the latest release asset"
+  [ ! -e "$root/go-build.log" ] || fail "default runtime install should not build from source when release download succeeds"
+  assert_eq "downloaded-runtime" "$($expected)" "downloaded runtime should be executable"
+}
+
+test_reuses_cached_release_when_go_is_available() {
+  local root expected output
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  rm -rf "$root/plugin/.bin"
+  prepare_release_download_fixture "$root" keep-go
+  run_ensure "$root" >/dev/null
+  rm -f "$root/curl.log"
+
+  output="$(run_ensure "$root")"
+
+  assert_eq "$expected" "$output" "cached release runtime should be reused when go is available"
+  [ ! -e "$root/curl.log" ] || fail "cached release runtime should not be downloaded again"
+  [ ! -e "$root/go-build.log" ] || fail "cached release runtime should not trigger source build"
 }
 
 test_refreshes_existing_release_runtime_when_requested() {
@@ -360,7 +398,7 @@ test_rejects_go_build_runtime_without_version_output() {
   expected="$root/plugin/.bin/tmux-session-sidebar"
 
   set +e
-  output="$(TEST_ROOT="$root" TEST_INVALID_GO_BUILD=1 PATH="$root/fakebin:$PATH" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
+  output="$(TEST_ROOT="$root" TEST_INVALID_GO_BUILD=1 TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1 PATH="$root/fakebin:$PATH" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
   status="$?"
   set -e
 
@@ -418,12 +456,12 @@ test_rejects_downloaded_runtime_without_checksum_entry() {
 test_runtime_rebuilds_for_untracked_source_files() {
   local root builds
   root="$(new_fixture)"
-  run_ensure "$root" >/dev/null
+  run_ensure_from_source "$root" >/dev/null
   mkdir -p "$root/plugin/internal/untracked"
   cat >"$root/plugin/internal/untracked/source.go" <<'GO'
 package untracked
 GO
-  run_ensure "$root" >/dev/null
+  run_ensure_from_source "$root" >/dev/null
   builds="$(wc -l <"$root/go-build.log" | tr -d ' ')"
   assert_eq "2" "$builds" "untracked source files should force source fingerprint rebuild"
 }
@@ -434,6 +472,8 @@ test_runtime_rebuilds_after_commit_changes
 test_runtime_rebuilds_for_untracked_source_files
 test_existing_runtime_is_reused_when_go_is_unavailable
 test_downloads_latest_release_when_go_is_unavailable_and_runtime_missing
+test_downloads_latest_release_even_when_go_is_available
+test_reuses_cached_release_when_go_is_available
 test_refreshes_existing_release_runtime_when_requested
 test_matching_release_stamp_refreshes_invalid_cached_runtime
 test_rejects_downloaded_runtime_without_version_output

@@ -456,6 +456,14 @@ func TestSidebarModelRenderOmitsHeaderAndMovesFilterAboveHelp(t *testing.T) {
 	}
 }
 
+func TestSidebarModelRenderShowsVersionInCollapsedHelp(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "0.10.2"})
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "v0.10.2 - M-? keys") {
+		t.Fatalf("render should include versioned help hint: %q", view)
+	}
+}
+
 func TestSidebarModelEnterSwitchesAndRefreshesCurrentMarker(t *testing.T) {
 	called := 0
 	reloaded := 0
