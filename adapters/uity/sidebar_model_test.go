@@ -177,6 +177,133 @@ func TestSidebarModelKillConfirmationIgnoresUnrelatedKeys(t *testing.T) {
 	}
 }
 
+func TestSidebarModelNumberKeySwitchesDisplayedSlot(t *testing.T) {
+	called := 0
+	reloaded := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
+		SwitchSession: func(name string) bool {
+			called++
+			if name != "beta" {
+				t.Fatalf("SwitchSession called with %q, want beta", name)
+			}
+			return true
+		},
+		ReloadSessions: func() []SessionItem {
+			reloaded++
+			return []SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Slot: 2, Current: true}}
+		},
+	})
+
+	updated, _ := model.Update(keyPress("2", 0))
+	model = requireSidebarModel(t, updated)
+
+	if called != 1 {
+		t.Fatalf("SwitchSession called %d times, want 1", called)
+	}
+	if reloaded != 1 {
+		t.Fatalf("ReloadSessions called %d times, want 1", reloaded)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
+		t.Fatalf("selected after slot switch = %#v ok=%v, want beta current", item, ok)
+	}
+}
+
+func TestSidebarModelZeroKeySwitchesDisplayedSlotTen(t *testing.T) {
+	called := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1}, {Name: "kappa", Slot: 10}}, Actions{
+		SwitchSession: func(name string) bool {
+			called++
+			if name != "kappa" {
+				t.Fatalf("SwitchSession called with %q, want kappa", name)
+			}
+			return true
+		},
+		ReloadSessions: func() []SessionItem {
+			return []SessionItem{{Name: "alpha", Slot: 1}, {Name: "kappa", Slot: 10, Current: true}}
+		},
+	})
+
+	updated, _ := model.Update(keyPress("0", 0))
+	model = requireSidebarModel(t, updated)
+
+	if called != 1 {
+		t.Fatalf("SwitchSession called %d times, want 1", called)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "kappa" || !item.Current {
+		t.Fatalf("selected after slot 10 switch = %#v ok=%v, want kappa current", item, ok)
+	}
+}
+
+func TestSidebarModelNumberKeyDoesNothingWhenSlotMissing(t *testing.T) {
+	called := 0
+	reloaded := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
+		SwitchSession:  func(string) bool { called++; return true },
+		ReloadSessions: func() []SessionItem { reloaded++; return nil },
+	})
+	model.cursor = 1
+
+	updated, _ := model.Update(keyPress("9", 0))
+	model = requireSidebarModel(t, updated)
+
+	if called != 0 || reloaded != 0 {
+		t.Fatalf("missing slot called SwitchSession %d times and ReloadSessions %d times, want neither", called, reloaded)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
+		t.Fatalf("selection changed after missing slot: %#v ok=%v", item, ok)
+	}
+}
+
+func TestSidebarModelNumberKeyDoesNotReloadWhenSwitchFails(t *testing.T) {
+	called := 0
+	reloaded := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
+		SwitchSession: func(name string) bool {
+			called++
+			if name != "beta" {
+				t.Fatalf("SwitchSession called with %q, want beta", name)
+			}
+			return false
+		},
+		ReloadSessions: func() []SessionItem { reloaded++; return nil },
+	})
+
+	updated, _ := model.Update(keyPress("2", 0))
+	model = requireSidebarModel(t, updated)
+
+	if called != 1 {
+		t.Fatalf("SwitchSession called %d times, want 1", called)
+	}
+	if reloaded != 0 {
+		t.Fatalf("ReloadSessions called %d times after failed switch, want 0", reloaded)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+		t.Fatalf("selection changed after failed switch: %#v ok=%v", item, ok)
+	}
+}
+
+func TestSidebarModelNumberKeyFiltersInSearchMode(t *testing.T) {
+	var switched string
+	model := NewSidebarModel([]SessionItem{{Name: "alpha1", Slot: 1}}, Actions{
+		SwitchSession: func(name string) bool {
+			switched = name
+			return true
+		},
+	})
+	updated, _ := model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+
+	updated, _ = model.Update(keyPress("1", 0))
+	model = requireSidebarModel(t, updated)
+
+	if switched != "" {
+		t.Fatalf("SwitchSession called in search mode with %q", switched)
+	}
+	if model.filter != "1" {
+		t.Fatalf("search filter = %q, want 1", model.filter)
+	}
+}
+
 func TestSidebarModelAltJReordersSelectedSessionDownAndKeepsSelection(t *testing.T) {
 	var calls []struct {
 		name  string

@@ -414,6 +414,7 @@ func TestSingletonSidebarPaneLifecycle(t *testing.T) {
 				process.EXPECT().Exec(ctx, "tmux", []string{"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@1"}).Return(ports.Result{}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1"}).Return(ports.Result{}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
+				process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9"}).Return(ports.Result{}, nil)
 			},
 			call: func(ctx context.Context, client Client) (ports.PaneRef, error) {
 				return client.AttachSingletonSidebar(ctx, "client-1", "%9", "20")
@@ -427,6 +428,7 @@ func TestSingletonSidebarPaneLifecycle(t *testing.T) {
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
+				process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9"}).Return(ports.Result{}, nil)
 			},
 			call: func(ctx context.Context, client Client) (ports.PaneRef, error) {
 				return client.AttachSingletonSidebar(ctx, "client-1", "%9", "20")
@@ -475,6 +477,7 @@ func TestAttachSingletonSidebarAndSwitchClientRunsMoveAndSwitchInOneTmuxCommand(
 		"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2",
 		";", "set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1",
 		";", "resize-pane", "-t", "%9", "-x", "20",
+		";", "select-pane", "-t", "%9",
 		";", "switch-client", "-c", "client-1", "-t", "=beta:",
 	}).Run(func(context.Context, string, []string) {
 		ops = append(ops, "move-and-switch")
@@ -487,6 +490,24 @@ func TestAttachSingletonSidebarAndSwitchClientRunsMoveAndSwitchInOneTmuxCommand(
 	if !reflect.DeepEqual(ops, []string{"move-and-switch"}) {
 		t.Fatalf("ops = %#v, want one combined move/switch command", ops)
 	}
+}
+
+func TestAttachSingletonSidebarAndSwitchClientSameWindowDoesNotSelectPaneWhenSwitchFails(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	boom := errors.New("switch failed")
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "=beta:", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"switch-client", "-c", "client-1", "-t", "=beta:"}).Return(ports.Result{Stderr: "can't find client\n"}, boom)
+
+	err := (Client{Process: process}).AttachSingletonSidebarAndSwitchClient(ctx, "client-1", "beta", "%9", "20")
+	if !errors.Is(err, boom) {
+		t.Fatalf("AttachSingletonSidebarAndSwitchClient error = %v, want %v", err, boom)
+	}
+	process.AssertNotCalled(t, "Exec", ctx, "tmux", []string{"select-pane", "-t", "%9"})
 }
 
 func TestAttachSingletonSidebarAndSwitchClientRollsBackWhenCombinedCommandFails(t *testing.T) {
@@ -503,6 +524,7 @@ func TestAttachSingletonSidebarAndSwitchClientRollsBackWhenCombinedCommandFails(
 		"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2",
 		";", "set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1",
 		";", "resize-pane", "-t", "%9", "-x", "20",
+		";", "select-pane", "-t", "%9",
 		";", "switch-client", "-c", "client-1", "-t", "=beta:",
 	}).Return(ports.Result{Stderr: "can't find client\n"}, boom)
 
@@ -515,6 +537,7 @@ func TestAttachSingletonSidebarAndSwitchClientRollsBackWhenCombinedCommandFails(
 	process.EXPECT().Exec(ctx, "tmux", []string{"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@1"}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1"}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9"}).Return(ports.Result{}, nil)
 
 	err := (Client{Process: process}).AttachSingletonSidebarAndSwitchClient(ctx, "client-1", "beta", "%9", "20")
 	if !errors.Is(err, boom) {
