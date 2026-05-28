@@ -44,7 +44,7 @@ Then reload tmux:
 tmux source-file ~/.tmux.conf
 ```
 
-On load, `scripts/ensure-runtime.sh` prepares `.bin/tmux-session-sidebar` inside the plugin checkout. If Go is available, it builds from source and uses a build fingerprint so the runtime is rebuilt after source changes or plugin updates. If Go is unavailable but a cached runtime exists, it reuses it; otherwise it downloads the latest GitHub release for Linux/macOS amd64/arm64. The plugin also installs a managed git `post-merge` hook in its checkout so future TPM `prefix + U` updates refresh the runtime immediately after `git pull`.
+On load, `scripts/ensure-runtime.sh` prepares `.bin/tmux-session-sidebar` inside the plugin checkout. Normal installs use the latest GitHub release binary and fall back to a local Go build only if the release download is unavailable. Set `TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1` to force a source build. The plugin also installs a managed git `post-merge` hook so future TPM `prefix + U` updates refresh the runtime after `git pull`.
 
 ## Configuration
 
