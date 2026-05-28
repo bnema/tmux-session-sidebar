@@ -27,7 +27,7 @@ test-runtime-bootstrap:
 	@bash scripts/restart-runtime_test.sh
 
 build-runtime:
-	@runtime_bin="$$(bash scripts/ensure-runtime.sh)"; status=$$?; \
+	@runtime_bin="$$(TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1 bash scripts/ensure-runtime.sh)"; status=$$?; \
 		if [ $$status -ne 0 ] || [ -z "$$runtime_bin" ]; then \
 			echo "Failed to update tmux plugin runtime" >&2; \
 			exit 1; \

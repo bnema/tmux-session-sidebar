@@ -406,7 +406,7 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 			return items
 		},
 	}
-	options := uity.SidebarOptions{}
+	options := uity.SidebarOptions{Version: version}
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}

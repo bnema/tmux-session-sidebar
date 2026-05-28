@@ -199,10 +199,10 @@ Check the runtime binary:
 ~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar version
 ```
 
-Force a runtime refresh after a TPM update:
+Force a runtime refresh from the latest GitHub release after a TPM update:
 
 ```bash
-~/.tmux/plugins/tmux-session-sidebar/scripts/ensure-runtime.sh
+TMUX_SESSION_SIDEBAR_REFRESH_RELEASE=1 ~/.tmux/plugins/tmux-session-sidebar/scripts/ensure-runtime.sh
 ```
 
 If TPM updates still leave an old binary, reload tmux once so the plugin can install its managed git update hook:
@@ -235,4 +235,4 @@ make test-go
 make test-runtime-bootstrap
 ```
 
-`make install` symlinks the current checkout into `~/.tmux/plugins/tmux-session-sidebar`. `make build-runtime` updates the plugin-local `.bin/tmux-session-sidebar` runtime for fast local testing. `make restart-runtime` rebuilds the runtime, stops old daemon/UI processes, removes the hidden singleton session, and reloads tmux config so the next sidebar launch uses the new binary. `make uninstall` removes the symlink.
+`make install` symlinks the current checkout into `~/.tmux/plugins/tmux-session-sidebar`. `make build-runtime` updates the plugin-local `.bin/tmux-session-sidebar` runtime from source for fast local testing. Normal plugin installs prefer the latest GitHub release binary and only fall back to a local Go build when the release download is unavailable; set `TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1` to force a source build. `make restart-runtime` rebuilds the runtime, stops old daemon/UI processes, removes the hidden singleton session, and reloads tmux config so the next sidebar launch uses the new binary. `make uninstall` removes the symlink.

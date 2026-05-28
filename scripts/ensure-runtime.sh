@@ -177,6 +177,21 @@ if [ -z "$GO_BIN" ]; then
 fi
 
 mkdir -p "$BIN_DIR"
+release_stamp="release:$RELEASE_REPO:latest"
+
+if [ "${TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE:-}" != "1" ]; then
+  if [ -x "$runtime_bin" ] && [ "${TMUX_SESSION_SIDEBAR_REFRESH_RELEASE:-}" != "1" ] && [ "$(cat "$stamp_file" 2>/dev/null || true)" = "$release_stamp" ] && validate_runtime "$runtime_bin"; then
+    printf '%s\n' "$runtime_bin"
+    exit 0
+  fi
+  if download_release_runtime; then
+    printf '%s\n' "$release_stamp" >"$stamp_file"
+    printf '%s\n' "$runtime_bin"
+    exit 0
+  fi
+  echo 'tmux-session-sidebar: release download failed; falling back to local go build' >&2
+fi
+
 fingerprint="$(source_fingerprint)"
 
 if [ ! -x "$runtime_bin" ] || [ ! -f "$stamp_file" ] || [ "$(cat "$stamp_file" 2>/dev/null || true)" != "$fingerprint" ]; then

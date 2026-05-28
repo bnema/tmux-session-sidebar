@@ -46,6 +46,7 @@ type Actions struct {
 
 type SidebarOptions struct {
 	ShowNumericItems bool
+	Version          string
 }
 
 type SidebarModel struct {
@@ -61,6 +62,7 @@ type SidebarModel struct {
 	projectFilter string
 	pendingKill   string
 	actions       Actions
+	version       string
 }
 
 type sidebarStyles struct {
@@ -77,7 +79,7 @@ func NewSidebarModel(items []SessionItem, actions Actions) SidebarModel {
 }
 
 func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options SidebarOptions) SidebarModel {
-	return SidebarModel{items: items, actions: actions, mode: ModeBrowse, showNumeric: options.ShowNumericItems}
+	return SidebarModel{items: items, actions: actions, mode: ModeBrowse, showNumeric: options.ShowNumericItems, version: options.Version}
 }
 
 func (m SidebarModel) Init() tea.Cmd {
@@ -398,12 +400,28 @@ func (m SidebarModel) Render() string {
 			styles.dim.Render("M-x kill  M-? hide"),
 		)
 	} else {
-		lines = append(lines, styles.dim.Render("M-? keys"))
+		lines = append(lines, styles.dim.Render(m.collapsedHelpLine()))
 	}
 	if m.message != "" {
 		lines = append(lines, styles.accent.Render(m.message))
 	}
 	return lipgloss.NewStyle().Padding(0, 1).Render(strings.Join(lines, "\n"))
+}
+
+func (m SidebarModel) collapsedHelpLine() string {
+	version := displayVersion(m.version)
+	if version == "" {
+		return "M-? keys"
+	}
+	return fmt.Sprintf("%s - M-? keys", version)
+}
+
+func displayVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" || version == "dev" || strings.HasPrefix(version, "v") {
+		return version
+	}
+	return "v" + version
 }
 
 func newSidebarStyles() sidebarStyles {
