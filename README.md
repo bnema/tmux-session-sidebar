@@ -99,6 +99,8 @@ tmux list-panes -t __tmux-session-sidebar -F '#{pane_id} #{window_id} #{pane_cur
 
 Press `Alt+b` to open or close the sidebar. It opens as a full-height left split in the current tmux window. By default the sidebar stays open and follows you when you switch sessions; set `@session-sidebar-close-after-switch` to `on` if you want it to park instead.
 
+Pane sizes are remembered separately with and without the sidebar. If you arrange splits while the sidebar is visible, hiding it restores your full-width layout, and reopening it restores the last compatible sidebar-visible layout. If panes were added, removed, or otherwise made incompatible while the sidebar was hidden, tmux-session-sidebar falls back to the configured sidebar width.
+
 Inside the sidebar:
 
 | Key | Action |

@@ -77,21 +77,31 @@ func (c Client) AttachSingletonSidebar(ctx context.Context, clientID string, pan
 		}
 		return ports.PaneRef{PaneID: paneID, WindowID: windowID}, nil
 	}
-	if err := c.SaveWindowLayout(ctx, windowID); err != nil {
+	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
+		return ports.PaneRef{}, err
+	}
+	if err := c.saveVisibleWindowLayoutIfSidebarManaged(ctx, currentWindowID); err != nil {
 		return ports.PaneRef{}, err
 	}
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdJoinPane, "-hbf", "-d", "-l", width, "-s", paneID, "-t", windowID})
 	if err != nil {
+		_ = c.ClearSavedWindowLayout(ctx, windowID)
 		return ports.PaneRef{}, wrapTmuxError(result, err)
+	}
+	if err := c.restoreSourceWindowLayoutAfterMove(ctx, currentWindowID); err != nil {
+		_ = c.RestoreWindowLayout(ctx, windowID)
+		return ports.PaneRef{}, err
 	}
 	ref := ports.PaneRef{PaneID: paneID, WindowID: windowID}
 	if err := c.markSidebarPane(ctx, ref.PaneID); err != nil {
 		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
 		return ports.PaneRef{}, err
 	}
-	if err := c.resizePaneWidth(ctx, ref.PaneID, width); err != nil {
-		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
-		return ports.PaneRef{}, err
+	if !c.restoreVisibleWindowLayoutAfterMove(ctx, ref.WindowID) {
+		if err := c.resizePaneWidth(ctx, ref.PaneID, width); err != nil {
+			_ = c.RestoreWindowLayout(ctx, ref.WindowID)
+			return ports.PaneRef{}, err
+		}
 	}
 	if err := c.selectPane(ctx, ref.PaneID); err != nil {
 		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
@@ -127,7 +137,10 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 		}
 		return c.selectPane(ctx, paneID)
 	}
-	if err := c.SaveWindowLayout(ctx, windowID); err != nil {
+	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
+		return err
+	}
+	if err := c.saveVisibleWindowLayoutIfSidebarManaged(ctx, currentWindowID); err != nil {
 		return err
 	}
 	args := []string{
@@ -145,7 +158,59 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 		}
 		return wrapTmuxError(result, err)
 	}
+	if err := c.restoreSourceWindowLayoutAfterMove(ctx, currentWindowID); err != nil {
+		return err
+	}
+	_ = c.restoreVisibleWindowLayoutAfterMove(ctx, windowID)
 	return nil
+}
+
+func (c Client) saveTargetWindowLayoutBeforeAttach(ctx context.Context, windowID string) error {
+	return c.captureWindowLayout(ctx, windowID, optionSidebarWindowLayout, true)
+}
+
+func (c Client) saveVisibleWindowLayoutIfSidebarManaged(ctx context.Context, windowID string) error {
+	layout, err := c.savedWindowLayout(ctx, windowID)
+	if err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
+		return err
+	}
+	if layout == "" {
+		return nil
+	}
+	return c.SaveVisibleWindowLayout(ctx, windowID)
+}
+
+func (c Client) restoreSourceWindowLayoutAfterMove(ctx context.Context, windowID string) error {
+	if err := c.RestoreWindowLayout(ctx, windowID); err != nil && !isTmuxTargetGone(err) {
+		return err
+	}
+	return nil
+}
+
+func (c Client) restoreHiddenWindowLayoutBestEffort(ctx context.Context, windowID string) {
+	if err := c.RestoreWindowLayout(ctx, windowID); err != nil && !isTmuxTargetGone(err) {
+		_ = c.ClearSavedWindowLayout(ctx, windowID)
+	}
+}
+
+func (c Client) restoreVisibleWindowLayoutAfterMove(ctx context.Context, windowID string) bool {
+	layout, err := c.windowLayoutOption(ctx, windowID, optionSidebarVisibleWindowLayout)
+	if err != nil {
+		_ = c.ClearVisibleWindowLayout(ctx, windowID)
+		return false
+	}
+	if layout == "" {
+		return false
+	}
+	_, err = c.Process.Exec(ctx, tmuxBinary, []string{cmdSelectLayout, "-t", windowID, layout})
+	if err != nil {
+		_ = c.ClearVisibleWindowLayout(ctx, windowID)
+		return false
+	}
+	return true
 }
 
 func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
@@ -160,6 +225,9 @@ func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	if err := c.ensureParkingSession(ctx); err != nil {
 		return err
 	}
+	if err := c.saveVisibleWindowLayoutIfSidebarManaged(ctx, windowID); err != nil {
+		return err
+	}
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdBreakPane, "-d", "-s", paneID, "-t", singletonSidebarSessionName + ":"})
 	if err != nil {
 		return wrapTmuxError(result, err)
@@ -168,7 +236,7 @@ func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	if err == nil {
 		c.cleanupParkingWindows(ctx, parkedWindowID)
 	}
-	_ = c.RestoreWindowLayout(ctx, windowID)
+	c.restoreHiddenWindowLayoutBestEffort(ctx, windowID)
 	return nil
 }
 
