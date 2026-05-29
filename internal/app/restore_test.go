@@ -264,8 +264,8 @@ esac
 	if err != nil {
 		t.Fatalf("read activity log: %v", err)
 	}
-	if !strings.Contains(string(content), "status=activity-detected") {
-		t.Fatalf("activity log missing transition status: %q", string(content))
+	if !strings.Contains(string(content), "status=doing-nothing") {
+		t.Fatalf("activity log missing baseline status: %q", string(content))
 	}
 }
 

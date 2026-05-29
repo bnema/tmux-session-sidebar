@@ -458,39 +458,15 @@ func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.TmuxSe
 }
 
 func applyPaneObservations(state *heat.State, observations []paneObservation) bool {
-	if state == nil {
-		return false
-	}
-	if state.Panes == nil {
-		state.Panes = map[string]heat.PaneState{}
-	}
-	if len(observations) == 0 {
-		return false
-	}
-	nextPanes := make(map[string]heat.PaneState, len(observations))
-	active := false
-	// bootstrapOnly suppresses activity detection when applyPaneObservations sees the first
-	// fingerprints for a session whose state.Panes is empty but whose state.Score/LastActiveAt
-	// already prove prior heat; later observations fall back to normal change detection.
-	bootstrapOnly := len(state.Panes) == 0 && (state.Score > 0 || !state.LastActiveAt.IsZero())
+	paneObservations := make([]heat.PaneObservation, 0, len(observations))
 	for _, observation := range observations {
-		if strings.TrimSpace(observation.PaneID) == "" {
-			continue
-		}
-		previous, hadPrevious := state.Panes[observation.PaneID]
-		if !observation.Sampled {
-			if hadPrevious {
-				nextPanes[observation.PaneID] = previous
-			}
-			continue
-		}
-		if !bootstrapOnly && (!hadPrevious || previous.Fingerprint != observation.Fingerprint) {
-			active = true
-		}
-		nextPanes[observation.PaneID] = heat.PaneState{Fingerprint: observation.Fingerprint}
+		paneObservations = append(paneObservations, heat.PaneObservation{
+			PaneID:      observation.PaneID,
+			Fingerprint: observation.Fingerprint,
+			Sampled:     observation.Sampled,
+		})
 	}
-	state.Panes = nextPanes
-	return active
+	return heat.ApplyPaneObservations(state, paneObservations)
 }
 
 func visitedSessionNames(clients []ports.TmuxClientSnapshot, sessionNamesByID map[string]string) map[string]bool {
