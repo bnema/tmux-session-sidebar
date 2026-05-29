@@ -48,6 +48,7 @@ install_hook() {
   "$MKDIR_BIN" -p "$hook_dir" || return 0
   quoted_plugin_dir="$(shell_quote "$PLUGIN_DIR")"
   quoted_ensure_runtime="$(shell_quote "$PLUGIN_DIR/scripts/ensure-runtime.sh")"
+  quoted_restart_runtime="$(shell_quote "$PLUGIN_DIR/scripts/restart-runtime.sh")"
   if [ -n "$MKTEMP_BIN" ]; then
     tmp="$("$MKTEMP_BIN" "$hook.tmp.XXXXXX" 2>/dev/null || true)"
   else
@@ -60,18 +61,21 @@ install_hook() {
 set -u
 PLUGIN_DIR=$quoted_plugin_dir
 ENSURE_RUNTIME=$quoted_ensure_runtime
+RESTART_RUNTIME=$quoted_restart_runtime
 LOG_DIR="\$PLUGIN_DIR/.bin"
 LOG_FILE="\$LOG_DIR/update-hook.log"
-run_ensure_runtime() {
+run_update_runtime() {
   cd "\$PLUGIN_DIR" && \
     [ -x "\$ENSURE_RUNTIME" ] && \
-    TMUX_SESSION_SIDEBAR_REFRESH_RELEASE=1 "\$ENSURE_RUNTIME"
+    TMUX_SESSION_SIDEBAR_REFRESH_RELEASE=1 "\$ENSURE_RUNTIME" && \
+    [ -x "\$RESTART_RUNTIME" ] && \
+    "\$RESTART_RUNTIME"
 }
 if mkdir -p "\$LOG_DIR" 2>/dev/null; then
-  run_ensure_runtime >>"\$LOG_FILE" 2>&1 || true
+  run_update_runtime >>"\$LOG_FILE" 2>&1 || true
 else
   printf 'tmux-session-sidebar: cannot create log directory: %s\n' "\$LOG_DIR" >&2
-  run_ensure_runtime || true
+  run_update_runtime || true
 fi
 exit 0
 HOOK

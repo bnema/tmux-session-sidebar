@@ -38,6 +38,11 @@ if [ -f "$TEST_ROOT/fail-ensure" ]; then
 fi
 ENSURE
   chmod +x "$plugin/scripts/ensure-runtime.sh"
+  cat >"$plugin/scripts/restart-runtime.sh" <<'RESTART'
+#!/usr/bin/env bash
+printf 'restart-runtime %s\n' "$PWD" >>"$TEST_ROOT/restart.log"
+RESTART
+  chmod +x "$plugin/scripts/restart-runtime.sh"
   (cd "$plugin" && git init -q && git config user.email test@example.com && git config user.name Test && touch README && git add . && git commit -qm initial)
   printf '%s\n' "$root"
 }
@@ -47,7 +52,7 @@ run_installer() {
   TEST_ROOT="$root" "$root/plugin/scripts/install-git-update-hook.sh"
 }
 
-test_installs_post_merge_hook_that_rebuilds_without_breaking_git_pull() {
+test_installs_post_merge_hook_that_rebuilds_restarts_and_does_not_break_git_pull() {
   local root hook
   root="$(new_fixture)"
   hook="$root/plugin/.git/hooks/post-merge"
@@ -59,11 +64,13 @@ test_installs_post_merge_hook_that_rebuilds_without_breaking_git_pull() {
 
   TEST_ROOT="$root" "$hook"
   assert_file_contains "$root/ensure.log" "ensure-runtime $root/plugin" "hook should run ensure-runtime from plugin root"
+  assert_file_contains "$root/restart.log" "restart-runtime $root/plugin" "hook should restart runtime from plugin root after refresh"
 
-  rm -f "$root/ensure.log"
+  rm -f "$root/ensure.log" "$root/restart.log"
   touch "$root/fail-ensure"
   TEST_ROOT="$root" "$hook"
   assert_file_contains "$root/ensure.log" "ensure-runtime $root/plugin" "hook should still call ensure-runtime when it fails"
+  [ ! -e "$root/restart.log" ] || fail "hook should not restart runtime when ensure-runtime fails"
 }
 
 test_installer_handles_literal_dollars_in_plugin_path() {
@@ -119,7 +126,7 @@ CUSTOM
   assert_eq "$before" "$after" "installer should preserve unrelated custom hooks"
 }
 
-test_installs_post_merge_hook_that_rebuilds_without_breaking_git_pull
+test_installs_post_merge_hook_that_rebuilds_restarts_and_does_not_break_git_pull
 test_installer_handles_literal_dollars_in_plugin_path
 test_hook_reports_bin_creation_failure_and_still_invokes_ensure_runtime
 test_installer_is_idempotent_and_preserves_custom_hooks

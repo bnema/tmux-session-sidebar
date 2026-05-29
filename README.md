@@ -44,7 +44,7 @@ Then reload tmux:
 tmux source-file ~/.tmux.conf
 ```
 
-On load, `scripts/ensure-runtime.sh` prepares `.bin/tmux-session-sidebar` inside the plugin checkout. Normal installs use the latest GitHub release binary and fall back to a local Go build only if the release download is unavailable. Set `TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1` to force a source build. The plugin also installs a managed git `post-merge` hook so future TPM `prefix + U` updates refresh the runtime after `git pull`.
+On load, `scripts/ensure-runtime.sh` prepares `.bin/tmux-session-sidebar` inside the plugin checkout. Normal installs use the latest GitHub release binary and fall back to a local Go build only if the release download is unavailable. Set `TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1` to force a source build. The plugin also installs a managed git `post-merge` hook so future TPM `prefix + U` updates refresh the runtime after `git pull` and restart the daemon.
 
 ## Configuration
 
@@ -205,9 +205,10 @@ Force a runtime refresh from the latest GitHub release after a TPM update:
 
 ```bash
 TMUX_SESSION_SIDEBAR_REFRESH_RELEASE=1 ~/.tmux/plugins/tmux-session-sidebar/scripts/ensure-runtime.sh
+~/.tmux/plugins/tmux-session-sidebar/scripts/restart-runtime.sh
 ```
 
-If TPM updates still leave an old binary, reload tmux once so the plugin can install its managed git update hook:
+TPM updates normally run those steps through the managed git update hook. If TPM updates still leave an old binary, reload tmux once so the plugin can install that hook:
 
 ```bash
 tmux source-file ~/.tmux.conf
