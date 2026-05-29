@@ -171,14 +171,14 @@ func toggleSidebar(ctx context.Context, flags map[string]string, sidebar ports.T
 	if err != nil {
 		return err
 	}
-	if logical.Open && strings.TrimSpace(logical.OwnerClient) == client {
-		return closeSidebar(ctx, sidebar)
-	}
 	pane, err := sidebar.FindSidebarPane(ctx, client)
 	if err != nil {
 		return err
 	}
-	if pane.PaneID != "" {
+	if logical.Open && strings.TrimSpace(logical.OwnerClient) == client && pane.PaneID != "" {
+		return closeSidebar(ctx, sidebar)
+	}
+	if !logical.Open && pane.PaneID != "" {
 		return closeSidebar(ctx, sidebar)
 	}
 	return openSidebar(ctx, flags, sidebar)
