@@ -181,14 +181,27 @@ func toggleSidebar(ctx context.Context, flags map[string]string, sidebar ports.T
 	if !logical.Open && pane.PaneID != "" {
 		return closeSidebar(ctx, sidebar)
 	}
-	return openSidebar(ctx, flags, sidebar)
+	openFlags := flags
+	if pane.WindowID != "" {
+		openFlags = cloneStringMap(flags)
+		openFlags["attach-target"] = pane.WindowID
+	}
+	return openSidebar(ctx, openFlags, sidebar)
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func openSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
-	return openSidebarForClient(ctx, flags["client"], flags["width"], sidebar)
+	return openSidebarForClient(ctx, flags["client"], flags["attach-target"], flags["width"], sidebar)
 }
 
-func openSidebarForClient(ctx context.Context, client string, width string, sidebar ports.TmuxSidebarPort) error {
+func openSidebarForClient(ctx context.Context, client string, attachTarget string, width string, sidebar ports.TmuxSidebarPort) error {
 	if err := saveSidebarVisibility(ctx, true, client); err != nil {
 		return err
 	}
@@ -202,7 +215,10 @@ func openSidebarForClient(ctx context.Context, client string, width string, side
 		cfg := loadSidebarConfig(ctx)
 		width = cfg.Width
 	}
-	if _, err = sidebar.AttachSingletonSidebar(ctx, client, singleton.PaneID, width); err != nil {
+	if strings.TrimSpace(attachTarget) == "" {
+		attachTarget = client
+	}
+	if _, err = sidebar.AttachSingletonSidebar(ctx, attachTarget, singleton.PaneID, width); err != nil {
 		rollbackSidebarVisibility(ctx, client, err)
 		return err
 	}

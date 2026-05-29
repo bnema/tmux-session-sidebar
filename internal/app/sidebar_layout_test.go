@@ -90,9 +90,9 @@ func TestToggleSidebarOpensWhenPersistedOpenStateHasNoVisiblePane(t *testing.T) 
 	}
 	tmux := mocks.NewMockTmuxSidebarPort(t)
 
-	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, nil)
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{WindowID: "@1"}, nil)
 	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
-	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "20").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
+	tmux.EXPECT().AttachSingletonSidebar(ctx, "@1", "%10", "20").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
 
 	if err := toggleSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux); err != nil {
 		t.Fatalf("toggleSidebar returned error: %v", err)
