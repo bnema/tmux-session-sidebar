@@ -60,14 +60,16 @@ type SidebarModel struct {
 	pendingKill   string
 	actions       Actions
 	version       string
+	height        int
 }
 
 type sidebarStyles struct {
-	accent   lipgloss.Style
-	dim      lipgloss.Style
-	active   lipgloss.Style
-	stale    lipgloss.Style
-	selected lipgloss.Style
+	accent       lipgloss.Style
+	dim          lipgloss.Style
+	active       lipgloss.Style
+	stale        lipgloss.Style
+	selected     lipgloss.Style
+	versionBadge lipgloss.Style
 }
 
 func NewSidebarModel(items []SessionItem, actions Actions) SidebarModel {
@@ -84,6 +86,9 @@ func (m SidebarModel) Init() tea.Cmd {
 
 func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
+		return m, nil
 	case tea.KeyPressMsg:
 		key := msg.Keystroke()
 		if delta, ok := reorderKeyDelta(msg); ok {
@@ -387,29 +392,39 @@ func (m SidebarModel) Render() string {
 	if status := m.statusLine(); status != "" {
 		lines = append(lines, "", styles.accent.Render(status))
 	}
-	lines = append(lines, "")
+	if m.message != "" {
+		lines = append(lines, "", styles.accent.Render(m.message))
+	}
+	lines = StatusBar{Lines: m.statusBarLines(styles), Height: m.height}.RenderBelow(padSidebarContentLines(lines))
+	return strings.Join(lines, "\n")
+}
+
+func padSidebarContentLines(lines []string) []string {
+	padded := make([]string, len(lines))
+	for i, line := range lines {
+		padded[i] = " " + line + " "
+	}
+	return padded
+}
+
+func (m SidebarModel) statusBarLines(styles sidebarStyles) []string {
 	if m.showHelp {
-		lines = append(lines,
+		return []string{
 			styles.dim.Render("↵ choose  / filter  esc back  M-b toggle"),
 			styles.dim.Render("M-n project  M-a adhoc  M-H nums"),
 			styles.dim.Render("M-J/K reorder  M-r rename"),
 			styles.dim.Render("M-x kill  M-? hide"),
-		)
-	} else {
-		lines = append(lines, styles.dim.Render(m.collapsedHelpLine()))
+		}
 	}
-	if m.message != "" {
-		lines = append(lines, styles.accent.Render(m.message))
-	}
-	return lipgloss.NewStyle().Padding(0, 1).Render(strings.Join(lines, "\n"))
+	return []string{m.collapsedHelpLine(styles)}
 }
 
-func (m SidebarModel) collapsedHelpLine() string {
+func (m SidebarModel) collapsedHelpLine(styles sidebarStyles) string {
 	version := displayVersion(m.version)
 	if version == "" {
-		return "M-? keys"
+		return styles.dim.Render("M-? keys")
 	}
-	return fmt.Sprintf("%s - M-? keys", version)
+	return styles.versionBadge.Render(" "+version+" ") + styles.dim.Render(" M-? keys")
 }
 
 func displayVersion(version string) string {
@@ -422,11 +437,12 @@ func displayVersion(version string) string {
 
 func newSidebarStyles() sidebarStyles {
 	return sidebarStyles{
-		accent:   lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
-		dim:      lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
-		active:   lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
-		stale:    lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
-		selected: lipgloss.NewStyle().Background(lipgloss.Color("#065f46")).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
+		accent:       lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
+		dim:          lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
+		active:       lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
+		stale:        lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
+		selected:     lipgloss.NewStyle().Background(lipgloss.Color("#065f46")).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
+		versionBadge: lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#e0f2fe")).Bold(true),
 	}
 }
 

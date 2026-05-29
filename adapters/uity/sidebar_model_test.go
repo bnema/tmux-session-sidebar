@@ -459,8 +459,53 @@ func TestSidebarModelRenderOmitsHeaderAndMovesFilterAboveHelp(t *testing.T) {
 func TestSidebarModelRenderShowsVersionInCollapsedHelp(t *testing.T) {
 	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "0.10.2"})
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "v0.10.2 - M-? keys") {
+	if !strings.Contains(view, " v0.10.2  M-? keys") {
 		t.Fatalf("render should include versioned help hint: %q", view)
+	}
+}
+
+func TestSidebarModelRenderStylesVersionBadge(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "dev"})
+	view := model.Render()
+	if !strings.Contains(view, "48;2;51;65;85") {
+		t.Fatalf("render should give version badge a distinct background: %q", view)
+	}
+	if !strings.Contains(stripANSI(view), " dev  M-? keys") {
+		t.Fatalf("render should pad the version badge text: %q", view)
+	}
+	lastLine := lastRenderedLine(view)
+	if strings.HasPrefix(lastLine, " ") {
+		t.Fatalf("statusbar should not have unstyled leading padding before badge: %q", view)
+	}
+}
+
+func TestSidebarModelAnchorsCollapsedStatusBarToWindowBottom(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "dev"})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 7})
+	model = requireSidebarModel(t, updated)
+
+	lines := strings.Split(stripANSI(model.Render()), "\n")
+	if len(lines) != 7 {
+		t.Fatalf("rendered height = %d, want 7; lines=%q", len(lines), lines)
+	}
+	if !strings.Contains(lines[len(lines)-1], " dev  M-? keys") {
+		t.Fatalf("statusbar should be on the last line: %q", lines)
+	}
+}
+
+func TestSidebarModelRecalculatesStatusBarPositionAfterResize(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "dev"})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 7})
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 30, Height: 5})
+	model = requireSidebarModel(t, updated)
+
+	lines := strings.Split(stripANSI(model.Render()), "\n")
+	if len(lines) != 5 {
+		t.Fatalf("rendered height after resize = %d, want 5; lines=%q", len(lines), lines)
+	}
+	if !strings.Contains(lines[len(lines)-1], " dev  M-? keys") {
+		t.Fatalf("statusbar should remain on the last line after resize: %q", lines)
 	}
 }
 
@@ -659,6 +704,16 @@ func TestSidebarModelHelpToggleHidesExpandedFooterByDefault(t *testing.T) {
 
 func keyPress(text string, mod tea.KeyMod) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Text: text, Code: []rune(text)[0], Mod: mod})
+}
+
+func lastRenderedLine(value string) string {
+	lines := strings.Split(value, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if lines[i] != "" {
+			return lines[i]
+		}
+	}
+	return ""
 }
 
 var ansiRegexp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
