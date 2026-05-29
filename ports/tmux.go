@@ -1,21 +1,24 @@
 package ports
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type ConfigSnapshot struct {
-	Loaded                bool
-	KeyBinding            string
-	Width                 string
-	ProjectRoots          []string
-	CloseAfterSwitch      bool
-	HeatColorsEnabled     bool
-	HeatHalfLifeHours     int
-	HeatStaleHours        int
-	HeatRefreshSeconds    int
-	HeatRecentHours       int
-	ActivityDebugLog      bool
-	AgentAttentionEnabled bool
-	AutoSortRecentEnabled bool
+	Loaded                 bool
+	KeyBinding             string
+	Width                  string
+	ProjectRoots           []string
+	CloseAfterSwitch       bool
+	HeatColorsEnabled      bool
+	HeatHalfLifeHours      int
+	HeatStaleHours         int
+	HeatRefreshSeconds     int
+	HeatRecentHours        int
+	ActivityDebugLog       bool
+	AgentAttentionEnabled  bool
+	AutoSortRecentInterval time.Duration
 }
 
 type TmuxSessionSnapshot struct {

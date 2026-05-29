@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
 	"github.com/bnema/tmux-session-sidebar/ports/mocks"
@@ -281,26 +282,36 @@ func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	if !got.AgentAttentionEnabled {
 		t.Fatal("AgentAttentionEnabled = false, want true")
 	}
-	if !got.AutoSortRecentEnabled {
-		t.Fatal("AutoSortRecentEnabled = false, want true")
+	if got.AutoSortRecentInterval != 24*time.Hour {
+		t.Fatalf("AutoSortRecentInterval = %v, want 24h", got.AutoSortRecentInterval)
 	}
 }
 
-func TestLoadConfigDisablesAutoSortRecentWhenOptionIsOffOrEmpty(t *testing.T) {
-	tests := map[string]string{"off": "off\n", "empty": "\n"}
-	for name, raw := range tests {
+func TestLoadConfigParsesAutoSortRecentInterval(t *testing.T) {
+	tests := map[string]struct {
+		raw  string
+		want time.Duration
+	}{
+		"off":     {raw: "off\n", want: 0},
+		"empty":   {raw: "\n", want: 0},
+		"on":      {raw: "on\n", want: 24 * time.Hour},
+		"minutes": {raw: "10m\n", want: 10 * time.Minute},
+		"hours":   {raw: "2h\n", want: 2 * time.Hour},
+		"days":    {raw: "3d\n", want: 72 * time.Hour},
+	}
+	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
 			allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
-			expectLoadConfig(process, ctx, "b\n", "20\n", "\n", "off\n", raw)
+			expectLoadConfig(process, ctx, "b\n", "20\n", "\n", "off\n", tt.raw)
 
 			got, err := (Client{Process: process}).LoadConfig(ctx)
 			if err != nil {
 				t.Fatalf("LoadConfig error: %v", err)
 			}
-			if got.AutoSortRecentEnabled {
-				t.Fatalf("AutoSortRecentEnabled = true for %q, want false", raw)
+			if got.AutoSortRecentInterval != tt.want {
+				t.Fatalf("AutoSortRecentInterval = %v, want %v", got.AutoSortRecentInterval, tt.want)
 			}
 		})
 	}

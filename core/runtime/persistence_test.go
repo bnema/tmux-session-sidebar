@@ -229,7 +229,7 @@ func TestCaptureLiveSessionsStillSavesMetadataWhenHeatCollectionFails(t *testing
 	}
 }
 
-func TestApplyDailyRecentSessionOrderUsesLastActiveAt(t *testing.T) {
+func TestApplyRecentSessionOrderUsesLastActiveAt(t *testing.T) {
 	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
 	state := ports.PersistedState{
 		SessionOrder: []string{"gamma", "alpha", "beta"},
@@ -241,46 +241,81 @@ func TestApplyDailyRecentSessionOrderUsesLastActiveAt(t *testing.T) {
 	}
 	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}
 
-	applyDailyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentEnabled: true}, now)
+	applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now)
 
 	if want := []string{"beta", "alpha", "gamma"}; !reflect.DeepEqual(state.SessionOrder, want) {
 		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
 	}
-	if state.Sidebar == nil || state.Sidebar.AutoSortRecentRunDate != "2026-05-26" {
-		t.Fatalf("AutoSortRecentRunDate = %#v, want 2026-05-26", state.Sidebar)
+	if state.Sidebar == nil || state.Sidebar.AutoSortRecentRunAt != now.Format(time.RFC3339Nano) {
+		t.Fatalf("AutoSortRecentRunAt = %#v, want %s", state.Sidebar, now.Format(time.RFC3339Nano))
 	}
 }
 
-func TestApplyDailyRecentSessionOrderRunsOncePerDay(t *testing.T) {
+func TestApplyRecentSessionOrderHonorsConfiguredInterval(t *testing.T) {
+	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
+	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}
+	heatState := encodeHeatStateMap(map[string]heat.State{
+		"alpha": {LastActiveAt: now},
+		"beta":  {LastActiveAt: now.Add(-time.Hour)},
+	})
+
+	t.Run("skips before interval", func(t *testing.T) {
+		state := ports.PersistedState{
+			SessionOrder: []string{"beta", "alpha"},
+			Sidebar:      &ports.SidebarState{AutoSortRecentRunAt: now.Add(-9 * time.Minute).Format(time.RFC3339Nano)},
+			Heat:         heatState,
+		}
+
+		applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 10 * time.Minute}, now)
+
+		if want := []string{"beta", "alpha"}; !reflect.DeepEqual(state.SessionOrder, want) {
+			t.Fatalf("SessionOrder = %#v, want unchanged %#v", state.SessionOrder, want)
+		}
+	})
+
+	t.Run("skips using legacy run date", func(t *testing.T) {
+		state := ports.PersistedState{
+			SessionOrder: []string{"beta", "alpha"},
+			Sidebar:      &ports.SidebarState{AutoSortRecentRunDate: "2026-05-26"},
+			Heat:         heatState,
+		}
+
+		applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now)
+
+		if want := []string{"beta", "alpha"}; !reflect.DeepEqual(state.SessionOrder, want) {
+			t.Fatalf("SessionOrder = %#v, want unchanged %#v", state.SessionOrder, want)
+		}
+	})
+
+	t.Run("runs after interval and clears legacy run date", func(t *testing.T) {
+		state := ports.PersistedState{
+			SessionOrder: []string{"beta", "alpha"},
+			Sidebar:      &ports.SidebarState{AutoSortRecentRunAt: now.Add(-10 * time.Minute).Format(time.RFC3339Nano), AutoSortRecentRunDate: "2026-05-25"},
+			Heat:         heatState,
+		}
+
+		applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 10 * time.Minute}, now)
+
+		if want := []string{"alpha", "beta"}; !reflect.DeepEqual(state.SessionOrder, want) {
+			t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
+		}
+		if state.Sidebar.AutoSortRecentRunDate != "" {
+			t.Fatalf("AutoSortRecentRunDate = %q, want cleared", state.Sidebar.AutoSortRecentRunDate)
+		}
+	})
+}
+
+func TestApplyRecentSessionOrderSkipsWhenDisabled(t *testing.T) {
 	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
 	state := ports.PersistedState{
 		SessionOrder: []string{"beta", "alpha"},
-		Sidebar:      &ports.SidebarState{AutoSortRecentRunDate: "2026-05-26"},
 		Heat: encodeHeatStateMap(map[string]heat.State{
 			"alpha": {LastActiveAt: now},
-			"beta":  {LastActiveAt: now.Add(-time.Hour)},
 		}),
 	}
 	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}
 
-	applyDailyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentEnabled: true}, now)
-
-	if want := []string{"beta", "alpha"}; !reflect.DeepEqual(state.SessionOrder, want) {
-		t.Fatalf("SessionOrder = %#v, want unchanged %#v", state.SessionOrder, want)
-	}
-}
-
-func TestApplyDailyRecentSessionOrderSkipsWhenDisabled(t *testing.T) {
-	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
-	state := ports.PersistedState{
-		SessionOrder: []string{"beta", "alpha"},
-		Heat: encodeHeatStateMap(map[string]heat.State{
-			"alpha": {LastActiveAt: now},
-		}),
-	}
-	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}
-
-	applyDailyRecentSessionOrder(&state, live, ports.ConfigSnapshot{}, now)
+	applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{}, now)
 
 	if want := []string{"beta", "alpha"}; !reflect.DeepEqual(state.SessionOrder, want) {
 		t.Fatalf("SessionOrder = %#v, want unchanged %#v", state.SessionOrder, want)
@@ -290,7 +325,7 @@ func TestApplyDailyRecentSessionOrderSkipsWhenDisabled(t *testing.T) {
 	}
 }
 
-func TestCaptureLiveSessionsWithConfigReconcilesLiveSessionsBeforeDailyRecentOrder(t *testing.T) {
+func TestCaptureLiveSessionsWithConfigReconcilesLiveSessionsBeforeRecentOrder(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
 	alphaPath := t.TempDir()
@@ -326,15 +361,15 @@ func TestCaptureLiveSessionsWithConfigReconcilesLiveSessionsBeforeDailyRecentOrd
 		}
 		return reflect.DeepEqual(state.SessionOrder, wantOrder) &&
 			reflect.DeepEqual(state.Sessions, wantSessions) &&
-			state.Sidebar != nil && state.Sidebar.AutoSortRecentRunDate != ""
+			state.Sidebar != nil && state.Sidebar.AutoSortRecentRunAt != ""
 	})).Return(nil)
 
-	if err := NewService(nil, query, nil, store).CaptureLiveSessionsWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentEnabled: true}); err != nil {
+	if err := NewService(nil, query, nil, store).CaptureLiveSessionsWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}); err != nil {
 		t.Fatalf("CaptureLiveSessionsWithConfig error: %v", err)
 	}
 }
 
-func TestCaptureSessionHeatWithConfigDoesNotConsumeDailyRecentOrderWhenHeatCaptureFails(t *testing.T) {
+func TestCaptureSessionHeatWithConfigDoesNotConsumeRecentOrderWhenHeatCaptureFails(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
 	boom := errors.New("list clients failed")
@@ -355,12 +390,12 @@ func TestCaptureSessionHeatWithConfigDoesNotConsumeDailyRecentOrderWhenHeatCaptu
 		return reflect.DeepEqual(state.SessionOrder, []string{"beta", "alpha"}) && state.Sidebar == nil
 	})).Return(nil)
 
-	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentEnabled: true}); err != nil {
+	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}); err != nil {
 		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
 	}
 }
 
-func TestCaptureSessionHeatWithConfigDoesNotConsumeDailyRecentOrderWhenPaneSampleFails(t *testing.T) {
+func TestCaptureSessionHeatWithConfigDoesNotConsumeRecentOrderWhenPaneSampleFails(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
 	now := time.Now()
@@ -384,7 +419,7 @@ func TestCaptureSessionHeatWithConfigDoesNotConsumeDailyRecentOrderWhenPaneSampl
 		return reflect.DeepEqual(state.SessionOrder, []string{"beta", "alpha"}) && state.Sidebar == nil
 	})).Return(nil)
 
-	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentEnabled: true}); err != nil {
+	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}); err != nil {
 		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
 	}
 }
