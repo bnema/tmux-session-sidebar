@@ -28,7 +28,6 @@ type RestoreReport struct {
 const (
 	defaultHeatHalfLife   = 8 * time.Hour
 	defaultHeatStaleAfter = 24 * time.Hour
-	recentOrderDayFormat  = "2006-01-02"
 	paneSampleTailLines   = 8
 )
 
@@ -160,7 +159,7 @@ func (s *Service) CaptureLiveSessionsWithConfig(ctx context.Context, serverID st
 	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
 	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
 	if s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot)) {
-		applyDailyRecentSessionOrder(&state, live, snapshot, time.Now())
+		applyRecentSessionOrder(&state, live, snapshot, time.Now())
 	}
 	return s.store.Save(ctx, serverID, state)
 }
@@ -182,7 +181,7 @@ func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID str
 		return err
 	}
 	if s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot)) {
-		applyDailyRecentSessionOrder(&state, live, snapshot, time.Now())
+		applyRecentSessionOrder(&state, live, snapshot, time.Now())
 	}
 	return s.store.Save(ctx, serverID, state)
 }
@@ -247,19 +246,30 @@ func orderedPersistedSessionNames(state ports.PersistedState) []string {
 	return sessions.ApplyOrder(names, state.SessionOrder)
 }
 
-func applyDailyRecentSessionOrder(state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg ports.ConfigSnapshot, now time.Time) {
-	if state == nil || !cfg.AutoSortRecentEnabled {
+func applyRecentSessionOrder(state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg ports.ConfigSnapshot, now time.Time) {
+	if state == nil || cfg.AutoSortRecentInterval <= 0 {
 		return
 	}
 	if state.Sidebar == nil {
 		state.Sidebar = &ports.SidebarState{}
 	}
-	today := now.Format(recentOrderDayFormat)
-	if state.Sidebar.AutoSortRecentRunDate == today {
+	lastRunAt, ok := autoSortRecentLastRunAt(*state.Sidebar)
+	if ok && now.Sub(lastRunAt) < cfg.AutoSortRecentInterval {
 		return
 	}
 	state.SessionOrder = orderSessionsByRecentActivity(state.SessionOrder, live, decodeHeatStateMap(state.Heat))
-	state.Sidebar.AutoSortRecentRunDate = today
+	state.Sidebar.AutoSortRecentRunAt = now.Format(time.RFC3339Nano)
+	state.Sidebar.AutoSortRecentRunDate = ""
+}
+
+func autoSortRecentLastRunAt(sidebar ports.SidebarState) (time.Time, bool) {
+	if runAt, err := time.Parse(time.RFC3339Nano, sidebar.AutoSortRecentRunAt); err == nil {
+		return runAt, true
+	}
+	if runDate, err := time.ParseInLocation("2006-01-02", sidebar.AutoSortRecentRunDate, time.Local); err == nil {
+		return runDate, true
+	}
+	return time.Time{}, false
 }
 
 func orderSessionsByRecentActivity(order []string, live []ports.TmuxSessionSnapshot, heatStates map[string]heat.State) []string {

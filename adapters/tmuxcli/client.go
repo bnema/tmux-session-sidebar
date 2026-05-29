@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -99,20 +101,21 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
+	autoSortRecentInterval := parseAutoSortRecentInterval(autoSortRecent)
 	return ports.ConfigSnapshot{
-		Loaded:                true,
-		KeyBinding:            key,
-		Width:                 width,
-		ProjectRoots:          splitProjectRoots(roots),
-		CloseAfterSwitch:      parseTmuxBool(closeAfterSwitch),
-		HeatColorsEnabled:     parseTmuxBool(heatColors),
-		HeatHalfLifeHours:     halfLifeHours,
-		HeatStaleHours:        staleHours,
-		HeatRefreshSeconds:    refreshSeconds,
-		HeatRecentHours:       recentHours,
-		ActivityDebugLog:      parseTmuxBool(activityDebugLog),
-		AgentAttentionEnabled: agentAttention == "" || parseTmuxBool(agentAttention),
-		AutoSortRecentEnabled: parseTmuxBool(autoSortRecent),
+		Loaded:                 true,
+		KeyBinding:             key,
+		Width:                  width,
+		ProjectRoots:           splitProjectRoots(roots),
+		CloseAfterSwitch:       parseTmuxBool(closeAfterSwitch),
+		HeatColorsEnabled:      parseTmuxBool(heatColors),
+		HeatHalfLifeHours:      halfLifeHours,
+		HeatStaleHours:         staleHours,
+		HeatRefreshSeconds:     refreshSeconds,
+		HeatRecentHours:        recentHours,
+		ActivityDebugLog:       parseTmuxBool(activityDebugLog),
+		AgentAttentionEnabled:  agentAttention == "" || parseTmuxBool(agentAttention),
+		AutoSortRecentInterval: autoSortRecentInterval,
 	}, nil
 }
 
@@ -513,6 +516,21 @@ func parseTmuxBool(raw string) bool {
 	default:
 		return false
 	}
+}
+
+func parseAutoSortRecentInterval(raw string) time.Duration {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" || value == "0" || value == "off" || value == "no" || value == "false" {
+		return 0
+	}
+	if value == "1" || value == "on" || value == "yes" || value == "true" {
+		return 24 * time.Hour
+	}
+	interval, err := config.ParseRelativeDuration(value)
+	if err != nil {
+		return 0
+	}
+	return interval
 }
 
 func splitProjectRoots(roots string) []string {

@@ -15,6 +15,7 @@ type SidebarState struct {
 	ShowNumericSessions   bool   `json:"showNumericSessions,omitempty"`
 	Open                  bool   `json:"open,omitempty"`
 	OwnerClient           string `json:"ownerClient,omitempty"`
+	AutoSortRecentRunAt   string `json:"autoSortRecentRunAt,omitempty"`
 	AutoSortRecentRunDate string `json:"autoSortRecentRunDate,omitempty"`
 }
 
