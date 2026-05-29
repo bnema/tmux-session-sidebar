@@ -80,6 +80,32 @@ func TestOpenSidebarRollsBackVisibilityWhenAttachFails(t *testing.T) {
 	}
 }
 
+func TestToggleSidebarOpensWhenPersistedOpenStateHasNoVisiblePane(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{WindowID: "@1"}, nil)
+	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
+	tmux.EXPECT().AttachSingletonSidebar(ctx, "@1", "%10", "20").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
+
+	if err := toggleSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux); err != nil {
+		t.Fatalf("toggleSidebar returned error: %v", err)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if state.Sidebar == nil || !state.Sidebar.Open || state.Sidebar.OwnerClient != "client-1" {
+		t.Fatalf("sidebar state = %#v, want open for client-1", state.Sidebar)
+	}
+}
+
 func TestCloseSidebarParksGlobalSingletonPane(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()

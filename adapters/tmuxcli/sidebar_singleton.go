@@ -10,11 +10,15 @@ import (
 )
 
 func (c Client) FindSingletonSidebar(ctx context.Context) (ports.PaneRef, error) {
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-f", "#{==:#{" + optionSidebarPane + "},1}", "-F", formatPaneID + "\t" + formatWindowID})
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-f", "#{==:#{" + optionSidebarPane + "},1}", "-F", formatPaneID + "\t" + formatWindowID + "\t#{pane_dead}"})
 	if err != nil {
 		return ports.PaneRef{}, wrapTmuxError(result, err)
 	}
-	return parseOptionalPaneRef(strings.TrimSpace(result.Stdout))
+	output := strings.TrimSpace(result.Stdout)
+	if err := c.cleanupDeadPaneRefs(ctx, output); err != nil {
+		return ports.PaneRef{}, err
+	}
+	return parseOptionalPaneRef(filterLivePaneRefs(output))
 }
 
 func (c Client) EnsureSingletonSidebar(ctx context.Context, command []string) (ports.PaneRef, error) {
@@ -314,6 +318,42 @@ func (c Client) killPane(ctx context.Context, paneID string) error {
 		return wrapTmuxError(result, err)
 	}
 	return nil
+}
+
+func (c Client) cleanupDeadPaneRefs(ctx context.Context, output string) error {
+	for _, paneID := range deadPaneRefIDs(output) {
+		if err := c.killPane(ctx, paneID); err != nil && !isTmuxTargetGone(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func deadPaneRefIDs(output string) []string {
+	var dead []string
+	for line := range strings.SplitSeq(output, "\n") {
+		fields := strings.Split(strings.TrimSpace(line), "\t")
+		if len(fields) >= 3 && parseTmuxBool(fields[2]) && strings.TrimSpace(fields[0]) != "" {
+			dead = append(dead, strings.TrimSpace(fields[0]))
+		}
+	}
+	return dead
+}
+
+func filterLivePaneRefs(output string) string {
+	var live []string
+	for line := range strings.SplitSeq(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) >= 3 && parseTmuxBool(fields[2]) {
+			continue
+		}
+		live = append(live, line)
+	}
+	return strings.Join(live, "\n")
 }
 
 func parseOptionalPaneRef(output string) (ports.PaneRef, error) {
