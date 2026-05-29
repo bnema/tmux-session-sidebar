@@ -60,8 +60,9 @@ main() {
   set_default @session-sidebar-heat-colors          on
   set_default @session-sidebar-heat-half-life-hours 8
   set_default @session-sidebar-heat-stale-hours     24
-  set_default @session-sidebar-heat-refresh-seconds 5
-  set_default @session-sidebar-heat-recent-hours   1
+  set_default @session-sidebar-heat-refresh-seconds 60
+  set_default @session-sidebar-heat-recent         1h
+  set_default @session-sidebar-heat-max-highlighted 0
   set_default @session-sidebar-activity-debug-log off
   set_default @session-sidebar-agent-attention on
   set_default @session-sidebar-auto-sort-recent off

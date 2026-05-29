@@ -168,6 +168,51 @@ esac
 	}
 }
 
+func TestDaemonServeRefreshesOpenSidebarsAfterHeatTick(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-colors) printf 'on\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '1\n' ;;
+      @session-sidebar-heat-recent) printf '1h\n' ;;
+      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'on\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) printf '$1\talpha\t1\t0\n' ;;
+  list-clients) ;;
+  list-panes)
+    if [ "$3" = '-f' ]; then
+      printf '%%sidebar\n'
+    else
+      printf '%%1\t$1\talpha\t@1\t/tmp/alpha\tpi\t0\t\t0\n'
+    fi ;;
+  capture-pane) printf 'working\n' ;;
+  send-keys) ;;
+esac
+`)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1200*time.Millisecond)
+	defer cancel()
+	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "daemon/serve", Flags: map[string]string{}}, nil, nil); err != nil {
+		t.Fatalf("daemon serve error: %v", err)
+	}
+
+	if log := readLog(t, logPath); !strings.Contains(log, "send-keys -t %sidebar F5") {
+		t.Fatalf("expected daemon heat tick to refresh open sidebar, log=%q", log)
+	}
+}
+
 func TestDaemonServeClearsTransientHeatStateOnStartup(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	seedTransientHeatState(t)

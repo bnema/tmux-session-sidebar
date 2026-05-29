@@ -12,18 +12,15 @@ import (
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
 
-const (
-	attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
-	recentSignalColor     = "#dcfce7"
-	inactiveSessionColor  = "#4b5563"
-)
+const attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
 
 type SessionItem struct {
-	Name      string
-	Current   bool
-	Slot      int
-	Heat      string
-	Attention bool
+	Name          string
+	Current       bool
+	Slot          int
+	Heat          string
+	HeatIntensity float64
+	Attention     bool
 }
 
 type ProjectItem struct {
@@ -69,7 +66,6 @@ type sidebarStyles struct {
 	accent   lipgloss.Style
 	dim      lipgloss.Style
 	active   lipgloss.Style
-	recent   lipgloss.Style
 	stale    lipgloss.Style
 	selected lipgloss.Style
 }
@@ -429,8 +425,7 @@ func newSidebarStyles() sidebarStyles {
 		accent:   lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
 		dim:      lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
 		active:   lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
-		recent:   lipgloss.NewStyle().Foreground(lipgloss.Color(recentSignalColor)),
-		stale:    lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionColor)),
+		stale:    lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
 		selected: lipgloss.NewStyle().Background(lipgloss.Color("#065f46")).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
 	}
 }
@@ -442,7 +437,7 @@ func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
 	if item.Heat == "" || item.Heat == string(heat.BucketStale) {
 		return styles.stale
 	}
-	return styles.recent
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(heatColor(item.HeatIntensity)))
 }
 
 func sessionMarkerStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {

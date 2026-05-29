@@ -85,7 +85,12 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	recentHours, err := c.optionInt(ctx, "@session-sidebar-heat-recent-hours")
+	recent, err := c.option(ctx, "@session-sidebar-heat-recent")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
+	recentInterval := parseHeatRecentInterval(recent)
+	maxHighlighted, err := c.optionInt(ctx, "@session-sidebar-heat-max-highlighted")
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
@@ -112,7 +117,8 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		HeatHalfLifeHours:      halfLifeHours,
 		HeatStaleHours:         staleHours,
 		HeatRefreshSeconds:     refreshSeconds,
-		HeatRecentHours:        recentHours,
+		HeatRecentInterval:     recentInterval,
+		HeatMaxHighlighted:     maxHighlighted,
 		ActivityDebugLog:       parseTmuxBool(activityDebugLog),
 		AgentAttentionEnabled:  agentAttention == "" || parseTmuxBool(agentAttention),
 		AutoSortRecentInterval: autoSortRecentInterval,
@@ -529,6 +535,18 @@ func parseAutoSortRecentInterval(raw string) time.Duration {
 	interval, err := config.ParseRelativeDuration(value)
 	if err != nil {
 		return 0
+	}
+	return interval
+}
+
+func parseHeatRecentInterval(raw string) time.Duration {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" || value == "1" || value == "on" || value == "yes" || value == "true" {
+		return time.Hour
+	}
+	interval, err := config.ParseRelativeDuration(value)
+	if err != nil {
+		return time.Hour
 	}
 	return interval
 }

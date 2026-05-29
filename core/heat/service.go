@@ -11,10 +11,12 @@ type TraceStatus string
 
 const (
 	BucketCurrent Bucket = "current"
-	BucketHot     Bucket = "hot"
-	BucketWarm    Bucket = "warm"
-	BucketCool    Bucket = "cool"
-	BucketStale   Bucket = "stale"
+	// Hot, warm, and cool buckets describe persisted heat traces. Display heat uses
+	// a continuous intensity instead of these discrete non-stale buckets.
+	BucketHot   Bucket = "hot"
+	BucketWarm  Bucket = "warm"
+	BucketCool  Bucket = "cool"
+	BucketStale Bucket = "stale"
 
 	TraceStatusNoChange         TraceStatus = "doing-nothing"
 	TraceStatusActivityDetected TraceStatus = "activity-detected"

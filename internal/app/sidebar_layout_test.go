@@ -183,8 +183,9 @@ case "$1" in
       @session-sidebar-heat-colors) printf 'on\n' ;;
       @session-sidebar-heat-half-life-hours) printf '8\n' ;;
       @session-sidebar-heat-stale-hours) printf '24\n' ;;
-      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
-      @session-sidebar-heat-recent-hours) printf '1\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '60\n' ;;
+      @session-sidebar-heat-recent) printf '1h\n' ;;
+      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
       @session-sidebar-activity-debug-log) printf 'off\n' ;;
       @session-sidebar-agent-attention) printf 'on\n' ;;
       *) printf '\n' ;;
@@ -217,8 +218,9 @@ case "$1" in
       @session-sidebar-heat-colors) printf 'on\n' ;;
       @session-sidebar-heat-half-life-hours) printf '8\n' ;;
       @session-sidebar-heat-stale-hours) printf '24\n' ;;
-      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
-      @session-sidebar-heat-recent-hours) printf '1\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '60\n' ;;
+      @session-sidebar-heat-recent) printf '1h\n' ;;
+      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
       @session-sidebar-activity-debug-log) printf 'off\n' ;;
       @session-sidebar-agent-attention) printf 'on\n' ;;
       *) printf '\n' ;;

@@ -51,24 +51,7 @@ func ApplyPaneObservations(state *State, observations []PaneObservation) bool {
 	return active
 }
 
-func DisplayBucket(state State, now time.Time, recentWindow time.Duration) Bucket {
-	if RecentActivity(state, now, recentWindow) {
-		return BucketCurrent
-	}
-	return BucketStale
-}
-
 func RecentActivity(state State, now time.Time, window time.Duration) bool {
-	return recentTimestamp(state.LastVisitedAt, now, window) || recentTimestamp(state.LastActiveAt, now, window)
-}
-
-func recentTimestamp(timestamp time.Time, now time.Time, window time.Duration) bool {
-	if timestamp.IsZero() {
-		return false
-	}
-	age := now.Sub(timestamp)
-	if age < 0 {
-		return false
-	}
-	return age <= window
+	_, ok := RecentActivityAge(state, now, window)
+	return ok
 }

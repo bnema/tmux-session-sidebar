@@ -18,7 +18,7 @@ func TestRenderRows(t *testing.T) {
 	}{
 		{name: "empty rows", rows: nil, capability: CapabilityPlain, wantExact: ""},
 		{name: "plain current with badge", rows: []Row{{Session: sessions.View{Name: "alpha", Current: true}, Slot: 1}}, capability: CapabilityPlain, wantParts: []string{"* [1] alpha\n"}},
-		{name: "rgb heat style", rows: []Row{{Session: sessions.View{Name: "beta"}, Bucket: heat.BucketHot}}, capability: CapabilityRGB, wantParts: []string{"\033[38;2;220;252;231m", " beta\033[0m\n"}},
+		{name: "rgb heat style", rows: []Row{{Session: sessions.View{Name: "beta"}, Bucket: heat.BucketCurrent, HeatIntensity: 1}}, capability: CapabilityRGB, wantParts: []string{"\033[38;2;240;253;244m", " beta\033[0m\n"}},
 		{name: "strips ansi from names", rows: []Row{{Session: sessions.View{Name: "\033[31mred\033[0m"}}}, capability: CapabilityPlain, wantExact: "  red\n"},
 		{name: "empty name", rows: []Row{{Session: sessions.View{Name: ""}}}, capability: CapabilityPlain, wantExact: "  \n"},
 		{name: "multi row order", rows: []Row{{Session: sessions.View{Name: "alpha"}}, {Session: sessions.View{Name: "beta"}}}, capability: CapabilityPlain, wantExact: "  alpha\n  beta\n"},
@@ -43,20 +43,22 @@ func TestHeatStyle(t *testing.T) {
 	tests := []struct {
 		name       string
 		bucket     heat.Bucket
+		intensity  float64
 		capability Capability
-		wantEmpty  bool
+		want       string
 	}{
-		{name: "rgb current", bucket: heat.BucketCurrent, capability: CapabilityRGB, wantEmpty: false},
-		{name: "256 stale", bucket: heat.BucketStale, capability: Capability256, wantEmpty: false},
-		{name: "basic cool uses highlight", bucket: heat.BucketCool, capability: CapabilityBasic, wantEmpty: false},
-		{name: "plain hot empty", bucket: heat.BucketHot, capability: CapabilityPlain, wantEmpty: true},
+		{name: "rgb current hot", bucket: heat.BucketCurrent, intensity: 1, capability: CapabilityRGB, want: "\033[38;2;240;253;244m"},
+		{name: "rgb current midpoint", bucket: heat.BucketCurrent, intensity: 0.5, capability: CapabilityRGB, want: "\033[38;2;131;177;148m"},
+		{name: "rgb current cool", bucket: heat.BucketCurrent, intensity: 0, capability: CapabilityRGB, want: "\033[38;2;22;101;52m"},
+		{name: "256 stale", bucket: heat.BucketStale, intensity: 1, capability: Capability256, want: "\033[2;38;5;244m"},
+		{name: "basic current uses highlight", bucket: heat.BucketCurrent, intensity: 1, capability: CapabilityBasic, want: "\033[32m"},
+		{name: "plain current empty", bucket: heat.BucketCurrent, intensity: 1, capability: CapabilityPlain, want: ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := HeatStyle(tt.bucket, tt.capability)
-			if (got == "") != tt.wantEmpty {
-				t.Fatalf("HeatStyle() = %q, wantEmpty %v", got, tt.wantEmpty)
+			if got := HeatStyle(tt.bucket, tt.intensity, tt.capability); got != tt.want {
+				t.Fatalf("HeatStyle() = %q, want %q", got, tt.want)
 			}
 		})
 	}

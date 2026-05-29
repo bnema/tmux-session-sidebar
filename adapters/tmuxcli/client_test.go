@@ -273,17 +273,41 @@ func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	if !got.CloseAfterSwitch {
 		t.Fatal("CloseAfterSwitch = false, want true")
 	}
-	if got.HeatRefreshSeconds != 5 {
-		t.Fatalf("HeatRefreshSeconds = %d, want 5", got.HeatRefreshSeconds)
+	if got.HeatRefreshSeconds != 60 {
+		t.Fatalf("HeatRefreshSeconds = %d, want 60", got.HeatRefreshSeconds)
 	}
-	if got.HeatRecentHours != 1 {
-		t.Fatalf("HeatRecentHours = %d, want 1", got.HeatRecentHours)
+	if got.HeatRecentInterval != time.Hour {
+		t.Fatalf("HeatRecentInterval = %v, want 1h", got.HeatRecentInterval)
+	}
+	if got.HeatMaxHighlighted != 0 {
+		t.Fatalf("HeatMaxHighlighted = %d, want 0", got.HeatMaxHighlighted)
 	}
 	if !got.AgentAttentionEnabled {
 		t.Fatal("AgentAttentionEnabled = false, want true")
 	}
 	if got.AutoSortRecentInterval != 24*time.Hour {
 		t.Fatalf("AutoSortRecentInterval = %v, want 24h", got.AutoSortRecentInterval)
+	}
+}
+
+func TestLoadConfigParsesHeatRecentInterval(t *testing.T) {
+	tests := map[string]struct {
+		raw  string
+		want time.Duration
+	}{
+		"empty default":   {raw: "", want: time.Hour},
+		"legacy one":      {raw: "1", want: time.Hour},
+		"minutes":         {raw: "10m", want: 10 * time.Minute},
+		"hours":           {raw: "2h", want: 2 * time.Hour},
+		"days":            {raw: "3d", want: 72 * time.Hour},
+		"invalid default": {raw: "bogus", want: time.Hour},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := parseHeatRecentInterval(tt.raw); got != tt.want {
+				t.Fatalf("parseHeatRecentInterval(%q) = %v, want %v", tt.raw, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -325,8 +349,9 @@ func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key s
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-colors"}).Return(ports.Result{Stdout: "on\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-half-life-hours"}).Return(ports.Result{Stdout: "8\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-stale-hours"}).Return(ports.Result{Stdout: "24\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-refresh-seconds"}).Return(ports.Result{Stdout: "5\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-recent-hours"}).Return(ports.Result{Stdout: "1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-refresh-seconds"}).Return(ports.Result{Stdout: "60\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-recent"}).Return(ports.Result{Stdout: "1h\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-max-highlighted"}).Return(ports.Result{Stdout: "0\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-activity-debug-log"}).Return(ports.Result{Stdout: "off\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-agent-attention"}).Return(ports.Result{Stdout: "on\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-auto-sort-recent"}).Return(ports.Result{Stdout: autoSortRecent}, nil)

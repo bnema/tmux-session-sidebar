@@ -3,10 +3,8 @@ package app
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/bnema/tmux-session-sidebar/core/attention"
-	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -27,78 +25,6 @@ func TestEffectiveUIClientFallsBackToPersistedSidebarOwner(t *testing.T) {
 	}
 }
 
-func TestSessionHeatBucketUsesRecentSessionSwitchSignal(t *testing.T) {
-	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
-	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, HeatRecentHours: 1}
-
-	tests := []struct {
-		name            string
-		heatRecentHours int
-		state           heat.State
-		want            heat.Bucket
-	}{
-		{
-			name: "recent switch stays highlighted",
-			state: heat.State{
-				LastVisitedAt: now.Add(-5 * time.Second),
-			},
-			want: heat.BucketCurrent,
-		},
-		{
-			name: "recent terminal activity without switch signal stays highlighted",
-			state: heat.State{
-				UpdatedAt:        now,
-				LastActiveAt:     now.Add(-5 * time.Second),
-				RecentActivityAt: now.Add(-5 * time.Second),
-			},
-			want: heat.BucketCurrent,
-		},
-		{
-			name: "historical heat older than an hour stays gray",
-			state: heat.State{
-				Score:        50000,
-				UpdatedAt:    now,
-				LastActiveAt: now.Add(-2 * time.Hour),
-			},
-			want: heat.BucketStale,
-		},
-		{
-			name: "active within the last hour stays highlighted",
-			state: heat.State{
-				LastVisitedAt: now.Add(-59 * time.Minute),
-			},
-			want: heat.BucketCurrent,
-		},
-		{
-			name: "switch signal older than an hour expires back to gray",
-			state: heat.State{
-				LastVisitedAt: now.Add(-61 * time.Minute),
-			},
-			want: heat.BucketStale,
-		},
-		{
-			name:            "configured two hour window keeps older signal highlighted",
-			heatRecentHours: 2,
-			state: heat.State{
-				LastVisitedAt: now.Add(-90 * time.Minute),
-			},
-			want: heat.BucketCurrent,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testCfg := cfg
-			if tt.heatRecentHours > 0 {
-				testCfg.HeatRecentHours = tt.heatRecentHours
-			}
-			if got := sessionHeatBucket(tt.state, now, testCfg); got != tt.want {
-				t.Fatalf("sessionHeatBucket() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestLoadSessionItemsUsesDedicatedAgentAttentionState(t *testing.T) {
 	for _, enabled := range []string{"on", "off"} {
 		t.Run(enabled, func(t *testing.T) {
@@ -115,8 +41,9 @@ case "$1" in
       @session-sidebar-heat-colors) printf 'on\n' ;;
       @session-sidebar-heat-half-life-hours) printf '8\n' ;;
       @session-sidebar-heat-stale-hours) printf '24\n' ;;
-      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
-      @session-sidebar-heat-recent-hours) printf '1\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '60\n' ;;
+      @session-sidebar-heat-recent) printf '1h\n' ;;
+      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
       @session-sidebar-activity-debug-log) printf 'off\n' ;;
       @session-sidebar-agent-attention) printf '%s\n' "$AGENT_ATTENTION" ;;
       *) printf '\n' ;;

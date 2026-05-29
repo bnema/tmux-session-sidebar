@@ -15,7 +15,8 @@ type ConfigSnapshot struct {
 	HeatHalfLifeHours      int
 	HeatStaleHours         int
 	HeatRefreshSeconds     int
-	HeatRecentHours        int
+	HeatRecentInterval     time.Duration
+	HeatMaxHighlighted     int
 	ActivityDebugLog       bool
 	AgentAttentionEnabled  bool
 	AutoSortRecentInterval time.Duration

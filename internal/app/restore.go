@@ -153,6 +153,8 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 		}
 		if err := captureLiveSidebarHeat(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
+		} else {
+			refreshAllSidebarPanesBestEffort(ctx)
 		}
 	}
 }
@@ -186,7 +188,7 @@ func sidebarRefreshIntervalFromConfig(cfg ports.ConfigSnapshot) time.Duration {
 	if cfg.HeatRefreshSeconds > 0 {
 		return time.Duration(cfg.HeatRefreshSeconds) * time.Second
 	}
-	return 5 * time.Second
+	return time.Minute
 }
 
 func withLockedSidebarStore(ctx context.Context, fn func(storefs.Store) error) error {

@@ -21,9 +21,10 @@ const (
 )
 
 type Row struct {
-	Session sessions.View
-	Bucket  heat.Bucket
-	Slot    int
+	Session       sessions.View
+	Bucket        heat.Bucket
+	HeatIntensity float64
+	Slot          int
 }
 
 type Screen struct {
@@ -50,7 +51,7 @@ func RenderScreen(screen Screen) string {
 func Render(rows []Row, capability Capability) string {
 	var b strings.Builder
 	for _, row := range rows {
-		style := HeatStyle(row.Bucket, capability)
+		style := HeatStyle(row.Bucket, row.HeatIntensity, capability)
 		reset := ""
 		if style != "" {
 			reset = "\033[0m"
@@ -101,14 +102,14 @@ func sanitizeSessionName(name string) string {
 	return b.String()
 }
 
-func HeatStyle(bucket heat.Bucket, capability Capability) string {
+func HeatStyle(bucket heat.Bucket, intensity float64, capability Capability) string {
 	highlight := bucket != heat.BucketStale
 	switch capability {
 	case CapabilityRGB:
 		if highlight {
-			return "\033[38;2;220;252;231m"
+			return heatRGB(intensity).ANSI()
 		}
-		return "\033[2;38;2;140;140;140m"
+		return inactiveSessionRGB.DimANSI()
 	case Capability256:
 		if highlight {
 			return "\033[38;5;194m"

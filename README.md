@@ -56,7 +56,8 @@ set -g @session-sidebar-width '20'
 set -g @session-sidebar-project-roots "$HOME/projects:$HOME/dev/projects"
 set -g @session-sidebar-close-after-switch 'off'
 set -g @session-sidebar-heat-colors 'on'
-set -g @session-sidebar-heat-recent-hours '1'
+set -g @session-sidebar-heat-recent '1h'
+set -g @session-sidebar-heat-max-highlighted '0'
 set -g @session-sidebar-agent-attention 'on'
 set -g @session-sidebar-auto-sort-recent 'off'
 ```
@@ -68,7 +69,8 @@ set -g @session-sidebar-auto-sort-recent 'off'
 | `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated directories scanned by the project picker |
 | `@session-sidebar-close-after-switch` | `off` | Close the sidebar after selecting a session when set to `on` |
 | `@session-sidebar-heat-colors` | `on` | Enable activity-based session colors |
-| `@session-sidebar-heat-recent-hours` | `1` | Hours a visited or active session stays highlighted |
+| `@session-sidebar-heat-recent` | `1h` | Relative window used for recent-activity heat colors, for example `10m`, `2h`, or `3d`. Empty, `1`, `on`, `yes`, and `true` are treated as `1h`. |
+| `@session-sidebar-heat-max-highlighted` | `0` | Maximum highlighted sessions at once; `0` means no limit |
 | `@session-sidebar-agent-attention` | `on` | Enable bell markers from supported agent hooks |
 | `@session-sidebar-auto-sort-recent` | `off` | Relative interval for reordering sessions by most recent real pane activity, for example `10m`, `2h`, or `3d` |
 
@@ -155,10 +157,12 @@ Killing a session through the sidebar removes it from future restore. Renaming t
 
 ## Heat colors and agent bells
 
-The sidebar can color recently active sessions. The current session is bright with `*`, sessions active or visited within `@session-sidebar-heat-recent-hours` are light green, and inactive sessions are gray.
+The sidebar can color recently active sessions. The current session is bright with `*`. Other sessions fade from very light green toward the default inactive gray based on their activity age relative to `@session-sidebar-heat-recent`: with `1h`, a session active 5 minutes ago is hot while one near 1 hour old is almost gray; with `3d`, that same 1-hour-old session remains hot.
 
 ```tmux
 set -g @session-sidebar-heat-colors 'off'
+set -g @session-sidebar-heat-recent '10m'
+set -g @session-sidebar-heat-max-highlighted '5'
 ```
 
 To keep recently used projects near the top, set an automatic sorting interval:

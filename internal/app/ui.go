@@ -56,11 +56,13 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 	for _, view := range views {
 		viewsByName[view.Name] = view
 	}
+	heatDisplays := heat.DisplayByRecentActivity(names, heatStates, now, recentHeatWindow(cfg), cfg.HeatMaxHighlighted)
 	slot := 1
 	for _, name := range names {
 		item := uity.SessionItem{Name: name, Current: name == current}
-		if state, ok := heatStates[name]; ok && cfg.HeatColorsEnabled {
-			item.Heat = string(sessionHeatBucket(state, now, cfg))
+		if display, ok := heatDisplays[name]; ok && cfg.HeatColorsEnabled {
+			item.Heat = string(display.Bucket)
+			item.HeatIntensity = display.Intensity
 		}
 		if cfg.AgentAttentionEnabled {
 			if state, ok := attentionStateForSession(attentionStates, viewsByName[name]); ok {
@@ -113,7 +115,7 @@ func loadSidebarConfig(ctx context.Context) ports.ConfigSnapshot {
 }
 
 func defaultSidebarConfig() ports.ConfigSnapshot {
-	return ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 5, HeatRecentHours: 1, ActivityDebugLog: false, AgentAttentionEnabled: true, AutoSortRecentInterval: 0}
+	return ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 60, HeatRecentInterval: time.Hour, HeatMaxHighlighted: 0, ActivityDebugLog: false, AgentAttentionEnabled: true, AutoSortRecentInterval: 0}
 }
 
 func decodePersistedHeat(raw map[string][]byte) map[string]heat.State {
@@ -131,13 +133,9 @@ func decodePersistedHeat(raw map[string][]byte) map[string]heat.State {
 	return decoded
 }
 
-func sessionHeatBucket(state heat.State, now time.Time, cfg ports.ConfigSnapshot) heat.Bucket {
-	return heat.DisplayBucket(state, now, recentHeatWindow(cfg))
-}
-
 func recentHeatWindow(cfg ports.ConfigSnapshot) time.Duration {
-	if cfg.HeatRecentHours > 0 {
-		return time.Duration(cfg.HeatRecentHours) * time.Hour
+	if cfg.HeatRecentInterval > 0 {
+		return cfg.HeatRecentInterval
 	}
 	return time.Hour
 }
