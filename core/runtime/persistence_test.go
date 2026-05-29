@@ -251,6 +251,27 @@ func TestApplyRecentSessionOrderUsesLastActiveAt(t *testing.T) {
 	}
 }
 
+func TestApplyRecentSessionOrderKeepsPinnedSessionsAtTheirPositions(t *testing.T) {
+	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
+	state := ports.PersistedState{
+		SessionOrder:   []string{"alpha", "beta", "gamma", "delta"},
+		PinnedSessions: []string{"beta"},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-30 * time.Minute)},
+			"beta":  {LastActiveAt: now.Add(-4 * time.Hour)},
+			"gamma": {LastActiveAt: now.Add(-10 * time.Minute)},
+			"delta": {LastActiveAt: now.Add(-5 * time.Minute)},
+		}),
+	}
+	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"}}
+
+	applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now)
+
+	if want := []string{"delta", "beta", "gamma", "alpha"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
+	}
+}
+
 func TestApplyRecentSessionOrderHonorsConfiguredInterval(t *testing.T) {
 	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
 	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}

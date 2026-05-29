@@ -175,6 +175,8 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 		cmdJoinPane, "-hbf", "-d", "-l", width, "-s", paneID, "-t", windowID,
 		";", cmdSetOption, "-p", "-t", paneID, optionSidebarPane, "1",
 		";", cmdResizePane, "-t", paneID, "-x", width,
+		// -R selects the pane to the right of the sidebar, which preserves focus
+		// in the work area after the sidebar is moved into the target window.
 		";", cmdSelectPane, "-t", paneID, "-R",
 	}
 	args = append(args, ";")

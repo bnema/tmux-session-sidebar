@@ -17,7 +17,7 @@ func TestStoreLoadSave(t *testing.T) {
 		state ports.PersistedState
 	}{
 		{name: "empty maps", state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}, SessionOrder: []string{}, Clients: map[string][]byte{}, Heat: map[string][]byte{}}},
-		{name: "session metadata", state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{"alpha": {Kind: "project", ProjectPath: "/tmp/alpha"}}, SessionOrder: []string{}, Clients: map[string][]byte{"%1": []byte("{}")}, Heat: map[string][]byte{"alpha": []byte("{}")}}},
+		{name: "session metadata", state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{"alpha": {Kind: "project", ProjectPath: "/tmp/alpha"}}, SessionOrder: []string{}, PinnedSessions: []string{"alpha"}, Clients: map[string][]byte{"%1": []byte("{}")}, Heat: map[string][]byte{"alpha": []byte("{}")}}},
 	}
 
 	for _, tt := range tests {
@@ -46,9 +46,10 @@ func TestStoreLoadSaveSessionRestoreMetadata(t *testing.T) {
 			"alpha": {Kind: "project", ProjectPath: "/tmp/alpha", LastPath: "/tmp/alpha/subdir"},
 			"beta":  {Kind: "captured", LastPath: "/tmp/beta"},
 		},
-		SessionOrder: []string{"alpha", "beta"},
-		Clients:      map[string][]byte{},
-		Heat:         map[string][]byte{},
+		SessionOrder:   []string{"alpha", "beta"},
+		PinnedSessions: []string{"beta"},
+		Clients:        map[string][]byte{},
+		Heat:           map[string][]byte{},
 	}
 	if err := store.Save(ctx, "server", state); err != nil {
 		t.Fatalf("Save error: %v", err)

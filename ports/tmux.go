@@ -98,10 +98,16 @@ type TmuxSidebarPort interface {
 }
 
 type TmuxSidebarSwitchPort interface {
+	// AttachSingletonSidebarAndSwitchClient moves the sidebar to sessionName,
+	// switches the client there, and leaves focus on the work pane next to the
+	// sidebar instead of focusing the sidebar pane itself.
 	AttachSingletonSidebarAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error
 }
 
 type TmuxSidebarFollowPort interface {
+	// AttachSingletonSidebarWithoutFocus attaches the sidebar while preserving
+	// focus in the work pane. Callers may fall back to AttachSingletonSidebar
+	// when an adapter does not implement this optional behavior.
 	AttachSingletonSidebarWithoutFocus(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
 }
 

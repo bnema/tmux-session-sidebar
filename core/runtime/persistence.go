@@ -116,6 +116,7 @@ func (s *Service) CaptureLiveSessions(ctx context.Context, serverID string) erro
 	}
 	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
 	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
+	state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
 	s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
 	return s.store.Save(ctx, serverID, state)
 }
@@ -158,6 +159,7 @@ func (s *Service) CaptureLiveSessionsWithConfig(ctx context.Context, serverID st
 	}
 	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
 	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
+	state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
 	if s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot)) {
 		applyRecentSessionOrder(&state, live, snapshot, time.Now())
 	}
@@ -237,6 +239,14 @@ func reconcileSessionOrder(order []string, live []ports.TmuxSessionSnapshot) []s
 	return sessions.ApplyOrder(liveNames, order)
 }
 
+func reconcilePinnedSessions(pinned []string, live []ports.TmuxSessionSnapshot) []string {
+	liveNames := make([]string, 0, len(live))
+	for _, session := range live {
+		liveNames = append(liveNames, session.Name)
+	}
+	return sessions.ReconcilePinned(pinned, liveNames)
+}
+
 func orderedPersistedSessionNames(state ports.PersistedState) []string {
 	names := make([]string, 0, len(state.Sessions))
 	for name := range state.Sessions {
@@ -257,7 +267,7 @@ func applyRecentSessionOrder(state *ports.PersistedState, live []ports.TmuxSessi
 	if ok && now.Sub(lastRunAt) < cfg.AutoSortRecentInterval {
 		return
 	}
-	state.SessionOrder = orderSessionsByRecentActivity(state.SessionOrder, live, decodeHeatStateMap(state.Heat))
+	state.SessionOrder = orderSessionsByRecentActivityPinned(state.SessionOrder, live, decodeHeatStateMap(state.Heat), state.PinnedSessions)
 	state.Sidebar.AutoSortRecentRunAt = now.Format(time.RFC3339Nano)
 	state.Sidebar.AutoSortRecentRunDate = ""
 }
@@ -272,8 +282,9 @@ func autoSortRecentLastRunAt(sidebar ports.SidebarState) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-func orderSessionsByRecentActivity(order []string, live []ports.TmuxSessionSnapshot, heatStates map[string]heat.State) []string {
+func orderSessionsByRecentActivityPinned(order []string, live []ports.TmuxSessionSnapshot, heatStates map[string]heat.State, pinned []string) []string {
 	ordered := reconcileSessionOrder(order, live)
+	anchor := append([]string(nil), ordered...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		left := heatStates[ordered[i]].LastActiveAt
 		right := heatStates[ordered[j]].LastActiveAt
@@ -288,7 +299,7 @@ func orderSessionsByRecentActivity(order []string, live []ports.TmuxSessionSnaps
 			return left.After(right)
 		}
 	})
-	return ordered
+	return sessions.ApplyPinnedPositions(anchor, ordered, pinned)
 }
 
 func isRestorableSessionName(name string) bool {

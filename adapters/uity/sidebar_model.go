@@ -13,6 +13,9 @@ import (
 )
 
 const attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
+const currentMarkerSymbol = "\uf444"   // Nerd Font dot-fill glyph (U+F444 / nf-oct-dot_fill).
+const pinnedMarkerSymbol = "\uf08d"    // Nerd Font thumb-tack glyph (U+F08D / nf-fa-thumb_tack).
+const spaceKeySymbol = "\U000F1050"    // Nerd Font keyboard-space glyph (U+F1050 / nf-md-keyboard_space).
 
 type SessionItem struct {
 	Name          string
@@ -21,6 +24,7 @@ type SessionItem struct {
 	Heat          string
 	HeatIntensity float64
 	Attention     bool
+	Pinned        bool
 }
 
 type ProjectItem struct {
@@ -35,6 +39,7 @@ type Actions struct {
 	CreateAdhoc         func() bool
 	RenameSession       func(string) bool
 	KillSession         func(string) bool
+	TogglePinnedSession func(string) bool
 	ReorderSession      func(string, int) bool
 	SetShowNumericItems func(bool) bool
 	LoadProjects        func() []ProjectItem
@@ -69,6 +74,7 @@ type sidebarStyles struct {
 	active       lipgloss.Style
 	stale        lipgloss.Style
 	selected     lipgloss.Style
+	pinned       lipgloss.Style
 	versionBadge lipgloss.Style
 }
 
@@ -114,6 +120,10 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.showNumeric = next
+			return m, nil
+		}
+		if pinnedToggleKey(msg) && m.mode == ModeBrowse {
+			m.togglePinnedSelected()
 			return m, nil
 		}
 		if slot, ok := numericSlotKey(msg); ok && m.mode == ModeBrowse {
@@ -275,6 +285,7 @@ func (m *SidebarModel) switchItem(item SessionItem) {
 	}
 	if m.actions.SwitchSession(item.Name) {
 		m.reloadSessions()
+		m.selectSession(item.Name)
 	}
 }
 
@@ -314,6 +325,15 @@ func (m *SidebarModel) reloadSessionsWithSelection(preservePreviousCurrent bool)
 	if !preservePreviousCurrent {
 		m.selectSession(current)
 	}
+}
+
+func (m *SidebarModel) togglePinnedSelected() {
+	item, ok := m.selectedSession()
+	if !ok || m.actions.TogglePinnedSession == nil || !m.actions.TogglePinnedSession(item.Name) {
+		return
+	}
+	m.reloadSessions()
+	m.selectSession(item.Name)
 }
 
 func (m *SidebarModel) reorderSelected(delta int) {
@@ -441,7 +461,7 @@ func padSidebarContentLines(lines []string) []string {
 func (m SidebarModel) statusBarLines(styles sidebarStyles) []string {
 	if m.showHelp {
 		return []string{
-			styles.dim.Render("↵ choose  / filter  esc back  M-b toggle"),
+			styles.dim.Render("↵ choose  " + spaceKeySymbol + " pin  / filter  esc back"),
 			styles.dim.Render("M-n project  M-a adhoc  M-H nums"),
 			styles.dim.Render("M-J/K reorder  M-r rename"),
 			styles.dim.Render("M-x kill  M-? hide"),
@@ -473,11 +493,15 @@ func newSidebarStyles() sidebarStyles {
 		active:       lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
 		stale:        lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
 		selected:     lipgloss.NewStyle().Background(lipgloss.Color("#065f46")).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
+		pinned:       lipgloss.NewStyle().Foreground(lipgloss.Color("#facc15")).Bold(true),
 		versionBadge: lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#e0f2fe")).Bold(true),
 	}
 }
 
 func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
+	if item.Pinned {
+		return styles.pinned
+	}
 	if item.Current {
 		return styles.active
 	}
@@ -491,6 +515,9 @@ func sessionMarkerStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
 	if item.Attention || item.Current {
 		return styles.active
 	}
+	if item.Pinned {
+		return styles.pinned
+	}
 	return sessionRowStyle(styles, item)
 }
 
@@ -499,7 +526,10 @@ func sessionMarker(item SessionItem) string {
 		return attentionMarkerSymbol
 	}
 	if item.Current {
-		return "*"
+		return currentMarkerSymbol
+	}
+	if item.Pinned {
+		return pinnedMarkerSymbol
 	}
 	return " "
 }
@@ -588,6 +618,11 @@ func toggleNumericKey(msg tea.KeyPressMsg) bool {
 		return false
 	}
 	return key.Text == "h" || key.Text == "H" || key.Code == 'h' || key.Code == 'H'
+}
+
+func pinnedToggleKey(msg tea.KeyPressMsg) bool {
+	key := msg.Key()
+	return key.Mod == 0 && (key.Text == " " || key.Code == tea.KeySpace)
 }
 
 func numericSlotKey(msg tea.KeyPressMsg) (int, bool) {

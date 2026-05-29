@@ -337,6 +337,9 @@ func (c Client) selectPane(ctx context.Context, paneID string) error {
 }
 
 func (c Client) selectPaneRightOf(ctx context.Context, paneID string) error {
+	// tmux -R is intentionally best-effort: if there is no pane to the right,
+	// tmux keeps the current selection, which is still preferable to focusing
+	// the sidebar pane after it is attached.
 	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSelectPane, "-t", strings.TrimSpace(paneID), "-R"})
 	return err
 }

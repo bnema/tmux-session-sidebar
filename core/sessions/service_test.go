@@ -1,6 +1,9 @@
 package sessions
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestValidateName(t *testing.T) {
 	tests := []struct {
@@ -73,6 +76,66 @@ func TestApplyOrder(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestApplyPinnedPositions(t *testing.T) {
+	tests := []struct {
+		name   string
+		anchor []string
+		order  []string
+		pinned []string
+		want   []string
+	}{
+		{
+			name:   "keeps pinned sessions at anchor positions and fills around them",
+			anchor: []string{"alpha", "beta", "gamma", "delta"},
+			order:  []string{"delta", "gamma", "beta", "alpha"},
+			pinned: []string{"beta"},
+			want:   []string{"delta", "beta", "gamma", "alpha"},
+		},
+		{
+			name:   "multiple pinned sessions keep their anchor positions",
+			anchor: []string{"alpha", "beta", "gamma", "delta"},
+			order:  []string{"delta", "gamma", "beta", "alpha"},
+			pinned: []string{"alpha", "gamma"},
+			want:   []string{"alpha", "delta", "gamma", "beta"},
+		},
+		{
+			name:   "missing pinned sessions are ignored",
+			anchor: []string{"alpha", "beta", "gamma"},
+			order:  []string{"gamma", "beta", "alpha"},
+			pinned: []string{"missing", "beta"},
+			want:   []string{"gamma", "beta", "alpha"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ApplyPinnedPositions(tt.anchor, tt.order, tt.pinned)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("ApplyPinnedPositions() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReconcilePinned(t *testing.T) {
+	got := ReconcilePinned([]string{"beta", "missing", "alpha", "beta"}, []string{"alpha", "beta", "gamma"})
+	want := []string{"beta", "alpha"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ReconcilePinned() = %#v, want %#v", got, want)
+	}
+}
+
+func TestTogglePinned(t *testing.T) {
+	pinned, added := TogglePinned([]string{"alpha"}, "beta")
+	if !added || !reflect.DeepEqual(pinned, []string{"alpha", "beta"}) {
+		t.Fatalf("TogglePinned add = %#v added=%v", pinned, added)
+	}
+	pinned, added = TogglePinned(pinned, "alpha")
+	if added || !reflect.DeepEqual(pinned, []string{"beta"}) {
+		t.Fatalf("TogglePinned remove = %#v added=%v", pinned, added)
 	}
 }
 

@@ -25,6 +25,55 @@ func TestEffectiveUIClientFallsBackToPersistedSidebarOwner(t *testing.T) {
 	}
 }
 
+func TestLoadSessionItemsHydratesPinnedSessions(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-colors) printf 'on\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '60\n' ;;
+      @session-sidebar-heat-recent) printf '1h\n' ;;
+      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'off\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  display-message) printf 'alpha\n' ;;
+  list-sessions) printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n' ;;
+  list-clients) ;;
+esac
+`)
+	store := sessionOrderStore()
+	state, err := store.Load(context.Background(), "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	state.PinnedSessions = []string{"beta"}
+	if err := store.Save(context.Background(), "tmux", state); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	items, err := loadSessionItems(context.Background())
+	if err != nil {
+		t.Fatalf("loadSessionItems error: %v", err)
+	}
+	for _, item := range items {
+		if item.Name == "beta" && !item.Pinned {
+			t.Fatalf("beta Pinned = false, want true in %#v", items)
+		}
+		if item.Name == "alpha" && item.Pinned {
+			t.Fatalf("alpha Pinned = true, want false in %#v", items)
+		}
+	}
+}
+
 func TestLoadSessionItemsUsesDedicatedAgentAttentionState(t *testing.T) {
 	for _, enabled := range []string{"on", "off"} {
 		t.Run(enabled, func(t *testing.T) {

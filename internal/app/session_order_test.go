@@ -50,6 +50,36 @@ func TestSaveMovedSessionOrder(t *testing.T) {
 	}
 }
 
+func TestSaveToggledPinnedSession(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	if err := saveToggledPinnedSession(ctx, []string{"alpha", "beta"}, "beta"); err != nil {
+		t.Fatalf("saveToggledPinnedSession() add error = %v", err)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() after add error = %v", err)
+	}
+	if want := []string{"beta"}; !reflect.DeepEqual(state.PinnedSessions, want) {
+		t.Fatalf("PinnedSessions after add = %#v, want %#v", state.PinnedSessions, want)
+	}
+	if want := []string{"alpha", "beta"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder after add = %#v, want %#v", state.SessionOrder, want)
+	}
+
+	if err := saveToggledPinnedSession(ctx, []string{"alpha", "beta"}, "beta"); err != nil {
+		t.Fatalf("saveToggledPinnedSession() remove error = %v", err)
+	}
+	state, err = loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() after remove error = %v", err)
+	}
+	if len(state.PinnedSessions) != 0 {
+		t.Fatalf("PinnedSessions after remove = %#v, want empty", state.PinnedSessions)
+	}
+}
+
 func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
@@ -62,6 +92,7 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 		"alpha": {Kind: "project", ProjectPath: "/tmp/alpha", LastPath: "/tmp/alpha"},
 	}
 	state.SessionOrder = []string{"gamma", "alpha"}
+	state.PinnedSessions = []string{"alpha"}
 	if err := store.Save(ctx, "tmux", state); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -91,6 +122,9 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	if want := []string{"gamma", "beta"}; !reflect.DeepEqual(state.SessionOrder, want) {
 		t.Fatalf("SessionOrder after rename = %#v, want %#v", state.SessionOrder, want)
 	}
+	if want := []string{"beta"}; !reflect.DeepEqual(state.PinnedSessions, want) {
+		t.Fatalf("PinnedSessions after rename = %#v, want %#v", state.PinnedSessions, want)
+	}
 
 	if err := renamePersistedSession(ctx, "beta", "123"); err != nil {
 		t.Fatalf("renamePersistedSession() to numeric error = %v", err)
@@ -107,6 +141,9 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	}
 	if want := []string{"gamma"}; !reflect.DeepEqual(state.SessionOrder, want) {
 		t.Fatalf("SessionOrder after numeric rename = %#v, want %#v", state.SessionOrder, want)
+	}
+	if len(state.PinnedSessions) != 0 {
+		t.Fatalf("PinnedSessions after numeric rename = %#v, want empty", state.PinnedSessions)
 	}
 
 	// Renaming a non-existent session to a hidden name is a no-op and must not create hidden restore metadata.
@@ -154,12 +191,20 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	}
 }
 
-func TestClonePersistedStatePreservesAgentAttention(t *testing.T) {
+func TestClonePersistedStatePreservesPinnedSessionsAndAgentAttention(t *testing.T) {
 	original := ports.PersistedState{
+		PinnedSessions: []string{"alpha"},
 		AgentAttention: map[string][]byte{"$1": []byte("attention")},
 	}
 
 	clone := clonePersistedState(original)
+	if !reflect.DeepEqual(clone.PinnedSessions, original.PinnedSessions) {
+		t.Fatalf("PinnedSessions = %#v, want %#v", clone.PinnedSessions, original.PinnedSessions)
+	}
+	clone.PinnedSessions[0] = "beta"
+	if original.PinnedSessions[0] != "alpha" {
+		t.Fatalf("original PinnedSessions mutated: %#v", original.PinnedSessions)
+	}
 	if !reflect.DeepEqual(clone.AgentAttention, original.AgentAttention) {
 		t.Fatalf("AgentAttention = %#v, want %#v", clone.AgentAttention, original.AgentAttention)
 	}

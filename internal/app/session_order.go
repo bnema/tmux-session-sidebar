@@ -48,6 +48,13 @@ func saveShowNumericSessions(ctx context.Context, show bool) error {
 	})
 }
 
+func saveToggledPinnedSession(ctx context.Context, live []string, session string) error {
+	return updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.PinnedSessions, _ = sessions.TogglePinned(sessions.ReconcilePinned(state.PinnedSessions, live), session)
+		state.SessionOrder = sessions.ApplyOrder(live, state.SessionOrder)
+	})
+}
+
 func saveSessionMetadata(ctx context.Context, name string, metadata ports.SessionMetadata) error {
 	_, err := saveSessionMetadataWithSnapshot(ctx, name, metadata)
 	return err
@@ -94,6 +101,12 @@ func renameSessionState(state *ports.PersistedState, oldName string, newName str
 	for i, name := range state.SessionOrder {
 		if name == oldName {
 			state.SessionOrder[i] = newName
+			break
+		}
+	}
+	for i, name := range state.PinnedSessions {
+		if name == oldName {
+			state.PinnedSessions[i] = newName
 			break
 		}
 	}
@@ -185,6 +198,13 @@ func removeSessionState(state *ports.PersistedState, name string) {
 		}
 	}
 	state.SessionOrder = filtered
+	pinned := state.PinnedSessions[:0]
+	for _, existing := range state.PinnedSessions {
+		if existing != name {
+			pinned = append(pinned, existing)
+		}
+	}
+	state.PinnedSessions = pinned
 }
 
 func clonePersistedState(state ports.PersistedState) ports.PersistedState {
@@ -195,6 +215,9 @@ func clonePersistedState(state ports.PersistedState) ports.PersistedState {
 	}
 	if state.SessionOrder != nil {
 		clone.SessionOrder = append([]string(nil), state.SessionOrder...)
+	}
+	if state.PinnedSessions != nil {
+		clone.PinnedSessions = append([]string(nil), state.PinnedSessions...)
 	}
 	if state.Sidebar != nil {
 		sidebar := *state.Sidebar

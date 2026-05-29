@@ -218,8 +218,8 @@ func TestSidebarModelNumberKeySwitchesDisplayedSlot(t *testing.T) {
 	if reloaded != 1 {
 		t.Fatalf("ReloadSessions called %d times, want 1", reloaded)
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
-		t.Fatalf("selected after slot switch = %#v ok=%v, want previous alpha", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
+		t.Fatalf("selected after slot switch = %#v ok=%v, want beta current", item, ok)
 	}
 }
 
@@ -244,8 +244,8 @@ func TestSidebarModelZeroKeySwitchesDisplayedSlotTen(t *testing.T) {
 	if called != 1 {
 		t.Fatalf("SwitchSession called %d times, want 1", called)
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
-		t.Fatalf("selected after slot 10 switch = %#v ok=%v, want previous alpha", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "kappa" || !item.Current {
+		t.Fatalf("selected after slot 10 switch = %#v ok=%v, want kappa current", item, ok)
 	}
 }
 
@@ -555,8 +555,8 @@ func TestSidebarModelEnterSwitchesAndRefreshesCurrentMarker(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("Update(Enter) returned an unexpected follow-up command")
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
-		t.Fatalf("selection after switch = %#v ok=%v, want previous alpha", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
+		t.Fatalf("selection after switch = %#v ok=%v, want beta current", item, ok)
 	}
 }
 
@@ -647,6 +647,30 @@ func TestSidebarModelChoosingProjectReturnsToBrowseMode(t *testing.T) {
 	}
 }
 
+func TestSidebarModelSpaceTogglesPinnedSessionInBrowseMode(t *testing.T) {
+	called := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{
+		TogglePinnedSession: func(name string) bool {
+			called++
+			if name != "alpha" {
+				t.Fatalf("TogglePinnedSession called with %q, want alpha", name)
+			}
+			return true
+		},
+		ReloadSessions: func() []SessionItem { return []SessionItem{{Name: "alpha", Pinned: true}, {Name: "beta"}} },
+	})
+
+	updated, _ := model.Update(keyPress(" ", 0))
+	model = requireSidebarModel(t, updated)
+
+	if called != 1 {
+		t.Fatalf("TogglePinnedSession called %d times, want 1", called)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || !item.Pinned {
+		t.Fatalf("selected after pin toggle = %#v ok=%v, want pinned alpha", item, ok)
+	}
+}
+
 func TestSidebarModelFilterAcceptsSpace(t *testing.T) {
 	tests := []struct {
 		name string
@@ -672,6 +696,31 @@ func TestSidebarModelFilterAcceptsSpace(t *testing.T) {
 	}
 }
 
+func TestSidebarModelRenderShowsPinnedMarkerInPrimaryMarkerColumn(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "selected"}, {Name: "alpha", Pinned: true, Slot: 1}}, Actions{})
+	model.cursor = 0
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, pinnedMarkerSymbol+" [1] alpha") {
+		t.Fatalf("render missing pinned marker in primary marker column in %q", view)
+	}
+}
+
+func TestSidebarModelRenderShowsCurrentMarkerForCurrentPinnedSession(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "selected"}, {Name: "alpha", Current: true, Pinned: true, Slot: 1}}, Actions{})
+	model.cursor = 0
+	view := model.Render()
+	stripped := stripANSI(view)
+	if !strings.Contains(stripped, currentMarkerSymbol+" [1] alpha") {
+		t.Fatalf("render missing current marker for current pinned session in %q", stripped)
+	}
+	if strings.Contains(stripped, pinnedMarkerSymbol+" [1] alpha") {
+		t.Fatalf("render kept pinned marker for current pinned session in %q", stripped)
+	}
+	if !strings.Contains(view, "38;2;250;204;21") {
+		t.Fatalf("render missing pinned yellow color for current pinned session in %q", view)
+	}
+}
+
 func TestSidebarModelRenderShowsAttentionMarkerInPrimaryMarkerColumn(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{})
 	view := stripANSI(model.Render())
@@ -689,7 +738,7 @@ func TestSidebarModelRenderUsesAttentionMarkerInsteadOfCurrentMarker(t *testing.
 	if !strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
 		t.Fatalf("render missing attention marker for current session in %q", view)
 	}
-	if strings.Contains(view, "* [1] alpha") {
+	if strings.Contains(view, currentMarkerSymbol+" [1] alpha") {
 		t.Fatalf("render kept current marker instead of bell in %q", view)
 	}
 }
@@ -742,7 +791,7 @@ func TestSidebarModelHelpToggleHidesExpandedFooterByDefault(t *testing.T) {
 	updated, _ := model.Update(keyPress("?", tea.ModAlt))
 	model = requireSidebarModel(t, updated)
 	view = model.Render()
-	for _, want := range []string{"↵ choose", "M-n project", "M-a adhoc", "M-H nums", "M-J/K reorder", "M-r rename", "M-x kill", "M-? hide"} {
+	for _, want := range []string{"↵ choose", spaceKeySymbol + " pin", "M-n project", "M-a adhoc", "M-H nums", "M-J/K reorder", "M-r rename", "M-x kill", "M-? hide"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expanded footer missing %q in %q", want, view)
 		}

@@ -63,6 +63,74 @@ func ApplyOrder(live []string, order []string) []string {
 	return ordered
 }
 
+func ApplyPinnedPositions(anchor []string, order []string, pinned []string) []string {
+	if len(anchor) == 0 || len(order) == 0 || len(pinned) == 0 {
+		return append([]string(nil), order...)
+	}
+	pinnedSet := make(map[string]bool, len(pinned))
+	for _, name := range pinned {
+		pinnedSet[name] = true
+	}
+	orderSet := make(map[string]bool, len(order))
+	for _, name := range order {
+		orderSet[name] = true
+	}
+	result := make([]string, len(order))
+	reserved := make(map[string]bool, len(pinnedSet))
+	for index, name := range anchor {
+		if index >= len(result) {
+			break
+		}
+		if pinnedSet[name] && orderSet[name] {
+			result[index] = name
+			reserved[name] = true
+		}
+	}
+	fillIndex := 0
+	for _, name := range order {
+		if reserved[name] {
+			continue
+		}
+		for fillIndex < len(result) && result[fillIndex] != "" {
+			fillIndex++
+		}
+		if fillIndex >= len(result) {
+			break
+		}
+		result[fillIndex] = name
+	}
+	return result
+}
+
+func ReconcilePinned(pinned []string, live []string) []string {
+	liveSet := make(map[string]bool, len(live))
+	for _, name := range live {
+		liveSet[name] = true
+	}
+	used := make(map[string]bool, len(pinned))
+	reconciled := make([]string, 0, len(pinned))
+	for _, name := range pinned {
+		if liveSet[name] && !used[name] {
+			reconciled = append(reconciled, name)
+			used[name] = true
+		}
+	}
+	return reconciled
+}
+
+func TogglePinned(pinned []string, session string) ([]string, bool) {
+	for i, name := range pinned {
+		if name == session {
+			next := append([]string(nil), pinned[:i]...)
+			next = append(next, pinned[i+1:]...)
+			return next, false
+		}
+	}
+	next := append([]string(nil), pinned...)
+	next = append(next, session)
+	return next, true
+}
+
 func MoveOrder(live []string, order []string, session string, delta int) []string {
 	ordered := ApplyOrder(live, order)
 	return moveOrderAtIndices(ordered, allIndices(ordered), session, delta)

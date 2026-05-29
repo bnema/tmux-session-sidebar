@@ -51,6 +51,7 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 	now := time.Now().UTC()
 	current = strings.TrimSpace(current)
 	names := sessions.ApplyOrder(sessionNames(sessions.FilterVisible(views, true)), persisted.SessionOrder)
+	pinned := pinnedSessionSet(persisted.PinnedSessions)
 	items := make([]uity.SessionItem, 0, len(names))
 	viewsByName := make(map[string]sessions.View, len(views))
 	for _, view := range views {
@@ -59,7 +60,8 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 	heatDisplays := heat.DisplayByRecentActivity(names, heatStates, now, recentHeatWindow(cfg), cfg.HeatMaxHighlighted)
 	slot := 1
 	for _, name := range names {
-		item := uity.SessionItem{Name: name, Current: name == current}
+		_, isPinned := pinned[name]
+		item := uity.SessionItem{Name: name, Current: name == current, Pinned: isPinned}
 		if display, ok := heatDisplays[name]; ok && cfg.HeatColorsEnabled {
 			item.Heat = string(display.Bucket)
 			item.HeatIntensity = display.Intensity
@@ -96,6 +98,14 @@ func attentionStateForSession(states map[string]attention.State, view sessions.V
 	}
 	state, ok := states[view.Name]
 	return state, ok
+}
+
+func pinnedSessionSet(names []string) map[string]struct{} {
+	pinned := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		pinned[name] = struct{}{}
+	}
+	return pinned
 }
 
 func sessionNames(views []sessions.View) []string {
