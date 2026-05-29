@@ -13,9 +13,38 @@ const (
 	testStaleAfter = 24 * time.Hour
 )
 
-func TestReconcileLiveSessionHeatRecordsPaneActivity(t *testing.T) {
+func TestReconcileLiveSessionHeatDoesNotTreatFirstPaneObservationAsActivity(t *testing.T) {
 	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
 	got, traces := reconcileLiveSessionHeat(nil,
+		[]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}},
+		nil,
+		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true}},
+		now,
+		testHalfLife,
+		testStaleAfter,
+	)
+
+	state, ok := got["alpha"]
+	if !ok {
+		t.Fatalf("missing heat state for alpha: %#v", got)
+	}
+	if traces["alpha"].Status != heat.TraceStatusNoChange {
+		t.Fatalf("trace status = %q, want %q", traces["alpha"].Status, heat.TraceStatusNoChange)
+	}
+	if !state.LastActiveAt.IsZero() {
+		t.Fatalf("last active at = %v, want zero for first observation baseline", state.LastActiveAt)
+	}
+	if len(state.Panes) != 1 || state.Panes["%1"].Fingerprint != "fp-1" {
+		t.Fatalf("panes = %#v, want pane fingerprint to be persisted as baseline", state.Panes)
+	}
+}
+
+func TestReconcileLiveSessionHeatRecordsPaneActivity(t *testing.T) {
+	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+	current := map[string]heat.State{
+		"alpha": {UpdatedAt: now.Add(-time.Minute), Panes: map[string]heat.PaneState{"%1": {Fingerprint: "fp-0"}}},
+	}
+	got, traces := reconcileLiveSessionHeat(current,
 		[]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}},
 		nil,
 		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true}},
@@ -227,8 +256,8 @@ func TestReconcileLiveSessionHeatDoesNotPreserveQuietTimerAcrossPersistedTicks(t
 	if traces["alpha"].Status != heat.TraceStatusNoChange {
 		t.Fatalf("trace status = %q, want %q", traces["alpha"].Status, heat.TraceStatusNoChange)
 	}
-	if !next["alpha"].RecentActivityAt.Equal(now) {
-		t.Fatalf("recent activity at = %v, want %v", next["alpha"].RecentActivityAt, now)
+	if !next["alpha"].RecentActivityAt.IsZero() {
+		t.Fatalf("recent activity at = %v, want zero because first sample was only a baseline", next["alpha"].RecentActivityAt)
 	}
 }
 

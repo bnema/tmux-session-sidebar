@@ -132,10 +132,7 @@ func decodePersistedHeat(raw map[string][]byte) map[string]heat.State {
 }
 
 func sessionHeatBucket(state heat.State, now time.Time, cfg ports.ConfigSnapshot) heat.Bucket {
-	if recentSessionActivity(state, now, recentHeatWindow(cfg)) {
-		return heat.BucketCurrent
-	}
-	return heat.BucketStale
+	return heat.DisplayBucket(state, now, recentHeatWindow(cfg))
 }
 
 func recentHeatWindow(cfg ports.ConfigSnapshot) time.Duration {
@@ -143,19 +140,4 @@ func recentHeatWindow(cfg ports.ConfigSnapshot) time.Duration {
 		return time.Duration(cfg.HeatRecentHours) * time.Hour
 	}
 	return time.Hour
-}
-
-func recentSessionActivity(state heat.State, now time.Time, window time.Duration) bool {
-	return recentHeatTimestamp(state.LastVisitedAt, now, window) || recentHeatTimestamp(state.LastActiveAt, now, window)
-}
-
-func recentHeatTimestamp(timestamp time.Time, now time.Time, window time.Duration) bool {
-	if timestamp.IsZero() {
-		return false
-	}
-	age := now.Sub(timestamp)
-	if age < 0 {
-		return false
-	}
-	return age <= window
 }
