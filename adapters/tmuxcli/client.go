@@ -336,6 +336,11 @@ func (c Client) selectPane(ctx context.Context, paneID string) error {
 	return err
 }
 
+func (c Client) selectPaneRightOf(ctx context.Context, paneID string) error {
+	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSelectPane, "-t", strings.TrimSpace(paneID), "-R"})
+	return err
+}
+
 func (c Client) RefreshSidebar(ctx context.Context, clientID string) error {
 	if strings.TrimSpace(clientID) == "" {
 		return nil

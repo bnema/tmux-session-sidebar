@@ -557,6 +557,26 @@ func TestSingletonSidebarPaneLifecycle(t *testing.T) {
 	}
 }
 
+func TestAttachSingletonSidebarWithoutFocusSelectsPaneRightOfSidebar(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9", "-R"}).Return(ports.Result{}, nil)
+
+	got, err := (Client{Process: process}).AttachSingletonSidebarWithoutFocus(ctx, "client-1", "%9", "20")
+	if err != nil {
+		t.Fatalf("AttachSingletonSidebarWithoutFocus error: %v", err)
+	}
+	if got != (ports.PaneRef{PaneID: "%9", WindowID: "@1"}) {
+		t.Fatalf("pane = %#v, want target window ref", got)
+	}
+}
+
 func TestAttachSingletonSidebarClearsSavedTargetLayoutWhenJoinFails(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
@@ -717,7 +737,7 @@ func TestAttachSingletonSidebarAndSwitchClientRunsMoveAndSwitchInOneTmuxCommand(
 		"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2",
 		";", "set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1",
 		";", "resize-pane", "-t", "%9", "-x", "20",
-		";", "select-pane", "-t", "%9",
+		";", "select-pane", "-t", "%9", "-R",
 		";", "switch-client", "-c", "client-1", "-t", "=beta:",
 	}).Run(func(context.Context, string, []string) {
 		ops = append(ops, "move-and-switch")
@@ -730,6 +750,23 @@ func TestAttachSingletonSidebarAndSwitchClientRunsMoveAndSwitchInOneTmuxCommand(
 	}
 	if !reflect.DeepEqual(ops, []string{"move-and-switch"}) {
 		t.Fatalf("ops = %#v, want one combined move/switch command", ops)
+	}
+}
+
+func TestAttachSingletonSidebarAndSwitchClientSameWindowSelectsPaneRightOfSidebarAfterSwitch(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "=beta:", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"switch-client", "-c", "client-1", "-t", "=beta:"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9", "-R"}).Return(ports.Result{}, nil)
+
+	if err := (Client{Process: process}).AttachSingletonSidebarAndSwitchClient(ctx, "client-1", "beta", "%9", "20"); err != nil {
+		t.Fatalf("AttachSingletonSidebarAndSwitchClient error: %v", err)
 	}
 }
 
@@ -768,7 +805,7 @@ func TestAttachSingletonSidebarAndSwitchClientRollsBackWhenCombinedCommandFails(
 		"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2",
 		";", "set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1",
 		";", "resize-pane", "-t", "%9", "-x", "20",
-		";", "select-pane", "-t", "%9",
+		";", "select-pane", "-t", "%9", "-R",
 		";", "switch-client", "-c", "client-1", "-t", "=beta:",
 	}).Return(ports.Result{Stderr: "can't find client\n"}, boom)
 

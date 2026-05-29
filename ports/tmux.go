@@ -101,6 +101,10 @@ type TmuxSidebarSwitchPort interface {
 	AttachSingletonSidebarAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error
 }
 
+type TmuxSidebarFollowPort interface {
+	AttachSingletonSidebarWithoutFocus(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
+}
+
 type TmuxMetadataPort interface {
 	LoadSessionMetadata(ctx context.Context, sessionName string) (SessionMetadata, error)
 	SaveSessionMetadata(ctx context.Context, sessionName string, metadata SessionMetadata) error

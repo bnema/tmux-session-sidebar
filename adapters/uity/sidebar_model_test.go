@@ -39,6 +39,21 @@ func TestSidebarModelF5ReloadsSessionsOnDemand(t *testing.T) {
 	}
 }
 
+func TestSidebarModelF5SelectsPreviousCurrentSessionAfterExternalSwitch(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true}, {Name: "beta"}}, Actions{
+		ReloadSessions: func() []SessionItem {
+			return []SessionItem{{Name: "alpha"}, {Name: "beta", Current: true}}
+		},
+	})
+
+	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyF5}))
+	model = requireSidebarModel(t, updated)
+
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
+		t.Fatalf("selected after external switch reload = %#v ok=%v, want previous alpha", item, ok)
+	}
+}
+
 func TestSidebarModelKillRequiresInlineConfirmation(t *testing.T) {
 	called := 0
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
@@ -180,7 +195,7 @@ func TestSidebarModelKillConfirmationIgnoresUnrelatedKeys(t *testing.T) {
 func TestSidebarModelNumberKeySwitchesDisplayedSlot(t *testing.T) {
 	called := 0
 	reloaded := 0
-	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1, Current: true}, {Name: "beta", Slot: 2}}, Actions{
 		SwitchSession: func(name string) bool {
 			called++
 			if name != "beta" {
@@ -203,14 +218,14 @@ func TestSidebarModelNumberKeySwitchesDisplayedSlot(t *testing.T) {
 	if reloaded != 1 {
 		t.Fatalf("ReloadSessions called %d times, want 1", reloaded)
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
-		t.Fatalf("selected after slot switch = %#v ok=%v, want beta current", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
+		t.Fatalf("selected after slot switch = %#v ok=%v, want previous alpha", item, ok)
 	}
 }
 
 func TestSidebarModelZeroKeySwitchesDisplayedSlotTen(t *testing.T) {
 	called := 0
-	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1}, {Name: "kappa", Slot: 10}}, Actions{
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1, Current: true}, {Name: "kappa", Slot: 10}}, Actions{
 		SwitchSession: func(name string) bool {
 			called++
 			if name != "kappa" {
@@ -229,8 +244,8 @@ func TestSidebarModelZeroKeySwitchesDisplayedSlotTen(t *testing.T) {
 	if called != 1 {
 		t.Fatalf("SwitchSession called %d times, want 1", called)
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "kappa" || !item.Current {
-		t.Fatalf("selected after slot 10 switch = %#v ok=%v, want kappa current", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
+		t.Fatalf("selected after slot 10 switch = %#v ok=%v, want previous alpha", item, ok)
 	}
 }
 
@@ -540,8 +555,8 @@ func TestSidebarModelEnterSwitchesAndRefreshesCurrentMarker(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("Update(Enter) returned an unexpected follow-up command")
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
-		t.Fatalf("selection after switch = %#v ok=%v, want beta current", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
+		t.Fatalf("selection after switch = %#v ok=%v, want previous alpha", item, ok)
 	}
 }
 
@@ -570,13 +585,42 @@ func TestSidebarModelEnterOnCurrentSessionDoesNothing(t *testing.T) {
 	}
 }
 
+func TestSidebarModelCreateActionsSelectNewCurrentSession(t *testing.T) {
+	tests := []struct {
+		name   string
+		key    tea.KeyPressMsg
+		action func(*Actions)
+	}{
+		{name: "git project", key: keyPress("g", tea.ModAlt), action: func(actions *Actions) { actions.CreateGitProject = func() bool { return true } }},
+		{name: "adhoc", key: keyPress("a", tea.ModAlt), action: func(actions *Actions) { actions.CreateAdhoc = func() bool { return true } }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actions := Actions{
+				ReloadSessions: func() []SessionItem { return []SessionItem{{Name: "alpha"}, {Name: "created", Current: true}} },
+			}
+			tt.action(&actions)
+			model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true}, {Name: "created"}}, actions)
+
+			updated, _ := model.Update(tt.key)
+			model = requireSidebarModel(t, updated)
+
+			if item, ok := model.selectedSession(); !ok || item.Name != "created" || !item.Current {
+				t.Fatalf("selected after create = %#v ok=%v, want created current", item, ok)
+			}
+		})
+	}
+}
+
 func TestSidebarModelChoosingProjectReturnsToBrowseMode(t *testing.T) {
-	model := NewSidebarModel(nil, Actions{
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true}}, Actions{
 		LoadProjects: func() []ProjectItem {
 			return []ProjectItem{{Name: "tmux-stacked-panes", Path: "/projects/tmux-stacked-panes"}}
 		},
-		CreateProject:  func(ProjectItem) bool { return true },
-		ReloadSessions: func() []SessionItem { return []SessionItem{{Name: "tmux-stacked-panes", Current: true}} },
+		CreateProject: func(ProjectItem) bool { return true },
+		ReloadSessions: func() []SessionItem {
+			return []SessionItem{{Name: "alpha"}, {Name: "tmux-stacked-panes", Current: true}}
+		},
 	})
 
 	updated, _ := model.Update(keyPress("n", tea.ModAlt))
@@ -595,8 +639,11 @@ func TestSidebarModelChoosingProjectReturnsToBrowseMode(t *testing.T) {
 	if model.mode != ModeBrowse || model.projectFilter != "" || model.projectCursor != 0 {
 		t.Fatalf("project picker state not cleared after choose: %#v", model)
 	}
-	if len(model.items) != 1 || !model.items[0].Current {
+	if len(model.items) != 2 || !model.items[1].Current {
 		t.Fatalf("sessions not reloaded after choose: %#v", model.items)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "tmux-stacked-panes" || !item.Current {
+		t.Fatalf("selected after project create = %#v ok=%v, want new current project", item, ok)
 	}
 }
 

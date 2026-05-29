@@ -47,7 +47,7 @@ func applySidebarVisibilityForClient(ctx context.Context, client string, sidebar
 	if closeAfterSwitch(ctx, sidebar) {
 		return closeSidebar(ctx, sidebar)
 	}
-	return openSidebarForClient(ctx, client, "", "", sidebar)
+	return openSidebarForClientWithoutFocus(ctx, client, "", "", sidebar)
 }
 
 func closeAfterSwitch(ctx context.Context, sidebar ports.TmuxSidebarPort) bool {

@@ -183,12 +183,12 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "alt+g":
 			if m.actions.CreateGitProject != nil && m.actions.CreateGitProject() {
-				m.reloadSessions()
+				m.reloadSessionsSelectingCurrent()
 			}
 			return m, nil
 		case "alt+a":
 			if m.actions.CreateAdhoc != nil && m.actions.CreateAdhoc() {
-				m.reloadSessions()
+				m.reloadSessionsSelectingCurrent()
 			}
 			return m, nil
 		case "alt+r":
@@ -275,13 +275,44 @@ func (m *SidebarModel) switchItem(item SessionItem) {
 	}
 	if m.actions.SwitchSession(item.Name) {
 		m.reloadSessions()
-		m.selectSession(item.Name)
 	}
 }
 
+func (m SidebarModel) currentSessionName() string {
+	for _, item := range m.items {
+		if item.Current {
+			return item.Name
+		}
+	}
+	return ""
+}
+
 func (m *SidebarModel) reloadSessions() {
-	if m.actions.ReloadSessions != nil {
-		m.items = m.actions.ReloadSessions()
+	m.reloadSessionsWithSelection(true)
+}
+
+func (m *SidebarModel) reloadSessionsSelectingCurrent() {
+	m.reloadSessionsWithSelection(false)
+}
+
+func (m *SidebarModel) reloadSessionsWithSelection(preservePreviousCurrent bool) {
+	if m.actions.ReloadSessions == nil {
+		return
+	}
+	// Preserve selection on the previously-current session when a refresh observes
+	// a session switch, so the sidebar is ready to toggle back to where the user came from.
+	previous := m.currentSessionName()
+	m.items = m.actions.ReloadSessions()
+	current := m.currentSessionName()
+	if current == "" {
+		return
+	}
+	if preservePreviousCurrent && previous != "" && previous != current {
+		m.selectSession(previous)
+		return
+	}
+	if !preservePreviousCurrent {
+		m.selectSession(current)
 	}
 }
 
@@ -330,7 +361,7 @@ func (m *SidebarModel) createSelectedProject() {
 		m.mode = ModeBrowse
 		m.projectFilter = ""
 		m.projectCursor = 0
-		m.reloadSessions()
+		m.reloadSessionsSelectingCurrent()
 	}
 }
 

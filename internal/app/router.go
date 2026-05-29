@@ -199,6 +199,18 @@ func openSidebar(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 }
 
 func openSidebarForClient(ctx context.Context, client string, attachTarget string, width string, sidebar ports.TmuxSidebarPort) error {
+	return openSidebarForClientWith(ctx, client, attachTarget, width, sidebar, sidebar.AttachSingletonSidebar)
+}
+
+func openSidebarForClientWithoutFocus(ctx context.Context, client string, attachTarget string, width string, sidebar ports.TmuxSidebarPort) error {
+	attach := sidebar.AttachSingletonSidebar
+	if follower, ok := sidebar.(ports.TmuxSidebarFollowPort); ok {
+		attach = follower.AttachSingletonSidebarWithoutFocus
+	}
+	return openSidebarForClientWith(ctx, client, attachTarget, width, sidebar, attach)
+}
+
+func openSidebarForClientWith(ctx context.Context, client string, attachTarget string, width string, sidebar ports.TmuxSidebarPort, attach func(context.Context, string, string, string) (ports.PaneRef, error)) error {
 	if err := saveSidebarVisibility(ctx, true, client); err != nil {
 		return err
 	}
@@ -215,7 +227,7 @@ func openSidebarForClient(ctx context.Context, client string, attachTarget strin
 	if strings.TrimSpace(attachTarget) == "" {
 		attachTarget = client
 	}
-	if _, err = sidebar.AttachSingletonSidebar(ctx, attachTarget, singleton.PaneID, width); err != nil {
+	if _, err = attach(ctx, attachTarget, singleton.PaneID, width); err != nil {
 		rollbackSidebarVisibility(ctx, client, err)
 		return err
 	}
