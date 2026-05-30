@@ -30,6 +30,7 @@ const (
 	cmdSendKeys       = "send-keys"
 	cmdSetOption      = "set-option"
 	cmdShowOptions    = "show-options"
+	cmdSwapPane       = "swap-pane"
 	cmdSwitchClient   = "switch-client"
 
 	formatPaneCurrentPath = "#{pane_current_path}"

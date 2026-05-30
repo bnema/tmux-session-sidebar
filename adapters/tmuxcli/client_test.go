@@ -688,6 +688,8 @@ func TestAttachSingletonSidebarRestoresSavedVisibleLayoutAfterJoin(t *testing.T)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@hidden", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "no such window: @hidden\n"}, errors.New("no such window"))
 	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1"}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@2", optionSidebarVisibleWindowLayout}).Return(ports.Result{Stdout: "target-visible-layout\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@2", "-F", "#{pane_id}"}).Return(ports.Result{Stdout: "%10\n%9\n%11\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"swap-pane", "-s", "%9", "-t", "%10"}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"select-layout", "-t", "@2", "target-visible-layout"}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9"}).Return(ports.Result{}, nil)
 
@@ -712,7 +714,36 @@ func TestAttachSingletonSidebarFallsBackWhenVisibleLayoutIsIncompatible(t *testi
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@hidden", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "no such window: @hidden\n"}, errors.New("no such window"))
 	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1"}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@2", optionSidebarVisibleWindowLayout}).Return(ports.Result{Stdout: "stale-visible-layout\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@2", "-F", "#{pane_id}"}).Return(ports.Result{Stdout: "%10\n%9\n%11\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"swap-pane", "-s", "%9", "-t", "%10"}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"select-layout", "-t", "@2", "stale-visible-layout"}).Return(ports.Result{Stderr: "layout not compatible\n"}, boom)
+	process.EXPECT().Exec(ctx, "tmux", []string{"swap-pane", "-s", "%9", "-t", "%10"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@2", optionSidebarVisibleWindowLayout}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9"}).Return(ports.Result{}, nil)
+
+	if _, err := (Client{Process: process}).AttachSingletonSidebar(ctx, "client-1", "%9", "20"); err != nil {
+		t.Fatalf("AttachSingletonSidebar error: %v", err)
+	}
+}
+
+func TestAttachSingletonSidebarFallsBackWhenVisibleLayoutSwapFails(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	boom := errors.New("swap failed")
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@hidden\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@2", "#{window_layout}"}).Return(ports.Result{Stdout: "target-hidden-layout\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@2", "@session-sidebar-window-layout", "target-hidden-layout"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@hidden", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "invalid option\n"}, errors.New("missing option")).Once()
+	process.EXPECT().Exec(ctx, "tmux", []string{"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@hidden", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "no such window: @hidden\n"}, errors.New("no such window"))
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@2", optionSidebarVisibleWindowLayout}).Return(ports.Result{Stdout: "target-visible-layout\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@2", "-F", "#{pane_id}"}).Return(ports.Result{Stdout: "%10\n%9\n%11\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"swap-pane", "-s", "%9", "-t", "%10"}).Return(ports.Result{Stderr: "can't swap\n"}, boom)
 	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@2", optionSidebarVisibleWindowLayout}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9"}).Return(ports.Result{}, nil)
@@ -737,8 +768,8 @@ func TestAttachSingletonSidebarAndSwitchClientRunsMoveAndSwitchInOneTmuxCommand(
 		"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2",
 		";", "set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1",
 		";", "resize-pane", "-t", "%9", "-x", "20",
-		";", "select-pane", "-t", "%9", "-R",
 		";", "switch-client", "-c", "client-1", "-t", "=beta:",
+		";", "select-pane", "-t", "%9", "-R",
 	}).Run(func(context.Context, string, []string) {
 		ops = append(ops, "move-and-switch")
 	}).Return(ports.Result{}, nil)
@@ -805,8 +836,8 @@ func TestAttachSingletonSidebarAndSwitchClientRollsBackWhenCombinedCommandFails(
 		"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2",
 		";", "set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1",
 		";", "resize-pane", "-t", "%9", "-x", "20",
-		";", "select-pane", "-t", "%9", "-R",
 		";", "switch-client", "-c", "client-1", "-t", "=beta:",
+		";", "select-pane", "-t", "%9", "-R",
 	}).Return(ports.Result{Stderr: "can't find client\n"}, boom)
 
 	process.On("Exec", ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stderr: "can't find client\n"}, boom).Maybe()
@@ -845,7 +876,7 @@ func TestParkSingletonSidebar(t *testing.T) {
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"has-session", "-t", "__tmux-session-sidebar"}).Return(ports.Result{Stderr: "can't find session\n"}, errors.New("missing"))
 				process.EXPECT().Exec(ctx, "tmux", []string{"new-session", "-d", "-s", "__tmux-session-sidebar", "-n", "sidebar-parked"}).Return(ports.Result{}, nil)
-				process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "invalid option\n"}, errors.New("missing option")).Once()
+				expectCaptureVisibleLayout(process, ctx, "@1", "layout-with-sidebar")
 				process.EXPECT().Exec(ctx, "tmux", []string{"break-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@parked\n"}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"list-windows", "-t", "__tmux-session-sidebar", "-F", "#{window_id}"}).Return(ports.Result{Stdout: "@parked\n"}, nil)
