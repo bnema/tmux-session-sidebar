@@ -52,10 +52,11 @@ func (c Client) LatestReleaseTag(ctx context.Context) (string, error) {
 }
 
 func (c Client) baseURL() string {
-	if strings.TrimSpace(c.BaseURL) == "" {
+	trimmed := strings.TrimSpace(c.BaseURL)
+	if trimmed == "" {
 		return defaultBaseURL
 	}
-	return c.BaseURL
+	return trimmed
 }
 
 func (c Client) httpClient() *http.Client {

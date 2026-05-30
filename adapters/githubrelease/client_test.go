@@ -26,7 +26,7 @@ func TestClientLatestReleaseTagFetchesTagName(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := Client{BaseURL: server.URL, HTTPClient: server.Client(), Timeout: time.Second}
+	client := Client{BaseURL: " " + server.URL + " ", HTTPClient: server.Client(), Timeout: time.Second}
 	tag, err := client.LatestReleaseTag(context.Background())
 	if err != nil {
 		t.Fatalf("LatestReleaseTag returned error: %v", err)
