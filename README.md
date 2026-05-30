@@ -107,7 +107,7 @@ Inside the sidebar:
 
 | Key | Action |
 | --- | --- |
-| `j` / `k`, arrows | Move selection |
+| `j` / `k`, arrows, mouse wheel | Move selection |
 | `/` | Filter sessions |
 | `Enter` | Switch to the selected session, apply a filter, or choose a project |
 | `Esc` | Leave the current mode, or close the sidebar |
