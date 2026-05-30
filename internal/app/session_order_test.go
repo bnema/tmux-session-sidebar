@@ -54,18 +54,67 @@ func TestSaveToggledPinnedSession(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.PinColors = map[string]string{"beta": "#38bdf8"}
+	}); err != nil {
+		t.Fatalf("seed PinColors error = %v", err)
+	}
 	if err := saveToggledPinnedSession(ctx, []string{"alpha", "beta"}, "beta"); err != nil {
-		t.Fatalf("saveToggledPinnedSession() add error = %v", err)
+		t.Fatalf("saveToggledPinnedSession() pin error = %v", err)
 	}
 	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() after pin error = %v", err)
+	}
+	if want := []string{"beta"}; !reflect.DeepEqual(state.PinnedSessions, want) {
+		t.Fatalf("PinnedSessions after pin = %#v, want %#v", state.PinnedSessions, want)
+	}
+	if got := state.PinColors["beta"]; got != "#38bdf8" {
+		t.Fatalf("PinColors[beta] after pin = %q, want preserved #38bdf8", got)
+	}
+	if err := saveToggledPinnedSession(ctx, []string{"alpha", "beta"}, "beta"); err != nil {
+		t.Fatalf("saveToggledPinnedSession() unpin error = %v", err)
+	}
+	state, err = loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() after unpin error = %v", err)
+	}
+	if len(state.PinnedSessions) != 0 {
+		t.Fatalf("PinnedSessions after unpin = %#v, want empty", state.PinnedSessions)
+	}
+	if _, ok := state.PinColors["beta"]; ok {
+		t.Fatalf("PinColors[beta] kept after unpin: %#v", state.PinColors)
+	}
+
+	if err := savePinnedSessionColor(ctx, []string{"alpha", "beta"}, "beta", "#38bdf8"); err != nil {
+		t.Fatalf("savePinnedSessionColor() add error = %v", err)
+	}
+	state, err = loadSidebarState(ctx)
 	if err != nil {
 		t.Fatalf("loadSidebarState() after add error = %v", err)
 	}
 	if want := []string{"beta"}; !reflect.DeepEqual(state.PinnedSessions, want) {
 		t.Fatalf("PinnedSessions after add = %#v, want %#v", state.PinnedSessions, want)
 	}
+	if got := state.PinColors["beta"]; got != "#38bdf8" {
+		t.Fatalf("PinColors[beta] after add = %q, want #38bdf8", got)
+	}
 	if want := []string{"alpha", "beta"}; !reflect.DeepEqual(state.SessionOrder, want) {
 		t.Fatalf("SessionOrder after add = %#v, want %#v", state.SessionOrder, want)
+	}
+
+	if err := savePinnedSessionColor(ctx, []string{"alpha", "beta"}, "beta", "#f87171"); err != nil {
+		t.Fatalf("savePinnedSessionColor() recolor error = %v", err)
+	}
+	state, err = loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() after recolor error = %v", err)
+	}
+	if want := []string{"beta"}; !reflect.DeepEqual(state.PinnedSessions, want) {
+		t.Fatalf("PinnedSessions after recolor = %#v, want %#v", state.PinnedSessions, want)
+	}
+	if got := state.PinColors["beta"]; got != "#f87171" {
+		t.Fatalf("PinColors[beta] after recolor = %q, want #f87171", got)
 	}
 
 	if err := saveToggledPinnedSession(ctx, []string{"alpha", "beta"}, "beta"); err != nil {
@@ -77,6 +126,37 @@ func TestSaveToggledPinnedSession(t *testing.T) {
 	}
 	if len(state.PinnedSessions) != 0 {
 		t.Fatalf("PinnedSessions after remove = %#v, want empty", state.PinnedSessions)
+	}
+	if _, ok := state.PinColors["beta"]; ok {
+		t.Fatalf("PinColors[beta] kept after remove: %#v", state.PinColors)
+	}
+}
+
+func TestSavePinnedSessionColorIgnoresNonLiveSession(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.PinnedSessions = []string{"missing"}
+		state.PinColors = map[string]string{"alpha": "#38bdf8"}
+	}); err != nil {
+		t.Fatalf("seed sidebar state error = %v", err)
+	}
+	if err := savePinnedSessionColor(ctx, []string{"alpha", "beta"}, "missing", "#f87171"); err != nil {
+		t.Fatalf("savePinnedSessionColor() non-live error = %v", err)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() after non-live pin color error = %v", err)
+	}
+	if len(state.PinnedSessions) != 0 {
+		t.Fatalf("PinnedSessions after non-live color = %#v, want empty after reconciliation", state.PinnedSessions)
+	}
+	if _, ok := state.PinColors["missing"]; ok {
+		t.Fatalf("PinColors[missing] was added for non-live session: %#v", state.PinColors)
+	}
+	if got := state.PinColors["alpha"]; got != "#38bdf8" {
+		t.Fatalf("PinColors[alpha] = %q, want untouched #38bdf8", got)
 	}
 }
 
@@ -93,6 +173,7 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	}
 	state.SessionOrder = []string{"gamma", "alpha"}
 	state.PinnedSessions = []string{"alpha"}
+	state.PinColors = map[string]string{"alpha": "#38bdf8"}
 	if err := store.Save(ctx, "tmux", state); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -125,6 +206,12 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	if want := []string{"beta"}; !reflect.DeepEqual(state.PinnedSessions, want) {
 		t.Fatalf("PinnedSessions after rename = %#v, want %#v", state.PinnedSessions, want)
 	}
+	if got := state.PinColors["beta"]; got != "#38bdf8" {
+		t.Fatalf("PinColors[beta] after rename = %q, want #38bdf8", got)
+	}
+	if _, ok := state.PinColors["alpha"]; ok {
+		t.Fatalf("PinColors[alpha] still exists after rename: %#v", state.PinColors)
+	}
 
 	if err := renamePersistedSession(ctx, "beta", "123"); err != nil {
 		t.Fatalf("renamePersistedSession() to numeric error = %v", err)
@@ -144,6 +231,9 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	}
 	if len(state.PinnedSessions) != 0 {
 		t.Fatalf("PinnedSessions after numeric rename = %#v, want empty", state.PinnedSessions)
+	}
+	if _, ok := state.PinColors["beta"]; ok {
+		t.Fatalf("PinColors[beta] kept after numeric rename: %#v", state.PinColors)
 	}
 
 	// Renaming a non-existent session to a hidden name is a no-op and must not create hidden restore metadata.
@@ -194,6 +284,7 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 func TestClonePersistedStatePreservesPinnedSessionsAndAgentAttention(t *testing.T) {
 	original := ports.PersistedState{
 		PinnedSessions: []string{"alpha"},
+		PinColors:      map[string]string{"alpha": "#38bdf8"},
 		AgentAttention: map[string][]byte{"$1": []byte("attention")},
 	}
 
@@ -204,6 +295,13 @@ func TestClonePersistedStatePreservesPinnedSessionsAndAgentAttention(t *testing.
 	clone.PinnedSessions[0] = "beta"
 	if original.PinnedSessions[0] != "alpha" {
 		t.Fatalf("original PinnedSessions mutated: %#v", original.PinnedSessions)
+	}
+	if !reflect.DeepEqual(clone.PinColors, original.PinColors) {
+		t.Fatalf("PinColors = %#v, want %#v", clone.PinColors, original.PinColors)
+	}
+	clone.PinColors["alpha"] = "#f87171"
+	if original.PinColors["alpha"] != "#38bdf8" {
+		t.Fatalf("original PinColors mutated: %#v", original.PinColors)
 	}
 	if !reflect.DeepEqual(clone.AgentAttention, original.AgentAttention) {
 		t.Fatalf("AgentAttention = %#v, want %#v", clone.AgentAttention, original.AgentAttention)

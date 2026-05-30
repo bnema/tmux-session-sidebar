@@ -27,6 +27,7 @@ const (
 	ModeSearch      Mode = "search"
 	ModeProject     Mode = "project"
 	ModeConfirmKill Mode = "confirm-kill"
+	ModePinColor    Mode = "pin-color"
 )
 
 func InterpretKey(mode Mode, seq []byte) Intent {

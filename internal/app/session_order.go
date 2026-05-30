@@ -5,6 +5,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
@@ -48,9 +49,34 @@ func saveShowNumericSessions(ctx context.Context, show bool) error {
 	})
 }
 
+// saveToggledPinnedSession preserves an existing pin color when toggling a
+// session on. New pin colors are assigned through savePinnedSessionColor; the
+// color is removed only when this toggle unpins the session.
 func saveToggledPinnedSession(ctx context.Context, live []string, session string) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		state.PinnedSessions, _ = sessions.TogglePinned(sessions.ReconcilePinned(state.PinnedSessions, live), session)
+		var pinned bool
+		state.PinnedSessions, pinned = sessions.TogglePinned(sessions.ReconcilePinned(state.PinnedSessions, live), session)
+		if !pinned {
+			delete(state.PinColors, session)
+		}
+		state.SessionOrder = sessions.ApplyOrder(live, state.SessionOrder)
+	})
+}
+
+func savePinnedSessionColor(ctx context.Context, live []string, session string, color string) error {
+	return updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.PinnedSessions = sessions.ReconcilePinned(state.PinnedSessions, live)
+		if !slices.Contains(state.PinnedSessions, session) {
+			if !slices.Contains(live, session) {
+				state.SessionOrder = sessions.ApplyOrder(live, state.SessionOrder)
+				return
+			}
+			state.PinnedSessions = append(state.PinnedSessions, session)
+		}
+		if state.PinColors == nil {
+			state.PinColors = map[string]string{}
+		}
+		state.PinColors[session] = color
 		state.SessionOrder = sessions.ApplyOrder(live, state.SessionOrder)
 	})
 }
@@ -109,6 +135,10 @@ func renameSessionState(state *ports.PersistedState, oldName string, newName str
 			state.PinnedSessions[i] = newName
 			break
 		}
+	}
+	if color, ok := state.PinColors[oldName]; ok {
+		delete(state.PinColors, oldName)
+		state.PinColors[newName] = color
 	}
 }
 
@@ -205,6 +235,7 @@ func removeSessionState(state *ports.PersistedState, name string) {
 		}
 	}
 	state.PinnedSessions = pinned
+	delete(state.PinColors, name)
 }
 
 func clonePersistedState(state ports.PersistedState) ports.PersistedState {
@@ -218,6 +249,9 @@ func clonePersistedState(state ports.PersistedState) ports.PersistedState {
 	}
 	if state.PinnedSessions != nil {
 		clone.PinnedSessions = append([]string(nil), state.PinnedSessions...)
+	}
+	if state.PinColors != nil {
+		clone.PinColors = maps.Clone(state.PinColors)
 	}
 	if state.Sidebar != nil {
 		sidebar := *state.Sidebar

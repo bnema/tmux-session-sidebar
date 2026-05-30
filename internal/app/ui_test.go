@@ -79,6 +79,7 @@ esac
 		t.Fatalf("load state: %v", err)
 	}
 	state.PinnedSessions = []string{"beta"}
+	state.PinColors = map[string]string{"beta": "#38bdf8"}
 	if err := store.Save(context.Background(), "tmux", state); err != nil {
 		t.Fatalf("save state: %v", err)
 	}
@@ -90,6 +91,9 @@ esac
 	for _, item := range items {
 		if item.Name == "beta" && !item.Pinned {
 			t.Fatalf("beta Pinned = false, want true in %#v", items)
+		}
+		if item.Name == "beta" && item.PinColor != "#38bdf8" {
+			t.Fatalf("beta PinColor = %q, want #38bdf8 in %#v", item.PinColor, items)
 		}
 		if item.Name == "alpha" && item.Pinned {
 			t.Fatalf("alpha Pinned = true, want false in %#v", items)
