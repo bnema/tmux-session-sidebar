@@ -8,6 +8,87 @@ import (
 	"testing"
 )
 
+func TestInstallResurrectHookInstallsWhenEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "tmux.log")
+	fakeTmux := filepath.Join(tmpDir, "tmux")
+	if err := os.WriteFile(fakeTmux, []byte("#!/usr/bin/env bash\nprintf '%s\\x1f' \"$@\" >> \"$TMUX_LOG\"\nprintf '\\n' >> \"$TMUX_LOG\"\ncase \"$1\" in\n  show-options) ;;\nesac\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", fakeTmux, err)
+	}
+	scriptPath, err := filepath.Abs(filepath.Join("..", "..", "tmux-session-sidebar.tmux"))
+	if err != nil {
+		t.Fatalf("Abs script path error: %v", err)
+	}
+
+	cmd := exec.Command("bash", "--noprofile", "--norc", "-c", `source "$1"; install_resurrect_hook "$2"`, "bash", scriptPath, "/tmp/with spaces/runtime")
+	cmd.Env = append(os.Environ(), "PATH="+tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"), "TMUX_LOG="+logPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("install_resurrect_hook error: %v\n%s", err, output)
+	}
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v", logPath, err)
+	}
+	log := string(content)
+	if !strings.Contains(log, "set-option\x1f-gq\x1f@resurrect-hook-post-save-layout\x1f/tmp/with spaces/runtime resurrect post-save-layout") {
+		t.Fatalf("resurrect hook not installed correctly, log=%q", log)
+	}
+}
+
+func TestInstallResurrectHookNoopsWhenAlreadyInstalled(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "tmux.log")
+	fakeTmux := filepath.Join(tmpDir, "tmux")
+	if err := os.WriteFile(fakeTmux, []byte("#!/usr/bin/env bash\nprintf '%s\\x1f' \"$@\" >> \"$TMUX_LOG\"\nprintf '\\n' >> \"$TMUX_LOG\"\ncase \"$1\" in\n  show-options) printf '/tmp/runtime resurrect post-save-layout\\n' ;;\nesac\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", fakeTmux, err)
+	}
+	scriptPath, err := filepath.Abs(filepath.Join("..", "..", "tmux-session-sidebar.tmux"))
+	if err != nil {
+		t.Fatalf("Abs script path error: %v", err)
+	}
+
+	cmd := exec.Command("bash", "--noprofile", "--norc", "-c", `source "$1"; install_resurrect_hook "$2"`, "bash", scriptPath, "/tmp/runtime")
+	cmd.Env = append(os.Environ(), "PATH="+tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"), "TMUX_LOG="+logPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("install_resurrect_hook error: %v\n%s", err, output)
+	}
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v", logPath, err)
+	}
+	log := string(content)
+	if strings.Contains(log, "set-option") {
+		t.Fatalf("already installed hook should not be overwritten, log=%q", log)
+	}
+}
+
+func TestInstallResurrectHookPreservesExistingUserHook(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "tmux.log")
+	fakeTmux := filepath.Join(tmpDir, "tmux")
+	if err := os.WriteFile(fakeTmux, []byte("#!/usr/bin/env bash\nprintf '%s\\x1f' \"$@\" >> \"$TMUX_LOG\"\nprintf '\\n' >> \"$TMUX_LOG\"\ncase \"$1\" in\n  show-options) printf 'echo user-hook\\n' ;;\nesac\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", fakeTmux, err)
+	}
+	scriptPath, err := filepath.Abs(filepath.Join("..", "..", "tmux-session-sidebar.tmux"))
+	if err != nil {
+		t.Fatalf("Abs script path error: %v", err)
+	}
+
+	cmd := exec.Command("bash", "--noprofile", "--norc", "-c", `source "$1"; install_resurrect_hook "$2"`, "bash", scriptPath, "/tmp/runtime")
+	cmd.Env = append(os.Environ(), "PATH="+tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"), "TMUX_LOG="+logPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("install_resurrect_hook error: %v\n%s", err, output)
+	}
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v", logPath, err)
+	}
+	log := string(content)
+	if strings.Contains(log, "set-option") {
+		t.Fatalf("existing user hook should not be overwritten, log=%q", log)
+	}
+}
+
 func TestInstallRuntimeHooksRegistersResizeCommands(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "tmux.log")

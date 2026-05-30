@@ -10,6 +10,7 @@ import (
 
 func TestEffectiveUIClientFallsBackToPersistedSidebarOwner(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("TMUX_PANE", "")
 	ctx := context.Background()
 	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
 		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
@@ -22,6 +23,28 @@ func TestEffectiveUIClientFallsBackToPersistedSidebarOwner(t *testing.T) {
 	}
 	if got := effectiveUIClient(ctx, map[string]string{"client": "client-2"}); got != "client-2" {
 		t.Fatalf("effectiveUIClient with flag = %q, want explicit client", got)
+	}
+}
+
+func TestEffectiveUIClientFallsBackToClientViewingSidebarPaneWhenOwnerIsStale(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("TMUX_PANE", "%sidebar")
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-clients) printf '/dev/current\t@1\n/dev/other\t@2\n' ;;
+  display-message) printf '@1\n' ;;
+esac
+`)
+	ctx := context.Background()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "/dev/stale"}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+
+	if got := effectiveUIClient(ctx, map[string]string{}); got != "/dev/current" {
+		t.Fatalf("effectiveUIClient with stale owner = %q, want client viewing sidebar pane", got)
 	}
 }
 

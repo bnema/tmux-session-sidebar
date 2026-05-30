@@ -37,6 +37,20 @@ unbind_plugin_binding() {
   fi
 }
 
+install_resurrect_hook() {
+  local quoted_runtime="$1" current desired
+  desired="$quoted_runtime resurrect post-save-layout"
+  current="$($TMUX_BIN show-options -gvq @resurrect-hook-post-save-layout 2>/dev/null || true)"
+  if [ -z "$current" ]; then
+    "$TMUX_BIN" set-option -gq @resurrect-hook-post-save-layout "$desired"
+    return 0
+  fi
+  case "$current" in
+    *"tmux-session-sidebar"*"resurrect post-save-layout"*|*"$desired"*) return 0 ;;
+  esac
+  printf 'tmux-session-sidebar: @resurrect-hook-post-save-layout already set; not overwriting user hook\n' >&2
+}
+
 install_runtime_hooks() {
   local quoted_runtime="$1"
   "$TMUX_BIN" set-hook -g client-attached[9701] \
@@ -66,6 +80,8 @@ main() {
   set_default @session-sidebar-activity-debug-log off
   set_default @session-sidebar-agent-attention on
   set_default @session-sidebar-auto-sort-recent off
+  set_default @session-sidebar-restore-sessions auto
+  set_default @session-sidebar-continuum-grace-seconds 3
 
   local sidebar_key previous_key quoted_daemon_control quoted_runtime quoted_state_dir runtime_bin slot state_dir
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"
@@ -98,6 +114,7 @@ main() {
     run-shell "$quoted_runtime action quick-switch --client #{q:client_name} --slot 10"
 
   install_runtime_hooks "$quoted_runtime"
+  install_resurrect_hook "$quoted_runtime"
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

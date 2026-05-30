@@ -41,6 +41,7 @@ func TestRunDispatchesCommands(t *testing.T) {
 		{name: "hook agent event", args: []string{"hook", "agent-event", "--agent", "pi", "--event", "end", "--pane", "%2"}, wantExit: 0, wantRoute: "hook/agent-event", wantFlags: map[string]string{"agent": "pi", "event": "end", "pane": "%2"}},
 		{name: "hooks setup", args: []string{"hooks", "setup", "--agent", "codex"}, wantExit: 0, wantRoute: "hooks/run", wantArgs: []string{"hooks", "setup"}, wantFlags: map[string]string{"agent": "codex"}},
 		{name: "hooks agent event", args: []string{"hooks", "codex", "stop", "--pane", "%2"}, wantExit: 0, wantRoute: "hooks/run", wantArgs: []string{"hooks", "codex", "stop"}, wantFlags: map[string]string{"pane": "%2"}},
+		{name: "resurrect post save layout", args: []string{"resurrect", "post-save-layout", "/tmp/with spaces/tmux_resurrect.txt"}, wantExit: 0, wantRoute: "resurrect/post-save-layout", wantArgs: []string{"/tmp/with spaces/tmux_resurrect.txt"}},
 		{name: "sidebar toggle", args: []string{"sidebar", "toggle", "--client", "%1"}, wantExit: 0, wantRoute: "sidebar/toggle", wantFlags: map[string]string{"client": "%1"}},
 		{name: "sidebar open", args: []string{"sidebar", "open", "--client=%1"}, wantExit: 0, wantRoute: "sidebar/open", wantFlags: map[string]string{"client": "%1"}},
 		{name: "sidebar close", args: []string{"sidebar", "close", "--client", "%1"}, wantExit: 0, wantRoute: "sidebar/close", wantFlags: map[string]string{"client": "%1"}},

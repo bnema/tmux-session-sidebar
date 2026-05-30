@@ -20,9 +20,14 @@ func ensureRestoredAndCaptured(ctx context.Context) error {
 	return ensureRestoredAndCapturedWithOptions(ctx, false)
 }
 
-func ensureRestoredAndCapturedAndRefresh(ctx context.Context) error {
+func ensureRestoredAndCapturedAndRefresh(ctx context.Context, client string, session string, sidebar ports.TmuxSidebarPort) error {
 	if err := ensureRestoredAndCaptured(ctx); err != nil {
 		return err
+	}
+	if !isInternalHookSession(session) {
+		if err := adoptPersistedOpenSidebar(ctx, client, sidebar); err != nil {
+			return err
+		}
 	}
 	refreshAllSidebarPanesBestEffort(ctx)
 	return nil
@@ -41,6 +46,7 @@ func ensureRestoredAndCapturedWithOptions(ctx context.Context, resetTransientHea
 				return err
 			}
 		}
+		skipRestore := shouldSkipSidebarSessionRestoreForContinuum(ctx, cfg)
 		home, err := os.UserHomeDir()
 		if err != nil || home == "" {
 			if err == nil {
@@ -48,12 +54,21 @@ func ensureRestoredAndCapturedWithOptions(ctx context.Context, resetTransientHea
 			}
 			return fmt.Errorf("get user home directory: %w", err)
 		}
-		report := service.RestorePersistedSessions(ctx, "tmux", home)
-		for name, restoreErr := range report.SystemFailures {
-			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed (system): %v\n", name, restoreErr)
+		if !skipRestore {
+			report := service.RestorePersistedSessions(ctx, "tmux", home)
+			for name, restoreErr := range report.SystemFailures {
+				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed (system): %v\n", name, restoreErr)
+			}
+			for name, restoreErr := range report.Failed {
+				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed (session): %v\n", name, restoreErr)
+			}
 		}
-		for name, restoreErr := range report.Failed {
-			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed (session): %v\n", name, restoreErr)
+		if skipRestore {
+			// shouldSkipSidebarSessionRestoreForContinuum means Continuum/Resurrect
+			// owns startup restore right now, so this service intentionally skips both
+			// RestorePersistedSessions and the first CaptureLiveSessions; the daemon
+			// performs that live capture after its pending Continuum window expires.
+			return nil
 		}
 		if err := service.CaptureLiveSessions(ctx, "tmux"); err != nil {
 			return err
@@ -124,11 +139,16 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 	if err := resetTransientHeatStateOnStartup(ctx); err != nil {
 		return err
 	}
-	// captureLiveSidebarSessionsWithConfig must succeed during daemon startup so the
-	// initial session snapshot is available; later captureLiveSidebarHeat ticks only log
-	// failures because stale heat/attention data is less critical than bootstrapping.
-	if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil {
-		return err
+	pendingFullCaptureAt := time.Time{}
+	if shouldSkipSidebarSessionRestoreForContinuum(ctx, cfg) {
+		pendingFullCaptureAt = time.Now().Add(time.Duration(continuumRestoreWindowSeconds(ctx, cfg)) * time.Second)
+	} else {
+		// captureLiveSidebarSessionsWithConfig must succeed during daemon startup so the
+		// initial session snapshot is available; later captureLiveSidebarHeat ticks only log
+		// failures because stale heat/attention data is less critical than bootstrapping.
+		if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil {
+			return err
+		}
 	}
 	var ipcWG sync.WaitGroup
 	if ipcServer != nil && router != nil {
@@ -141,7 +161,14 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 
 	for {
 		cfg = loadSidebarConfig(ctx)
-		timer := time.NewTimer(sidebarRefreshIntervalFromConfig(cfg))
+		interval := sidebarRefreshIntervalFromConfig(cfg)
+		if !pendingFullCaptureAt.IsZero() {
+			untilCapture := time.Until(pendingFullCaptureAt)
+			if untilCapture < interval {
+				interval = max(untilCapture, 0)
+			}
+		}
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
 			if !timer.Stop() {
@@ -150,6 +177,16 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 			ipcWG.Wait()
 			return nil
 		case <-timer.C:
+		}
+		if !pendingFullCaptureAt.IsZero() && !time.Now().Before(pendingFullCaptureAt) {
+			if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
+				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
+				pendingFullCaptureAt = time.Now().Add(sidebarRefreshIntervalFromConfig(cfg))
+			} else {
+				pendingFullCaptureAt = time.Time{}
+				refreshAllSidebarPanesBestEffort(ctx)
+			}
+			continue
 		}
 		if err := captureLiveSidebarHeat(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)

@@ -83,12 +83,17 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 		return renameSession(ctx, route.Flags, r.sidebar)
 	case "action/kill":
 		return killSession(ctx, route.Flags, r.sidebar)
+	case "resurrect/post-save-layout":
+		if len(route.Args) < 1 {
+			return fmt.Errorf("resurrect post-save-layout: missing save file")
+		}
+		return resurrectPostSaveLayout(ctx, route.Args[0])
 	case "daemon/ensure":
 		return ensureRestoredAndCapturedOnStartup(ctx)
 	case "daemon/serve-ui":
 		return serveSidebarUI(ctx, route.Flags, stdout, r.sidebar)
 	case "hook/client-attached":
-		return ensureRestoredAndCapturedAndRefresh(ctx)
+		return ensureRestoredAndCapturedAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar)
 	case "hook/client-detached":
 		return captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar, false)
 	case "hook/client-session-changed":
