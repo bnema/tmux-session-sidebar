@@ -34,7 +34,7 @@ func (c Client) LatestReleaseTag(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("github latest release status: %s", response.Status)
 	}
