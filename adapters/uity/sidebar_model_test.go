@@ -479,14 +479,81 @@ func TestSidebarModelRenderShowsVersionInCollapsedHelp(t *testing.T) {
 	}
 }
 
+func TestSidebarModelRenderShowsGreenUpdateIndicatorForDevBuilds(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "dev"})
+	view := model.Render()
+	if !strings.Contains(stripANSI(view), " dev"+updateAvailableSymbol+"  M-? keys") {
+		t.Fatalf("render should include update indicator attached to dev version: %q", view)
+	}
+	if !strings.Contains(view, "38;2;34;197;94") {
+		t.Fatalf("render should color update indicator green: %q", view)
+	}
+	if !strings.Contains(view, "48;2;51;65;85") {
+		t.Fatalf("render should keep update indicator in the version badge background: %q", view)
+	}
+}
+
+func TestSidebarModelInitSkipsInvalidReleaseVersions(t *testing.T) {
+	called := false
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{
+		Version: "source",
+		CheckUpdateAvailable: func(string) (bool, error) {
+			called = true
+			return true, nil
+		},
+	})
+	if cmd := model.Init(); cmd != nil {
+		t.Fatal("Init returned update check command for invalid version")
+	}
+	if called {
+		t.Fatal("update checker was called for invalid version")
+	}
+}
+
+func TestSidebarModelInitChecksForUpdatesAsynchronously(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{
+		Version: "0.10.2",
+		CheckUpdateAvailable: func(current string) (bool, error) {
+			if current != "0.10.2" {
+				t.Fatalf("current version = %q, want 0.10.2", current)
+			}
+			close(started)
+			<-release
+			return true, nil
+		},
+	})
+	if strings.Contains(stripANSI(model.Render()), updateAvailableSymbol) {
+		t.Fatalf("render should not include update indicator before async check completes: %q", model.Render())
+	}
+
+	cmd := model.Init()
+	if cmd == nil {
+		t.Fatal("Init returned nil command")
+	}
+	result := make(chan tea.Msg, 1)
+	go func() { result <- cmd() }()
+	<-started
+	if strings.Contains(stripANSI(model.Render()), updateAvailableSymbol) {
+		t.Fatalf("render should not include update indicator while async check is blocked: %q", model.Render())
+	}
+	close(release)
+	updated, _ := model.Update(<-result)
+	model = requireSidebarModel(t, updated)
+	if !strings.Contains(stripANSI(model.Render()), " v0.10.2"+updateAvailableSymbol+"  M-? keys") {
+		t.Fatalf("render should include update indicator attached to version after async check completes: %q", model.Render())
+	}
+}
+
 func TestSidebarModelRenderStylesVersionBadge(t *testing.T) {
 	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "dev"})
 	view := model.Render()
 	if !strings.Contains(view, "48;2;51;65;85") {
 		t.Fatalf("render should give version badge a distinct background: %q", view)
 	}
-	if !strings.Contains(stripANSI(view), " dev  M-? keys") {
-		t.Fatalf("render should pad the version badge text: %q", view)
+	if !strings.Contains(stripANSI(view), " dev"+updateAvailableSymbol+"  M-? keys") {
+		t.Fatalf("render should pad the version badge text and show dev update indicator: %q", view)
 	}
 	lastLine := lastRenderedLine(view)
 	if strings.HasPrefix(lastLine, " ") {
@@ -503,7 +570,7 @@ func TestSidebarModelAnchorsCollapsedStatusBarToWindowBottom(t *testing.T) {
 	if len(lines) != 7 {
 		t.Fatalf("rendered height = %d, want 7; lines=%q", len(lines), lines)
 	}
-	if !strings.Contains(lines[len(lines)-1], " dev  M-? keys") {
+	if !strings.Contains(lines[len(lines)-1], " dev"+updateAvailableSymbol+"  M-? keys") {
 		t.Fatalf("statusbar should be on the last line: %q", lines)
 	}
 }
@@ -519,7 +586,7 @@ func TestSidebarModelRecalculatesStatusBarPositionAfterResize(t *testing.T) {
 	if len(lines) != 5 {
 		t.Fatalf("rendered height after resize = %d, want 5; lines=%q", len(lines), lines)
 	}
-	if !strings.Contains(lines[len(lines)-1], " dev  M-? keys") {
+	if !strings.Contains(lines[len(lines)-1], " dev"+updateAvailableSymbol+"  M-? keys") {
 		t.Fatalf("statusbar should remain on the last line after resize: %q", lines)
 	}
 }

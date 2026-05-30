@@ -10,12 +10,14 @@ import (
 
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
+	coreversion "github.com/bnema/tmux-session-sidebar/core/version"
 )
 
 const attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
 const currentMarkerSymbol = "\uf444"   // Nerd Font dot-fill glyph (U+F444 / nf-oct-dot_fill).
 const pinnedMarkerSymbol = "\uf08d"    // Nerd Font thumb-tack glyph (U+F08D / nf-fa-thumb_tack).
 const spaceKeySymbol = "\U000F1050"    // Nerd Font keyboard-space glyph (U+F1050 / nf-md-keyboard_space).
+const updateAvailableSymbol = "\uf062" // Nerd Font arrow-up glyph (U+F062 / nf-fa-arrow_up).
 
 type SessionItem struct {
 	Name          string
@@ -47,35 +49,39 @@ type Actions struct {
 }
 
 type SidebarOptions struct {
-	ShowNumericItems bool
-	Version          string
+	ShowNumericItems     bool
+	Version              string
+	CheckUpdateAvailable func(currentVersion string) (bool, error)
 }
 
 type SidebarModel struct {
-	items         []SessionItem
-	cursor        int
-	mode          Mode
-	filter        string
-	showNumeric   bool
-	showHelp      bool
-	message       string
-	projects      []ProjectItem
-	projectCursor int
-	projectFilter string
-	pendingKill   string
-	actions       Actions
-	version       string
-	height        int
+	items                []SessionItem
+	cursor               int
+	mode                 Mode
+	filter               string
+	showNumeric          bool
+	showHelp             bool
+	message              string
+	projects             []ProjectItem
+	projectCursor        int
+	projectFilter        string
+	pendingKill          string
+	actions              Actions
+	version              string
+	checkUpdateAvailable func(currentVersion string) (bool, error)
+	updateAvailable      bool
+	height               int
 }
 
 type sidebarStyles struct {
-	accent       lipgloss.Style
-	dim          lipgloss.Style
-	active       lipgloss.Style
-	stale        lipgloss.Style
-	selected     lipgloss.Style
-	pinned       lipgloss.Style
-	versionBadge lipgloss.Style
+	accent          lipgloss.Style
+	dim             lipgloss.Style
+	active          lipgloss.Style
+	stale           lipgloss.Style
+	selected        lipgloss.Style
+	pinned          lipgloss.Style
+	versionBadge    lipgloss.Style
+	updateIndicator lipgloss.Style
 }
 
 func NewSidebarModel(items []SessionItem, actions Actions) SidebarModel {
@@ -83,17 +89,33 @@ func NewSidebarModel(items []SessionItem, actions Actions) SidebarModel {
 }
 
 func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options SidebarOptions) SidebarModel {
-	return SidebarModel{items: items, actions: actions, mode: ModeBrowse, showNumeric: options.ShowNumericItems, version: options.Version}
+	return SidebarModel{items: items, actions: actions, mode: ModeBrowse, showNumeric: options.ShowNumericItems, version: options.Version, checkUpdateAvailable: options.CheckUpdateAvailable, updateAvailable: displayVersion(options.Version) == "dev"}
+}
+
+type updateAvailableMsg struct {
+	available bool
 }
 
 func (m SidebarModel) Init() tea.Cmd {
-	return nil
+	if m.updateAvailable || m.checkUpdateAvailable == nil || !coreversion.CheckableReleaseVersion(m.version) {
+		return nil
+	}
+	return func() tea.Msg {
+		available, err := m.checkUpdateAvailable(m.version)
+		if err != nil {
+			return updateAvailableMsg{}
+		}
+		return updateAvailableMsg{available: available}
+	}
 }
 
 func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
+		return m, nil
+	case updateAvailableMsg:
+		m.updateAvailable = msg.available
 		return m, nil
 	case tea.KeyPressMsg:
 		key := msg.Keystroke()
@@ -475,6 +497,9 @@ func (m SidebarModel) collapsedHelpLine(styles sidebarStyles) string {
 	if version == "" {
 		return styles.dim.Render("M-? keys")
 	}
+	if m.updateAvailable {
+		return styles.versionBadge.Render(" "+version) + styles.updateIndicator.Render(updateAvailableSymbol+" ") + styles.dim.Render(" M-? keys")
+	}
 	return styles.versionBadge.Render(" "+version+" ") + styles.dim.Render(" M-? keys")
 }
 
@@ -488,13 +513,14 @@ func displayVersion(version string) string {
 
 func newSidebarStyles() sidebarStyles {
 	return sidebarStyles{
-		accent:       lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
-		dim:          lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
-		active:       lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
-		stale:        lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
-		selected:     lipgloss.NewStyle().Background(lipgloss.Color("#065f46")).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
-		pinned:       lipgloss.NewStyle().Foreground(lipgloss.Color("#facc15")).Bold(true),
-		versionBadge: lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#e0f2fe")).Bold(true),
+		accent:          lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
+		dim:             lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
+		active:          lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
+		stale:           lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
+		selected:        lipgloss.NewStyle().Background(lipgloss.Color("#065f46")).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
+		pinned:          lipgloss.NewStyle().Foreground(lipgloss.Color("#facc15")).Bold(true),
+		versionBadge:    lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#e0f2fe")).Bold(true),
+		updateIndicator: lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#22c55e")).Bold(true),
 	}
 }
 
