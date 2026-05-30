@@ -60,6 +60,8 @@ set -g @session-sidebar-heat-recent '1h'
 set -g @session-sidebar-heat-max-highlighted '0'
 set -g @session-sidebar-agent-attention 'on'
 set -g @session-sidebar-auto-sort-recent 'off'
+set -g @session-sidebar-restore-sessions 'auto'
+set -g @session-sidebar-continuum-grace-seconds '3'
 ```
 
 | Option | Default | Used for |
@@ -73,6 +75,8 @@ set -g @session-sidebar-auto-sort-recent 'off'
 | `@session-sidebar-heat-max-highlighted` | `0` | Maximum highlighted sessions at once; `0` means no limit |
 | `@session-sidebar-agent-attention` | `on` | Enable bell markers from supported agent hooks |
 | `@session-sidebar-auto-sort-recent` | `off` | Relative interval for reordering sessions by most recent real pane activity, for example `10m`, `2h`, or `3d` |
+| `@session-sidebar-restore-sessions` | `auto` | Lightweight missing-session restore mode: `auto` skips during tmux-continuum startup restore, `on` always restores, `off` never restores |
+| `@session-sidebar-continuum-grace-seconds` | `3` | Extra seconds added to `@continuum-restore-max-delay` before lightweight restore resumes in `auto` mode |
 
 Persistent state and the daemon IPC socket are stored under `${XDG_STATE_HOME:-~/.local/state}/tmux-session-sidebar`.
 
@@ -154,6 +158,22 @@ The plugin records persistable session names and paths in its state file. On dae
 Restore skips sessions with numeric names, names beginning with `__`, invalid names, and sessions that already exist. A restored session starts in its last recorded path, then its project path, then the home directory, then `.` if no usable absolute directory is available.
 
 Killing a session through the sidebar removes it from future restore. Renaming through the sidebar updates persisted state.
+
+### tmux-resurrect and tmux-continuum compatibility
+
+The plugin cooperates with `tmux-resurrect` by installing `@resurrect-hook-post-save-layout` when that hook is empty. The hook runs `tmux-session-sidebar resurrect post-save-layout <file>` and removes the internal `__tmux-session-sidebar` session, any pane marked `@session-sidebar-pane=1`, and sidebar-visible layouts from Resurrect save files. If you already use `@resurrect-hook-post-save-layout`, the plugin does not overwrite it; chain the command manually from your hook if you want automatic cleanup.
+
+With `tmux-continuum`, leave `@session-sidebar-restore-sessions` at `auto`. During Continuum's startup restore window, tmux-session-sidebar skips its lightweight missing-session restore so Resurrect can restore full windows, panes, layouts, and processes first. After that window, the daemon captures the live state as usual. Set `@session-sidebar-restore-sessions` to `on` to force the sidebar restore even during Continuum startup, or `off` to disable the lightweight restore entirely.
+
+If the sidebar was open before reboot, that intent is persisted. The old tmux client name is treated as transient; on the next `client-attached`, the sidebar adopts the attached client and reopens without stealing focus.
+
+Recommended TPM order when using Continuum:
+
+```tmux
+set -g @plugin 'tmux-plugins/tmux-resurrect'
+set -g @plugin 'tmux-plugins/tmux-continuum'
+set -g @plugin 'bnema/tmux-session-sidebar'
+```
 
 ## Heat colors and agent bells
 

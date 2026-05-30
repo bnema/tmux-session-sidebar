@@ -20,6 +20,8 @@ type ConfigSnapshot struct {
 	ActivityDebugLog       bool
 	AgentAttentionEnabled  bool
 	AutoSortRecentInterval time.Duration
+	RestoreSessionsMode    string
+	ContinuumGraceSeconds  int
 }
 
 type TmuxSessionSnapshot struct {

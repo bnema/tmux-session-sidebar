@@ -108,6 +108,14 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		return ports.ConfigSnapshot{}, err
 	}
 	autoSortRecentInterval := parseAutoSortRecentInterval(autoSortRecent)
+	restoreSessionsMode, err := c.option(ctx, "@session-sidebar-restore-sessions")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
+	continuumGraceSeconds, err := c.optionInt(ctx, "@session-sidebar-continuum-grace-seconds")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
 	return ports.ConfigSnapshot{
 		Loaded:                 true,
 		KeyBinding:             key,
@@ -123,6 +131,8 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		ActivityDebugLog:       parseTmuxBool(activityDebugLog),
 		AgentAttentionEnabled:  agentAttention == "" || parseTmuxBool(agentAttention),
 		AutoSortRecentInterval: autoSortRecentInterval,
+		RestoreSessionsMode:    normalizeRestoreSessionsMode(restoreSessionsMode),
+		ContinuumGraceSeconds:  continuumGraceSeconds,
 	}, nil
 }
 
@@ -530,6 +540,17 @@ func parseTmuxBool(raw string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func normalizeRestoreSessionsMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "off", "no", "false", "0":
+		return "off"
+	case "on", "yes", "true", "1":
+		return "on"
+	default:
+		return "auto"
 	}
 }
 

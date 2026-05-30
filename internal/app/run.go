@@ -90,6 +90,11 @@ func newRootCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, rou
 		leafCommand("window-resized", "Handle tmux window-resized", runRoute("hook/window-resized")),
 		leafCommand("agent-event", "Record an agent attention event", runRoute("hook/agent-event")),
 	))
+	command.AddCommand(groupCommand("resurrect", "Integrate with tmux-resurrect hooks",
+		&cobra.Command{Use: "post-save-layout <file>", Short: "Sanitize a tmux-resurrect save file", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+			return dispatchRoute(ctx, router, stdout, stderr, Route{Path: "resurrect/post-save-layout", Flags: collectFlags(cmd), Args: args})
+		}},
+	))
 	command.AddCommand(&cobra.Command{
 		Use:   "hooks [setup|uninstall|agent action]",
 		Short: "Install, uninstall, or receive agent hooks",

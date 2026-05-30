@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,6 +48,85 @@ esac
 	log := readLog(t, logPath)
 	if !strings.Contains(log, "new-session -d -s alpha -c "+restorePath) {
 		t.Fatalf("expected daemon ensure to restore alpha at %q, log=%q", restorePath, log)
+	}
+}
+
+func TestDaemonEnsureSkipsLightweightRestoreDuringContinuumStartupWindow(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	restorePath := t.TempDir()
+	seedPersistedState(t, map[string]ports.SessionMetadata{
+		"alpha": {Kind: "captured", LastPath: restorePath},
+	}, nil)
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "${@: -1}" in
+      @continuum-restore) printf 'on\n' ;;
+      @continuum-restore-max-delay) printf '10\n' ;;
+      @resurrect-restore-script-path) printf '/tmp/resurrect/restore.sh\n' ;;
+      @session-sidebar-restore-sessions) printf 'auto\n' ;;
+      @session-sidebar-continuum-grace-seconds) printf '3\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  display-message)
+    case "${@: -1}" in
+      '#{start_time}') printf '%s\n' "$(date +%s)" ;;
+    esac ;;
+  list-sessions) ;;
+  list-clients) ;;
+esac
+`)
+
+	if err := (runtimeRouter{}).Handle(context.Background(), Route{Path: "daemon/ensure", Flags: map[string]string{}}, nil, nil); err != nil {
+		t.Fatalf("daemon ensure error: %v", err)
+	}
+	log := readLog(t, logPath)
+	if strings.Contains(log, "new-session -d -s alpha") {
+		t.Fatalf("expected daemon ensure not to create alpha during continuum restore window, log=%q", log)
+	}
+	state, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if _, ok := state.Sessions["alpha"]; !ok {
+		t.Fatalf("persisted sessions were truncated during continuum restore window: %#v", state.Sessions)
+	}
+}
+
+func TestDaemonEnsureRestoreSessionsOnOverridesContinuumStartupWindow(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	restorePath := t.TempDir()
+	seedPersistedState(t, map[string]ports.SessionMetadata{
+		"alpha": {Kind: "captured", LastPath: restorePath},
+	}, nil)
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "${@: -1}" in
+      @continuum-restore) printf 'on\n' ;;
+      @continuum-restore-max-delay) printf '10\n' ;;
+      @resurrect-restore-script-path) printf '/tmp/resurrect/restore.sh\n' ;;
+      @session-sidebar-restore-sessions) printf 'on\n' ;;
+      @session-sidebar-continuum-grace-seconds) printf '3\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  display-message)
+    case "${@: -1}" in
+      '#{start_time}') printf '%s\n' "$(date +%s)" ;;
+    esac ;;
+  list-sessions) ;;
+  list-clients) ;;
+esac
+`)
+
+	if err := (runtimeRouter{}).Handle(context.Background(), Route{Path: "daemon/ensure", Flags: map[string]string{}}, nil, nil); err != nil {
+		t.Fatalf("daemon ensure error: %v", err)
+	}
+	log := readLog(t, logPath)
+	if !strings.Contains(log, "new-session -d -s alpha -c "+restorePath) {
+		t.Fatalf("expected restore-sessions=on to create alpha, log=%q", log)
 	}
 }
 
@@ -165,6 +245,90 @@ esac
 	}
 	if len(decoded.Panes) != 0 {
 		t.Fatalf("panes = %#v, want cleared transient pane fingerprints after startup reset", decoded.Panes)
+	}
+}
+
+func TestDaemonServeDefersLiveSessionCaptureUntilContinuumWindowEnds(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	store := sessionOrderStore()
+	state, err := store.Load(t.Context(), "tmux")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	state.Sessions = map[string]ports.SessionMetadata{
+		"alpha": {Kind: "captured", LastPath: "/tmp/alpha"},
+		"beta":  {Kind: "captured", LastPath: "/tmp/beta"},
+	}
+	state.SessionOrder = []string{"alpha", "beta"}
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	invocationFile := filepath.Join(t.TempDir(), "list-sessions-count")
+	t.Setenv("TEST_INVOCATION_FILE", invocationFile)
+	t.Setenv("TEST_START", fmt.Sprintf("%d", time.Now().Unix()))
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "${@: -1}" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-colors) printf 'on\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-heat-recent) printf '1h\n' ;;
+      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'on\n' ;;
+      @session-sidebar-auto-sort-recent) printf 'off\n' ;;
+      @session-sidebar-restore-sessions) printf 'auto\n' ;;
+      @session-sidebar-continuum-grace-seconds) printf '0\n' ;;
+      @continuum-restore) printf 'on\n' ;;
+      @continuum-restore-max-delay) printf '1\n' ;;
+      @resurrect-restore-script-path) printf '/tmp/resurrect/restore.sh\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  display-message)
+    case "${@: -1}" in
+      '#{start_time}') printf '%s\n' "$TEST_START" ;;
+      '#{pane_current_path}') printf '/tmp/%s\n' "${3#=}" ;;
+    esac ;;
+  list-sessions)
+    count=0
+    [ -f "$TEST_INVOCATION_FILE" ] && count="$(cat "$TEST_INVOCATION_FILE")"
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$TEST_INVOCATION_FILE"
+    if [ "$count" -eq 1 ]; then
+      printf '$1\talpha\t1\t0\n'
+    else
+      printf '$1\talpha\t1\t0\n$2\tbeta\t1\t0\n'
+    fi ;;
+  list-clients) ;;
+  list-panes) ;;
+esac
+`)
+
+	// Simulate the partial live server that would have been observed by an
+	// immediate startup capture; the daemon should preserve persisted beta until
+	// its post-Continuum capture runs and sees the second invocation.
+	if _, err := tmux(context.Background(), "list-sessions"); err != nil {
+		t.Fatalf("prime fake list-sessions invocation: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "daemon/serve", Flags: map[string]string{}}, nil, nil); err != nil {
+		t.Fatalf("daemon serve error: %v", err)
+	}
+	next, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if _, ok := next.Sessions["beta"]; !ok {
+		t.Fatalf("beta was removed instead of being preserved until post-window capture: %#v", next.Sessions)
 	}
 }
 
@@ -407,6 +571,172 @@ esac
 	}
 	if log := readLog(t, logPath); !strings.Contains(log, "send-keys -t %sidebar F5") {
 		t.Fatalf("expected hook client-attached to refresh open sidebars, log=%q", log)
+	}
+}
+
+func TestHookClientAttachedDoesNotAdoptSidebarForInternalPopupSession(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	store := sessionOrderStore()
+	state, err := store.Load(t.Context(), "tmux")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "/dev/old"}
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "${@: -1}" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'on\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) printf '$1\t__floating-popup-1\t1\t1\n' ;;
+  list-clients) printf '/dev/popup\t$1\t@popup\t%%popup\t__floating-popup-1\n' ;;
+  display-message) printf '/tmp/popup\n' ;;
+  list-panes) ;;
+esac
+`)
+
+	if err := (runtimeRouter{sidebar: newTmuxClient()}).Handle(context.Background(), Route{Path: "hook/client-attached", Flags: map[string]string{"client": "/dev/popup", "session": "__floating-popup-1"}}, nil, nil); err != nil {
+		t.Fatalf("hook client-attached error: %v\nlog=%q", err, readLog(t, logPath))
+	}
+	log := readLog(t, logPath)
+	if strings.Contains(log, "new-session -d -s __tmux-session-sidebar") || strings.Contains(log, "join-pane") || strings.Contains(log, "select-pane -t") {
+		t.Fatalf("internal popup attach should not open/adopt sidebar, log=%q", log)
+	}
+	next, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if next.Sidebar == nil || next.Sidebar.OwnerClient != "/dev/old" {
+		t.Fatalf("sidebar owner changed for internal popup attach: %#v", next.Sidebar)
+	}
+}
+
+func TestHookClientAttachedDoesNotMoveExistingLiveSidebarToNewClient(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	store := sessionOrderStore()
+	state, err := store.Load(t.Context(), "tmux")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "/dev/old"}
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "${@: -1}" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'on\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) printf '$1\talpha\t1\t1\n' ;;
+  list-clients) printf '/dev/new\t$1\t@new\t%%new\talpha\n' ;;
+  display-message)
+    case "$*" in
+      *'#{pane_current_path}'*) printf '/tmp/alpha\n' ;;
+      *'#{window_id}'*) printf '@new\n' ;;
+    esac ;;
+  list-panes)
+    if [ "$2" = "-a" ]; then
+      printf '%%side\t@owner\t0\n'
+    fi ;;
+esac
+`)
+
+	if err := (runtimeRouter{sidebar: newTmuxClient()}).Handle(context.Background(), Route{Path: "hook/client-attached", Flags: map[string]string{"client": "/dev/new", "session": "alpha"}}, nil, nil); err != nil {
+		t.Fatalf("hook client-attached error: %v\nlog=%q", err, readLog(t, logPath))
+	}
+	log := readLog(t, logPath)
+	if strings.Contains(log, "join-pane") || strings.Contains(log, "select-pane -t %side") {
+		t.Fatalf("client attach should not move an existing live sidebar, log=%q", log)
+	}
+}
+
+func TestHookClientAttachedAdoptsPersistedOpenSidebarAfterRestart(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	store := sessionOrderStore()
+	state, err := store.Load(t.Context(), "tmux")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "/dev/old"}
+	state.SessionOrder = []string{"alpha"}
+	state.PinnedSessions = []string{"alpha"}
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+if [ "$1" = "has-session" ]; then
+  printf "can't find session\n" >&2
+  exit 1
+fi
+case "$1" in
+  show-options)
+    if [ "$2" = "-pv" ]; then
+      printf '1\n'
+      exit 0
+    fi
+    case "${@: -1}" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'on\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) printf '$1\talpha\t1\t1\n' ;;
+  list-clients) printf '/dev/new\t$1\t@1\t%%work\talpha\n' ;;
+  display-message)
+    case "$*" in
+      *'#{pane_current_path}'*) printf '/tmp/alpha\n' ;;
+      *'#{window_id}'*) printf '@1\n' ;;
+    esac ;;
+  list-panes)
+    case "$*" in
+      *'#{==:#{@session-sidebar-pane},1}'*) ;;
+      *'-P'*) ;;
+      *) printf '%%work\t0\t0\n' ;;
+    esac ;;
+  has-session) exit 1 ;;
+  new-session) printf '%%side\t@hidden\n' ;;
+  set-option) ;;
+  join-pane) ;;
+  select-pane) ;;
+  send-keys) ;;
+esac
+`)
+
+	if err := (runtimeRouter{sidebar: newTmuxClient()}).Handle(context.Background(), Route{Path: "hook/client-attached", Flags: map[string]string{"client": "/dev/new"}}, nil, nil); err != nil {
+		t.Fatalf("hook client-attached error: %v\nlog=%q", err, readLog(t, logPath))
+	}
+	log := readLog(t, logPath)
+	if !strings.Contains(log, "select-pane -t %side -R") {
+		t.Fatalf("expected persisted open sidebar to be adopted and selected without focus, log=%q", log)
+	}
+	next, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if next.Sidebar == nil || !next.Sidebar.Open || next.Sidebar.OwnerClient != "/dev/new" {
+		t.Fatalf("sidebar state = %#v, want open adopted by /dev/new", next.Sidebar)
+	}
+	if len(next.PinnedSessions) != 1 || next.PinnedSessions[0] != "alpha" {
+		t.Fatalf("pinned sessions changed during adoption: %#v", next.PinnedSessions)
 	}
 }
 

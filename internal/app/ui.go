@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -29,7 +30,60 @@ func effectiveUIClient(ctx context.Context, flags map[string]string) string {
 	if err != nil || !state.Open {
 		return ""
 	}
-	return strings.TrimSpace(state.OwnerClient)
+	owner := strings.TrimSpace(state.OwnerClient)
+	if owner == "" || !tmuxClientExists(ctx, owner) {
+		if client := clientViewingSidebarPane(ctx); client != "" {
+			return client
+		}
+	}
+	return owner
+}
+
+func tmuxClientExists(ctx context.Context, client string) bool {
+	out, err := tmux(ctx, "list-clients", "-F", "#{client_name}")
+	if err != nil {
+		return true
+	}
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		if strings.TrimSpace(line) == client {
+			return true
+		}
+	}
+	return false
+}
+
+func clientViewingSidebarPane(ctx context.Context) string {
+	pane := strings.TrimSpace(os.Getenv("TMUX_PANE"))
+	if pane == "" {
+		return ""
+	}
+	windowID, err := tmux(ctx, "display-message", "-p", "-t", pane, "#{window_id}")
+	if err != nil {
+		return ""
+	}
+	windowID = strings.TrimSpace(windowID)
+	if windowID == "" {
+		return ""
+	}
+	out, err := tmux(ctx, "list-clients", "-F", "#{client_name}\t#{window_id}")
+	if err != nil {
+		return ""
+	}
+	fallback := ""
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) < 2 {
+			continue
+		}
+		client := strings.TrimSpace(fields[0])
+		if fallback == "" {
+			fallback = client
+		}
+		if strings.TrimSpace(fields[1]) == windowID {
+			return client
+		}
+	}
+	return fallback
 }
 
 func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
@@ -125,7 +179,19 @@ func loadSidebarConfig(ctx context.Context) ports.ConfigSnapshot {
 }
 
 func defaultSidebarConfig() ports.ConfigSnapshot {
-	return ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, HeatRefreshSeconds: 60, HeatRecentInterval: time.Hour, HeatMaxHighlighted: 0, ActivityDebugLog: false, AgentAttentionEnabled: true, AutoSortRecentInterval: 0}
+	return ports.ConfigSnapshot{
+		HeatColorsEnabled:      true,
+		HeatHalfLifeHours:      8,
+		HeatStaleHours:         24,
+		HeatRefreshSeconds:     60,
+		HeatRecentInterval:     time.Hour,
+		HeatMaxHighlighted:     0,
+		ActivityDebugLog:       false,
+		AgentAttentionEnabled:  true,
+		AutoSortRecentInterval: 0,
+		RestoreSessionsMode:    "auto",
+		ContinuumGraceSeconds:  3,
+	}
 }
 
 func decodePersistedHeat(raw map[string][]byte) map[string]heat.State {
