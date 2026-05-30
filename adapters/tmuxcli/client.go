@@ -30,6 +30,7 @@ const (
 	cmdSendKeys       = "send-keys"
 	cmdSetOption      = "set-option"
 	cmdShowOptions    = "show-options"
+	cmdSwapPane       = "swap-pane"
 	cmdSwitchClient   = "switch-client"
 
 	formatPaneCurrentPath = "#{pane_current_path}"
@@ -40,8 +41,9 @@ const (
 
 	escapedFormatPaneID = "##{pane_id}"
 
-	optionSidebarPane         = "@session-sidebar-pane"
-	optionSidebarWindowLayout = "@session-sidebar-window-layout"
+	optionSidebarPane                = "@session-sidebar-pane"
+	optionSidebarWindowLayout        = "@session-sidebar-window-layout"
+	optionSidebarVisibleWindowLayout = "@session-sidebar-visible-window-layout"
 
 	singletonSidebarSessionName = "__tmux-session-sidebar"
 	singletonSidebarWindowName  = "sidebar"
@@ -359,12 +361,24 @@ func (c Client) SaveWindowLayout(ctx context.Context, windowID string) error {
 	return c.captureWindowLayout(ctx, windowID, optionSidebarWindowLayout, false)
 }
 
+func (c Client) SaveVisibleWindowLayout(ctx context.Context, windowID string) error {
+	return c.captureWindowLayout(ctx, windowID, optionSidebarVisibleWindowLayout, true)
+}
+
 func (c Client) ClearSavedWindowLayout(ctx context.Context, windowID string) error {
 	return c.clearWindowLayout(ctx, windowID, optionSidebarWindowLayout)
 }
 
+func (c Client) ClearVisibleWindowLayout(ctx context.Context, windowID string) error {
+	return c.clearWindowLayout(ctx, windowID, optionSidebarVisibleWindowLayout)
+}
+
 func (c Client) RestoreWindowLayout(ctx context.Context, windowID string) error {
 	return c.restoreWindowLayout(ctx, windowID, optionSidebarWindowLayout, true)
+}
+
+func (c Client) RestoreVisibleWindowLayout(ctx context.Context, windowID string) error {
+	return c.restoreWindowLayout(ctx, windowID, optionSidebarVisibleWindowLayout, false)
 }
 
 func (c Client) captureWindowLayout(ctx context.Context, windowID string, option string, overwrite bool) error {
@@ -479,6 +493,12 @@ func (c Client) ScheduleSidebarRestoreOnExit(ctx context.Context, clientID strin
 	if layout == "" {
 		// No saved layout means there is no sidebar-induced split to restore.
 		return nil
+	}
+	if err := c.SaveVisibleWindowLayout(ctx, windowID); err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
+		return err
 	}
 	_, err = c.Process.Exec(ctx, tmuxBinary, []string{cmdRunShell, "-b", sidebarLayoutRestoreCommand(windowID, paneID)})
 	return err
