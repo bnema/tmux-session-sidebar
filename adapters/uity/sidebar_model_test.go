@@ -17,6 +17,47 @@ func TestSidebarModelInitDoesNotSchedulePeriodicRefresh(t *testing.T) {
 	}
 }
 
+func TestSidebarModelViewEnablesMouseWheelEvents(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
+
+	view := model.View()
+
+	if view.MouseMode != tea.MouseModeCellMotion {
+		t.Fatalf("View().MouseMode = %v, want %v", view.MouseMode, tea.MouseModeCellMotion)
+	}
+}
+
+func TestSidebarModelMouseWheelNavigatesSessions(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}, Actions{})
+
+	updated, _ := model.Update(tea.MouseWheelMsg(tea.Mouse{Button: tea.MouseWheelDown}))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
+		t.Fatalf("selection after wheel down = %#v ok=%v, want beta", item, ok)
+	}
+
+	updated, _ = model.Update(tea.MouseWheelMsg(tea.Mouse{Button: tea.MouseWheelUp}))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+		t.Fatalf("selection after wheel up = %#v ok=%v, want alpha", item, ok)
+	}
+}
+
+func TestSidebarModelMouseWheelNavigatesFilteredSessions(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "bravo"}}, Actions{})
+	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Text: "/", Code: '/'}))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("b", 0))
+	model = requireSidebarModel(t, updated)
+
+	updated, _ = model.Update(tea.MouseWheelMsg(tea.Mouse{Button: tea.MouseWheelDown}))
+	model = requireSidebarModel(t, updated)
+
+	if item, ok := model.selectedSession(); !ok || item.Name != "bravo" {
+		t.Fatalf("selection after filtered wheel down = %#v ok=%v, want bravo", item, ok)
+	}
+}
+
 func TestSidebarModelF5ReloadsSessionsOnDemand(t *testing.T) {
 	reloaded := 0
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{

@@ -117,6 +117,9 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case updateAvailableMsg:
 		m.updateAvailable = msg.available
 		return m, nil
+	case tea.MouseWheelMsg:
+		m.handleMouseWheel(msg)
+		return m, nil
 	case tea.KeyPressMsg:
 		key := msg.Keystroke()
 		if delta, ok := reorderKeyDelta(msg); ok {
@@ -451,7 +454,9 @@ func (m SidebarModel) visibleProjects() []ProjectItem {
 }
 
 func (m SidebarModel) View() tea.View {
-	return tea.NewView(m.Render())
+	view := tea.NewView(m.Render())
+	view.MouseMode = tea.MouseModeCellMotion
+	return view
 }
 
 func (m SidebarModel) Render() string {
@@ -611,6 +616,27 @@ func (m SidebarModel) renderProjects(styles sidebarStyles) []string {
 		lines = append(lines, styles.dim.Render("no projects"))
 	}
 	return lines
+}
+
+func (m *SidebarModel) handleMouseWheel(msg tea.MouseWheelMsg) {
+	mouse := msg.Mouse()
+	switch mouse.Button {
+	case tea.MouseWheelUp:
+		m.moveWheel(-1)
+	case tea.MouseWheelDown:
+		m.moveWheel(1)
+	}
+}
+
+func (m *SidebarModel) moveWheel(delta int) {
+	if m.mode == ModeConfirmKill {
+		return
+	}
+	if m.mode == ModeProject {
+		m.moveProject(delta)
+		return
+	}
+	m.move(delta)
 }
 
 func reorderKeyDelta(msg tea.KeyPressMsg) (int, bool) {
