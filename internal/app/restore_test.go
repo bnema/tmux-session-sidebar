@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -264,6 +265,7 @@ func TestDaemonServeDefersLiveSessionCaptureUntilContinuumWindowEnds(t *testing.
 	}
 	invocationFile := filepath.Join(t.TempDir(), "list-sessions-count")
 	t.Setenv("TEST_INVOCATION_FILE", invocationFile)
+	t.Setenv("TEST_START", fmt.Sprintf("%d", time.Now().Unix()))
 	installFakeTmux(t, `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
 case "$1" in
