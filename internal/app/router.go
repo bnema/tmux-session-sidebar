@@ -13,6 +13,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bnema/tmux-session-sidebar/adapters/githubrelease"
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
 	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
@@ -442,7 +443,7 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 			return items
 		},
 	}
-	options := uity.SidebarOptions{Version: version}
+	options := uity.SidebarOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, githubrelease.Client{})}
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}
