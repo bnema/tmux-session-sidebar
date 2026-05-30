@@ -6,6 +6,7 @@ type PersistedState struct {
 	Sessions       map[string]SessionMetadata `json:"sessions,omitempty"`
 	SessionOrder   []string                   `json:"sessionOrder,omitempty"`
 	PinnedSessions []string                   `json:"pinnedSessions,omitempty"`
+	PinColors      map[string]string          `json:"pinColors,omitempty"`
 	Sidebar        *SidebarState              `json:"sidebar,omitempty"`
 	Clients        map[string][]byte          `json:"clients,omitempty"`
 	Heat           map[string][]byte          `json:"heat,omitempty"`

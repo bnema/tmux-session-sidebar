@@ -1,6 +1,7 @@
 package uity
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -755,9 +756,150 @@ func TestSidebarModelChoosingProjectReturnsToBrowseMode(t *testing.T) {
 	}
 }
 
-func TestSidebarModelSpaceTogglesPinnedSessionInBrowseMode(t *testing.T) {
+func TestSidebarModelSpaceOpensPinColorPickerForUnpinnedSession(t *testing.T) {
 	called := 0
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{
+		PinSessionWithColor: func(name string, color string) bool {
+			called++
+			return true
+		},
+	})
+
+	updated, _ := model.Update(keyPress(" ", 0))
+	model = requireSidebarModel(t, updated)
+
+	if called != 0 {
+		t.Fatalf("PinSessionWithColor called before confirmation")
+	}
+	if model.mode != ModePinColor || model.pinColorSession != "alpha" {
+		t.Fatalf("model pin color state = mode %q session %q, want pin-color alpha", model.mode, model.pinColorSession)
+	}
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "pin color") || !strings.Contains(view, "↵/sp ok esc") {
+		t.Fatalf("render missing compact pin color picker in %q", view)
+	}
+}
+
+func TestSidebarModelPinColorPickerOverlaysNarrowSidebar(t *testing.T) {
+	items := make([]SessionItem, 0, 30)
+	for i := range 30 {
+		items = append(items, SessionItem{Name: fmt.Sprintf("session-%02d", i), Slot: i + 1})
+	}
+	model := NewSidebarModel(items, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 20, Height: 10})
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress(" ", 0))
+	model = requireSidebarModel(t, updated)
+
+	view := stripANSI(model.Render())
+	lines := strings.Split(view, "\n")
+	if len(lines) != 10 {
+		t.Fatalf("rendered height = %d, want 10; view=%q", len(lines), view)
+	}
+	if !strings.Contains(view, "pin color") {
+		t.Fatalf("render missing overlaid pin color picker in %q", view)
+	}
+	for _, line := range lines {
+		if width := len([]rune(line)); width > 20 {
+			t.Fatalf("rendered line width = %d, want <= 20; line=%q view=%q", width, line, view)
+		}
+	}
+}
+
+func TestSidebarModelPinColorPickerUsesLargeSwatches(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 20, Height: 10})
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress(" ", 0))
+	model = requireSidebarModel(t, updated)
+
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "████") {
+		t.Fatalf("render missing wide color swatches in %q", view)
+	}
+}
+
+func TestSidebarModelPinColorPickerConfirmsSelectedColor(t *testing.T) {
+	var gotName, gotColor string
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{
+		PinSessionWithColor: func(name string, color string) bool {
+			gotName = name
+			gotColor = color
+			return true
+		},
+		ReloadSessions: func() []SessionItem {
+			return []SessionItem{{Name: "alpha", Pinned: true, PinColor: pinColorPalette[1]}, {Name: "beta"}}
+		},
+	})
+
+	updated, _ := model.Update(keyPress(" ", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress(" ", 0))
+	model = requireSidebarModel(t, updated)
+
+	if gotName != "alpha" || gotColor != pinColorPalette[1] {
+		t.Fatalf("PinSessionWithColor = (%q, %q), want (alpha, %s)", gotName, gotColor, pinColorPalette[1])
+	}
+	if model.mode != ModeBrowse || model.pinColorSession != "" {
+		t.Fatalf("picker did not close after confirmation: %#v", model)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || !item.Pinned || item.PinColor != pinColorPalette[1] {
+		t.Fatalf("selected after pin color confirm = %#v ok=%v, want pinned alpha blue", item, ok)
+	}
+}
+
+func TestSidebarModelPinColorPickerStaysOpenWhenPinActionFails(t *testing.T) {
+	called := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+		PinSessionWithColor: func(string, string) bool {
+			called++
+			return false
+		},
+		ReloadSessions: func() []SessionItem {
+			t.Fatal("ReloadSessions should not run when pin action fails")
+			return nil
+		},
+	})
+
+	updated, _ := model.Update(keyPress(" ", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress(" ", 0))
+	model = requireSidebarModel(t, updated)
+
+	if called != 1 {
+		t.Fatalf("PinSessionWithColor called %d times, want 1", called)
+	}
+	if model.mode != ModePinColor || model.pinColorSession != "alpha" {
+		t.Fatalf("picker state after failed pin = mode %q session %q, want still open for alpha", model.mode, model.pinColorSession)
+	}
+}
+
+func TestSidebarModelPinColorPickerNavigatesWithVimKeysAndCancels(t *testing.T) {
+	called := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+		PinSessionWithColor: func(string, string) bool { called++; return true },
+	})
+	updated, _ := model.Update(keyPress(" ", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("l", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("j", 0))
+	model = requireSidebarModel(t, updated)
+	if model.pinColorPicker.Cursor != 5 {
+		t.Fatalf("pinColorCursor after l,j = %d, want 5", model.pinColorPicker.Cursor)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}))
+	model = requireSidebarModel(t, updated)
+	if called != 0 || model.mode != ModeBrowse || model.pinColorSession != "" {
+		t.Fatalf("cancel state called=%d model=%#v", called, model)
+	}
+}
+
+func TestSidebarModelSpaceUnpinsPinnedSessionDirectly(t *testing.T) {
+	called := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Pinned: true}, {Name: "beta"}}, Actions{
 		TogglePinnedSession: func(name string) bool {
 			called++
 			if name != "alpha" {
@@ -765,7 +907,7 @@ func TestSidebarModelSpaceTogglesPinnedSessionInBrowseMode(t *testing.T) {
 			}
 			return true
 		},
-		ReloadSessions: func() []SessionItem { return []SessionItem{{Name: "alpha", Pinned: true}, {Name: "beta"}} },
+		ReloadSessions: func() []SessionItem { return []SessionItem{{Name: "alpha"}, {Name: "beta"}} },
 	})
 
 	updated, _ := model.Update(keyPress(" ", 0))
@@ -774,8 +916,11 @@ func TestSidebarModelSpaceTogglesPinnedSessionInBrowseMode(t *testing.T) {
 	if called != 1 {
 		t.Fatalf("TogglePinnedSession called %d times, want 1", called)
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || !item.Pinned {
-		t.Fatalf("selected after pin toggle = %#v ok=%v, want pinned alpha", item, ok)
+	if model.mode != ModeBrowse {
+		t.Fatalf("mode after unpin = %q, want browse", model.mode)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Pinned {
+		t.Fatalf("selected after unpin = %#v ok=%v, want unpinned alpha", item, ok)
 	}
 }
 
@@ -810,6 +955,17 @@ func TestSidebarModelRenderShowsPinnedMarkerInPrimaryMarkerColumn(t *testing.T) 
 	view := stripANSI(model.Render())
 	if !strings.Contains(view, pinnedMarkerSymbol+" [1] alpha") {
 		t.Fatalf("render missing pinned marker in primary marker column in %q", view)
+	}
+}
+
+func TestSidebarModelRenderShowsPinColorMarkerForSelectedPinnedSession(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Pinned: true, PinColor: "#38bdf8", Slot: 1}}, Actions{})
+	view := model.Render()
+	if !strings.Contains(view, "38;2;56;189;248") {
+		t.Fatalf("render missing selected pinned session color marker in %q", view)
+	}
+	if strings.Count(view, "48;2;6;95;70") < 2 {
+		t.Fatalf("render should keep selected background on marker and session text in %q", view)
 	}
 }
 

@@ -416,6 +416,17 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 			}
 			return handleActionError(ctx, "toggle pinned session", saveToggledPinnedSession(ctx, names, name))
 		},
+		PinSessionWithColor: func(name string, color string) bool {
+			items, err := loadSessionItems(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for pin color", err)
+			}
+			names := make([]string, 0, len(items))
+			for _, item := range items {
+				names = append(names, item.Name)
+			}
+			return handleActionError(ctx, "pin session color", savePinnedSessionColor(ctx, names, name, color))
+		},
 		ReorderSession: func(name string, delta int) bool {
 			items, err := loadSessionItems(ctx)
 			if err != nil {

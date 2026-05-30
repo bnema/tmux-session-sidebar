@@ -27,6 +27,7 @@ type SessionItem struct {
 	HeatIntensity float64
 	Attention     bool
 	Pinned        bool
+	PinColor      string
 }
 
 type ProjectItem struct {
@@ -42,6 +43,7 @@ type Actions struct {
 	RenameSession       func(string) bool
 	KillSession         func(string) bool
 	TogglePinnedSession func(string) bool
+	PinSessionWithColor func(string, string) bool
 	ReorderSession      func(string, int) bool
 	SetShowNumericItems func(bool) bool
 	LoadProjects        func() []ProjectItem
@@ -70,7 +72,10 @@ type SidebarModel struct {
 	version              string
 	checkUpdateAvailable func(currentVersion string) (bool, error)
 	updateAvailable      bool
+	width                int
 	height               int
+	pinColorPicker       PinColorPicker
+	pinColorSession      string
 }
 
 type sidebarStyles struct {
@@ -112,6 +117,7 @@ func (m SidebarModel) Init() tea.Cmd {
 func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
 	case updateAvailableMsg:
@@ -122,6 +128,13 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyPressMsg:
 		key := msg.Keystroke()
+		if key == "ctrl+c" {
+			return m, tea.Quit
+		}
+		if m.mode == ModePinColor {
+			m.handlePinColorKey(msg)
+			return m, nil
+		}
 		if delta, ok := reorderKeyDelta(msg); ok {
 			m.reorderSelected(delta)
 			return m, nil
@@ -148,7 +161,7 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if pinnedToggleKey(msg) && m.mode == ModeBrowse {
-			m.togglePinnedSelected()
+			m.handlePinKey()
 			return m, nil
 		}
 		if slot, ok := numericSlotKey(msg); ok && m.mode == ModeBrowse {
@@ -352,6 +365,51 @@ func (m *SidebarModel) reloadSessionsWithSelection(preservePreviousCurrent bool)
 	}
 }
 
+func (m *SidebarModel) handlePinKey() {
+	item, ok := m.selectedSession()
+	if !ok {
+		return
+	}
+	if item.Pinned {
+		m.togglePinnedSelected()
+		return
+	}
+	m.mode = ModePinColor
+	m.pinColorSession = item.Name
+	m.pinColorPicker = PinColorPicker{}
+}
+
+func (m *SidebarModel) handlePinColorKey(msg tea.KeyPressMsg) {
+	if delta, ok := m.pinColorPicker.MoveDelta(msg); ok {
+		m.pinColorPicker.Cursor = m.pinColorPicker.Move(delta)
+		return
+	}
+	if pinnedToggleKey(msg) || msg.Keystroke() == "enter" {
+		m.confirmPinColor()
+		return
+	}
+	if msg.Keystroke() == "esc" {
+		m.clearPinColorPicker()
+	}
+}
+
+func (m *SidebarModel) confirmPinColor() {
+	name := m.pinColorSession
+	color := m.pinColorPicker.SelectedColor()
+	if name == "" || m.actions.PinSessionWithColor == nil || !m.actions.PinSessionWithColor(name, color) {
+		return
+	}
+	m.clearPinColorPicker()
+	m.reloadSessions()
+	m.selectSession(name)
+}
+
+func (m *SidebarModel) clearPinColorPicker() {
+	m.mode = ModeBrowse
+	m.pinColorSession = ""
+	m.pinColorPicker = PinColorPicker{}
+}
+
 func (m *SidebarModel) togglePinnedSelected() {
 	item, ok := m.selectedSession()
 	if !ok || m.actions.TogglePinnedSession == nil || !m.actions.TogglePinnedSession(item.Name) {
@@ -474,7 +532,11 @@ func (m SidebarModel) Render() string {
 		lines = append(lines, "", styles.accent.Render(m.message))
 	}
 	lines = StatusBar{Lines: m.statusBarLines(styles), Height: m.height}.RenderBelow(padSidebarContentLines(lines))
-	return strings.Join(lines, "\n")
+	content := strings.Join(lines, "\n")
+	if m.mode == ModePinColor {
+		return m.pinColorPicker.RenderOverlay(content, m.width, m.height)
+	}
+	return content
 }
 
 func padSidebarContentLines(lines []string) []string {
@@ -523,7 +585,7 @@ func newSidebarStyles() sidebarStyles {
 		active:          lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
 		stale:           lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
 		selected:        lipgloss.NewStyle().Background(lipgloss.Color("#065f46")).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
-		pinned:          lipgloss.NewStyle().Foreground(lipgloss.Color("#facc15")).Bold(true),
+		pinned:          lipgloss.NewStyle().Foreground(lipgloss.Color(defaultPinColor)).Bold(true),
 		versionBadge:    lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#e0f2fe")).Bold(true),
 		updateIndicator: lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#22c55e")).Bold(true),
 	}
@@ -531,7 +593,7 @@ func newSidebarStyles() sidebarStyles {
 
 func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
 	if item.Pinned {
-		return styles.pinned
+		return styles.pinned.Foreground(lipgloss.Color(pinColor(item)))
 	}
 	if item.Current {
 		return styles.active
@@ -547,9 +609,16 @@ func sessionMarkerStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
 		return styles.active
 	}
 	if item.Pinned {
-		return styles.pinned
+		return styles.pinned.Foreground(lipgloss.Color(pinColor(item)))
 	}
 	return sessionRowStyle(styles, item)
+}
+
+func pinColor(item SessionItem) string {
+	if strings.TrimSpace(item.PinColor) == "" {
+		return defaultPinColor
+	}
+	return item.PinColor
 }
 
 func sessionMarker(item SessionItem) string {
@@ -588,7 +657,13 @@ func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
 		}
 		var row string
 		if i == m.cursor {
-			row = styles.selected.Render(fmt.Sprintf("%s %s%s", sessionMarker(item), badge, item.Name))
+			if item.Pinned {
+				marker := sessionMarkerStyle(styles, item).Background(lipgloss.Color("#065f46")).Render(sessionMarker(item))
+				body := styles.selected.Render(fmt.Sprintf(" %s%s", badge, item.Name))
+				row = marker + body
+			} else {
+				row = styles.selected.Render(fmt.Sprintf("%s %s%s", sessionMarker(item), badge, item.Name))
+			}
 		} else {
 			marker := sessionMarkerStyle(styles, item).Render(sessionMarker(item))
 			body := sessionRowStyle(styles, item).Render(fmt.Sprintf("%s%s", badge, item.Name))

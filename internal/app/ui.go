@@ -115,7 +115,7 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 	slot := 1
 	for _, name := range names {
 		_, isPinned := pinned[name]
-		item := uity.SessionItem{Name: name, Current: name == current, Pinned: isPinned}
+		item := uity.SessionItem{Name: name, Current: name == current, Pinned: isPinned, PinColor: persisted.PinColors[name]}
 		if display, ok := heatDisplays[name]; ok && cfg.HeatColorsEnabled {
 			item.Heat = string(display.Bucket)
 			item.HeatIntensity = display.Intensity
