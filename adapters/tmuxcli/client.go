@@ -103,6 +103,10 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
+	agentAttentionAnimation, err := c.option(ctx, "@session-sidebar-agent-attention-animation")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
 	autoSortRecent, err := c.option(ctx, "@session-sidebar-auto-sort-recent")
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
@@ -121,23 +125,24 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		return ports.ConfigSnapshot{}, err
 	}
 	return ports.ConfigSnapshot{
-		Loaded:                 true,
-		KeyBinding:             key,
-		Width:                  width,
-		ProjectRoots:           splitProjectRoots(roots),
-		CloseAfterSwitch:       parseTmuxBool(closeAfterSwitch),
-		HeatColorsEnabled:      parseTmuxBool(heatColors),
-		HeatHalfLifeHours:      halfLifeHours,
-		HeatStaleHours:         staleHours,
-		HeatRefreshSeconds:     refreshSeconds,
-		HeatRecentInterval:     recentInterval,
-		HeatMaxHighlighted:     maxHighlighted,
-		ActivityDebugLog:       parseTmuxBool(activityDebugLog),
-		AgentAttentionEnabled:  agentAttention == "" || parseTmuxBool(agentAttention),
-		AutoSortRecentInterval: autoSortRecentInterval,
-		RestoreSessionsMode:    normalizeRestoreSessionsMode(restoreSessionsMode),
-		ContinuumGraceSeconds:  continuumGraceSeconds,
-		MetadataSublineEnabled: metadataSubline == "" || parseTmuxBool(metadataSubline),
+		Loaded:                  true,
+		KeyBinding:              key,
+		Width:                   width,
+		ProjectRoots:            splitProjectRoots(roots),
+		CloseAfterSwitch:        parseTmuxBool(closeAfterSwitch),
+		HeatColorsEnabled:       parseTmuxBool(heatColors),
+		HeatHalfLifeHours:       halfLifeHours,
+		HeatStaleHours:          staleHours,
+		HeatRefreshSeconds:      refreshSeconds,
+		HeatRecentInterval:      recentInterval,
+		HeatMaxHighlighted:      maxHighlighted,
+		ActivityDebugLog:        parseTmuxBool(activityDebugLog),
+		AgentAttentionEnabled:   agentAttention == "" || parseTmuxBool(agentAttention),
+		AgentAttentionAnimation: config.ParseAgentAttentionAnimation(agentAttentionAnimation),
+		AutoSortRecentInterval:  autoSortRecentInterval,
+		RestoreSessionsMode:     normalizeRestoreSessionsMode(restoreSessionsMode),
+		ContinuumGraceSeconds:   continuumGraceSeconds,
+		MetadataSublineEnabled:  metadataSubline == "" || parseTmuxBool(metadataSubline),
 	}, nil
 }
 

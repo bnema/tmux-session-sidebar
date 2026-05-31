@@ -1,6 +1,9 @@
 package uity
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 type rgbColor struct {
 	red   int
@@ -9,6 +12,8 @@ type rgbColor struct {
 }
 
 var (
+	// selectedRowBackgroundRGB is the sidebar selection background (#065f46).
+	selectedRowBackgroundRGB = rgbColor{red: 6, green: 95, blue: 70}
 	// inactiveSessionRGB is the out-of-heat color: the default dark gray (#4b5563)
 	// used only for sessions outside the recent activity window.
 	inactiveSessionRGB = rgbColor{red: 75, green: 85, blue: 99}
@@ -26,6 +31,43 @@ func heatColor(intensity float64) string {
 
 func heatRGB(intensity float64) rgbColor {
 	return blendRGB(heatCoolRGB, heatHotRGB, clampIntensity(intensity))
+}
+
+func hslHex(hue, saturation, lightness float64) string {
+	return hslRGB(hue, saturation, lightness).Hex()
+}
+
+func hslRGB(hue, saturation, lightness float64) rgbColor {
+	hue = math.Mod(hue, 360)
+	if hue < 0 {
+		hue += 360
+	}
+	saturation = clampIntensity(saturation)
+	lightness = clampIntensity(lightness)
+	chroma := (1 - math.Abs(2*lightness-1)) * saturation
+	h := hue / 60
+	x := chroma * (1 - math.Abs(math.Mod(h, 2)-1))
+	red, green, blue := 0.0, 0.0, 0.0
+	switch {
+	case h < 1:
+		red, green = chroma, x
+	case h < 2:
+		red, green = x, chroma
+	case h < 3:
+		green, blue = chroma, x
+	case h < 4:
+		green, blue = x, chroma
+	case h < 5:
+		red, blue = x, chroma
+	default:
+		red, blue = chroma, x
+	}
+	match := lightness - chroma/2
+	return rgbColor{red: colorByte(red + match), green: colorByte(green + match), blue: colorByte(blue + match)}
+}
+
+func colorByte(value float64) int {
+	return int(math.Round(clampIntensity(value) * 255))
 }
 
 func blendRGB(cool rgbColor, hot rgbColor, intensity float64) rgbColor {

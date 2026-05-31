@@ -1,8 +1,6 @@
 package uity
 
 import (
-	"fmt"
-	"math"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -35,33 +33,6 @@ func generatePinColorPalette() []string {
 		}
 	}
 	return palette
-}
-
-func hslHex(hue, saturation, lightness float64) string {
-	chroma := (1 - math.Abs(2*lightness-1)) * saturation
-	h := hue / 60
-	x := chroma * (1 - math.Abs(math.Mod(h, 2)-1))
-	red, green, blue := 0.0, 0.0, 0.0
-	switch {
-	case h < 1:
-		red, green = chroma, x
-	case h < 2:
-		red, green = x, chroma
-	case h < 3:
-		green, blue = chroma, x
-	case h < 4:
-		green, blue = x, chroma
-	case h < 5:
-		red, blue = x, chroma
-	default:
-		red, blue = chroma, x
-	}
-	match := lightness - chroma/2
-	return fmt.Sprintf("#%02x%02x%02x", colorByte(red+match), colorByte(green+match), colorByte(blue+match))
-}
-
-func colorByte(value float64) int {
-	return int(math.Round(min(max(value, 0), 1) * 255))
 }
 
 type PinColorPicker struct {

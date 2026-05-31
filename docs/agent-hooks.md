@@ -52,7 +52,7 @@ The installed integrations emit generic sidebar events:
 - session end when the CLI exposes it
 
 Those events feed the dedicated `AgentAttention` state in `tmux-session-sidebar`.
-The bell marker appears for the session when an agent reports completion or user attention is needed, and clears when that session becomes current again in any attached tmux client.
+The bell marker appears for the session when an agent reports completion or user attention is needed, and clears when that session becomes current again in any attached tmux client. Unread bells animate with `@session-sidebar-agent-attention-animation`, which accepts `off`, `pulse`, `rainbow`, or `blink`.
 
 ## Disable the feature
 
@@ -60,6 +60,7 @@ Global tmux option:
 
 ```tmux
 set -g @session-sidebar-agent-attention 'off'
+set -g @session-sidebar-agent-attention-animation 'off'
 ```
 
 Per-process escape hatch env vars:

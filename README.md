@@ -59,6 +59,7 @@ set -g @session-sidebar-heat-colors 'on'
 set -g @session-sidebar-heat-recent '1h'
 set -g @session-sidebar-heat-max-highlighted '0'
 set -g @session-sidebar-agent-attention 'on'
+set -g @session-sidebar-agent-attention-animation 'pulse'
 set -g @session-sidebar-auto-sort-recent 'off'
 set -g @session-sidebar-restore-sessions 'auto'
 set -g @session-sidebar-continuum-grace-seconds '3'
@@ -75,6 +76,7 @@ set -g @session-sidebar-metadata-subline 'on'
 | `@session-sidebar-heat-recent` | `1h` | Relative window used for recent-activity heat colors, for example `10m`, `2h`, or `3d`. Empty, `1`, `on`, `yes`, and `true` are treated as `1h`. |
 | `@session-sidebar-heat-max-highlighted` | `0` | Maximum highlighted sessions at once; `0` means no limit |
 | `@session-sidebar-agent-attention` | `on` | Enable bell markers from supported agent hooks |
+| `@session-sidebar-agent-attention-animation` | `pulse` | Bell marker animation style: `off`, `pulse`, `rainbow`, or `blink` |
 | `@session-sidebar-auto-sort-recent` | `off` | Relative interval for reordering sessions by most recent real pane activity, for example `10m`, `2h`, or `3d` |
 | `@session-sidebar-restore-sessions` | `auto` | Lightweight missing-session restore mode: `auto` skips during tmux-continuum startup restore, `on` always restores, `off` never restores |
 | `@session-sidebar-continuum-grace-seconds` | `3` | Extra seconds added to `@continuum-restore-max-delay` before lightweight restore resumes in `auto` mode |
@@ -195,7 +197,7 @@ set -g @session-sidebar-auto-sort-recent '10m'
 
 Accepted intervals are minutes (`10m`), hours (`2h`, `24h`), or days (`3d`). `off` disables automatic sorting. For compatibility, `on` is treated as `24h`. This uses real pane activity tracked by the heat state, not a simple session switch. Accidentally switching to a session and switching back does not move it up unless pane output changes there.
 
-Agent bells are separate. If enabled, supported agent hooks can mark a session with a bell when an agent stops or needs attention. The bell clears when that session becomes current in any attached tmux client.
+Agent bells are separate. If enabled, supported agent hooks can mark a session with a bell when an agent stops or needs attention. The bell clears when that session becomes current in any attached tmux client. While unread, the bell animates with `@session-sidebar-agent-attention-animation`; use `off`, `pulse`, `rainbow`, or `blink`.
 
 Install hooks for supported agents found on `PATH`:
 

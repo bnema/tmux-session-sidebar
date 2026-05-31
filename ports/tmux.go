@@ -3,26 +3,29 @@ package ports
 import (
 	"context"
 	"time"
+
+	"github.com/bnema/tmux-session-sidebar/core/config"
 )
 
 type ConfigSnapshot struct {
-	Loaded                 bool
-	KeyBinding             string
-	Width                  string
-	ProjectRoots           []string
-	CloseAfterSwitch       bool
-	HeatColorsEnabled      bool
-	HeatHalfLifeHours      int
-	HeatStaleHours         int
-	HeatRefreshSeconds     int
-	HeatRecentInterval     time.Duration
-	HeatMaxHighlighted     int
-	ActivityDebugLog       bool
-	AgentAttentionEnabled  bool
-	AutoSortRecentInterval time.Duration
-	RestoreSessionsMode    string
-	ContinuumGraceSeconds  int
-	MetadataSublineEnabled bool
+	Loaded                  bool
+	KeyBinding              string
+	Width                   string
+	ProjectRoots            []string
+	CloseAfterSwitch        bool
+	HeatColorsEnabled       bool
+	HeatHalfLifeHours       int
+	HeatStaleHours          int
+	HeatRefreshSeconds      int
+	HeatRecentInterval      time.Duration
+	HeatMaxHighlighted      int
+	ActivityDebugLog        bool
+	AgentAttentionEnabled   bool
+	AgentAttentionAnimation config.AgentAttentionAnimation
+	AutoSortRecentInterval  time.Duration
+	RestoreSessionsMode     string
+	ContinuumGraceSeconds   int
+	MetadataSublineEnabled  bool
 }
 
 type TmuxSessionSnapshot struct {

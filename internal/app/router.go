@@ -392,7 +392,8 @@ func serveSidebarUI(ctx context.Context, flags map[string]string, stdout io.Writ
 
 func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort) error {
 	defer scheduleSidebarLayoutRestoreOnExit(ctx, flags, sidebar)
-	items, err := loadSessionItems(ctx)
+	cfg := loadSidebarConfig(ctx)
+	items, err := loadSessionItemsWithConfig(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -471,7 +472,7 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 			return items
 		},
 	}
-	options := uity.SidebarOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, githubrelease.Client{})}
+	options := uity.SidebarOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, githubrelease.Client{}), AgentAttentionAnimation: cfg.AgentAttentionAnimation}
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}
