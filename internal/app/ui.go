@@ -143,16 +143,16 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 
 func gitStatusMetadataSubline(status ports.GitStatus) uity.SessionMetadataSubline {
 	return uity.SessionMetadataSubline{
-		Kind:      uity.MetadataKindGit,
-		Branch:    status.Branch,
-		Clean:     status.Clean,
-		Ahead:     status.Ahead,
-		Behind:    status.Behind,
-		Staged:    status.Staged,
-		Modified:  status.Modified,
-		Deleted:   status.Deleted,
-		Renamed:   status.Renamed,
-		Untracked: status.Untracked,
+		Kind:            uity.MetadataKindGit,
+		Branch:          status.Branch,
+		Clean:           status.Clean,
+		Ahead:           status.Ahead,
+		Behind:          status.Behind,
+		Staged:          status.Staged,
+		Modified:        status.Modified,
+		Deleted:         status.Deleted,
+		Renamed:         status.Renamed,
+		Untracked:       status.Untracked,
 		Conflicts:       status.Conflicts,
 		UpstreamMissing: !status.UpstreamConfigured,
 	}

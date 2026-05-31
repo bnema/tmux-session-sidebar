@@ -3,6 +3,7 @@ package gitcli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -31,7 +32,11 @@ func (g Git) Status(ctx context.Context, path string) (ports.GitStatus, error) {
 		return ports.GitStatus{}, err
 	}
 	status := ports.GitStatus{RepoRoot: repoRoot, Branch: branch}
-	if ahead, behind, ok := g.divergence(ctx, repoRoot); ok {
+	ahead, behind, upstreamConfigured, err := g.divergence(ctx, repoRoot)
+	if err != nil {
+		return ports.GitStatus{}, err
+	}
+	if upstreamConfigured {
 		status.Ahead = ahead
 		status.Behind = behind
 		status.UpstreamConfigured = true
@@ -64,21 +69,24 @@ func (g Git) branch(ctx context.Context, repoRoot string) (string, error) {
 	return commit, nil
 }
 
-func (g Git) divergence(ctx context.Context, repoRoot string) (int, int, bool) {
+func (g Git) divergence(ctx context.Context, repoRoot string) (int, int, bool, error) {
 	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "rev-list", "--left-right", "--count", "HEAD...@{upstream}"})
 	if err != nil {
-		return 0, 0, false
+		if isMissingUpstreamError(result, err) {
+			return 0, 0, false, nil
+		}
+		return 0, 0, false, mapGitError(result, err)
 	}
 	fields := strings.Fields(result.Stdout)
 	if len(fields) < 2 {
-		return 0, 0, false
+		return 0, 0, false, fmt.Errorf("git rev-list upstream count output %q", strings.TrimSpace(result.Stdout))
 	}
 	ahead, errAhead := strconv.Atoi(fields[0])
 	behind, errBehind := strconv.Atoi(fields[1])
 	if errAhead != nil || errBehind != nil {
-		return 0, 0, false
+		return 0, 0, false, fmt.Errorf("parse git rev-list upstream count %q", strings.TrimSpace(result.Stdout))
 	}
-	return ahead, behind, true
+	return ahead, behind, true, nil
 }
 
 func (g Git) workingTree(ctx context.Context, repoRoot string, status *ports.GitStatus) error {
@@ -148,6 +156,11 @@ func countWorktreeStatus(statusByte byte, status *ports.GitStatus) {
 func isEmptyRepositoryRevisionError(result ports.Result, err error) bool {
 	message := strings.ToLower(result.Stderr + result.Stdout + err.Error())
 	return strings.Contains(message, "needed a single revision") || strings.Contains(message, "unknown revision") || strings.Contains(message, "ambiguous argument 'head'")
+}
+
+func isMissingUpstreamError(result ports.Result, err error) bool {
+	message := strings.ToLower(result.Stderr + result.Stdout + err.Error())
+	return strings.Contains(message, "no upstream configured") || strings.Contains(message, "no upstream branch") || strings.Contains(message, "upstream") && strings.Contains(message, "not found")
 }
 
 func mapGitError(result ports.Result, err error) error {

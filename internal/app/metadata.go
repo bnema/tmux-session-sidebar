@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -18,6 +17,7 @@ import (
 
 const metadataGitStatusConcurrency = 4 // Keep async Git I/O bounded so sidebar refreshes do not fan out unbounded subprocesses.
 
+var metadataCaptureTimeout = 10 * time.Second
 var metadataGitStatusTimeout = 250 * time.Millisecond
 var metadataCaptureInFlight atomic.Bool
 
@@ -27,7 +27,9 @@ func captureSessionMetadataAsync(ctx context.Context, cfg ports.ConfigSnapshot) 
 	}
 	go func() {
 		defer metadataCaptureInFlight.Store(false)
-		if changed, err := captureSessionMetadata(ctx, cfg); err != nil {
+		captureCtx, cancel := context.WithTimeout(ctx, metadataCaptureTimeout)
+		defer cancel()
+		if changed, err := captureSessionMetadata(captureCtx, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata capture failed: %v\n", err)
 		} else if changed {
 			refreshAllSidebarPanesBestEffort(ctx)
@@ -111,25 +113,17 @@ func captureSessionMetadata(ctx context.Context, cfg ports.ConfigSnapshot) (bool
 		if err != nil {
 			return err
 		}
-		next := maps.Clone(latest.Metadata)
-		if next == nil {
-			next = map[string]ports.GitStatus{}
-		}
+		next := make(map[string]ports.GitStatus, len(liveNames))
 		for name := range liveNames {
-			if _, ok := latest.Sessions[name]; !ok {
-				delete(next, name)
-				continue
-			}
-			if _, ok := sessionMetadataPath(latest.Sessions[name]); !ok {
-				delete(next, name)
+			if _, ok := terminalDeletes[name]; ok {
 				continue
 			}
 			if status, ok := results[name]; ok {
 				next[name] = status
 				continue
 			}
-			if _, ok := terminalDeletes[name]; ok {
-				delete(next, name)
+			if status, ok := latest.Metadata[name]; ok {
+				next[name] = status
 			}
 		}
 		if gitMetadataEqual(latest.Metadata, next) {

@@ -40,21 +40,21 @@ const (
 )
 
 type SessionMetadataSubline struct {
-	Kind        MetadataKind
-	SessionName string
-	Branch      string
-	Clean       bool
-	Ahead       int
-	Behind      int
-	Staged      int
-	Modified    int
-	Deleted     int
-	Renamed     int
-	Untracked   int
+	Kind            MetadataKind
+	SessionName     string
+	Branch          string
+	Clean           bool
+	Ahead           int
+	Behind          int
+	Staged          int
+	Modified        int
+	Deleted         int
+	Renamed         int
+	Untracked       int
 	Conflicts       int
 	UpstreamMissing bool
 	Path            string
-	Label       string
+	Label           string
 }
 
 type MetadataSublineOptions struct {
@@ -258,4 +258,3 @@ func runeDisplayWidth(r rune) int {
 	}
 	return lipgloss.Width(string(r))
 }
-

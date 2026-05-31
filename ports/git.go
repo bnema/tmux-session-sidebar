@@ -9,16 +9,16 @@ var ErrNotGitRepository = errors.New("not a git repository")
 var ErrGitPathMissing = errors.New("git path missing")
 
 type GitStatus struct {
-	RepoRoot  string
-	Branch    string
-	Clean     bool
-	Ahead     int
-	Behind    int
-	Staged    int
-	Modified  int
-	Deleted   int
-	Renamed   int
-	Untracked int
+	RepoRoot           string
+	Branch             string
+	Clean              bool
+	Ahead              int
+	Behind             int
+	Staged             int
+	Modified           int
+	Deleted            int
+	Renamed            int
+	Untracked          int
 	Conflicts          int
 	UpstreamConfigured bool
 }

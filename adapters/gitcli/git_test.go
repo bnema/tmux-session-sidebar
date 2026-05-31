@@ -86,6 +86,29 @@ func (p *missingUpstreamProcess) Exec(ctx context.Context, cmd string, args []st
 	return ports.Result{}, errors.New("unexpected call")
 }
 
+func TestGitStatusPropagatesDivergenceCancellation(t *testing.T) {
+	process := &canceledDivergenceProcess{}
+	_, err := (Git{Process: process}).Status(t.Context(), "/work")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Status error = %v, want context.Canceled", err)
+	}
+}
+
+type canceledDivergenceProcess struct{}
+
+func (p *canceledDivergenceProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
+	if len(args) >= 4 && args[2] == "rev-parse" && args[3] == "--show-toplevel" {
+		return ports.Result{Stdout: "/repo\n"}, nil
+	}
+	if len(args) >= 4 && args[2] == "branch" && args[3] == "--show-current" {
+		return ports.Result{Stdout: "work\n"}, nil
+	}
+	if len(args) >= 4 && args[2] == "rev-list" {
+		return ports.Result{}, context.Canceled
+	}
+	return ports.Result{}, errors.New("unexpected call")
+}
+
 func TestGitStatusReportsNonRepo(t *testing.T) {
 	process := gitErrorProcess{stderr: "fatal: not a git repository"}
 	_, err := (Git{Process: process}).Status(t.Context(), "/work")
