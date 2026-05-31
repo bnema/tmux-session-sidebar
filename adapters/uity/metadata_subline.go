@@ -12,16 +12,15 @@ import (
 )
 
 const (
-	MetadataNerdPush      = "\uf403" // nf-oct-repo_push
-	MetadataNerdPull      = "\uf404" // nf-oct-repo_pull
-	MetadataNerdAdded     = "\uf457" // nf-oct-diff_added
-	MetadataNerdModified  = "\uf459" // nf-oct-diff_modified
-	MetadataNerdRemoved   = "\uf458" // nf-oct-diff_removed
-	MetadataNerdRenamed   = "\uf45a" // nf-oct-diff_renamed
-	MetadataNerdQuestion  = "\uf128" // nf-fa-question
-	MetadataNerdWarning   = "\uf071" // nf-fa-warning
-	MetadataNerdDirectory = "\uf115" // nf-fa-folder_open_o
-	MetadataNerdShell     = "\uf120" // nf-fa-terminal
+	MetadataNerdGitCompare = "\uf47f" // nf-oct-git_compare
+	MetadataNerdAdded      = "\uf457" // nf-oct-diff_added
+	MetadataNerdModified   = "\uf459" // nf-oct-diff_modified
+	MetadataNerdRemoved    = "\uf458" // nf-oct-diff_removed
+	MetadataNerdRenamed    = "\uf45a" // nf-oct-diff_renamed
+	MetadataNerdQuestion   = "\uf128" // nf-fa-question
+	MetadataNerdWarning    = "\uf071" // nf-fa-warning
+	MetadataNerdDirectory  = "\uf115" // nf-fa-folder_open_o
+	MetadataNerdShell      = "\uf120" // nf-fa-terminal
 )
 
 type MetadataKind string
@@ -113,11 +112,8 @@ func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level g
 	if meta.Conflicts > 0 {
 		parts = append(parts, countPart(icons, MetadataNerdWarning, "!", meta.Conflicts))
 	}
-	if meta.Ahead > 0 {
-		parts = append(parts, countPart(icons, MetadataNerdPush, "^", meta.Ahead))
-	}
-	if meta.Behind > 0 {
-		parts = append(parts, countPart(icons, MetadataNerdPull, "v", meta.Behind))
+	if meta.Ahead > 0 || meta.Behind > 0 {
+		parts = append(parts, divergencePart(icons, meta.Ahead, meta.Behind))
 	}
 	if level == gitDetailsDivergence {
 		return parts
@@ -149,6 +145,20 @@ func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level g
 		parts = append(parts, countPart(icons, MetadataNerdQuestion, "?", meta.Untracked))
 	}
 	return parts
+}
+
+func divergencePart(icons MetadataIconMode, ahead int, behind int) string {
+	parts := make([]string, 0, 3)
+	if icons == MetadataIconsNerd {
+		parts = append(parts, MetadataNerdGitCompare)
+	}
+	if ahead > 0 {
+		parts = append(parts, "+"+strconv.Itoa(ahead))
+	}
+	if behind > 0 {
+		parts = append(parts, "-"+strconv.Itoa(behind))
+	}
+	return strings.Join(parts, " ")
 }
 
 func countPart(icons MetadataIconMode, nerdIcon string, asciiPrefix string, count int) string {

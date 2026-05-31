@@ -547,7 +547,7 @@ func TestSidebarModelRenderCompactsMetadataSublineToWindowWidth(t *testing.T) {
 	model = requireSidebarModel(t, updated)
 
 	lines := strings.Split(stripANSI(model.Render()), "\n")
-	if len(lines) < 3 || !strings.Contains(lines[2], " 2  3") {
+	if len(lines) < 3 || !strings.Contains(lines[2], " +2  3") {
 		t.Fatalf("metadata subline should be width-aware, lines=%q", lines)
 	}
 	if width := metadataDisplayWidth(strings.TrimSpace(lines[2])); width > 24 {
