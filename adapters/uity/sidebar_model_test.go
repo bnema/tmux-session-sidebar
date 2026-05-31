@@ -519,17 +519,59 @@ func TestSidebarModelRenderShowsMetadataSublineBelowSessionRow(t *testing.T) {
 	model = requireSidebarModel(t, updated)
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, " [1] alpha \n        2") {
+	if !strings.Contains(view, " [1] alpha \n        2") {
 		t.Fatalf("render should include metadata subline below session row: %q", view)
 	}
 }
 
-func TestSidebarModelRenderBrightensSelectedMetadataSubline(t *testing.T) {
-	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1, Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Modified: 2}}}, Actions{})
+func TestSidebarModelRenderBrightensSelectedRecentMetadataSubline(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1, Heat: string(heat.BucketHot), Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Modified: 2}}}, Actions{})
 	view := model.Render()
 
-	if !strings.Contains(view, "38;2;100;116;139") {
-		t.Fatalf("selected metadata should use brighter subdued color: %q", view)
+	if !strings.Contains(view, "38;2;253;224;71") {
+		t.Fatalf("selected recent metadata should use active part colors: %q", view)
+	}
+}
+
+func TestSidebarModelRenderColorsSelectedRecentGitMetadataParts(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Heat: string(heat.BucketHot), Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Ahead: 12, Behind: 2, Staged: 3, Modified: 8}}}, Actions{})
+	view := model.Render()
+
+	for _, want := range []string{"38;2;125;211;252", "38;2;134;239;172", "38;2;248;113;113", "38;2;147;197;253", "38;2;253;224;71"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("recent metadata should include color %s, view=%q", want, view)
+		}
+	}
+}
+
+func TestSidebarModelRenderColorsUnselectedRecentGitMetadataParts(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{
+		{Name: "alpha"},
+		{Name: "beta", Heat: string(heat.BucketHot), Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Ahead: 12, Behind: 2, Staged: 3, Modified: 8}},
+	}, Actions{})
+	view := model.Render()
+
+	for _, want := range []string{"38;2;56;189;248", "38;2;74;222;128", "38;2;248;113;113", "38;2;96;165;250", "38;2;234;179;8"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("unselected recent metadata should include color %s, view=%q", want, view)
+		}
+	}
+}
+
+func TestSidebarModelRenderDesaturatesStaleGitMetadata(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Heat: string(heat.BucketStale), Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Ahead: 12, Behind: 2, Staged: 3, Modified: 8}}}, Actions{})
+	view := model.Render()
+
+	for _, forbidden := range []string{"38;2;125;211;252", "38;2;56;189;248", "38;2;134;239;172", "38;2;74;222;128", "38;2;248;113;113", "38;2;147;197;253", "38;2;96;165;250", "38;2;253;224;71", "38;2;234;179;8"} {
+		if strings.Contains(view, forbidden) {
+			t.Fatalf("stale metadata should not include part color %s, view=%q", forbidden, view)
+		}
+	}
+	if !strings.Contains(stripANSI(view), " 12 -2  3  8") {
+		t.Fatalf("stale metadata should still render desaturated content, view=%q", view)
+	}
+	if !strings.Contains(view, "38;2;75;85;99") {
+		t.Fatalf("stale metadata should use inactive dark gray, view=%q", view)
 	}
 }
 
@@ -547,7 +589,7 @@ func TestSidebarModelRenderCompactsMetadataSublineToWindowWidth(t *testing.T) {
 	model = requireSidebarModel(t, updated)
 
 	lines := strings.Split(stripANSI(model.Render()), "\n")
-	if len(lines) < 3 || !strings.Contains(lines[2], " 2  3") {
+	if len(lines) < 3 || !strings.Contains(lines[2], " 2  3") {
 		t.Fatalf("metadata subline should be width-aware, lines=%q", lines)
 	}
 	if width := metadataDisplayWidth(strings.TrimSpace(lines[2])); width > 24 {

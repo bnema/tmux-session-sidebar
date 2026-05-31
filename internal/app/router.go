@@ -396,7 +396,6 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 	if err != nil {
 		return err
 	}
-	captureSessionMetadataAsync(ctx, loadSidebarConfig(ctx))
 	persisted, _ := loadSidebarState(ctx)
 	client := effectiveUIClient(ctx, flags)
 	actions := uity.Actions{

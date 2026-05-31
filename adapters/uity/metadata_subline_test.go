@@ -13,7 +13,7 @@ func TestFormatMetadataSublineNerdGitStates(t *testing.T) {
 		Untracked: 1,
 	}, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 80})
 
-	want := " 2 -1  1  3  1"
+	want := " 2 -1  1  4"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}
@@ -30,7 +30,7 @@ func TestFormatMetadataSublineASCIIGitStates(t *testing.T) {
 		Untracked: 1,
 	}, MetadataSublineOptions{Icons: MetadataIconsASCII, Width: 80})
 
-	want := "2 -1 +1 ~3 ?1"
+	want := "2 -1 S1 U4"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}
@@ -70,7 +70,7 @@ func TestFormatMetadataSublineOmitsBranchEvenWhenLong(t *testing.T) {
 	}
 
 	got := FormatMetadataSubline(meta, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 24})
-	want := " 2  3"
+	want := " 2  3"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}
@@ -79,7 +79,7 @@ func TestFormatMetadataSublineOmitsBranchEvenWhenLong(t *testing.T) {
 	}
 }
 
-func TestFormatMetadataSublineFallsBackToDirtySummaryWhenWidthIsTight(t *testing.T) {
+func TestFormatMetadataSublineFallsBackToUnstagedSummaryWhenWidthIsTight(t *testing.T) {
 	meta := SessionMetadataSubline{
 		Kind:      MetadataKindGit,
 		Branch:    "feature/add-session-metadata-subline",
@@ -90,8 +90,8 @@ func TestFormatMetadataSublineFallsBackToDirtySummaryWhenWidthIsTight(t *testing
 		Untracked: 1,
 	}
 
-	got := FormatMetadataSubline(meta, MetadataSublineOptions{Icons: MetadataIconsASCII, Width: 12})
-	want := "dirty5"
+	got := FormatMetadataSubline(meta, MetadataSublineOptions{Icons: MetadataIconsASCII, Width: 8})
+	want := "2 -1 U4"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}

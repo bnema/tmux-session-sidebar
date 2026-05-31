@@ -139,8 +139,7 @@ esac
 		t.Fatalf("save state: %v", err)
 	}
 
-	ctx := context.WithValue(context.Background(), disableAsyncMetadataCaptureKey{}, true)
-	items, err := loadSessionItems(ctx)
+	items, err := loadSessionItems(context.Background())
 	if err != nil {
 		t.Fatalf("loadSessionItems error: %v", err)
 	}

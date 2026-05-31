@@ -700,19 +700,16 @@ func (m SidebarModel) renderSessionMetadataSubline(_ sidebarStyles, item Session
 	if width <= 0 {
 		width = metadataSublineFallbackWidth
 	}
-	subline := FormatMetadataSubline(item.Metadata, MetadataSublineOptions{Icons: m.metadataIconMode, Width: width})
+	subline := RenderMetadataSubline(item.Metadata, MetadataSublineRenderOptions{Icons: m.metadataIconMode, Width: width, Selected: selected, Active: metadataColorActive(item)})
 	if subline == "" {
 		return ""
 	}
 	indent := "  " + strings.Repeat(" ", metadataDisplayWidth(badge))
-	return metadataSublineStyle(selected).Render(indent + subline)
+	return indent + subline
 }
 
-func metadataSublineStyle(selected bool) lipgloss.Style {
-	if selected {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#64748b"))
-	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("#4b5563"))
+func metadataColorActive(item SessionItem) bool {
+	return item.Current || (item.Heat != "" && item.Heat != string(heat.BucketStale))
 }
 
 func bestEffortMetadataIconMode() MetadataIconMode {

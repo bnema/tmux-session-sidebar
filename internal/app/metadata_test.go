@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -29,8 +28,4 @@ func TestGitStatusMetadataSublineCarriesUpstreamMissing(t *testing.T) {
 	if !got.UpstreamMissing {
 		t.Fatalf("UpstreamMissing = false, want true: %#v", got)
 	}
-}
-
-func TestDisableAsyncMetadataCaptureKeyCompiles(t *testing.T) {
-	_ = context.WithValue(context.Background(), disableAsyncMetadataCaptureKey{}, true)
 }

@@ -13,11 +13,8 @@ import (
 
 const (
 	MetadataNerdGitCompare = "\uf440" // nf-oct-diff; desired compare glyph in supported Nerd Fonts
-	MetadataNerdAdded      = "\uf457" // nf-oct-diff_added
-	MetadataNerdModified   = "\uf459" // nf-oct-diff_modified
-	MetadataNerdRemoved    = "\uf458" // nf-oct-diff_removed
-	MetadataNerdRenamed    = "\uf45a" // nf-oct-diff_renamed
-	MetadataNerdQuestion   = "\uf128" // nf-fa-question
+	MetadataNerdStaged     = "\uf45e" // nf-oct-checklist; staged/index changes
+	MetadataNerdWorktree   = "\uf448" // nf-oct-pencil; unstaged/untracked worktree changes
 	MetadataNerdWarning    = "\uf071" // nf-fa-warning
 	MetadataNerdDirectory  = "\uf115" // nf-fa-folder_open_o
 	MetadataNerdShell      = "\uf120" // nf-fa-terminal
@@ -82,98 +79,121 @@ func FormatMetadataSubline(meta SessionMetadataSubline, options MetadataSublineO
 }
 
 func formatGitMetadataSubline(meta SessionMetadataSubline, icons MetadataIconMode, width int) string {
-	partSets := [][]string{
-		gitDetailParts(meta, icons, gitDetailsFull),
-		gitDetailParts(meta, icons, gitDetailsSummary),
-		gitDetailParts(meta, icons, gitDetailsDivergence),
-	}
-	for _, parts := range partSets {
-		line := strings.Join(parts, " ")
-		if line != "" && metadataDisplayWidth(line) <= width {
-			return line
-		}
-	}
-	return ""
+	return metadataPartText(formatGitMetadataSublineParts(meta, icons, width))
+}
+
+type metadataPartRole string
+
+const (
+	metadataPartBase     metadataPartRole = "base"
+	metadataPartCompare  metadataPartRole = "compare"
+	metadataPartAhead    metadataPartRole = "ahead"
+	metadataPartBehind   metadataPartRole = "behind"
+	metadataPartStaged   metadataPartRole = "staged"
+	metadataPartUnstaged metadataPartRole = "unstaged"
+	metadataPartConflict metadataPartRole = "conflict"
+)
+
+type metadataPart struct {
+	Text string
+	Role metadataPartRole
 }
 
 type gitDetailLevel int
 
 const (
 	gitDetailsFull gitDetailLevel = iota
-	gitDetailsDivergence
 	gitDetailsSummary
+	gitDetailsDivergence
 )
 
-func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level gitDetailLevel) []string {
-	if meta.Clean || (!meta.hasDivergence() && meta.dirtyCount() == 0) {
+func formatGitMetadataSublineParts(meta SessionMetadataSubline, icons MetadataIconMode, width int) []metadataPart {
+	partSets := [][]metadataPart{
+		gitDetailParts(meta, icons, gitDetailsFull),
+		gitDetailParts(meta, icons, gitDetailsSummary),
+		gitDetailParts(meta, icons, gitDetailsDivergence),
+	}
+	for _, parts := range partSets {
+		line := metadataPartText(parts)
+		if line != "" && metadataDisplayWidth(line) <= width {
+			return parts
+		}
+	}
+	return nil
+}
+
+func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level gitDetailLevel) []metadataPart {
+	if meta.Clean || (!meta.hasDivergence() && meta.stagedCount() == 0 && meta.unstagedCount() == 0 && meta.Conflicts == 0) {
 		return nil
 	}
-	parts := make([]string, 0, 8)
+	parts := make([]metadataPart, 0, 8)
 	if meta.Conflicts > 0 {
-		parts = append(parts, countPart(icons, MetadataNerdWarning, "!", meta.Conflicts))
+		parts = append(parts, countPart(icons, MetadataNerdWarning, "!", meta.Conflicts, metadataPartConflict))
 	}
 	if meta.Ahead > 0 || meta.Behind > 0 {
-		parts = append(parts, divergencePart(icons, meta.Ahead, meta.Behind))
+		parts = append(parts, divergenceParts(icons, meta.Ahead, meta.Behind)...)
 	}
 	if level == gitDetailsDivergence {
 		return parts
 	}
 	if level == gitDetailsSummary {
-		parts = nil
-		if dirty := meta.dirtyCount(); dirty > 0 {
-			if icons == MetadataIconsNerd {
-				parts = append(parts, countPart(icons, MetadataNerdModified, "+", dirty))
-			} else {
-				parts = append(parts, "dirty"+strconv.Itoa(dirty))
-			}
+		if unstaged := meta.unstagedCount(); unstaged > 0 {
+			parts = append(parts, countPart(icons, MetadataNerdWorktree, "U", unstaged, metadataPartUnstaged))
+		} else if staged := meta.stagedCount(); staged > 0 {
+			parts = append(parts, countPart(icons, MetadataNerdStaged, "S", staged, metadataPartStaged))
 		}
 		return parts
 	}
-	if meta.Staged > 0 {
-		parts = append(parts, countPart(icons, MetadataNerdAdded, "+", meta.Staged))
+	if staged := meta.stagedCount(); staged > 0 {
+		parts = append(parts, countPart(icons, MetadataNerdStaged, "S", staged, metadataPartStaged))
 	}
-	if meta.Modified > 0 {
-		parts = append(parts, countPart(icons, MetadataNerdModified, "~", meta.Modified))
-	}
-	if meta.Deleted > 0 {
-		parts = append(parts, countPart(icons, MetadataNerdRemoved, "-", meta.Deleted))
-	}
-	if meta.Renamed > 0 {
-		parts = append(parts, countPart(icons, MetadataNerdRenamed, "r", meta.Renamed))
-	}
-	if meta.Untracked > 0 {
-		parts = append(parts, countPart(icons, MetadataNerdQuestion, "?", meta.Untracked))
+	if unstaged := meta.unstagedCount(); unstaged > 0 {
+		parts = append(parts, countPart(icons, MetadataNerdWorktree, "U", unstaged, metadataPartUnstaged))
 	}
 	return parts
 }
 
-func divergencePart(icons MetadataIconMode, ahead int, behind int) string {
-	parts := make([]string, 0, 3)
+func divergenceParts(icons MetadataIconMode, ahead int, behind int) []metadataPart {
+	parts := make([]metadataPart, 0, 3)
 	if icons == MetadataIconsNerd {
-		parts = append(parts, MetadataNerdGitCompare)
+		parts = append(parts, metadataPart{Text: MetadataNerdGitCompare, Role: metadataPartCompare})
 	}
 	if ahead > 0 {
-		parts = append(parts, strconv.Itoa(ahead))
+		parts = append(parts, metadataPart{Text: strconv.Itoa(ahead), Role: metadataPartAhead})
 	}
 	if behind > 0 {
-		parts = append(parts, "-"+strconv.Itoa(behind))
+		parts = append(parts, metadataPart{Text: "-" + strconv.Itoa(behind), Role: metadataPartBehind})
 	}
-	return strings.Join(parts, " ")
+	return parts
 }
 
-func countPart(icons MetadataIconMode, nerdIcon string, asciiPrefix string, count int) string {
+func countPart(icons MetadataIconMode, nerdIcon string, asciiPrefix string, count int, role metadataPartRole) metadataPart {
 	if icons == MetadataIconsNerd {
-		return nerdIcon + " " + strconv.Itoa(count)
+		return metadataPart{Text: nerdIcon + " " + strconv.Itoa(count), Role: role}
 	}
-	return asciiPrefix + strconv.Itoa(count)
+	return metadataPart{Text: asciiPrefix + strconv.Itoa(count), Role: role}
+}
+
+func metadataPartText(parts []metadataPart) string {
+	texts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part.Text != "" {
+			texts = append(texts, part.Text)
+		}
+	}
+	return strings.Join(texts, " ")
 }
 
 func (m SessionMetadataSubline) hasDivergence() bool {
 	return m.Ahead > 0 || m.Behind > 0
 }
 
-func (m SessionMetadataSubline) dirtyCount() int {
-	return m.Staged + m.Modified + m.Deleted + m.Renamed + m.Untracked + m.Conflicts
+func (m SessionMetadataSubline) stagedCount() int {
+	return m.Staged
+}
+
+func (m SessionMetadataSubline) unstagedCount() int {
+	return m.Modified + m.Deleted + m.Renamed + m.Untracked
 }
 
 func formatDirectoryMetadataSubline(meta SessionMetadataSubline, icons MetadataIconMode, width int) string {
