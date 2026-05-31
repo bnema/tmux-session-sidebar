@@ -153,7 +153,7 @@ func divergencePart(icons MetadataIconMode, ahead int, behind int) string {
 		parts = append(parts, MetadataNerdGitCompare)
 	}
 	if ahead > 0 {
-		parts = append(parts, "+"+strconv.Itoa(ahead))
+		parts = append(parts, strconv.Itoa(ahead))
 	}
 	if behind > 0 {
 		parts = append(parts, "-"+strconv.Itoa(behind))
