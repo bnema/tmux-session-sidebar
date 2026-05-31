@@ -2,6 +2,7 @@ package uity
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"unicode"
 
@@ -19,6 +20,9 @@ const pinnedMarkerSymbol = "\uf08d"    // Nerd Font thumb-tack glyph (U+F08D / n
 const spaceKeySymbol = "\U000F1050"    // Nerd Font keyboard-space glyph (U+F1050 / nf-md-keyboard_space).
 const updateAvailableSymbol = "\uf062" // Nerd Font arrow-up glyph (U+F062 / nf-fa-arrow_up).
 
+const metadataSublinePaddingWidth = 6
+const metadataSublineFallbackWidth = 80
+
 type SessionItem struct {
 	Name          string
 	Current       bool
@@ -28,6 +32,7 @@ type SessionItem struct {
 	Attention     bool
 	Pinned        bool
 	PinColor      string
+	Metadata      SessionMetadataSubline
 }
 
 type ProjectItem struct {
@@ -54,6 +59,7 @@ type SidebarOptions struct {
 	ShowNumericItems     bool
 	Version              string
 	CheckUpdateAvailable func(currentVersion string) (bool, error)
+	MetadataIconMode     MetadataIconMode
 }
 
 type SidebarModel struct {
@@ -72,6 +78,7 @@ type SidebarModel struct {
 	version              string
 	checkUpdateAvailable func(currentVersion string) (bool, error)
 	updateAvailable      bool
+	metadataIconMode     MetadataIconMode
 	width                int
 	height               int
 	pinColorPicker       PinColorPicker
@@ -94,7 +101,11 @@ func NewSidebarModel(items []SessionItem, actions Actions) SidebarModel {
 }
 
 func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options SidebarOptions) SidebarModel {
-	return SidebarModel{items: items, actions: actions, mode: ModeBrowse, showNumeric: options.ShowNumericItems, version: options.Version, checkUpdateAvailable: options.CheckUpdateAvailable, updateAvailable: displayVersion(options.Version) == "dev"}
+	iconMode := options.MetadataIconMode
+	if iconMode == "" {
+		iconMode = bestEffortMetadataIconMode()
+	}
+	return SidebarModel{items: items, actions: actions, mode: ModeBrowse, showNumeric: options.ShowNumericItems, version: options.Version, checkUpdateAvailable: options.CheckUpdateAvailable, updateAvailable: displayVersion(options.Version) == "dev", metadataIconMode: iconMode}
 }
 
 type updateAvailableMsg struct {
@@ -670,11 +681,47 @@ func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
 			row = marker + " " + body
 		}
 		lines = append(lines, row)
+		if subline := m.renderSessionMetadataSubline(styles, item, badge, i == m.cursor); subline != "" {
+			lines = append(lines, subline)
+		}
 	}
 	if len(visible) == 0 {
 		lines = append(lines, styles.dim.Render("no sessions"))
 	}
 	return lines
+}
+
+func (m SidebarModel) renderSessionMetadataSubline(_ sidebarStyles, item SessionItem, badge string, selected bool) string {
+	if item.Metadata.Kind == "" {
+		return ""
+	}
+	// Account for outer padding plus the metadata indent; fallback keeps rendering useful before the first WindowSizeMsg.
+	width := m.width - metadataSublinePaddingWidth
+	if width <= 0 {
+		width = metadataSublineFallbackWidth
+	}
+	subline := FormatMetadataSubline(item.Metadata, MetadataSublineOptions{Icons: m.metadataIconMode, Width: width})
+	if subline == "" {
+		return ""
+	}
+	indent := "  " + strings.Repeat(" ", metadataDisplayWidth(badge))
+	return metadataSublineStyle(selected).Render(indent + subline)
+}
+
+func metadataSublineStyle(selected bool) lipgloss.Style {
+	if selected {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#64748b"))
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("#4b5563"))
+}
+
+func bestEffortMetadataIconMode() MetadataIconMode {
+	term := strings.ToLower(os.Getenv("TERM"))
+	locale := strings.ToLower(strings.Join([]string{os.Getenv("LC_ALL"), os.Getenv("LC_CTYPE"), os.Getenv("LANG")}, ":"))
+	if term == "dumb" || strings.Contains(locale, "ascii") || (!strings.Contains(locale, "utf") && locale != "") {
+		return MetadataIconsASCII
+	}
+	return MetadataIconsNerd
 }
 
 func (m SidebarModel) renderProjects(styles sidebarStyles) []string {

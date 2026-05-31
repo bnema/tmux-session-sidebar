@@ -513,6 +513,57 @@ func TestSidebarModelRenderOmitsHeaderAndMovesFilterAboveHelp(t *testing.T) {
 	}
 }
 
+func TestSidebarModelRenderShowsMetadataSublineBelowSessionRow(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1, Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "main", Modified: 2}}}, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 10})
+	model = requireSidebarModel(t, updated)
+
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, " [1] alpha \n        2") {
+		t.Fatalf("render should include metadata subline below session row: %q", view)
+	}
+}
+
+func TestSidebarModelRenderBrightensSelectedMetadataSubline(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha", Slot: 1, Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Modified: 2}}}, Actions{})
+	view := model.Render()
+
+	if !strings.Contains(view, "38;2;100;116;139") {
+		t.Fatalf("selected metadata should use brighter subdued color: %q", view)
+	}
+}
+
+func TestSidebarModelRenderCompactsMetadataSublineToWindowWidth(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{
+		Name: "alpha",
+		Metadata: SessionMetadataSubline{
+			Kind:     MetadataKindGit,
+			Branch:   "feature/add-session-metadata-subline",
+			Ahead:    2,
+			Modified: 3,
+		},
+	}}, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 10})
+	model = requireSidebarModel(t, updated)
+
+	lines := strings.Split(stripANSI(model.Render()), "\n")
+	if len(lines) < 3 || !strings.Contains(lines[2], " 2  3") {
+		t.Fatalf("metadata subline should be width-aware, lines=%q", lines)
+	}
+	if width := metadataDisplayWidth(strings.TrimSpace(lines[2])); width > 24 {
+		t.Fatalf("metadata subline width = %d, want <= 24: %q", width, lines[2])
+	}
+}
+
+func TestSidebarModelRenderOmitsMetadataSublineWhenUnavailable(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
+
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "\n    git") || strings.Contains(view, "\n    ") {
+		t.Fatalf("render should not include placeholder metadata before async data is available: %q", view)
+	}
+}
+
 func TestSidebarModelRenderShowsVersionInCollapsedHelp(t *testing.T) {
 	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "0.10.2"})
 	view := stripANSI(model.Render())

@@ -116,6 +116,10 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
+	metadataSubline, err := c.option(ctx, "@session-sidebar-metadata-subline")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
 	return ports.ConfigSnapshot{
 		Loaded:                 true,
 		KeyBinding:             key,
@@ -133,6 +137,7 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		AutoSortRecentInterval: autoSortRecentInterval,
 		RestoreSessionsMode:    normalizeRestoreSessionsMode(restoreSessionsMode),
 		ContinuumGraceSeconds:  continuumGraceSeconds,
+		MetadataSublineEnabled: metadataSubline == "" || parseTmuxBool(metadataSubline),
 	}, nil
 }
 

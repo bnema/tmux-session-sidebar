@@ -2,6 +2,8 @@ package gitcli
 
 import (
 	"context"
+	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -14,7 +16,150 @@ type Git struct {
 func (g Git) RepoRoot(ctx context.Context, path string) (string, error) {
 	result, err := g.Process.Exec(ctx, "git", []string{"-C", path, "rev-parse", "--show-toplevel"})
 	if err != nil {
-		return "", err
+		return "", mapGitError(result, err)
 	}
 	return strings.TrimSpace(result.Stdout), nil
+}
+
+func (g Git) Status(ctx context.Context, path string) (ports.GitStatus, error) {
+	repoRoot, err := g.RepoRoot(ctx, path)
+	if err != nil {
+		return ports.GitStatus{}, err
+	}
+	branch, err := g.branch(ctx, repoRoot)
+	if err != nil {
+		return ports.GitStatus{}, err
+	}
+	status := ports.GitStatus{RepoRoot: repoRoot, Branch: branch}
+	if ahead, behind, ok := g.divergence(ctx, repoRoot); ok {
+		status.Ahead = ahead
+		status.Behind = behind
+		status.UpstreamConfigured = true
+	}
+	if err := g.workingTree(ctx, repoRoot, &status); err != nil {
+		return ports.GitStatus{}, err
+	}
+	status.Clean = status.Ahead == 0 && status.Behind == 0 && status.Staged == 0 && status.Modified == 0 && status.Deleted == 0 && status.Renamed == 0 && status.Untracked == 0 && status.Conflicts == 0
+	return status, nil
+}
+
+func (g Git) branch(ctx context.Context, repoRoot string) (string, error) {
+	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "branch", "--show-current"})
+	if err == nil {
+		if branch := strings.TrimSpace(result.Stdout); branch != "" {
+			return branch, nil
+		}
+	}
+	result, err = g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "rev-parse", "--short", "HEAD"})
+	if err != nil {
+		if isEmptyRepositoryRevisionError(result, err) {
+			return "detached", nil
+		}
+		return "", mapGitError(result, err)
+	}
+	commit := strings.TrimSpace(result.Stdout)
+	if commit == "" {
+		return "detached", nil
+	}
+	return commit, nil
+}
+
+func (g Git) divergence(ctx context.Context, repoRoot string) (int, int, bool) {
+	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "rev-list", "--left-right", "--count", "HEAD...@{upstream}"})
+	if err != nil {
+		return 0, 0, false
+	}
+	fields := strings.Fields(result.Stdout)
+	if len(fields) < 2 {
+		return 0, 0, false
+	}
+	ahead, errAhead := strconv.Atoi(fields[0])
+	behind, errBehind := strconv.Atoi(fields[1])
+	if errAhead != nil || errBehind != nil {
+		return 0, 0, false
+	}
+	return ahead, behind, true
+}
+
+func (g Git) workingTree(ctx context.Context, repoRoot string, status *ports.GitStatus) error {
+	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "status", "--porcelain=v1", "--branch"})
+	if err != nil {
+		return mapGitError(result, err)
+	}
+	for line := range strings.SplitSeq(result.Stdout, "\n") {
+		if line == "" || strings.HasPrefix(line, "## ") {
+			continue
+		}
+		countStatusLine(line, status)
+	}
+	return nil
+}
+
+func countStatusLine(line string, status *ports.GitStatus) {
+	if strings.HasPrefix(line, "??") {
+		status.Untracked++
+		return
+	}
+	if len(line) < 2 {
+		return
+	}
+	x := line[0]
+	y := line[1]
+	if isConflictStatus(x, y) {
+		status.Conflicts++
+		return
+	}
+	if x != ' ' {
+		countIndexStatus(x, status)
+	}
+	if y != ' ' {
+		countWorktreeStatus(y, status)
+	}
+}
+
+func isConflictStatus(x byte, y byte) bool {
+	return x == 'U' || y == 'U' || (x == 'A' && y == 'A') || (x == 'D' && y == 'D')
+}
+
+func countIndexStatus(statusByte byte, status *ports.GitStatus) {
+	switch statusByte {
+	case 'A':
+		status.Staged++
+	case 'M':
+		status.Staged++
+	case 'D':
+		status.Deleted++
+	case 'R':
+		status.Renamed++
+	case 'C':
+		status.Staged++
+	}
+}
+
+func countWorktreeStatus(statusByte byte, status *ports.GitStatus) {
+	switch statusByte {
+	case 'M', 'T':
+		status.Modified++
+	case 'D':
+		status.Deleted++
+	}
+}
+
+func isEmptyRepositoryRevisionError(result ports.Result, err error) bool {
+	message := strings.ToLower(result.Stderr + result.Stdout + err.Error())
+	return strings.Contains(message, "needed a single revision") || strings.Contains(message, "unknown revision") || strings.Contains(message, "ambiguous argument 'head'")
+}
+
+func mapGitError(result ports.Result, err error) error {
+	if err == nil {
+		return nil
+	}
+	message := strings.ToLower(result.Stderr + result.Stdout + err.Error())
+	if strings.Contains(message, "cannot change to") || strings.Contains(message, "no such file or directory") {
+		return errors.Join(ports.ErrGitPathMissing, err)
+	}
+	if strings.Contains(message, "not a git repository") || strings.Contains(message, "not in a git directory") {
+		return errors.Join(ports.ErrNotGitRepository, err)
+	}
+	return err
 }

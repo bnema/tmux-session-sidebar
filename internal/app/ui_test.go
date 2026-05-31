@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/bnema/tmux-session-sidebar/adapters/uity"
 	"github.com/bnema/tmux-session-sidebar/core/attention"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
@@ -98,6 +99,53 @@ esac
 		if item.Name == "alpha" && item.Pinned {
 			t.Fatalf("alpha Pinned = true, want false in %#v", items)
 		}
+	}
+}
+
+func TestLoadSessionItemsHydratesCachedMetadataWithoutFetchingGit(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-colors) printf 'on\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '60\n' ;;
+      @session-sidebar-heat-recent) printf '1h\n' ;;
+      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'off\n' ;;
+      @session-sidebar-metadata-subline) printf 'on\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  display-message) printf 'alpha\n' ;;
+  list-sessions) printf '$1\talpha\t1\t1\n' ;;
+  list-clients) ;;
+  *) printf 'unexpected tmux command: %s\n' "$*" >&2; exit 1 ;;
+esac
+`)
+	store := sessionOrderStore()
+	state, err := store.Load(context.Background(), "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	state.Metadata = map[string]ports.GitStatus{"alpha": {Branch: "main", Clean: true}}
+	if err := store.Save(context.Background(), "tmux", state); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	ctx := context.WithValue(context.Background(), disableAsyncMetadataCaptureKey{}, true)
+	items, err := loadSessionItems(ctx)
+	if err != nil {
+		t.Fatalf("loadSessionItems error: %v", err)
+	}
+	if len(items) != 1 || items[0].Metadata.Kind != uity.MetadataKindGit || items[0].Metadata.Branch != "main" || !items[0].Metadata.Clean {
+		t.Fatalf("items metadata = %#v", items)
 	}
 }
 

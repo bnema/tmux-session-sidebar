@@ -149,6 +149,7 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 		if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil {
 			return err
 		}
+		captureSessionMetadataAsync(ctx, cfg)
 	}
 	var ipcWG sync.WaitGroup
 	if ipcServer != nil && router != nil {
@@ -192,6 +193,7 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
 		} else {
 			refreshAllSidebarPanesBestEffort(ctx)
+			captureSessionMetadataAsync(ctx, cfg)
 		}
 	}
 }

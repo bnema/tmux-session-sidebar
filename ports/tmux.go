@@ -22,6 +22,7 @@ type ConfigSnapshot struct {
 	AutoSortRecentInterval time.Duration
 	RestoreSessionsMode    string
 	ContinuumGraceSeconds  int
+	MetadataSublineEnabled bool
 }
 
 type TmuxSessionSnapshot struct {

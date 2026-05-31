@@ -11,6 +11,7 @@ type PersistedState struct {
 	Clients        map[string][]byte          `json:"clients,omitempty"`
 	Heat           map[string][]byte          `json:"heat,omitempty"`
 	AgentAttention map[string][]byte          `json:"agentAttention,omitempty"`
+	Metadata       map[string]GitStatus       `json:"metadata,omitempty"`
 }
 
 type SidebarState struct {

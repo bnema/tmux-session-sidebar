@@ -288,6 +288,36 @@ func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	if got.AutoSortRecentInterval != 24*time.Hour {
 		t.Fatalf("AutoSortRecentInterval = %v, want 24h", got.AutoSortRecentInterval)
 	}
+	if !got.MetadataSublineEnabled {
+		t.Fatal("MetadataSublineEnabled = false, want true")
+	}
+}
+
+func TestLoadConfigParsesMetadataSublineBool(t *testing.T) {
+	tests := map[string]struct {
+		raw  string
+		want bool
+	}{
+		"default empty is on": {raw: "\n", want: true},
+		"on":                 {raw: "on\n", want: true},
+		"off":                {raw: "off\n", want: false},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			process := mocks.NewMockProcessPort(t)
+			allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
+			expectLoadConfigWithMetadata(process, ctx, "b\n", "20\n", "\n", "off\n", "off\n", tt.raw)
+
+			got, err := (Client{Process: process}).LoadConfig(ctx)
+			if err != nil {
+				t.Fatalf("LoadConfig error: %v", err)
+			}
+			if got.MetadataSublineEnabled != tt.want {
+				t.Fatalf("MetadataSublineEnabled = %v, want %v", got.MetadataSublineEnabled, tt.want)
+			}
+		})
+	}
 }
 
 func TestLoadConfigParsesHeatRecentInterval(t *testing.T) {
@@ -342,6 +372,10 @@ func TestLoadConfigParsesAutoSortRecentInterval(t *testing.T) {
 }
 
 func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string) {
+	expectLoadConfigWithMetadata(process, ctx, key, width, roots, closeAfterSwitch, autoSortRecent, "on\n")
+}
+
+func expectLoadConfigWithMetadata(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string, metadataSubline string) {
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-key"}).Return(ports.Result{Stdout: key}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-width"}).Return(ports.Result{Stdout: width}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-project-roots"}).Return(ports.Result{Stdout: roots}, nil)
@@ -357,6 +391,7 @@ func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key s
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-auto-sort-recent"}).Return(ports.Result{Stdout: autoSortRecent}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-restore-sessions"}).Return(ports.Result{Stdout: "auto\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-continuum-grace-seconds"}).Return(ports.Result{Stdout: "3\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-metadata-subline"}).Return(ports.Result{Stdout: metadataSubline}, nil)
 }
 
 func TestFindSidebarPaneIgnoresDeadMarkedPane(t *testing.T) {

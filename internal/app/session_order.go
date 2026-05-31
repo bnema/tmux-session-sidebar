@@ -124,6 +124,13 @@ func renameSessionState(state *ports.PersistedState, oldName string, newName str
 			state.Sessions[newName] = metadata
 		}
 	}
+	if state.Metadata != nil {
+		metadata, ok := state.Metadata[oldName]
+		if ok {
+			delete(state.Metadata, oldName)
+			state.Metadata[newName] = metadata
+		}
+	}
 	for i, name := range state.SessionOrder {
 		if name == oldName {
 			state.SessionOrder[i] = newName
@@ -236,6 +243,7 @@ func removeSessionState(state *ports.PersistedState, name string) {
 	}
 	state.PinnedSessions = pinned
 	delete(state.PinColors, name)
+	delete(state.Metadata, name)
 }
 
 func clonePersistedState(state ports.PersistedState) ports.PersistedState {
@@ -243,6 +251,9 @@ func clonePersistedState(state ports.PersistedState) ports.PersistedState {
 	if state.Sessions != nil {
 		clone.Sessions = make(map[string]ports.SessionMetadata, len(state.Sessions))
 		maps.Copy(clone.Sessions, state.Sessions)
+	}
+	if state.Metadata != nil {
+		clone.Metadata = maps.Clone(state.Metadata)
 	}
 	if state.SessionOrder != nil {
 		clone.SessionOrder = append([]string(nil), state.SessionOrder...)

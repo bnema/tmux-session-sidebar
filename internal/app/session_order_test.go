@@ -174,6 +174,7 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	state.SessionOrder = []string{"gamma", "alpha"}
 	state.PinnedSessions = []string{"alpha"}
 	state.PinColors = map[string]string{"alpha": "#38bdf8"}
+	state.Metadata = map[string]ports.GitStatus{"alpha": {Branch: "main", Clean: true}}
 	if err := store.Save(ctx, "tmux", state); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -212,6 +213,12 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	if _, ok := state.PinColors["alpha"]; ok {
 		t.Fatalf("PinColors[alpha] still exists after rename: %#v", state.PinColors)
 	}
+	if got := state.Metadata["beta"]; got.Branch != "main" || !got.Clean {
+		t.Fatalf("Metadata[beta] after rename = %#v, want main clean", got)
+	}
+	if _, ok := state.Metadata["alpha"]; ok {
+		t.Fatalf("Metadata[alpha] still exists after rename: %#v", state.Metadata)
+	}
 
 	if err := renamePersistedSession(ctx, "beta", "123"); err != nil {
 		t.Fatalf("renamePersistedSession() to numeric error = %v", err)
@@ -234,6 +241,9 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	}
 	if _, ok := state.PinColors["beta"]; ok {
 		t.Fatalf("PinColors[beta] kept after numeric rename: %#v", state.PinColors)
+	}
+	if _, ok := state.Metadata["beta"]; ok {
+		t.Fatalf("Metadata[beta] kept after numeric rename: %#v", state.Metadata)
 	}
 
 	// Renaming a non-existent session to a hidden name is a no-op and must not create hidden restore metadata.
@@ -279,6 +289,9 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	if want := []string{"gamma"}; !reflect.DeepEqual(state.SessionOrder, want) {
 		t.Fatalf("SessionOrder after remove = %#v, want %#v", state.SessionOrder, want)
 	}
+	if _, ok := state.Metadata["beta"]; ok {
+		t.Fatalf("Metadata[beta] still exists after remove: %#v", state.Metadata)
+	}
 }
 
 func TestClonePersistedStatePreservesPinnedSessionsAndAgentAttention(t *testing.T) {
@@ -286,6 +299,7 @@ func TestClonePersistedStatePreservesPinnedSessionsAndAgentAttention(t *testing.
 		PinnedSessions: []string{"alpha"},
 		PinColors:      map[string]string{"alpha": "#38bdf8"},
 		AgentAttention: map[string][]byte{"$1": []byte("attention")},
+		Metadata:       map[string]ports.GitStatus{"alpha": {Branch: "main", Clean: true}},
 	}
 
 	clone := clonePersistedState(original)
@@ -305,6 +319,13 @@ func TestClonePersistedStatePreservesPinnedSessionsAndAgentAttention(t *testing.
 	}
 	if !reflect.DeepEqual(clone.AgentAttention, original.AgentAttention) {
 		t.Fatalf("AgentAttention = %#v, want %#v", clone.AgentAttention, original.AgentAttention)
+	}
+	if !reflect.DeepEqual(clone.Metadata, original.Metadata) {
+		t.Fatalf("Metadata = %#v, want %#v", clone.Metadata, original.Metadata)
+	}
+	clone.Metadata["alpha"] = ports.GitStatus{Branch: "dev"}
+	if original.Metadata["alpha"].Branch != "main" {
+		t.Fatalf("original Metadata mutated: %#v", original.Metadata)
 	}
 	clone.AgentAttention["$1"][0] = 'A'
 	if string(original.AgentAttention["$1"]) != "attention" {
