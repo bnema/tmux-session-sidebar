@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -74,15 +75,15 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "action/toggle-numeric":
 		return nil
 	case "action/create-project":
-		return createProject(ctx, route.Flags, stdout, r.sidebar)
+		return r.withMetadataReconcile(ctx, createProject(ctx, route.Flags, stdout, r.sidebar))
 	case "action/create-current-git-project":
-		return createCurrentGitProject(ctx, route.Flags, r.sidebar)
+		return r.withMetadataReconcile(ctx, createCurrentGitProject(ctx, route.Flags, r.sidebar))
 	case "action/create-adhoc":
-		return createAdhoc(ctx, route.Flags, r.sidebar)
+		return r.withMetadataReconcile(ctx, createAdhoc(ctx, route.Flags, r.sidebar))
 	case "action/rename":
-		return renameSession(ctx, route.Flags, r.sidebar)
+		return r.withMetadataReconcile(ctx, renameSession(ctx, route.Flags, r.sidebar))
 	case "action/kill":
-		return killSession(ctx, route.Flags, r.sidebar)
+		return r.withMetadataReconcile(ctx, killSession(ctx, route.Flags, r.sidebar))
 	case "resurrect/post-save-layout":
 		if len(route.Args) < 1 {
 			return fmt.Errorf("resurrect post-save-layout: missing save file")
@@ -91,13 +92,13 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "daemon/ensure":
 		return ensureRestoredAndCapturedOnStartup(ctx)
 	case "daemon/serve-ui":
-		return serveSidebarUI(ctx, route.Flags, stdout, r.sidebar)
+		return serveSidebarUI(ctx, route.Flags, stdout, r.sidebar, r.ipcClient)
 	case "hook/client-attached":
-		return ensureRestoredAndCapturedAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar)
+		return r.withMetadataReconcile(ctx, ensureRestoredAndCapturedAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar))
 	case "hook/client-detached":
-		return captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar, false)
+		return r.withMetadataReconcile(ctx, captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar, false))
 	case "hook/client-session-changed":
-		return captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar, true)
+		return r.withMetadataReconcile(ctx, captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar, true))
 	case "hook/client-resized", "hook/window-resized":
 		return syncSidebarWidth(ctx, route.Flags)
 	case "hook/agent-event":
@@ -114,6 +115,17 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 
 func ipcUnavailableForBootstrap(err error) bool {
 	return errors.Is(err, ports.ErrIPCConnectionRefused) || errors.Is(err, ports.ErrIPCSocketMissing) || errors.Is(err, ports.ErrIPCConnectionReset)
+}
+
+func (r runtimeRouter) withMetadataReconcile(ctx context.Context, err error) error {
+	if err != nil {
+		return err
+	}
+	if r.ipcClient == nil {
+		return nil
+	}
+	notifyMetadataReconcile(ctx, r.ipcClient)
+	return nil
 }
 
 func routeUsesIPC(path string) bool {
@@ -374,11 +386,11 @@ func tmuxTargetGoneOutput(output string) bool {
 
 var runSidebarUI = runUI
 
-func serveSidebarUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort) error {
-	return runSidebarUI(ctx, flags, stdout, sidebar)
+func serveSidebarUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort) error {
+	return runSidebarUI(ctx, flags, stdout, sidebar, ipcClient)
 }
 
-func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort) error {
+func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort) error {
 	defer scheduleSidebarLayoutRestoreOnExit(ctx, flags, sidebar)
 	items, err := loadSessionItems(ctx)
 	if err != nil {
@@ -392,19 +404,19 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 			return handleActionError(ctx, "switch session", switchClient(ctx, client, name, sidebar))
 		},
 		CreateProject: func(project uity.ProjectItem) bool {
-			return handleActionError(ctx, "create project session", createProject(ctx, map[string]string{"client": client, "project-path": project.Path}, stdout, sidebar))
+			return handleMetadataAction(ctx, ipcClient, "create project session", createProject(ctx, map[string]string{"client": client, "project-path": project.Path}, stdout, sidebar))
 		},
 		CreateGitProject: func() bool {
-			return handleActionError(ctx, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": client}, sidebar))
+			return handleMetadataAction(ctx, ipcClient, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": client}, sidebar))
 		},
 		CreateAdhoc: func() bool {
-			return handleActionError(ctx, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": client}, sidebar))
+			return handleMetadataAction(ctx, ipcClient, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": client}, sidebar))
 		},
 		RenameSession: func(name string) bool {
-			return handleActionError(ctx, "rename session", renameSession(ctx, map[string]string{"client": client, "session": name}, sidebar))
+			return handleMetadataAction(ctx, ipcClient, "rename session", renameSession(ctx, map[string]string{"client": client, "session": name}, sidebar))
 		},
 		KillSession: func(name string) bool {
-			return handleActionError(ctx, "kill session", killSession(ctx, map[string]string{"client": client, "session": name, "confirmed": "yes"}, sidebar))
+			return handleMetadataAction(ctx, ipcClient, "kill session", killSession(ctx, map[string]string{"client": client, "session": name, "confirmed": "yes"}, sidebar))
 		},
 		TogglePinnedSession: func(name string) bool {
 			items, err := loadSessionItems(ctx)
@@ -477,6 +489,23 @@ func scheduleSidebarLayoutRestoreOnExit(ctx context.Context, flags map[string]st
 	if err := sidebar.ScheduleSidebarRestoreOnExit(ctx, flags["client"], pane); err != nil {
 		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: schedule sidebar restore failed for client %q pane %q: %v\n", flags["client"], pane, err)
 	}
+}
+
+func handleMetadataAction(ctx context.Context, ipcClient ports.IPCClientPort, action string, err error) bool {
+	if !handleActionError(ctx, action, err) {
+		return false
+	}
+	notifyMetadataReconcile(ctx, ipcClient)
+	return true
+}
+
+func notifyMetadataReconcile(ctx context.Context, ipcClient ports.IPCClientPort) {
+	if ipcClient == nil {
+		return
+	}
+	reconcileCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	_, _ = ipcClient.Send(reconcileCtx, ports.MetadataReconcileRequest())
 }
 
 func handleActionError(ctx context.Context, action string, err error) bool {

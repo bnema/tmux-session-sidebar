@@ -19,6 +19,7 @@ packages:
       StateStorePort:
       ClockPort:
       FilesystemPort:
+      FileWatcherPort:
       GitPort:
       LockerPort:
       ProcessPort:

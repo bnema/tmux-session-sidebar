@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,62 @@ func (g Git) RepoRoot(ctx context.Context, path string) (string, error) {
 		return "", mapGitError(result, err)
 	}
 	return strings.TrimSpace(result.Stdout), nil
+}
+
+func (g Git) RepoInfo(ctx context.Context, path string) (ports.GitRepoInfo, error) {
+	repoRoot, err := g.RepoRoot(ctx, path)
+	if err != nil {
+		return ports.GitRepoInfo{}, err
+	}
+	gitDir, err := g.gitDir(ctx, repoRoot)
+	if err != nil {
+		return ports.GitRepoInfo{}, err
+	}
+	commonGitDir, err := g.commonGitDir(ctx, repoRoot)
+	if err != nil {
+		return ports.GitRepoInfo{}, err
+	}
+	branch, err := g.branch(ctx, repoRoot)
+	if err != nil {
+		return ports.GitRepoInfo{}, err
+	}
+	defaultBranch, _ := g.defaultRemoteBranch(ctx, repoRoot)
+	return ports.GitRepoInfo{
+		RepoRoot:      repoRoot,
+		WorktreeRoot:  repoRoot,
+		GitDir:        gitDir,
+		CommonGitDir:  commonGitDir,
+		Branch:        branch,
+		DefaultBranch: defaultBranch,
+	}, nil
+}
+
+func (g Git) WatchTargets(ctx context.Context, path string) (ports.GitWatchTargets, error) {
+	info, err := g.RepoInfo(ctx, path)
+	if err != nil {
+		return ports.GitWatchTargets{}, err
+	}
+	files := []string{
+		filepath.Join(info.GitDir, "HEAD"),
+		filepath.Join(info.GitDir, "index"),
+		filepath.Join(info.CommonGitDir, "packed-refs"),
+	}
+	dirs := []string{
+		info.WorktreeRoot,
+		info.GitDir,
+		filepath.Join(info.CommonGitDir, "refs"),
+	}
+	if info.GitDir != info.CommonGitDir {
+		dirs = append(dirs, info.CommonGitDir, filepath.Join(info.GitDir, "refs"))
+	}
+	return ports.GitWatchTargets{
+		RepoRoot:     info.RepoRoot,
+		WorktreeRoot: info.WorktreeRoot,
+		GitDir:       info.GitDir,
+		CommonGitDir: info.CommonGitDir,
+		Files:        files,
+		Dirs:         dirs,
+	}, nil
 }
 
 func (g Git) Status(ctx context.Context, path string) (ports.GitStatus, error) {
@@ -46,6 +103,29 @@ func (g Git) Status(ctx context.Context, path string) (ports.GitStatus, error) {
 	}
 	status.Clean = status.Ahead == 0 && status.Behind == 0 && status.Staged == 0 && status.Modified == 0 && status.Deleted == 0 && status.Renamed == 0 && status.Untracked == 0 && status.Conflicts == 0
 	return status, nil
+}
+
+func (g Git) gitDir(ctx context.Context, repoRoot string) (string, error) {
+	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "rev-parse", "--git-dir"})
+	if err != nil {
+		return "", mapGitError(result, err)
+	}
+	return absoluteGitPath(repoRoot, strings.TrimSpace(result.Stdout)), nil
+}
+
+func (g Git) commonGitDir(ctx context.Context, repoRoot string) (string, error) {
+	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "rev-parse", "--git-common-dir"})
+	if err != nil {
+		return "", mapGitError(result, err)
+	}
+	return absoluteGitPath(repoRoot, strings.TrimSpace(result.Stdout)), nil
+}
+
+func absoluteGitPath(repoRoot string, path string) string {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Clean(filepath.Join(repoRoot, path))
 }
 
 func (g Git) branch(ctx context.Context, repoRoot string) (string, error) {
@@ -91,6 +171,8 @@ func (g Git) divergence(ctx context.Context, repoRoot string, branch string) (in
 	target := "@{upstream}"
 	if defaultRemote, ok := g.defaultRemoteBranch(ctx, repoRoot); ok && !sameDefaultBranch(branch, defaultRemote) {
 		target = defaultRemote
+	} else if branch == "detached" {
+		return 0, 0, false, nil
 	}
 	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "rev-list", "--left-right", "--count", "HEAD..." + target})
 	if err != nil {
@@ -182,7 +264,7 @@ func isEmptyRepositoryRevisionError(result ports.Result, err error) bool {
 
 func isMissingUpstreamError(result ports.Result, err error) bool {
 	message := strings.ToLower(result.Stderr + result.Stdout + err.Error())
-	return strings.Contains(message, "no upstream configured") || strings.Contains(message, "no upstream branch") || strings.Contains(message, "upstream") && strings.Contains(message, "not found")
+	return strings.Contains(message, "no upstream configured") || strings.Contains(message, "no upstream branch") || strings.Contains(message, "does not point to a branch") || strings.Contains(message, "upstream") && strings.Contains(message, "not found")
 }
 
 func mapGitError(result ports.Result, err error) error {

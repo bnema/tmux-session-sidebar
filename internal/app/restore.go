@@ -139,6 +139,22 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 	if err := resetTransientHeatStateOnStartup(ctx); err != nil {
 		return err
 	}
+	metadataReconcile := make(chan struct{}, 1)
+	var metadataWG sync.WaitGroup
+	metadataStarted := false
+	startMetadataWatcher := func(cfg ports.ConfigSnapshot) {
+		if metadataStarted || !cfg.MetadataSublineEnabled {
+			return
+		}
+		metadataStarted = true
+		metadataWG.Go(func() {
+			service := NewMetadataService()
+			service.ReconcileRequests = metadataReconcile
+			if err := service.Run(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
+				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata watcher stopped: %v\n", err)
+			}
+		})
+	}
 	pendingFullCaptureAt := time.Time{}
 	if shouldSkipSidebarSessionRestoreForContinuum(ctx, cfg) {
 		pendingFullCaptureAt = time.Now().Add(time.Duration(continuumRestoreWindowSeconds(ctx, cfg)) * time.Second)
@@ -149,12 +165,12 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 		if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil {
 			return err
 		}
-		captureSessionMetadataAsync(ctx, cfg)
+		startMetadataWatcher(cfg)
 	}
 	var ipcWG sync.WaitGroup
 	if ipcServer != nil && router != nil {
 		ipcWG.Go(func() {
-			if err := ipcServer.Serve(ctx, daemonIPCHandler{router: router, stdout: io.Discard, stderr: os.Stderr, mu: &sync.Mutex{}}); err != nil && !errors.Is(err, context.Canceled) {
+			if err := ipcServer.Serve(ctx, daemonIPCHandler{router: router, stdout: io.Discard, stderr: os.Stderr, mu: &sync.Mutex{}, metadataReconcile: metadataReconcile}); err != nil && !errors.Is(err, context.Canceled) {
 				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: ipc server failed: %v\n", err)
 			}
 		})
@@ -176,6 +192,7 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 				<-timer.C
 			}
 			ipcWG.Wait()
+			metadataWG.Wait()
 			return nil
 		case <-timer.C:
 		}
@@ -186,6 +203,7 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 			} else {
 				pendingFullCaptureAt = time.Time{}
 				refreshAllSidebarPanesBestEffort(ctx)
+				startMetadataWatcher(cfg)
 			}
 			continue
 		}
@@ -193,7 +211,6 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
 		} else {
 			refreshAllSidebarPanesBestEffort(ctx)
-			captureSessionMetadataAsync(ctx, cfg)
 		}
 	}
 }

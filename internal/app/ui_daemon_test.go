@@ -12,12 +12,12 @@ func TestServeSidebarUIRunsUI(t *testing.T) {
 	uiRan := false
 	oldRunSidebarUI := runSidebarUI
 	defer func() { runSidebarUI = oldRunSidebarUI }()
-	runSidebarUI = func(context.Context, map[string]string, io.Writer, ports.TmuxSidebarPort) error {
+	runSidebarUI = func(context.Context, map[string]string, io.Writer, ports.TmuxSidebarPort, ports.IPCClientPort) error {
 		uiRan = true
 		return nil
 	}
 
-	err := serveSidebarUI(t.Context(), map[string]string{"client": "%1"}, io.Discard, nil)
+	err := serveSidebarUI(t.Context(), map[string]string{"client": "%1"}, io.Discard, nil, nil)
 	if err != nil {
 		t.Fatalf("serveSidebarUI error: %v", err)
 	}

@@ -11,10 +11,11 @@ import (
 )
 
 type daemonIPCHandler struct {
-	router Router
-	stdout io.Writer
-	stderr io.Writer
-	mu     *sync.Mutex
+	router            Router
+	stdout            io.Writer
+	stderr            io.Writer
+	mu                *sync.Mutex
+	metadataReconcile chan<- struct{}
 }
 
 func (h daemonIPCHandler) HandleIPC(ctx context.Context, req ports.Request) (ports.Response, error) {
@@ -22,6 +23,15 @@ func (h daemonIPCHandler) HandleIPC(ctx context.Context, req ports.Request) (por
 		return ports.Response{OK: true, Message: "ok"}, nil
 	}
 	if req.Kind == ports.IPCActiveClient {
+		return ports.Response{OK: true, Message: "ok"}, nil
+	}
+	if req.Kind == ports.IPCMetadataReconcile {
+		if h.metadataReconcile != nil {
+			select {
+			case h.metadataReconcile <- struct{}{}:
+			default:
+			}
+		}
 		return ports.Response{OK: true, Message: "ok"}, nil
 	}
 	path, ok := ipcRoutePath(req.Kind)

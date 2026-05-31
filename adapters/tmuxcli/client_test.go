@@ -1160,6 +1160,20 @@ func TestScheduleSidebarRestoreOnExitIgnoresMissingPaneTarget(t *testing.T) {
 	}
 }
 
+func TestRefreshAllSidebarsSendsF5ToMarkedPanes(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
+	client := Client{Process: process}
+	process.EXPECT().Exec(ctx, "tmux", []string{cmdListPanes, "-a", "-f", "#{==:#{@session-sidebar-pane},1}", "-F", formatPaneID}).Return(ports.Result{Stdout: "%1\n%2\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{cmdSendKeys, "-t", "%1", "F5"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{cmdSendKeys, "-t", "%2", "F5"}).Return(ports.Result{}, nil)
+
+	if err := client.RefreshAllSidebars(ctx); err != nil {
+		t.Fatalf("RefreshAllSidebars error: %v", err)
+	}
+}
+
 func TestExecErrorsPropagate(t *testing.T) {
 	boom := errors.New("boom")
 	tests := []struct {

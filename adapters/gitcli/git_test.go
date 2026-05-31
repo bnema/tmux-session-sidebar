@@ -112,6 +112,65 @@ func (p *defaultBranchProcess) Exec(ctx context.Context, cmd string, args []stri
 	return ports.Result{}, errors.New("unexpected call")
 }
 
+func TestGitRepoInfoAndWatchTargetsFromCLI(t *testing.T) {
+	process := &repoInfoProcess{}
+	git := Git{Process: process}
+	info, err := git.RepoInfo(t.Context(), "/work/sub")
+	if err != nil {
+		t.Fatalf("RepoInfo error: %v", err)
+	}
+	if info.RepoRoot != "/repo" || info.WorktreeRoot != "/repo" || info.GitDir != "/repo/.git" || info.CommonGitDir != "/repo/.git" || info.Branch != "feat/ui" || info.DefaultBranch != "origin/main" {
+		t.Fatalf("RepoInfo = %#v", info)
+	}
+	targets, err := git.WatchTargets(t.Context(), "/work/sub")
+	if err != nil {
+		t.Fatalf("WatchTargets error: %v", err)
+	}
+	if targets.RepoRoot != "/repo" || targets.WorktreeRoot != "/repo" || targets.GitDir != "/repo/.git" || targets.CommonGitDir != "/repo/.git" {
+		t.Fatalf("WatchTargets roots = %#v", targets)
+	}
+	wantFiles := map[string]bool{
+		"/repo/.git/HEAD":        true,
+		"/repo/.git/index":       true,
+		"/repo/.git/packed-refs": true,
+	}
+	for _, file := range targets.Files {
+		delete(wantFiles, file)
+	}
+	if len(wantFiles) != 0 {
+		t.Fatalf("WatchTargets files missing %#v from %#v", wantFiles, targets.Files)
+	}
+	wantDirs := map[string]bool{"/repo": true, "/repo/.git": true, "/repo/.git/refs": true}
+	for _, dir := range targets.Dirs {
+		delete(wantDirs, dir)
+	}
+	if len(wantDirs) != 0 {
+		t.Fatalf("WatchTargets dirs missing %#v from %#v", wantDirs, targets.Dirs)
+	}
+}
+
+type repoInfoProcess struct{}
+
+func (p *repoInfoProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
+	if len(args) >= 4 && args[2] == "rev-parse" {
+		switch args[3] {
+		case "--show-toplevel":
+			return ports.Result{Stdout: "/repo\n"}, nil
+		case "--git-dir":
+			return ports.Result{Stdout: ".git\n"}, nil
+		case "--git-common-dir":
+			return ports.Result{Stdout: ".git\n"}, nil
+		}
+	}
+	if len(args) >= 4 && args[2] == "branch" && args[3] == "--show-current" {
+		return ports.Result{Stdout: "feat/ui\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "symbolic-ref" && args[3] == "--short" && args[4] == "refs/remotes/origin/HEAD" {
+		return ports.Result{Stdout: "origin/main\n"}, nil
+	}
+	return ports.Result{}, errors.New("unexpected call")
+}
+
 func TestGitStatusReportsMissingUpstream(t *testing.T) {
 	process := &missingUpstreamProcess{}
 	status, err := (Git{Process: process}).Status(t.Context(), "/work")
@@ -187,4 +246,41 @@ type gitErrorProcess struct{ stderr string }
 
 func (p gitErrorProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
 	return ports.Result{Stderr: p.stderr}, errors.New("exit status 128")
+}
+
+func TestGitStatusDetachedHeadWithoutDefaultRemoteHasNoDivergence(t *testing.T) {
+	process := &detachedNoDefaultProcess{}
+	status, err := (Git{Process: process}).Status(t.Context(), "/work")
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if status.UpstreamConfigured || status.Ahead != 0 || status.Behind != 0 {
+		t.Fatalf("Status divergence = %#v, want none for detached head without default remote", status)
+	}
+}
+
+type detachedNoDefaultProcess struct{}
+
+func (p *detachedNoDefaultProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
+	if len(args) >= 4 && args[2] == "rev-parse" {
+		switch args[3] {
+		case "--show-toplevel":
+			return ports.Result{Stdout: "/repo\n"}, nil
+		case "--short":
+			return ports.Result{Stdout: "abc1234\n"}, nil
+		}
+	}
+	if len(args) >= 4 && args[2] == "branch" && args[3] == "--show-current" {
+		return ports.Result{Stdout: "\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "symbolic-ref" && args[3] == "--short" && args[4] == "refs/remotes/origin/HEAD" {
+		return ports.Result{Stderr: "fatal: ref refs/remotes/origin/HEAD is not a symbolic ref"}, errors.New("exit status 128")
+	}
+	if len(args) >= 4 && args[2] == "rev-list" {
+		return ports.Result{Stderr: "fatal: HEAD does not point to a branch"}, errors.New("exit status 128")
+	}
+	if len(args) >= 4 && args[2] == "status" {
+		return ports.Result{Stdout: "## HEAD (no branch)\n"}, nil
+	}
+	return ports.Result{}, errors.New("unexpected call")
 }

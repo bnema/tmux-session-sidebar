@@ -8,12 +8,13 @@ import (
 )
 
 const (
-	IPCSidebarOpen    = "sidebar.open"
-	IPCSidebarClose   = "sidebar.close"
-	IPCSidebarToggle  = "sidebar.toggle"
-	IPCSidebarRefresh = "sidebar.refresh"
-	IPCActiveClient   = "sidebar.active-client"
-	IPCHealth         = "daemon.health"
+	IPCSidebarOpen       = "sidebar.open"
+	IPCSidebarClose      = "sidebar.close"
+	IPCSidebarToggle     = "sidebar.toggle"
+	IPCSidebarRefresh    = "sidebar.refresh"
+	IPCMetadataReconcile = "metadata.reconcile"
+	IPCActiveClient      = "sidebar.active-client"
+	IPCHealth            = "daemon.health"
 )
 
 var (
@@ -68,6 +69,10 @@ func SidebarRefreshRequest(clientID string) Request {
 
 func ActiveClientRequest(clientID string) Request {
 	return SidebarRequest(IPCActiveClient, clientID, nil)
+}
+
+func MetadataReconcileRequest() Request {
+	return Request{Kind: IPCMetadataReconcile}
 }
 
 func HealthRequest() Request {

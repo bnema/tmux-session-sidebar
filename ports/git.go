@@ -23,7 +23,27 @@ type GitStatus struct {
 	UpstreamConfigured bool
 }
 
+type GitRepoInfo struct {
+	RepoRoot      string
+	WorktreeRoot  string
+	GitDir        string
+	CommonGitDir  string
+	Branch        string
+	DefaultBranch string
+}
+
+type GitWatchTargets struct {
+	RepoRoot     string
+	WorktreeRoot string
+	GitDir       string
+	CommonGitDir string
+	Files        []string
+	Dirs         []string
+}
+
 type GitPort interface {
 	RepoRoot(ctx context.Context, path string) (string, error)
 	Status(ctx context.Context, path string) (GitStatus, error)
+	RepoInfo(ctx context.Context, path string) (GitRepoInfo, error)
+	WatchTargets(ctx context.Context, path string) (GitWatchTargets, error)
 }

@@ -67,6 +67,19 @@ func TestDaemonIPCHandlerDispatchesSidebarRequests(t *testing.T) {
 	}
 }
 
+func TestDaemonIPCHandlerSignalsMetadataReconcile(t *testing.T) {
+	reconcile := make(chan struct{}, 1)
+	resp, err := (daemonIPCHandler{metadataReconcile: reconcile}).HandleIPC(t.Context(), ports.MetadataReconcileRequest())
+	if err != nil || !resp.OK {
+		t.Fatalf("metadata reconcile response = %#v, err=%v", resp, err)
+	}
+	select {
+	case <-reconcile:
+	default:
+		t.Fatal("metadata reconcile signal was not sent")
+	}
+}
+
 func TestDaemonIPCHandlerPreservesSidebarOpenWidth(t *testing.T) {
 	router := &recordingIPCRouter{}
 	resp, err := daemonIPCHandler{router: router}.HandleIPC(t.Context(), ports.SidebarOpenRequest("%1", "30"))
