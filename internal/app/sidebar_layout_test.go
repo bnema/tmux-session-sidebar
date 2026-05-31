@@ -286,10 +286,12 @@ func TestRuntimeRouterEnsuresDaemonBeforeDirectFallbackForUnavailableIPC(t *test
 	ipc := mocks.NewMockIPCClientPort(t)
 	tmux := mocks.NewMockTmuxSidebarPort(t)
 	daemon := mocks.NewMockDaemonLauncherPort(t)
-	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, ports.ErrIPCSocketMissing)
-	daemon.EXPECT().EnsureStarted(ctx).Return(nil)
-	tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
-	tmux.EXPECT().ParkSingletonSidebar(ctx, "%9").Return(nil)
+	mock.InOrder(
+		ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, ports.ErrIPCSocketMissing).Call,
+		daemon.EXPECT().EnsureStarted(ctx).Return(nil).Call,
+		tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil).Call,
+		tmux.EXPECT().ParkSingletonSidebar(ctx, "%9").Return(nil).Call,
+	)
 
 	router := NewRuntimeRouterWithDaemon(tmux, ipc, nil, daemon)
 	if err := router.Handle(ctx, Route{Path: "sidebar/close", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {

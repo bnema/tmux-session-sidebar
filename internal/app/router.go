@@ -131,7 +131,7 @@ func (r runtimeRouter) ensureDaemonStartedBestEffort(ctx context.Context, route 
 		if stderr == nil {
 			stderr = io.Discard
 		}
-		fmt.Fprintf(stderr, "tmux-session-sidebar: daemon ensure failed before direct fallback for %s: %v\n", route.Path, err)
+		_, _ = fmt.Fprintf(stderr, "tmux-session-sidebar: daemon ensure failed before direct fallback for %s: %v\n", route.Path, err)
 	}
 }
 
