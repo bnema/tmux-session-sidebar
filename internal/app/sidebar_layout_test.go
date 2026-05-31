@@ -280,6 +280,23 @@ func TestRuntimeRouterUsesDirectFallbackForUnavailableIPCSocket(t *testing.T) {
 	}
 }
 
+func TestRuntimeRouterEnsuresDaemonBeforeDirectFallbackForUnavailableIPC(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	ipc := mocks.NewMockIPCClientPort(t)
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	daemon := mocks.NewMockDaemonLauncherPort(t)
+	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, ports.ErrIPCSocketMissing)
+	daemon.EXPECT().EnsureStarted(ctx).Return(nil)
+	tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
+	tmux.EXPECT().ParkSingletonSidebar(ctx, "%9").Return(nil)
+
+	router := NewRuntimeRouterWithDaemon(tmux, ipc, nil, daemon)
+	if err := router.Handle(ctx, Route{Path: "sidebar/close", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {
+		t.Fatalf("Handle sidebar/close error: %v", err)
+	}
+}
+
 func TestRuntimeRouterProxiesSidebarOpenWidthThroughIPCClient(t *testing.T) {
 	ctx := t.Context()
 	ipc := mocks.NewMockIPCClientPort(t)

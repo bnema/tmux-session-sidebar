@@ -16,6 +16,7 @@ packages:
       IPCClientPort:
       IPCServerPort:
       IPCHandler:
+      DaemonLauncherPort:
       StateStorePort:
       ClockPort:
       FilesystemPort:

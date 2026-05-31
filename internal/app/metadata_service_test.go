@@ -43,6 +43,13 @@ func TestMetadataServiceCaptureAcceptsFreshLiveResultWithoutPersistedSession(t *
 	}
 }
 
+func TestMetadataServiceDefaultGitStatusTimeoutAllowsModeratelySlowRepositories(t *testing.T) {
+	svc := MetadataService{}
+	if got := svc.gitStatusTimeout(); got < time.Second {
+		t.Fatalf("default git status timeout = %s, want at least 1s", got)
+	}
+}
+
 func TestMetadataServiceCaptureAndRefreshRefreshesOnlyWhenMetadataChanges(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}
 	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}

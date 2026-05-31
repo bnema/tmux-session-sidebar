@@ -6,7 +6,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-var metadataGitStatusTimeout = 250 * time.Millisecond
+var metadataGitStatusTimeout = time.Second
 
 func sessionMetadataCapturePath(sessionName string, metadata ports.SessionMetadata, livePaths map[string]string) (string, bool) {
 	if path := livePaths[sessionName]; path != "" {
