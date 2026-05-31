@@ -54,6 +54,64 @@ func TestGitStatusCollectsBranchDivergenceAndWorkingTreeCounts(t *testing.T) {
 	}
 }
 
+func TestGitStatusComparesWorkingBranchWithDefaultRemoteBranch(t *testing.T) {
+	process := &defaultBranchProcess{branch: "feat/ui", defaultRemote: "origin/main"}
+	status, err := (Git{Process: process}).Status(t.Context(), "/work")
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if !status.UpstreamConfigured || status.Ahead != 5 || status.Behind != 2 {
+		t.Fatalf("Status divergence = %#v, want 5 ahead 2 behind", status)
+	}
+	if got := process.revListTarget; got != "HEAD...origin/main" {
+		t.Fatalf("rev-list target = %q, want HEAD...origin/main", got)
+	}
+}
+
+func TestGitStatusComparesDefaultBranchWithUpstreamFallback(t *testing.T) {
+	process := &defaultBranchProcess{branch: "main", defaultRemote: "origin/main", upstreamOut: "1\t0\n"}
+	status, err := (Git{Process: process}).Status(t.Context(), "/work")
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if !status.UpstreamConfigured || status.Ahead != 1 || status.Behind != 0 {
+		t.Fatalf("Status divergence = %#v, want 1 ahead 0 behind", status)
+	}
+	if got := process.revListTarget; got != "HEAD...@{upstream}" {
+		t.Fatalf("rev-list target = %q, want HEAD...@{upstream}", got)
+	}
+}
+
+type defaultBranchProcess struct {
+	branch        string
+	defaultRemote string
+	upstreamOut   string
+	revListTarget string
+}
+
+func (p *defaultBranchProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
+	if len(args) >= 4 && args[2] == "rev-parse" && args[3] == "--show-toplevel" {
+		return ports.Result{Stdout: "/repo\n"}, nil
+	}
+	if len(args) >= 4 && args[2] == "branch" && args[3] == "--show-current" {
+		return ports.Result{Stdout: p.branch + "\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "symbolic-ref" && args[3] == "--short" && args[4] == "refs/remotes/origin/HEAD" {
+		return ports.Result{Stdout: p.defaultRemote + "\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "rev-list" {
+		p.revListTarget = args[len(args)-1]
+		if p.upstreamOut != "" {
+			return ports.Result{Stdout: p.upstreamOut}, nil
+		}
+		return ports.Result{Stdout: "5\t2\n"}, nil
+	}
+	if len(args) >= 4 && args[2] == "status" {
+		return ports.Result{Stdout: "## " + p.branch + "\n"}, nil
+	}
+	return ports.Result{}, errors.New("unexpected call")
+}
+
 func TestGitStatusReportsMissingUpstream(t *testing.T) {
 	process := &missingUpstreamProcess{}
 	status, err := (Git{Process: process}).Status(t.Context(), "/work")

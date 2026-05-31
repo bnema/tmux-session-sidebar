@@ -32,7 +32,7 @@ func (g Git) Status(ctx context.Context, path string) (ports.GitStatus, error) {
 		return ports.GitStatus{}, err
 	}
 	status := ports.GitStatus{RepoRoot: repoRoot, Branch: branch}
-	ahead, behind, upstreamConfigured, err := g.divergence(ctx, repoRoot)
+	ahead, behind, upstreamConfigured, err := g.divergence(ctx, repoRoot, branch)
 	if err != nil {
 		return ports.GitStatus{}, err
 	}
@@ -69,8 +69,30 @@ func (g Git) branch(ctx context.Context, repoRoot string) (string, error) {
 	return commit, nil
 }
 
-func (g Git) divergence(ctx context.Context, repoRoot string) (int, int, bool, error) {
-	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "rev-list", "--left-right", "--count", "HEAD...@{upstream}"})
+func (g Git) defaultRemoteBranch(ctx context.Context, repoRoot string) (string, bool) {
+	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"})
+	if err != nil {
+		return "", false
+	}
+	branch := strings.TrimSpace(result.Stdout)
+	return branch, branch != ""
+}
+
+func sameDefaultBranch(branch string, defaultRemote string) bool {
+	branch = strings.TrimSpace(branch)
+	defaultRemote = strings.TrimSpace(defaultRemote)
+	if branch == "" || defaultRemote == "" {
+		return false
+	}
+	return branch == defaultRemote || strings.TrimPrefix(defaultRemote, "origin/") == branch
+}
+
+func (g Git) divergence(ctx context.Context, repoRoot string, branch string) (int, int, bool, error) {
+	target := "@{upstream}"
+	if defaultRemote, ok := g.defaultRemoteBranch(ctx, repoRoot); ok && !sameDefaultBranch(branch, defaultRemote) {
+		target = defaultRemote
+	}
+	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "rev-list", "--left-right", "--count", "HEAD..." + target})
 	if err != nil {
 		if isMissingUpstreamError(result, err) {
 			return 0, 0, false, nil
