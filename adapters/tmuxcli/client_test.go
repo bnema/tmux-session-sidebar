@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/ports"
 	"github.com/bnema/tmux-session-sidebar/ports/mocks"
 	"github.com/stretchr/testify/mock"
@@ -320,6 +321,35 @@ func TestLoadConfigParsesMetadataSublineBool(t *testing.T) {
 	}
 }
 
+func TestLoadConfigParsesAgentAttentionAnimation(t *testing.T) {
+	tests := map[string]struct {
+		raw  string
+		want config.AgentAttentionAnimation
+	}{
+		"default empty is pulse": {raw: "\n", want: config.AgentAttentionAnimationPulse},
+		"rainbow":                {raw: "rainbow\n", want: config.AgentAttentionAnimationRainbow},
+		"blink":                  {raw: "blink\n", want: config.AgentAttentionAnimationBlink},
+		"off":                    {raw: "off\n", want: config.AgentAttentionAnimationOff},
+		"unknown disables":       {raw: "sparkle\n", want: config.AgentAttentionAnimationOff},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			process := mocks.NewMockProcessPort(t)
+			allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
+			expectLoadConfigWithAttentionAnimation(process, ctx, "b\n", "20\n", "\n", "off\n", "off\n", "on\n", tt.raw)
+
+			got, err := (Client{Process: process}).LoadConfig(ctx)
+			if err != nil {
+				t.Fatalf("LoadConfig error: %v", err)
+			}
+			if got.AgentAttentionAnimation != tt.want {
+				t.Fatalf("AgentAttentionAnimation = %q, want %q", got.AgentAttentionAnimation, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadConfigParsesHeatRecentInterval(t *testing.T) {
 	tests := map[string]struct {
 		raw  string
@@ -376,6 +406,10 @@ func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key s
 }
 
 func expectLoadConfigWithMetadata(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string, metadataSubline string) {
+	expectLoadConfigWithAttentionAnimation(process, ctx, key, width, roots, closeAfterSwitch, autoSortRecent, metadataSubline, "pulse\n")
+}
+
+func expectLoadConfigWithAttentionAnimation(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string, metadataSubline string, attentionAnimation string) {
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-key"}).Return(ports.Result{Stdout: key}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-width"}).Return(ports.Result{Stdout: width}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-project-roots"}).Return(ports.Result{Stdout: roots}, nil)
@@ -388,6 +422,7 @@ func expectLoadConfigWithMetadata(process *mocks.MockProcessPort, ctx context.Co
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-max-highlighted"}).Return(ports.Result{Stdout: "0\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-activity-debug-log"}).Return(ports.Result{Stdout: "off\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-agent-attention"}).Return(ports.Result{Stdout: "on\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-agent-attention-animation"}).Return(ports.Result{Stdout: attentionAnimation}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-auto-sort-recent"}).Return(ports.Result{Stdout: autoSortRecent}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-restore-sessions"}).Return(ports.Result{Stdout: "auto\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-continuum-grace-seconds"}).Return(ports.Result{Stdout: "3\n"}, nil)

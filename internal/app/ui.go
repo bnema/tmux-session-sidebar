@@ -13,6 +13,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/adapters/tmuxcli"
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
 	"github.com/bnema/tmux-session-sidebar/core/attention"
+	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -87,6 +88,10 @@ func clientViewingSidebarPane(ctx context.Context) string {
 }
 
 func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
+	return loadSessionItemsWithConfig(ctx, loadSidebarConfig(ctx))
+}
+
+func loadSessionItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) ([]uity.SessionItem, error) {
 	current, err := tmux(ctx, "display-message", "-p", "#{session_name}")
 	if err != nil {
 		return nil, fmt.Errorf("getting current tmux session: %w", err)
@@ -99,7 +104,6 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg := loadSidebarConfig(ctx)
 	heatStates := decodePersistedHeat(persisted.Heat)
 	attentionStates := attention.DecodeStateMap(persisted.AgentAttention)
 	now := time.Now().UTC()
@@ -204,18 +208,19 @@ func loadSidebarConfig(ctx context.Context) ports.ConfigSnapshot {
 
 func defaultSidebarConfig() ports.ConfigSnapshot {
 	return ports.ConfigSnapshot{
-		HeatColorsEnabled:      true,
-		HeatHalfLifeHours:      8,
-		HeatStaleHours:         24,
-		HeatRefreshSeconds:     60,
-		HeatRecentInterval:     time.Hour,
-		HeatMaxHighlighted:     0,
-		ActivityDebugLog:       false,
-		AgentAttentionEnabled:  true,
-		AutoSortRecentInterval: 0,
-		RestoreSessionsMode:    "auto",
-		ContinuumGraceSeconds:  3,
-		MetadataSublineEnabled: true,
+		HeatColorsEnabled:       true,
+		HeatHalfLifeHours:       8,
+		HeatStaleHours:          24,
+		HeatRefreshSeconds:      60,
+		HeatRecentInterval:      time.Hour,
+		HeatMaxHighlighted:      0,
+		ActivityDebugLog:        false,
+		AgentAttentionEnabled:   true,
+		AgentAttentionAnimation: config.AgentAttentionAnimationPulse,
+		AutoSortRecentInterval:  0,
+		RestoreSessionsMode:     "auto",
+		ContinuumGraceSeconds:   3,
+		MetadataSublineEnabled:  true,
 	}
 }
 

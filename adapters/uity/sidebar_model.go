@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
 
+	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	coreversion "github.com/bnema/tmux-session-sidebar/core/version"
@@ -56,33 +57,38 @@ type Actions struct {
 }
 
 type SidebarOptions struct {
-	ShowNumericItems     bool
-	Version              string
-	CheckUpdateAvailable func(currentVersion string) (bool, error)
-	MetadataIconMode     MetadataIconMode
+	ShowNumericItems        bool
+	Version                 string
+	CheckUpdateAvailable    func(currentVersion string) (bool, error)
+	MetadataIconMode        MetadataIconMode
+	AgentAttentionAnimation config.AgentAttentionAnimation
 }
 
 type SidebarModel struct {
-	items                []SessionItem
-	cursor               int
-	mode                 Mode
-	filter               string
-	showNumeric          bool
-	showHelp             bool
-	message              string
-	projects             []ProjectItem
-	projectCursor        int
-	projectFilter        string
-	pendingKill          string
-	actions              Actions
-	version              string
-	checkUpdateAvailable func(currentVersion string) (bool, error)
-	updateAvailable      bool
-	metadataIconMode     MetadataIconMode
-	width                int
-	height               int
-	pinColorPicker       PinColorPicker
-	pinColorSession      string
+	items                            []SessionItem
+	cursor                           int
+	mode                             Mode
+	filter                           string
+	showNumeric                      bool
+	showHelp                         bool
+	message                          string
+	projects                         []ProjectItem
+	projectCursor                    int
+	projectFilter                    string
+	pendingKill                      string
+	actions                          Actions
+	version                          string
+	checkUpdateAvailable             func(currentVersion string) (bool, error)
+	updateAvailable                  bool
+	metadataIconMode                 MetadataIconMode
+	width                            int
+	height                           int
+	pinColorPicker                   PinColorPicker
+	pinColorSession                  string
+	attentionAnimationStyle          config.AgentAttentionAnimation
+	attentionAnimationFrame          int
+	attentionAnimationTickPending    bool
+	attentionAnimationTickGeneration int
 }
 
 type sidebarStyles struct {
@@ -105,15 +111,24 @@ func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options Si
 	if iconMode == "" {
 		iconMode = bestEffortMetadataIconMode()
 	}
+	attentionAnimationStyle := config.ParseAgentAttentionAnimation(string(options.AgentAttentionAnimation))
+	attentionAnimationTickPending := shouldRunAttentionAnimation(attentionAnimationStyle, items)
+	attentionAnimationTickGeneration := 0
+	if attentionAnimationTickPending {
+		attentionAnimationTickGeneration = 1
+	}
 	return SidebarModel{
-		items:                items,
-		actions:              actions,
-		mode:                 ModeBrowse,
-		showNumeric:          options.ShowNumericItems,
-		version:              options.Version,
-		checkUpdateAvailable: options.CheckUpdateAvailable,
-		updateAvailable:      displayVersion(options.Version) == "dev",
-		metadataIconMode:     iconMode,
+		items:                            items,
+		actions:                          actions,
+		mode:                             ModeBrowse,
+		showNumeric:                      options.ShowNumericItems,
+		version:                          options.Version,
+		checkUpdateAvailable:             options.CheckUpdateAvailable,
+		updateAvailable:                  displayVersion(options.Version) == "dev",
+		metadataIconMode:                 iconMode,
+		attentionAnimationStyle:          attentionAnimationStyle,
+		attentionAnimationTickPending:    attentionAnimationTickPending,
+		attentionAnimationTickGeneration: attentionAnimationTickGeneration,
 	}
 }
 
@@ -122,6 +137,10 @@ type updateAvailableMsg struct {
 }
 
 func (m SidebarModel) Init() tea.Cmd {
+	return batchCommands(m.updateAvailableCmd(), attentionAnimationTickCmd(m.attentionAnimationStyle, m.items, m.attentionAnimationTickGeneration))
+}
+
+func (m SidebarModel) updateAvailableCmd() tea.Cmd {
 	if m.updateAvailable || m.checkUpdateAvailable == nil || !coreversion.CheckableReleaseVersion(m.version) {
 		return nil
 	}
@@ -143,155 +162,161 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case updateAvailableMsg:
 		m.updateAvailable = msg.available
 		return m, nil
+	case attentionAnimationTickMsg:
+		if msg.Generation != untrackedAttentionAnimationTick && msg.Generation != m.attentionAnimationTickGeneration {
+			return m, nil
+		}
+		m.attentionAnimationTickPending = false
+		if !shouldRunAttentionAnimation(m.attentionAnimationStyle, m.items) {
+			m.attentionAnimationFrame = 0
+			return m, nil
+		}
+		m.attentionAnimationFrame = nextAttentionAnimationFrame(m.attentionAnimationStyle, m.attentionAnimationFrame)
+		return m, m.startAttentionAnimationCmd()
 	case tea.MouseWheelMsg:
 		m.handleMouseWheel(msg)
 		return m, nil
 	case tea.KeyPressMsg:
-		key := msg.Keystroke()
-		if key == "ctrl+c" {
-			return m, tea.Quit
-		}
-		if m.mode == ModePinColor {
-			m.handlePinColorKey(msg)
-			return m, nil
-		}
-		if delta, ok := reorderKeyDelta(msg); ok {
-			m.reorderSelected(delta)
-			return m, nil
-		}
-		if m.mode == ModeConfirmKill {
-			if isKillConfirmYes(msg) {
-				m.confirmKill()
-				return m, nil
-			}
-			if isKillConfirmCancel(msg) {
-				m.clearKillConfirmation()
-				return m, nil
-			}
-			if key != "ctrl+c" {
-				return m, nil
-			}
-		}
-		if toggleNumericKey(msg) {
-			next := !m.showNumeric
-			if m.actions.SetShowNumericItems != nil && !m.actions.SetShowNumericItems(next) {
-				return m, nil
-			}
-			m.showNumeric = next
-			return m, nil
-		}
-		if pinnedToggleKey(msg) && m.mode == ModeBrowse {
-			m.handlePinKey()
-			return m, nil
-		}
-		if slot, ok := numericSlotKey(msg); ok && m.mode == ModeBrowse {
-			m.switchSlot(slot)
-			return m, nil
-		}
-		switch key {
-		case "ctrl+c":
-			return m, tea.Quit
-		case "esc":
-			if m.mode == ModeSearch {
-				m.mode = ModeBrowse
-				m.filter = ""
-				return m, nil
-			}
-			if m.mode == ModeProject {
-				m.mode = ModeBrowse
-				m.projectFilter = ""
-				return m, nil
-			}
-			if m.mode == ModeConfirmKill {
-				m.clearKillConfirmation()
-				return m, nil
-			}
-			return m, tea.Quit
-		case "/":
-			if m.mode == ModeBrowse {
-				m.mode = ModeSearch
-			}
-			return m, nil
-		case "enter":
-			if m.mode == ModeSearch {
-				m.mode = ModeBrowse
-				return m, nil
-			}
-			if m.mode == ModeProject {
-				m.createSelectedProject()
-				return m, nil
-			}
-			if m.mode == ModeConfirmKill {
-				m.clearKillConfirmation()
-				return m, nil
-			}
-			m.switchSelected()
-			return m, nil
-		case "j", "down":
-			if m.mode == ModeProject {
-				m.moveProject(1)
-			} else {
-				m.move(1)
-			}
-			return m, nil
-		case "k", "up":
-			if m.mode == ModeProject {
-				m.moveProject(-1)
-			} else {
-				m.move(-1)
-			}
-			return m, nil
-		case "alt+n":
-			if m.actions.LoadProjects != nil {
-				m.projects = m.actions.LoadProjects()
-			}
-			m.mode = ModeProject
-			m.projectCursor = 0
-			m.projectFilter = ""
-			return m, nil
-		case "alt+g":
-			if m.actions.CreateGitProject != nil && m.actions.CreateGitProject() {
-				m.reloadSessionsSelectingCurrent()
-			}
-			return m, nil
-		case "alt+a":
-			if m.actions.CreateAdhoc != nil && m.actions.CreateAdhoc() {
-				m.reloadSessionsSelectingCurrent()
-			}
-			return m, nil
-		case "alt+r":
-			if item, ok := m.selectedSession(); ok && m.actions.RenameSession != nil && m.actions.RenameSession(item.Name) {
-				m.reloadSessions()
-			}
-			return m, nil
-		case "alt+x":
-			if item, ok := m.selectedSession(); ok && m.actions.KillSession != nil {
-				m.mode = ModeConfirmKill
-				m.pendingKill = item.Name
-				m.message = "Kill " + item.Name + "? y/N"
-			}
-			return m, nil
-		case "y", "n":
-			m.appendPrintable(msg)
-		case "f5":
-			m.reloadSessions()
-			return m, nil
-		case "alt+?":
-			m.showHelp = !m.showHelp
-			return m, nil
-		case "backspace":
-			if m.mode == ModeSearch && m.filter != "" {
-				m.filter = trimLastRune(m.filter)
-			}
-			if m.mode == ModeProject && m.projectFilter != "" {
-				m.projectFilter = trimLastRune(m.projectFilter)
-			}
-			return m, nil
-		default:
-			m.appendPrintable(msg)
-		}
+		return m.updateKeyPress(msg)
 	}
 	return m, nil
+}
+
+func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	key := msg.Keystroke()
+	if key == "ctrl+c" {
+		return m, tea.Quit
+	}
+	if m.mode == ModePinColor {
+		m.handlePinColorKey(msg)
+		return m.finishInteractiveUpdate()
+	}
+	if delta, ok := reorderKeyDelta(msg); ok {
+		m.reorderSelected(delta)
+		return m.finishInteractiveUpdate()
+	}
+	if m.mode == ModeConfirmKill {
+		if isKillConfirmYes(msg) {
+			m.confirmKill()
+			return m.finishInteractiveUpdate()
+		}
+		if isKillConfirmCancel(msg) {
+			m.clearKillConfirmation()
+			return m.finishInteractiveUpdate()
+		}
+		return m, nil
+	}
+	if toggleNumericKey(msg) {
+		next := !m.showNumeric
+		if m.actions.SetShowNumericItems != nil && !m.actions.SetShowNumericItems(next) {
+			return m, nil
+		}
+		m.showNumeric = next
+		return m.finishInteractiveUpdate()
+	}
+	if pinnedToggleKey(msg) && m.mode == ModeBrowse {
+		m.handlePinKey()
+		return m.finishInteractiveUpdate()
+	}
+	if slot, ok := numericSlotKey(msg); ok && m.mode == ModeBrowse {
+		m.switchSlot(slot)
+		return m.finishInteractiveUpdate()
+	}
+	switch key {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		if m.mode == ModeSearch {
+			m.mode = ModeBrowse
+			m.filter = ""
+			return m.finishInteractiveUpdate()
+		}
+		if m.mode == ModeProject {
+			m.mode = ModeBrowse
+			m.projectFilter = ""
+			return m.finishInteractiveUpdate()
+		}
+		if m.mode == ModeConfirmKill {
+			m.clearKillConfirmation()
+			return m.finishInteractiveUpdate()
+		}
+		return m, tea.Quit
+	case "/":
+		if m.mode == ModeBrowse {
+			m.mode = ModeSearch
+		}
+	case "enter":
+		if m.mode == ModeSearch {
+			m.mode = ModeBrowse
+			return m.finishInteractiveUpdate()
+		}
+		if m.mode == ModeProject {
+			m.createSelectedProject()
+			return m.finishInteractiveUpdate()
+		}
+		if m.mode == ModeConfirmKill {
+			m.clearKillConfirmation()
+			return m.finishInteractiveUpdate()
+		}
+		m.switchSelected()
+	case "j", "down":
+		if m.mode == ModeProject {
+			m.moveProject(1)
+		} else {
+			m.move(1)
+		}
+	case "k", "up":
+		if m.mode == ModeProject {
+			m.moveProject(-1)
+		} else {
+			m.move(-1)
+		}
+	case "alt+n":
+		if m.actions.LoadProjects != nil {
+			m.projects = m.actions.LoadProjects()
+		}
+		m.mode = ModeProject
+		m.projectCursor = 0
+		m.projectFilter = ""
+	case "alt+g":
+		if m.actions.CreateGitProject != nil && m.actions.CreateGitProject() {
+			m.reloadSessionsSelectingCurrent()
+		}
+	case "alt+a":
+		if m.actions.CreateAdhoc != nil && m.actions.CreateAdhoc() {
+			m.reloadSessionsSelectingCurrent()
+		}
+	case "alt+r":
+		if item, ok := m.selectedSession(); ok && m.actions.RenameSession != nil && m.actions.RenameSession(item.Name) {
+			m.reloadSessions()
+		}
+	case "alt+x":
+		if item, ok := m.selectedSession(); ok && m.actions.KillSession != nil {
+			m.mode = ModeConfirmKill
+			m.pendingKill = item.Name
+			m.message = "Kill " + item.Name + "? y/N"
+		}
+	case "y", "n":
+		m.appendPrintable(msg)
+	case "f5":
+		m.reloadSessions()
+	case "alt+?":
+		m.showHelp = !m.showHelp
+	case "backspace":
+		if m.mode == ModeSearch && m.filter != "" {
+			m.filter = trimLastRune(m.filter)
+		}
+		if m.mode == ModeProject && m.projectFilter != "" {
+			m.projectFilter = trimLastRune(m.projectFilter)
+		}
+	default:
+		m.appendPrintable(msg)
+	}
+	return m.finishInteractiveUpdate()
+}
+
+func (m *SidebarModel) finishInteractiveUpdate() (tea.Model, tea.Cmd) {
+	return *m, m.startAttentionAnimationCmd()
 }
 
 func (m *SidebarModel) move(delta int) {
@@ -385,32 +410,43 @@ func (m *SidebarModel) reloadSessionsWithSelection(preservePreviousCurrent bool)
 	}
 }
 
-func (m *SidebarModel) handlePinKey() {
+func (m *SidebarModel) startAttentionAnimationCmd() tea.Cmd {
+	if m.attentionAnimationTickPending || !shouldRunAttentionAnimation(m.attentionAnimationStyle, m.items) {
+		return nil
+	}
+	m.attentionAnimationTickGeneration++
+	m.attentionAnimationTickPending = true
+	return attentionAnimationTickCmd(m.attentionAnimationStyle, m.items, m.attentionAnimationTickGeneration)
+}
+
+func (m *SidebarModel) handlePinKey() tea.Cmd {
 	item, ok := m.selectedSession()
 	if !ok {
-		return
+		return nil
 	}
 	if item.Pinned {
 		m.togglePinnedSelected()
-		return
+		return nil
 	}
 	m.mode = ModePinColor
 	m.pinColorSession = item.Name
 	m.pinColorPicker = PinColorPicker{}
+	return nil
 }
 
-func (m *SidebarModel) handlePinColorKey(msg tea.KeyPressMsg) {
+func (m *SidebarModel) handlePinColorKey(msg tea.KeyPressMsg) tea.Cmd {
 	if delta, ok := m.pinColorPicker.MoveDelta(msg); ok {
 		m.pinColorPicker.Cursor = m.pinColorPicker.Move(delta)
-		return
+		return nil
 	}
 	if pinnedToggleKey(msg) || msg.Keystroke() == "enter" {
 		m.confirmPinColor()
-		return
+		return nil
 	}
 	if msg.Keystroke() == "esc" {
 		m.clearPinColorPicker()
 	}
+	return nil
 }
 
 func (m *SidebarModel) confirmPinColor() {
@@ -604,7 +640,7 @@ func newSidebarStyles() sidebarStyles {
 		dim:             lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
 		active:          lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
 		stale:           lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
-		selected:        lipgloss.NewStyle().Background(lipgloss.Color("#065f46")).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
+		selected:        lipgloss.NewStyle().Background(lipgloss.Color(selectedRowBackgroundRGB.Hex())).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
 		pinned:          lipgloss.NewStyle().Foreground(lipgloss.Color(defaultPinColor)).Bold(true),
 		versionBadge:    lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#e0f2fe")).Bold(true),
 		updateIndicator: lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#22c55e")).Bold(true),
@@ -624,8 +660,11 @@ func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(heatColor(item.HeatIntensity)))
 }
 
-func sessionMarkerStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
-	if item.Attention || item.Current {
+func sessionMarkerStyle(styles sidebarStyles, item SessionItem, animationStyle config.AgentAttentionAnimation, animationFrame int, background rgbColor) lipgloss.Style {
+	if item.Attention {
+		return animatedAttentionMarkerStyle(styles.active, animationStyle, animationFrame, background)
+	}
+	if item.Current {
 		return styles.active
 	}
 	if item.Pinned {
@@ -641,9 +680,9 @@ func pinColor(item SessionItem) string {
 	return item.PinColor
 }
 
-func sessionMarker(item SessionItem) string {
+func sessionMarker(item SessionItem, animationStyle config.AgentAttentionAnimation, animationFrame int) string {
 	if item.Attention {
-		return attentionMarkerSymbol
+		return animatedAttentionMarkerSymbol(attentionMarkerSymbol, animationStyle, animationFrame)
 	}
 	if item.Current {
 		return currentMarkerSymbol
@@ -675,21 +714,7 @@ func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
 		if item.Slot > 0 {
 			badge = fmt.Sprintf("[%s] ", slotLabel(item.Slot))
 		}
-		var row string
-		if i == m.cursor {
-			if item.Pinned {
-				marker := sessionMarkerStyle(styles, item).Background(lipgloss.Color("#065f46")).Render(sessionMarker(item))
-				body := styles.selected.Render(fmt.Sprintf(" %s%s", badge, item.Name))
-				row = marker + body
-			} else {
-				row = styles.selected.Render(fmt.Sprintf("%s %s%s", sessionMarker(item), badge, item.Name))
-			}
-		} else {
-			marker := sessionMarkerStyle(styles, item).Render(sessionMarker(item))
-			body := sessionRowStyle(styles, item).Render(fmt.Sprintf("%s%s", badge, item.Name))
-			row = marker + " " + body
-		}
-		lines = append(lines, row)
+		lines = append(lines, m.renderSessionRow(styles, item, badge, i == m.cursor))
 		if subline := m.renderSessionMetadataSubline(styles, item, badge, i == m.cursor); subline != "" {
 			lines = append(lines, subline)
 		}
@@ -698,6 +723,23 @@ func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
 		lines = append(lines, styles.dim.Render("no sessions"))
 	}
 	return lines
+}
+
+func (m SidebarModel) renderSessionRow(styles sidebarStyles, item SessionItem, badge string, selected bool) string {
+	if selected {
+		if item.Pinned || item.Attention {
+			marker := sessionMarkerStyle(styles, item, m.attentionAnimationStyle, m.attentionAnimationFrame, selectedRowBackgroundRGB).
+				Background(lipgloss.Color(selectedRowBackgroundRGB.Hex())).
+				Render(sessionMarker(item, m.attentionAnimationStyle, m.attentionAnimationFrame))
+			body := styles.selected.Render(fmt.Sprintf(" %s%s", badge, item.Name))
+			return marker + body
+		}
+		return styles.selected.Render(fmt.Sprintf("%s %s%s", sessionMarker(item, m.attentionAnimationStyle, m.attentionAnimationFrame), badge, item.Name))
+	}
+	marker := sessionMarkerStyle(styles, item, m.attentionAnimationStyle, m.attentionAnimationFrame, defaultAttentionBackgroundRGB).
+		Render(sessionMarker(item, m.attentionAnimationStyle, m.attentionAnimationFrame))
+	body := sessionRowStyle(styles, item).Render(fmt.Sprintf("%s%s", badge, item.Name))
+	return marker + " " + body
 }
 
 func (m SidebarModel) renderSessionMetadataSubline(_ sidebarStyles, item SessionItem, badge string, selected bool) string {

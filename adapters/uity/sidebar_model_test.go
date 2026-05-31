@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 )
 
@@ -93,6 +94,26 @@ func TestSidebarModelF5SelectsPreviousCurrentSessionAfterExternalSwitch(t *testi
 
 	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
 		t.Fatalf("selected after external switch reload = %#v ok=%v, want previous alpha", item, ok)
+	}
+}
+
+func TestSidebarModelSwitchSelectedStartsAttentionAnimationAfterReload(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
+		SwitchSession: func(name string) bool { return name == "beta" },
+		ReloadSessions: func() []SessionItem {
+			return []SessionItem{{Name: "alpha", Attention: true, Slot: 1}, {Name: "beta", Current: true, Slot: 2}}
+		},
+	}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationPulse})
+	model.cursor = 1
+
+	updated, cmd := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+
+	if cmd == nil {
+		t.Fatal("switch reload did not schedule attention animation tick")
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
+		t.Fatalf("selected after switch reload = %#v ok=%v, want current beta", item, ok)
 	}
 }
 
@@ -1079,7 +1100,7 @@ func TestSidebarModelRenderShowsCurrentMarkerForCurrentPinnedSession(t *testing.
 }
 
 func TestSidebarModelRenderShowsAttentionMarkerInPrimaryMarkerColumn(t *testing.T) {
-	model := NewSidebarModel([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{})
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationOff})
 	view := stripANSI(model.Render())
 	if !strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
 		t.Fatalf("render missing attention marker in primary marker column in %q", view)
@@ -1090,7 +1111,7 @@ func TestSidebarModelRenderShowsAttentionMarkerInPrimaryMarkerColumn(t *testing.
 }
 
 func TestSidebarModelRenderUsesAttentionMarkerInsteadOfCurrentMarker(t *testing.T) {
-	model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true, Attention: true, Slot: 1}}, Actions{})
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Current: true, Attention: true, Slot: 1}}, Actions{}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationOff})
 	view := stripANSI(model.Render())
 	if !strings.Contains(view, attentionMarkerSymbol+" [1] alpha") {
 		t.Fatalf("render missing attention marker for current session in %q", view)
@@ -1114,13 +1135,161 @@ func TestSidebarModelRenderDisplaysDoubleDigitSlots(t *testing.T) {
 }
 
 func TestSidebarModelRenderKeepsAttentionMarkerWhiteWhenSessionTextIsStale(t *testing.T) {
-	model := NewSidebarModel([]SessionItem{{Name: "selected"}, {Name: "alpha", Attention: true, Slot: 1, Heat: string(heat.BucketStale)}}, Actions{})
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "selected"}, {Name: "alpha", Attention: true, Slot: 1, Heat: string(heat.BucketStale)}}, Actions{}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationOff})
 	view := model.Render()
 	if !strings.Contains(view, "\x1b[1;38;2;255;255;255m"+attentionMarkerSymbol) {
 		t.Fatalf("render missing white attention marker in %q", view)
 	}
 	if !strings.Contains(view, "\x1b[38;2;75;85;99m[1] alpha") {
 		t.Fatalf("render missing stale session text color in %q", view)
+	}
+}
+
+func TestSidebarModelInitSchedulesAttentionAnimationWhenAttentionIsVisible(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationPulse})
+	if cmd := model.Init(); cmd == nil {
+		t.Fatal("Init() did not schedule attention animation tick")
+	}
+}
+
+func TestSidebarModelAttentionAnimationTickAdvancesFrameWhileAttentionExists(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationPulse})
+
+	updated, cmd := model.Update(attentionAnimationTickMsg{Generation: untrackedAttentionAnimationTick})
+	model = requireSidebarModel(t, updated)
+
+	if model.attentionAnimationFrame != 1 {
+		t.Fatalf("attentionAnimationFrame = %d, want 1", model.attentionAnimationFrame)
+	}
+	if cmd == nil {
+		t.Fatal("Update(attentionAnimationTickMsg) did not schedule the next tick")
+	}
+}
+
+func TestSidebarModelAttentionAnimationTickStopsWithoutAttention(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Slot: 1}}, Actions{}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationPulse})
+
+	updated, cmd := model.Update(attentionAnimationTickMsg{Generation: untrackedAttentionAnimationTick})
+	model = requireSidebarModel(t, updated)
+
+	if model.attentionAnimationFrame != 0 {
+		t.Fatalf("attentionAnimationFrame = %d, want 0", model.attentionAnimationFrame)
+	}
+	if cmd != nil {
+		t.Fatal("Update(attentionAnimationTickMsg) scheduled a tick without attention")
+	}
+}
+
+func TestSidebarModelAttentionAnimationDoesNotDuplicatePendingTickAcrossReloads(t *testing.T) {
+	reloads := [][]SessionItem{
+		{{Name: "alpha", Slot: 1}},
+		{{Name: "alpha", Attention: true, Slot: 1}},
+	}
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{
+		ReloadSessions: func() []SessionItem {
+			next := reloads[0]
+			reloads = reloads[1:]
+			return next
+		},
+	}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationPulse})
+
+	updated, cmd := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyF5}))
+	_ = requireSidebarModel(t, updated)
+	if cmd != nil {
+		t.Fatal("reload clearing attention scheduled a duplicate animation tick")
+	}
+
+	updated, cmd = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyF5}))
+	_ = requireSidebarModel(t, updated)
+	if cmd != nil {
+		t.Fatal("reload reintroducing attention scheduled a duplicate while previous tick was pending")
+	}
+}
+
+func TestSidebarModelAttentionAnimationOffDoesNotScheduleTicks(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationOff})
+	if cmd := model.Init(); cmd != nil {
+		t.Fatal("Init() scheduled attention animation while animation is off")
+	}
+
+	updated, cmd := model.Update(attentionAnimationTickMsg{Generation: untrackedAttentionAnimationTick})
+	_ = requireSidebarModel(t, updated)
+	if cmd != nil {
+		t.Fatal("Update(attentionAnimationTickMsg) scheduled attention animation while animation is off")
+	}
+
+	model = NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Slot: 1}}, Actions{
+		ReloadSessions: func() []SessionItem {
+			return []SessionItem{{Name: "alpha", Attention: true, Slot: 1}}
+		},
+	}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationOff})
+	updated, cmd = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyF5}))
+	_ = requireSidebarModel(t, updated)
+	if cmd != nil {
+		t.Fatal("reload scheduled attention animation while animation is off")
+	}
+}
+
+func TestSidebarModelRenderAnimatesAttentionMarker(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Attention: true, Slot: 1, Heat: string(heat.BucketStale)}}, Actions{}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationPulse})
+	next := model
+	next.attentionAnimationFrame = 1
+
+	first := model.Render()
+	second := next.Render()
+	if first == second {
+		t.Fatal("animated attention marker render did not change between frames")
+	}
+	if !strings.Contains(stripANSI(second), attentionMarkerSymbol+" [1] alpha") {
+		t.Fatalf("visible pulse frame missing bell marker in %q", stripANSI(second))
+	}
+}
+
+func TestSidebarModelRenderHidesTransparentAttentionFrame(t *testing.T) {
+	tests := map[string]config.AgentAttentionAnimation{
+		"pulse": config.AgentAttentionAnimationPulse,
+		"blink": config.AgentAttentionAnimationBlink,
+	}
+	for name, style := range tests {
+		t.Run(name, func(t *testing.T) {
+			model := NewSidebarModelWithOptions([]SessionItem{{Name: "selected"}, {Name: "alpha", Attention: true, Slot: 1, Heat: string(heat.BucketStale)}}, Actions{}, SidebarOptions{AgentAttentionAnimation: style})
+			view := model.Render()
+			stripped := stripANSI(view)
+			if strings.Contains(stripped, attentionMarkerSymbol+" [1] alpha") {
+				t.Fatalf("transparent frame rendered bell marker in %q", stripped)
+			}
+			if !strings.Contains(stripped, "  [1] alpha") {
+				t.Fatalf("transparent frame did not preserve marker spacing in %q", stripped)
+			}
+			if strings.Contains(view, "38;2;0;0;0") {
+				t.Fatalf("transparent frame rendered black foreground in %q", view)
+			}
+		})
+	}
+}
+
+func TestSidebarModelRenderKeepsSelectedBackgroundForTransparentAttentionFrame(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Attention: true, Slot: 1}}, Actions{}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationPulse})
+	view := model.Render()
+	stripped := stripANSI(view)
+	if strings.Contains(stripped, attentionMarkerSymbol+" [1] alpha") {
+		t.Fatalf("transparent selected frame rendered bell marker in %q", stripped)
+	}
+	if !strings.Contains(stripped, "  [1] alpha") {
+		t.Fatalf("transparent selected frame did not preserve marker spacing in %q", stripped)
+	}
+	if !strings.Contains(view, "48;2;6;95;70") {
+		t.Fatalf("transparent selected frame did not preserve selected background in %q", view)
+	}
+}
+
+func TestSidebarModelRenderKeepsAttentionMarkerStaticWhenAnimationOff(t *testing.T) {
+	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Attention: true, Slot: 1, Heat: string(heat.BucketStale)}}, Actions{}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationOff})
+	next := model
+	next.attentionAnimationFrame = 1
+
+	if first, second := model.Render(), next.Render(); first != second {
+		t.Fatalf("off animation changed render; first=%q second=%q", first, second)
 	}
 }
 

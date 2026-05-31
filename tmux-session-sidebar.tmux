@@ -79,6 +79,7 @@ main() {
   set_default @session-sidebar-heat-max-highlighted 0
   set_default @session-sidebar-activity-debug-log off
   set_default @session-sidebar-agent-attention on
+  set_default @session-sidebar-agent-attention-animation pulse
   set_default @session-sidebar-auto-sort-recent off
   set_default @session-sidebar-restore-sessions auto
   set_default @session-sidebar-continuum-grace-seconds 3
