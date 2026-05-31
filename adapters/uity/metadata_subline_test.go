@@ -13,7 +13,7 @@ func TestFormatMetadataSublineNerdGitStates(t *testing.T) {
 		Untracked: 1,
 	}, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 80})
 
-	want := " +2 -1  1  3  1"
+	want := " +2 -1  1  3  1"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}
@@ -70,7 +70,7 @@ func TestFormatMetadataSublineOmitsBranchEvenWhenLong(t *testing.T) {
 	}
 
 	got := FormatMetadataSubline(meta, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 24})
-	want := " +2  3"
+	want := " +2  3"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}

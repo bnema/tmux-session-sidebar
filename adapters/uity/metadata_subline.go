@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	MetadataNerdGitCompare = "\uf47f" // nf-oct-git_compare
+	MetadataNerdGitCompare = "\uf440" // nf-oct-diff; desired compare glyph in supported Nerd Fonts
 	MetadataNerdAdded      = "\uf457" // nf-oct-diff_added
 	MetadataNerdModified   = "\uf459" // nf-oct-diff_modified
 	MetadataNerdRemoved    = "\uf458" // nf-oct-diff_removed
