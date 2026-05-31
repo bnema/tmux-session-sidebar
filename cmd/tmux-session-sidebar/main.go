@@ -9,6 +9,7 @@ import (
 
 	"path/filepath"
 
+	"github.com/bnema/tmux-session-sidebar/adapters/daemonctl"
 	"github.com/bnema/tmux-session-sidebar/adapters/ipcunix"
 	"github.com/bnema/tmux-session-sidebar/adapters/process"
 	"github.com/bnema/tmux-session-sidebar/adapters/tmuxcli"
@@ -19,9 +20,12 @@ var (
 	signalContext = signal.NotifyContext
 	runApp        = app.Run
 	newRouter     = func() app.Router {
-		tmux := tmuxcli.Client{Process: process.Runner{}}
-		socketPath := filepath.Join(app.StateDir(), "sidebar.sock")
-		return app.NewRuntimeRouter(tmux, ipcunix.NewClient(socketPath), ipcunix.NewServer(socketPath))
+		runner := process.Runner{}
+		tmux := tmuxcli.Client{Process: runner}
+		stateDir := app.StateDir()
+		socketPath := filepath.Join(stateDir, "sidebar.sock")
+		daemonLauncher := daemonctl.Launcher{Process: runner, StateDir: stateDir}
+		return app.NewRuntimeRouterWithDaemon(tmux, ipcunix.NewClient(socketPath), ipcunix.NewServer(socketPath), daemonLauncher)
 	}
 )
 

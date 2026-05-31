@@ -92,7 +92,7 @@ Reloading tmux starts or restarts the Go runtime daemon through the plugin boots
 tmux source-file ~/.tmux.conf
 ```
 
-If the daemon exits later, it is not restarted automatically; reload tmux to start it again. To stop it manually, kill the PID recorded in the state directory:
+If the daemon exits later, sidebar open/close/toggle/refresh actions attempt a lightweight background restart before falling back to direct handling. Reload tmux to force a clean restart. To stop it manually, kill the PID recorded in the state directory:
 
 ```bash
 kill "$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar/daemon.pid")"

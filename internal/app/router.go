@@ -22,9 +22,10 @@ import (
 )
 
 type runtimeRouter struct {
-	sidebar   ports.TmuxSidebarPort
-	ipcClient ports.IPCClientPort
-	ipcServer ports.IPCServerPort
+	sidebar        ports.TmuxSidebarPort
+	ipcClient      ports.IPCClientPort
+	ipcServer      ports.IPCServerPort
+	daemonLauncher ports.DaemonLauncherPort
 }
 
 // NewRouter composes the production command router used by the tmux bootstrap.
@@ -33,11 +34,15 @@ func NewRouter(sidebar ports.TmuxSidebarPort) Router {
 }
 
 func NewRuntimeRouter(sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort, ipcServer ports.IPCServerPort) Router {
-	return runtimeRouter{sidebar: sidebar, ipcClient: ipcClient, ipcServer: ipcServer}
+	return NewRuntimeRouterWithDaemon(sidebar, ipcClient, ipcServer, nil)
+}
+
+func NewRuntimeRouterWithDaemon(sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort, ipcServer ports.IPCServerPort, daemonLauncher ports.DaemonLauncherPort) Router {
+	return runtimeRouter{sidebar: sidebar, ipcClient: ipcClient, ipcServer: ipcServer, daemonLauncher: daemonLauncher}
 }
 
 func NewDaemonRouter(sidebar ports.TmuxSidebarPort, ipcServer ports.IPCServerPort) Router {
-	return NewRuntimeRouter(sidebar, nil, ipcServer)
+	return NewRuntimeRouterWithDaemon(sidebar, nil, ipcServer, nil)
 }
 
 func (r runtimeRouter) direct() runtimeRouter {
@@ -52,6 +57,7 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 			if !shouldFallback {
 				return err
 			}
+			r.ensureDaemonStartedBestEffort(ctx, route, stderr)
 		} else {
 			return nil
 		}
@@ -115,6 +121,18 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 
 func ipcUnavailableForBootstrap(err error) bool {
 	return errors.Is(err, ports.ErrIPCConnectionRefused) || errors.Is(err, ports.ErrIPCSocketMissing) || errors.Is(err, ports.ErrIPCConnectionReset)
+}
+
+func (r runtimeRouter) ensureDaemonStartedBestEffort(ctx context.Context, route Route, stderr io.Writer) {
+	if r.daemonLauncher == nil {
+		return
+	}
+	if err := r.daemonLauncher.EnsureStarted(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if stderr == nil {
+			stderr = io.Discard
+		}
+		_, _ = fmt.Fprintf(stderr, "tmux-session-sidebar: daemon ensure failed before direct fallback for %s: %v\n", route.Path, err)
+	}
 }
 
 func (r runtimeRouter) withMetadataReconcile(ctx context.Context, err error) error {

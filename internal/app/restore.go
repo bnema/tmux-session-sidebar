@@ -133,7 +133,11 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 	if err := os.WriteFile(pidFile, fmt.Appendf(nil, "%d\n", os.Getpid()), 0o600); err != nil {
 		return err
 	}
-	defer func() { _ = os.Remove(pidFile) }()
+	fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon serve started pid=%d\n", os.Getpid())
+	defer func() {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon serve stopped pid=%d\n", os.Getpid())
+		_ = os.Remove(pidFile)
+	}()
 
 	cfg := loadSidebarConfig(ctx)
 	if err := resetTransientHeatStateOnStartup(ctx); err != nil {
