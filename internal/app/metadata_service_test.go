@@ -133,6 +133,8 @@ type metadataFakeGit struct {
 	statuses    map[string]ports.GitStatus
 	infos       map[string]ports.GitRepoInfo
 	targets     map[string]ports.GitWatchTargets
+	infoErrs    map[string]error
+	targetErrs  map[string]error
 	statusCalls *atomic.Int64
 	statusErr   error
 }
@@ -153,6 +155,9 @@ func (g metadataFakeGit) Status(ctx context.Context, path string) (ports.GitStat
 	return g.statuses[path], nil
 }
 func (g metadataFakeGit) RepoInfo(ctx context.Context, path string) (ports.GitRepoInfo, error) {
+	if err, ok := g.infoErrs[path]; ok {
+		return ports.GitRepoInfo{}, err
+	}
 	if info, ok := g.infos[path]; ok {
 		return info, nil
 	}
@@ -160,6 +165,9 @@ func (g metadataFakeGit) RepoInfo(ctx context.Context, path string) (ports.GitRe
 	return ports.GitRepoInfo{RepoRoot: status.RepoRoot, WorktreeRoot: status.RepoRoot, Branch: status.Branch}, nil
 }
 func (g metadataFakeGit) WatchTargets(ctx context.Context, path string) (ports.GitWatchTargets, error) {
+	if err, ok := g.targetErrs[path]; ok {
+		return ports.GitWatchTargets{}, err
+	}
 	if targets, ok := g.targets[path]; ok {
 		return targets, nil
 	}
@@ -340,5 +348,43 @@ func TestMetadataServiceCaptureRepoDeletesMetadataWhenRepoDisappears(t *testing.
 	}
 	if refresher.callCount() != 1 {
 		t.Fatalf("refresh calls = %d, want 1", refresher.callCount())
+	}
+}
+
+func TestMetadataServiceReconcileSkipsUnexpectedRepoInfoErrors(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
+	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, paths: map[string]string{"alpha": "/bad", "beta": "/good"}}
+	git := metadataFakeGit{
+		infoErrs: map[string]error{"/bad": errors.New("boom")},
+		infos:    map[string]ports.GitRepoInfo{"/good": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"}},
+		targets:  map[string]ports.GitWatchTargets{"/good": {RepoRoot: "/repo", WorktreeRoot: "/repo", Dirs: []string{"/repo"}}},
+	}
+	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store)}
+
+	subs, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	if err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if got := subs["/repo"].SessionNames; len(got) != 1 || got[0] != "beta" {
+		t.Fatalf("subscription sessions = %#v, want beta", got)
+	}
+}
+
+func TestMetadataServiceReconcileSkipsUnexpectedWatchTargetErrors(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
+	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, paths: map[string]string{"alpha": "/bad", "beta": "/good"}}
+	git := metadataFakeGit{
+		infos:      map[string]ports.GitRepoInfo{"/bad": {RepoRoot: "/bad", WorktreeRoot: "/bad"}, "/good": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"}},
+		targetErrs: map[string]error{"/bad": errors.New("boom")},
+		targets:    map[string]ports.GitWatchTargets{"/good": {RepoRoot: "/repo", WorktreeRoot: "/repo", Dirs: []string{"/repo"}}},
+	}
+	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store)}
+
+	subs, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	if err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if got := subs["/repo"].SessionNames; len(got) != 1 || got[0] != "beta" {
+		t.Fatalf("subscription sessions = %#v, want beta", got)
 	}
 }

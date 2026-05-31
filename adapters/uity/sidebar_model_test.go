@@ -1183,3 +1183,23 @@ func requireSidebarModel(t *testing.T, model tea.Model) SidebarModel {
 	}
 	return m
 }
+
+func TestBestEffortMetadataIconModeDefaultsToNerdWhenLocaleUnset(t *testing.T) {
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LC_CTYPE", "")
+	t.Setenv("LANG", "")
+	if got := bestEffortMetadataIconMode(); got != MetadataIconsNerd {
+		t.Fatalf("bestEffortMetadataIconMode() = %q, want %q", got, MetadataIconsNerd)
+	}
+}
+
+func TestBestEffortMetadataIconModeUsesASCIIForASCIILocale(t *testing.T) {
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LC_CTYPE", "")
+	t.Setenv("LANG", "C.ASCII")
+	if got := bestEffortMetadataIconMode(); got != MetadataIconsASCII {
+		t.Fatalf("bestEffortMetadataIconMode() = %q, want %q", got, MetadataIconsASCII)
+	}
+}

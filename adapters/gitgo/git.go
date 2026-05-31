@@ -333,7 +333,7 @@ func divergence(ctx context.Context, repo *gogit.Repository, branch string, defa
 	if err := ctx.Err(); err != nil {
 		return 0, 0, false, err
 	}
-	ahead, behind, err := aheadBehind(repo, head.Hash(), targetRef.Hash())
+	ahead, behind, err := aheadBehind(ctx, repo, head.Hash(), targetRef.Hash())
 	if err != nil {
 		return 0, 0, false, err
 	}
@@ -347,42 +347,59 @@ func referenceNameForTarget(target string) plumbing.ReferenceName {
 	return plumbing.ReferenceName(target)
 }
 
-func aheadBehind(repo *gogit.Repository, head plumbing.Hash, target plumbing.Hash) (int, int, error) {
-	headAncestors, err := ancestorSet(repo, head)
+func aheadBehind(ctx context.Context, repo *gogit.Repository, head plumbing.Hash, target plumbing.Hash) (int, int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, 0, err
+	}
+	headCommit, err := repo.CommitObject(head)
 	if err != nil {
 		return 0, 0, err
 	}
-	targetAncestors, err := ancestorSet(repo, target)
+	targetCommit, err := repo.CommitObject(target)
 	if err != nil {
 		return 0, 0, err
 	}
-	ahead := 0
-	for hash := range headAncestors {
-		if _, ok := targetAncestors[hash]; !ok {
-			ahead++
-		}
+	mergeBases, err := headCommit.MergeBase(targetCommit)
+	if err != nil {
+		return 0, 0, err
 	}
-	behind := 0
-	for hash := range targetAncestors {
-		if _, ok := headAncestors[hash]; !ok {
-			behind++
-		}
+	limits := make(map[plumbing.Hash]struct{}, len(mergeBases))
+	for _, commit := range mergeBases {
+		limits[commit.Hash] = struct{}{}
+	}
+	ahead, err := countUntilLimit(ctx, headCommit, limits)
+	if err != nil {
+		return 0, 0, err
+	}
+	behind, err := countUntilLimit(ctx, targetCommit, limits)
+	if err != nil {
+		return 0, 0, err
 	}
 	return ahead, behind, nil
 }
 
-func ancestorSet(repo *gogit.Repository, hash plumbing.Hash) (map[plumbing.Hash]struct{}, error) {
-	commit, err := repo.CommitObject(hash)
-	if err != nil {
-		return nil, err
+func countUntilLimit(ctx context.Context, start *object.Commit, limits map[plumbing.Hash]struct{}) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
 	}
-	ancestors := map[plumbing.Hash]struct{}{}
-	iter := object.NewCommitPreorderIter(commit, nil, nil)
-	err = iter.ForEach(func(commit *object.Commit) error {
-		ancestors[commit.Hash] = struct{}{}
+	isLimit := object.CommitFilter(func(commit *object.Commit) bool {
+		_, ok := limits[commit.Hash]
+		return ok
+	})
+	iter := object.NewFilterCommitIter(start, nil, &isLimit)
+	defer iter.Close()
+	count := 0
+	err := iter.ForEach(func(commit *object.Commit) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if _, ok := limits[commit.Hash]; ok {
+			return nil
+		}
+		count++
 		return nil
 	})
-	return ancestors, err
+	return count, err
 }
 
 func mergeInProgress(gitDir string) bool {

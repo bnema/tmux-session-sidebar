@@ -1,11 +1,16 @@
 package gitgo
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/go-git/go-git/v5/plumbing"
 )
 
 func TestGitStatusCollectsDirtyCountsWithNativeGoGit(t *testing.T) {
@@ -234,4 +239,64 @@ func TestGitStatusResolvesSymlinkedRepoPath(t *testing.T) {
 	if status.RepoRoot != repo || status.Modified != 1 {
 		t.Fatalf("Status symlink = %#v, want physical repo modified", status)
 	}
+}
+
+func TestAheadBehindHonorsCanceledContext(t *testing.T) {
+	repoPath := initGitRepo(t)
+	writeFile(t, repoPath, "file.txt", "one\n")
+	runGit(t, repoPath, "add", "file.txt")
+	runGit(t, repoPath, "commit", "-m", "one")
+	repo, err := openRepo(repoPath)
+	if err != nil {
+		t.Fatalf("open repo: %v", err)
+	}
+	headRef, err := repo.Head()
+	if err != nil {
+		t.Fatalf("head: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, _, err = aheadBehind(ctx, repo, headRef.Hash(), headRef.Hash())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("aheadBehind error = %v, want context.Canceled", err)
+	}
+}
+
+func TestAheadBehindStopsAtMergeBase(t *testing.T) {
+	repoPath := initGitRepo(t)
+	writeFile(t, repoPath, "base.txt", "base\n")
+	runGit(t, repoPath, "add", "base.txt")
+	runGit(t, repoPath, "commit", "-m", "base")
+	runGit(t, repoPath, "checkout", "-b", "feature")
+	writeFile(t, repoPath, "feature.txt", "feature\n")
+	runGit(t, repoPath, "add", "feature.txt")
+	runGit(t, repoPath, "commit", "-m", "feature")
+	featureHash := gitHash(t, repoPath, "HEAD")
+	runGit(t, repoPath, "checkout", "main")
+	writeFile(t, repoPath, "main.txt", "main\n")
+	runGit(t, repoPath, "add", "main.txt")
+	runGit(t, repoPath, "commit", "-m", "main")
+	mainHash := gitHash(t, repoPath, "HEAD")
+	repo, err := openRepo(repoPath)
+	if err != nil {
+		t.Fatalf("open repo: %v", err)
+	}
+
+	ahead, behind, err := aheadBehind(t.Context(), repo, plumbing.NewHash(featureHash), plumbing.NewHash(mainHash))
+	if err != nil {
+		t.Fatalf("aheadBehind error: %v", err)
+	}
+	if ahead != 1 || behind != 1 {
+		t.Fatalf("aheadBehind = %d, %d; want 1, 1", ahead, behind)
+	}
+}
+
+func gitHash(t *testing.T, dir string, rev string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", rev).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse %s failed: %v\n%s", rev, err, out)
+	}
+	return string(bytes.TrimSpace(out))
 }

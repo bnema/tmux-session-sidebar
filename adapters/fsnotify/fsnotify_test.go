@@ -138,3 +138,22 @@ func TestWatcherAddsNewDirectoriesUnderExplicitGitRefs(t *testing.T) {
 	}
 	assertWatchEvent(t, events, errs, path)
 }
+
+func TestWatcherDoesNotExcludeRootWithExcludedAncestorName(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "node_modules", "repo")
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+		t.Fatalf("mkdir root: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events, errs, err := (Watcher{}).Watch(ctx, []string{root})
+	if err != nil {
+		t.Fatalf("Watch error: %v", err)
+	}
+	path := filepath.Join(root, "src", "file.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	assertWatchEvent(t, events, errs, path)
+}

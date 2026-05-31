@@ -29,7 +29,8 @@ func (w Watcher) Watch(ctx context.Context, paths []string) (<-chan Event, <-cha
 	state := watchState{watcher: watcher, excludes: w.excludes()}
 	for _, path := range paths {
 		cleaned := filepath.Clean(path)
-		allowExcluded := state.excluded(cleaned)
+		state.roots = append(state.roots, cleaned)
+		allowExcluded := state.excludedRoot(cleaned)
 		if allowExcluded {
 			state.includedExcluded = append(state.includedExcluded, cleaned)
 		}
@@ -52,6 +53,7 @@ func (w Watcher) excludes() []string {
 type watchState struct {
 	watcher          *gofsnotify.Watcher
 	excludes         []string
+	roots            []string
 	includedExcluded []string
 }
 
@@ -141,14 +143,37 @@ func (s watchState) included(path string) bool {
 }
 
 func (s watchState) excluded(path string) bool {
-	base := filepath.Base(path)
-	if slices.Contains(s.excludes, base) {
-		return true
+	path = filepath.Clean(path)
+	rel, ok := s.relativePath(path)
+	if !ok || rel == "." || rel == "" {
+		return false
 	}
-	for part := range strings.SplitSeq(filepath.Clean(path), string(os.PathSeparator)) {
+	for part := range strings.SplitSeq(rel, string(os.PathSeparator)) {
 		if slices.Contains(s.excludes, part) {
 			return true
 		}
 	}
 	return false
+}
+
+func (s watchState) excludedRoot(path string) bool {
+	return slices.Contains(s.excludes, filepath.Base(filepath.Clean(path)))
+}
+
+func (s watchState) relativePath(path string) (string, bool) {
+	path = filepath.Clean(path)
+	bestRoot := ""
+	bestRel := ""
+	for _, root := range s.roots {
+		root = filepath.Clean(root)
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			continue
+		}
+		if len(root) > len(bestRoot) {
+			bestRoot = root
+			bestRel = rel
+		}
+	}
+	return bestRel, bestRoot != ""
 }

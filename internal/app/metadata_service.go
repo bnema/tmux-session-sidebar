@@ -352,14 +352,16 @@ func (s *MetadataService) Reconcile(ctx context.Context, cfg ports.ConfigSnapsho
 			if errors.Is(err, ports.ErrNotGitRepository) || errors.Is(err, ports.ErrGitPathMissing) {
 				continue
 			}
-			return nil, err
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata repo info failed for session %q path %q: %v\n", session.Name, path, err)
+			continue
 		}
 		targets, err := s.Git.WatchTargets(ctx, path)
 		if err != nil {
 			if errors.Is(err, ports.ErrNotGitRepository) || errors.Is(err, ports.ErrGitPathMissing) {
 				continue
 			}
-			return nil, err
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata watch targets failed for session %q path %q: %v\n", session.Name, path, err)
+			continue
 		}
 		sub := subs[info.RepoRoot]
 		if sub.RepoRoot == "" {

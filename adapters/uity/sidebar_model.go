@@ -105,7 +105,16 @@ func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options Si
 	if iconMode == "" {
 		iconMode = bestEffortMetadataIconMode()
 	}
-	return SidebarModel{items: items, actions: actions, mode: ModeBrowse, showNumeric: options.ShowNumericItems, version: options.Version, checkUpdateAvailable: options.CheckUpdateAvailable, updateAvailable: displayVersion(options.Version) == "dev", metadataIconMode: iconMode}
+	return SidebarModel{
+		items:                items,
+		actions:              actions,
+		mode:                 ModeBrowse,
+		showNumeric:          options.ShowNumericItems,
+		version:              options.Version,
+		checkUpdateAvailable: options.CheckUpdateAvailable,
+		updateAvailable:      displayVersion(options.Version) == "dev",
+		metadataIconMode:     iconMode,
+	}
 }
 
 type updateAvailableMsg struct {
@@ -714,7 +723,13 @@ func metadataColorActive(item SessionItem) bool {
 
 func bestEffortMetadataIconMode() MetadataIconMode {
 	term := strings.ToLower(os.Getenv("TERM"))
-	locale := strings.ToLower(strings.Join([]string{os.Getenv("LC_ALL"), os.Getenv("LC_CTYPE"), os.Getenv("LANG")}, ":"))
+	localeValues := []string{}
+	for _, key := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			localeValues = append(localeValues, value)
+		}
+	}
+	locale := strings.ToLower(strings.Join(localeValues, ":"))
 	if term == "dumb" || strings.Contains(locale, "ascii") || (!strings.Contains(locale, "utf") && locale != "") {
 		return MetadataIconsASCII
 	}
