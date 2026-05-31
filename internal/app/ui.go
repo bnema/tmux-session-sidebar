@@ -125,6 +125,13 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 				item.Attention = state.Attention
 			}
 		}
+		if cfg.MetadataSublineEnabled {
+			if metadata, ok := persisted.Metadata[name]; ok {
+				item.Metadata = gitStatusMetadataSubline(metadata)
+			} else if path, ok := sessionMetadataPath(persisted.Sessions[name]); ok {
+				item.Metadata = uity.SessionMetadataSubline{Kind: uity.MetadataKindDirectory, SessionName: name, Path: path}
+			}
+		}
 		if !sessions.IsNumericName(name) {
 			item.Slot = slot
 			slot++
@@ -132,6 +139,23 @@ func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 		items = append(items, item)
 	}
 	return items, nil
+}
+
+func gitStatusMetadataSubline(status ports.GitStatus) uity.SessionMetadataSubline {
+	return uity.SessionMetadataSubline{
+		Kind:            uity.MetadataKindGit,
+		Branch:          status.Branch,
+		Clean:           status.Clean,
+		Ahead:           status.Ahead,
+		Behind:          status.Behind,
+		Staged:          status.Staged,
+		Modified:        status.Modified,
+		Deleted:         status.Deleted,
+		Renamed:         status.Renamed,
+		Untracked:       status.Untracked,
+		Conflicts:       status.Conflicts,
+		UpstreamMissing: !status.UpstreamConfigured,
+	}
 }
 
 func loadProjectItems(ctx context.Context) []uity.ProjectItem {
@@ -191,6 +215,7 @@ func defaultSidebarConfig() ports.ConfigSnapshot {
 		AutoSortRecentInterval: 0,
 		RestoreSessionsMode:    "auto",
 		ContinuumGraceSeconds:  3,
+		MetadataSublineEnabled: true,
 	}
 }
 

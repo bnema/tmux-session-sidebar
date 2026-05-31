@@ -116,6 +116,10 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
+	metadataSubline, err := c.option(ctx, "@session-sidebar-metadata-subline")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
 	return ports.ConfigSnapshot{
 		Loaded:                 true,
 		KeyBinding:             key,
@@ -133,6 +137,7 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		AutoSortRecentInterval: autoSortRecentInterval,
 		RestoreSessionsMode:    normalizeRestoreSessionsMode(restoreSessionsMode),
 		ContinuumGraceSeconds:  continuumGraceSeconds,
+		MetadataSublineEnabled: metadataSubline == "" || parseTmuxBool(metadataSubline),
 	}, nil
 }
 
@@ -363,7 +368,29 @@ func (c Client) RefreshSidebar(ctx context.Context, clientID string) error {
 	if err != nil || pane.PaneID == "" {
 		return err
 	}
-	_, err = c.Process.Exec(ctx, tmuxBinary, []string{cmdSendKeys, "-t", pane.PaneID, "F5"})
+	return c.refreshSidebarPane(ctx, pane.PaneID)
+}
+
+func (c Client) RefreshAllSidebars(ctx context.Context) error {
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-f", "#{==:#{@session-sidebar-pane},1}", "-F", formatPaneID})
+	if err != nil {
+		return wrapTmuxError(result, err)
+	}
+	var firstErr error
+	for paneID := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
+		paneID = strings.TrimSpace(paneID)
+		if paneID == "" {
+			continue
+		}
+		if err := c.refreshSidebarPane(ctx, paneID); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (c Client) refreshSidebarPane(ctx context.Context, paneID string) error {
+	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSendKeys, "-t", paneID, "F5"})
 	return err
 }
 

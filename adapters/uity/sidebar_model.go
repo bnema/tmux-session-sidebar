@@ -2,6 +2,7 @@ package uity
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"unicode"
 
@@ -19,6 +20,9 @@ const pinnedMarkerSymbol = "\uf08d"    // Nerd Font thumb-tack glyph (U+F08D / n
 const spaceKeySymbol = "\U000F1050"    // Nerd Font keyboard-space glyph (U+F1050 / nf-md-keyboard_space).
 const updateAvailableSymbol = "\uf062" // Nerd Font arrow-up glyph (U+F062 / nf-fa-arrow_up).
 
+const metadataSublinePaddingWidth = 6
+const metadataSublineFallbackWidth = 80
+
 type SessionItem struct {
 	Name          string
 	Current       bool
@@ -28,6 +32,7 @@ type SessionItem struct {
 	Attention     bool
 	Pinned        bool
 	PinColor      string
+	Metadata      SessionMetadataSubline
 }
 
 type ProjectItem struct {
@@ -54,6 +59,7 @@ type SidebarOptions struct {
 	ShowNumericItems     bool
 	Version              string
 	CheckUpdateAvailable func(currentVersion string) (bool, error)
+	MetadataIconMode     MetadataIconMode
 }
 
 type SidebarModel struct {
@@ -72,6 +78,7 @@ type SidebarModel struct {
 	version              string
 	checkUpdateAvailable func(currentVersion string) (bool, error)
 	updateAvailable      bool
+	metadataIconMode     MetadataIconMode
 	width                int
 	height               int
 	pinColorPicker       PinColorPicker
@@ -94,7 +101,20 @@ func NewSidebarModel(items []SessionItem, actions Actions) SidebarModel {
 }
 
 func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options SidebarOptions) SidebarModel {
-	return SidebarModel{items: items, actions: actions, mode: ModeBrowse, showNumeric: options.ShowNumericItems, version: options.Version, checkUpdateAvailable: options.CheckUpdateAvailable, updateAvailable: displayVersion(options.Version) == "dev"}
+	iconMode := options.MetadataIconMode
+	if iconMode == "" {
+		iconMode = bestEffortMetadataIconMode()
+	}
+	return SidebarModel{
+		items:                items,
+		actions:              actions,
+		mode:                 ModeBrowse,
+		showNumeric:          options.ShowNumericItems,
+		version:              options.Version,
+		checkUpdateAvailable: options.CheckUpdateAvailable,
+		updateAvailable:      displayVersion(options.Version) == "dev",
+		metadataIconMode:     iconMode,
+	}
 }
 
 type updateAvailableMsg struct {
@@ -670,11 +690,50 @@ func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
 			row = marker + " " + body
 		}
 		lines = append(lines, row)
+		if subline := m.renderSessionMetadataSubline(styles, item, badge, i == m.cursor); subline != "" {
+			lines = append(lines, subline)
+		}
 	}
 	if len(visible) == 0 {
 		lines = append(lines, styles.dim.Render("no sessions"))
 	}
 	return lines
+}
+
+func (m SidebarModel) renderSessionMetadataSubline(_ sidebarStyles, item SessionItem, badge string, selected bool) string {
+	if item.Metadata.Kind == "" {
+		return ""
+	}
+	// Account for outer padding plus the metadata indent; fallback keeps rendering useful before the first WindowSizeMsg.
+	width := m.width - metadataSublinePaddingWidth
+	if width <= 0 {
+		width = metadataSublineFallbackWidth
+	}
+	subline := RenderMetadataSubline(item.Metadata, MetadataSublineRenderOptions{Icons: m.metadataIconMode, Width: width, Selected: selected, Active: metadataColorActive(item)})
+	if subline == "" {
+		return ""
+	}
+	indent := "  " + strings.Repeat(" ", metadataDisplayWidth(badge))
+	return indent + subline
+}
+
+func metadataColorActive(item SessionItem) bool {
+	return item.Current || (item.Heat != "" && item.Heat != string(heat.BucketStale))
+}
+
+func bestEffortMetadataIconMode() MetadataIconMode {
+	term := strings.ToLower(os.Getenv("TERM"))
+	localeValues := []string{}
+	for _, key := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			localeValues = append(localeValues, value)
+		}
+	}
+	locale := strings.ToLower(strings.Join(localeValues, ":"))
+	if term == "dumb" || strings.Contains(locale, "ascii") || (!strings.Contains(locale, "utf") && locale != "") {
+		return MetadataIconsASCII
+	}
+	return MetadataIconsNerd
 }
 
 func (m SidebarModel) renderProjects(styles sidebarStyles) []string {
