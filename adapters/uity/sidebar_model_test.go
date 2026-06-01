@@ -97,7 +97,7 @@ func TestSidebarModelF5SelectsPreviousCurrentSessionAfterExternalSwitch(t *testi
 	}
 }
 
-func TestSidebarModelSwitchSelectedStartsAttentionAnimationAfterReload(t *testing.T) {
+func TestSidebarModelSwitchSelectedStartsAttentionAnimationAndSelectsPreviousCurrentAfterReload(t *testing.T) {
 	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
 		SwitchSession: func(name string) bool { return name == "beta" },
 		ReloadSessions: func() []SessionItem {
@@ -112,8 +112,8 @@ func TestSidebarModelSwitchSelectedStartsAttentionAnimationAfterReload(t *testin
 	if cmd == nil {
 		t.Fatal("switch reload did not schedule attention animation tick")
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
-		t.Fatalf("selected after switch reload = %#v ok=%v, want current beta", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
+		t.Fatalf("selected after switch reload = %#v ok=%v, want previous alpha", item, ok)
 	}
 }
 
@@ -281,8 +281,8 @@ func TestSidebarModelNumberKeySwitchesDisplayedSlot(t *testing.T) {
 	if reloaded != 1 {
 		t.Fatalf("ReloadSessions called %d times, want 1", reloaded)
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
-		t.Fatalf("selected after slot switch = %#v ok=%v, want beta current", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
+		t.Fatalf("selected after slot switch = %#v ok=%v, want previous alpha", item, ok)
 	}
 }
 
@@ -307,8 +307,8 @@ func TestSidebarModelZeroKeySwitchesDisplayedSlotTen(t *testing.T) {
 	if called != 1 {
 		t.Fatalf("SwitchSession called %d times, want 1", called)
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "kappa" || !item.Current {
-		t.Fatalf("selected after slot 10 switch = %#v ok=%v, want kappa current", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
+		t.Fatalf("selected after slot 10 switch = %#v ok=%v, want previous alpha", item, ok)
 	}
 }
 
@@ -751,7 +751,7 @@ func TestSidebarModelRecalculatesStatusBarPositionAfterResize(t *testing.T) {
 	}
 }
 
-func TestSidebarModelEnterSwitchesAndRefreshesCurrentMarker(t *testing.T) {
+func TestSidebarModelEnterSwitchesAndSelectsPreviousCurrentSession(t *testing.T) {
 	called := 0
 	reloaded := 0
 	model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true}, {Name: "beta"}}, Actions{
@@ -782,8 +782,8 @@ func TestSidebarModelEnterSwitchesAndRefreshesCurrentMarker(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("Update(Enter) returned an unexpected follow-up command")
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
-		t.Fatalf("selection after switch = %#v ok=%v, want beta current", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
+		t.Fatalf("selection after switch = %#v ok=%v, want previous alpha", item, ok)
 	}
 }
 

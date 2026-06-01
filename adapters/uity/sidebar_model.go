@@ -352,7 +352,6 @@ func (m *SidebarModel) switchItem(item SessionItem) {
 	}
 	if m.actions.SwitchSession(item.Name) {
 		m.reloadSessions()
-		m.selectSession(item.Name)
 	}
 }
 
