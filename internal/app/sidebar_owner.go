@@ -25,10 +25,16 @@ func (r sidebarOwnerResolver) ResolveActionClient(ctx context.Context, flags map
 		return ""
 	}
 	owner := strings.TrimSpace(state.OwnerClient)
-	if owner != "" && tmuxClientExists(ctx, owner) {
+	if owner == "" {
+		return r.clientViewingSidebarPane(ctx)
+	}
+	if tmuxClientExists(ctx, owner) {
 		return owner
 	}
-	return r.clientViewingSidebarPane(ctx)
+	if viewingClient := r.clientViewingSidebarPane(ctx); viewingClient != "" {
+		return viewingClient
+	}
+	return owner
 }
 
 func (r sidebarOwnerResolver) AdoptOpenSidebar(ctx context.Context, client string) error {

@@ -26,10 +26,6 @@ func effectiveUIClient(ctx context.Context, flags map[string]string) string {
 	return newSidebarOwnerResolver().ResolveActionClient(ctx, flags)
 }
 
-func clientViewingSidebarPane(ctx context.Context) string {
-	return newSidebarOwnerResolver().clientViewingSidebarPane(ctx)
-}
-
 func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
 	return loadSessionItemsWithConfig(ctx, loadSidebarConfig(ctx))
 }

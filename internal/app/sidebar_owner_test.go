@@ -60,6 +60,30 @@ esac
 	}
 }
 
+func TestSidebarOwnerResolverFallsBackToStaleOwnerWhenNoViewingClientInferred(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("TMUX_PANE", "")
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1 $2" in
+  "list-clients -F") printf 'client-2\n' ;;
+esac
+`)
+	ctx := context.Background()
+	if err := saveSidebarVisibility(ctx, true, "client-1"); err != nil {
+		t.Fatalf("saveSidebarVisibility: %v", err)
+	}
+
+	resolver := sidebarOwnerResolver{environ: func(name string) string {
+		if name == "TMUX_PANE" {
+			return ""
+		}
+		return ""
+	}}
+	if got := resolver.ResolveActionClient(ctx, nil); got != "client-1" {
+		t.Fatalf("ResolveActionClient stale owner without viewing client = %q, want client-1", got)
+	}
+}
+
 func TestSidebarOwnerResolverDoesNotFallbackToInternalClient(t *testing.T) {
 	installFakeTmux(t, `#!/usr/bin/env bash
 case "$1" in
