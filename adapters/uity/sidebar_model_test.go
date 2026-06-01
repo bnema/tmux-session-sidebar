@@ -688,8 +688,12 @@ func TestSidebarModelInitChecksForUpdatesAsynchronously(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Init returned nil command")
 	}
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok || len(batch) == 0 {
+		t.Fatalf("Init command = %#v, want batch with update check", cmd())
+	}
 	result := make(chan tea.Msg, 1)
-	go func() { result <- cmd() }()
+	go func() { result <- batch[0]() }()
 	<-started
 	if strings.Contains(stripANSI(model.Render()), updateAvailableSymbol) {
 		t.Fatalf("render should not include update indicator while async check is blocked: %q", model.Render())

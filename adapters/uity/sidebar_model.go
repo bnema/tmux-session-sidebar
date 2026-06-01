@@ -12,7 +12,6 @@ import (
 	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
-	coreversion "github.com/bnema/tmux-session-sidebar/core/version"
 )
 
 const attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
@@ -78,8 +77,7 @@ type SidebarModel struct {
 	pendingKill                      string
 	actions                          Actions
 	version                          string
-	checkUpdateAvailable             func(currentVersion string) (bool, error)
-	updateAvailable                  bool
+	updateCheck                      updateCheckState
 	metadataIconMode                 MetadataIconMode
 	width                            int
 	height                           int
@@ -123,8 +121,7 @@ func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options Si
 		mode:                             ModeBrowse,
 		showNumeric:                      options.ShowNumericItems,
 		version:                          options.Version,
-		checkUpdateAvailable:             options.CheckUpdateAvailable,
-		updateAvailable:                  displayVersion(options.Version) == "dev",
+		updateCheck:                      newUpdateCheckState(options.Version, options.CheckUpdateAvailable),
 		metadataIconMode:                 iconMode,
 		attentionAnimationStyle:          attentionAnimationStyle,
 		attentionAnimationTickPending:    attentionAnimationTickPending,
@@ -132,25 +129,8 @@ func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options Si
 	}
 }
 
-type updateAvailableMsg struct {
-	available bool
-}
-
 func (m SidebarModel) Init() tea.Cmd {
-	return batchCommands(m.updateAvailableCmd(), attentionAnimationTickCmd(m.attentionAnimationStyle, m.items, m.attentionAnimationTickGeneration))
-}
-
-func (m SidebarModel) updateAvailableCmd() tea.Cmd {
-	if m.updateAvailable || m.checkUpdateAvailable == nil || !coreversion.CheckableReleaseVersion(m.version) {
-		return nil
-	}
-	return func() tea.Msg {
-		available, err := m.checkUpdateAvailable(m.version)
-		if err != nil {
-			return updateAvailableMsg{}
-		}
-		return updateAvailableMsg{available: available}
-	}
+	return batchCommands(m.updateCheck.initCmd(), attentionAnimationTickCmd(m.attentionAnimationStyle, m.items, m.attentionAnimationTickGeneration))
 }
 
 func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -160,8 +140,12 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case updateAvailableMsg:
-		m.updateAvailable = msg.available
+		m.updateCheck = m.updateCheck.handleResult(msg)
 		return m, nil
+	case updateCheckTickMsg:
+		var cmd tea.Cmd
+		m.updateCheck, cmd = m.updateCheck.handleTick()
+		return m, cmd
 	case attentionAnimationTickMsg:
 		if msg.Generation != untrackedAttentionAnimationTick && msg.Generation != m.attentionAnimationTickGeneration {
 			return m, nil
@@ -620,7 +604,7 @@ func (m SidebarModel) collapsedHelpLine(styles sidebarStyles) string {
 	if version == "" {
 		return styles.dim.Render("M-? keys")
 	}
-	if m.updateAvailable {
+	if m.updateCheck.available {
 		return styles.versionBadge.Render(" "+version) + styles.updateIndicator.Render(updateAvailableSymbol+" ") + styles.dim.Render(" M-? keys")
 	}
 	return styles.versionBadge.Render(" "+version+" ") + styles.dim.Render(" M-? keys")
