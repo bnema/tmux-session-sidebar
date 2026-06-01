@@ -35,6 +35,44 @@ func TestGitStatusCollectsDirtyCountsWithNativeGoGit(t *testing.T) {
 	}
 }
 
+func TestGitStatusUsesInjectedDivergenceCounter(t *testing.T) {
+	repo := initGitRepo(t)
+	writeFile(t, repo, "tracked.txt", "one\n")
+	runGit(t, repo, "add", "tracked.txt")
+	runGit(t, repo, "commit", "-m", "initial")
+
+	counter := &recordingDivergenceCounter{ahead: 2, behind: 3, ok: true}
+	status, err := (Git{Divergence: counter}).Status(t.Context(), repo)
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if counter.calls != 1 || counter.repoRoot != repo || counter.branch != "main" {
+		t.Fatalf("Divergence calls = %d repo = %q branch = %q, want one call for %q main", counter.calls, counter.repoRoot, counter.branch, repo)
+	}
+	if !status.UpstreamConfigured || status.Ahead != 2 || status.Behind != 3 || status.Clean {
+		t.Fatalf("Status divergence = %#v, want injected 2 ahead 3 behind and dirty", status)
+	}
+}
+
+type recordingDivergenceCounter struct {
+	calls         int
+	repoRoot      string
+	branch        string
+	defaultRemote string
+	ahead         int
+	behind        int
+	ok            bool
+	err           error
+}
+
+func (c *recordingDivergenceCounter) Divergence(_ context.Context, repoRoot string, branch string, defaultRemote string) (int, int, bool, error) {
+	c.calls++
+	c.repoRoot = repoRoot
+	c.branch = branch
+	c.defaultRemote = defaultRemote
+	return c.ahead, c.behind, c.ok, c.err
+}
+
 func TestGitStatusComparesWorkingBranchToDefaultRemote(t *testing.T) {
 	origin := initBareGitRepo(t)
 	work := cloneRepo(t, origin)

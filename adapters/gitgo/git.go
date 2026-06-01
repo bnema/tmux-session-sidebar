@@ -15,8 +15,13 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
+type DivergenceCounter interface {
+	Divergence(ctx context.Context, repoRoot string, branch string, defaultRemote string) (int, int, bool, error)
+}
+
 type Git struct {
-	Fallback ports.GitPort
+	Fallback   ports.GitPort
+	Divergence DivergenceCounter
 }
 
 func (g Git) RepoRoot(ctx context.Context, path string) (string, error) {
@@ -113,7 +118,7 @@ func (g Git) status(ctx context.Context, path string) (ports.GitStatus, error) {
 		return ports.GitStatus{}, mapGoGitError(path, err)
 	}
 	status := ports.GitStatus{RepoRoot: info.RepoRoot, Branch: info.Branch}
-	ahead, behind, ok, err := divergence(ctx, repo, info.Branch, info.DefaultBranch)
+	ahead, behind, ok, err := g.divergence(ctx, repo, info)
 	if err != nil {
 		return ports.GitStatus{}, err
 	}
@@ -301,6 +306,16 @@ func sameDefaultBranch(branch string, defaultRemote string) bool {
 		return false
 	}
 	return branch == defaultRemote || strings.TrimPrefix(defaultRemote, "origin/") == branch
+}
+
+func (g Git) divergence(ctx context.Context, repo *gogit.Repository, info ports.GitRepoInfo) (int, int, bool, error) {
+	if g.Divergence != nil {
+		ahead, behind, ok, err := g.Divergence.Divergence(ctx, info.WorktreeRoot, info.Branch, info.DefaultBranch)
+		if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return ahead, behind, ok, err
+		}
+	}
+	return divergence(ctx, repo, info.Branch, info.DefaultBranch)
 }
 
 func divergence(ctx context.Context, repo *gogit.Repository, branch string, defaultRemote string) (int, int, bool, error) {

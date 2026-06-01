@@ -3,6 +3,7 @@ package gitcli
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -80,6 +81,136 @@ func TestGitStatusComparesDefaultBranchWithUpstreamFallback(t *testing.T) {
 	if got := process.revListTarget; got != "HEAD...@{upstream}" {
 		t.Fatalf("rev-list target = %q, want HEAD...@{upstream}", got)
 	}
+}
+
+func TestGitStatusComparesDefaultBranchWithDefaultRemoteWhenUpstreamMissing(t *testing.T) {
+	process := &defaultBranchMissingUpstreamProcess{}
+	status, err := (Git{Process: process}).Status(t.Context(), "/work")
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if !status.UpstreamConfigured || status.Ahead != 4 || status.Behind != 1 {
+		t.Fatalf("Status divergence = %#v, want 4 ahead 1 behind vs origin/main", status)
+	}
+	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main"}
+	if !slices.Equal(process.revListTargets, wantTargets) {
+		t.Fatalf("rev-list targets = %#v, want %#v", process.revListTargets, wantTargets)
+	}
+}
+
+func TestGitStatusIgnoresStaleDefaultRemoteBranch(t *testing.T) {
+	process := &staleDefaultRemoteProcess{}
+	status, err := (Git{Process: process}).Status(t.Context(), "/work")
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if status.UpstreamConfigured || status.Ahead != 0 || status.Behind != 0 || !status.Clean {
+		t.Fatalf("Status divergence = %#v, want clean status without upstream when origin/main is missing", status)
+	}
+	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main"}
+	if !slices.Equal(process.revListTargets, wantTargets) {
+		t.Fatalf("rev-list targets = %#v, want %#v", process.revListTargets, wantTargets)
+	}
+}
+
+func TestGitStatusIgnoresStaleUpstreamBranch(t *testing.T) {
+	process := &staleUpstreamProcess{}
+	status, err := (Git{Process: process}).Status(t.Context(), "/work")
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if status.UpstreamConfigured || status.Ahead != 0 || status.Behind != 0 || !status.Clean {
+		t.Fatalf("Status divergence = %#v, want clean status without upstream when tracked origin/main is missing", status)
+	}
+	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main"}
+	if !slices.Equal(process.revListTargets, wantTargets) {
+		t.Fatalf("rev-list targets = %#v, want %#v", process.revListTargets, wantTargets)
+	}
+}
+
+type staleUpstreamProcess struct {
+	revListTargets []string
+}
+
+func (p *staleUpstreamProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
+	if len(args) >= 4 && args[2] == "rev-parse" && args[3] == "--show-toplevel" {
+		return ports.Result{Stdout: "/repo\n"}, nil
+	}
+	if len(args) >= 4 && args[2] == "branch" && args[3] == "--show-current" {
+		return ports.Result{Stdout: "main\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "symbolic-ref" && args[3] == "--short" && args[4] == "refs/remotes/origin/HEAD" {
+		return ports.Result{Stdout: "origin/main\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "rev-list" {
+		target := args[len(args)-1]
+		p.revListTargets = append(p.revListTargets, target)
+		return ports.Result{Stderr: "fatal: no such branch: 'HEAD...'"}, errors.New("exit status 128")
+	}
+	if len(args) >= 4 && args[2] == "status" {
+		return ports.Result{Stdout: "## main\n"}, nil
+	}
+	return ports.Result{}, errors.New("unexpected call")
+}
+
+type staleDefaultRemoteProcess struct {
+	revListTargets []string
+}
+
+func (p *staleDefaultRemoteProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
+	if len(args) >= 4 && args[2] == "rev-parse" && args[3] == "--show-toplevel" {
+		return ports.Result{Stdout: "/repo\n"}, nil
+	}
+	if len(args) >= 4 && args[2] == "branch" && args[3] == "--show-current" {
+		return ports.Result{Stdout: "main\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "symbolic-ref" && args[3] == "--short" && args[4] == "refs/remotes/origin/HEAD" {
+		return ports.Result{Stdout: "origin/main\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "rev-list" {
+		target := args[len(args)-1]
+		p.revListTargets = append(p.revListTargets, target)
+		if target == "HEAD...@{upstream}" {
+			return ports.Result{Stderr: "fatal: no upstream configured for branch 'main'"}, errors.New("exit status 128")
+		}
+		if target == "HEAD...origin/main" {
+			return ports.Result{Stderr: "fatal: ambiguous argument 'HEAD...origin/main': unknown revision or path not in the working tree."}, errors.New("exit status 128")
+		}
+	}
+	if len(args) >= 4 && args[2] == "status" {
+		return ports.Result{Stdout: "## main\n"}, nil
+	}
+	return ports.Result{}, errors.New("unexpected call")
+}
+
+type defaultBranchMissingUpstreamProcess struct {
+	revListTargets []string
+}
+
+func (p *defaultBranchMissingUpstreamProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
+	if len(args) >= 4 && args[2] == "rev-parse" && args[3] == "--show-toplevel" {
+		return ports.Result{Stdout: "/repo\n"}, nil
+	}
+	if len(args) >= 4 && args[2] == "branch" && args[3] == "--show-current" {
+		return ports.Result{Stdout: "main\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "symbolic-ref" && args[3] == "--short" && args[4] == "refs/remotes/origin/HEAD" {
+		return ports.Result{Stdout: "origin/main\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "rev-list" {
+		target := args[len(args)-1]
+		p.revListTargets = append(p.revListTargets, target)
+		if target == "HEAD...@{upstream}" {
+			return ports.Result{Stderr: "fatal: no upstream configured for branch 'main'"}, errors.New("exit status 128")
+		}
+		if target == "HEAD...origin/main" {
+			return ports.Result{Stdout: "4\t1\n"}, nil
+		}
+	}
+	if len(args) >= 4 && args[2] == "status" {
+		return ports.Result{Stdout: "## main\n"}, nil
+	}
+	return ports.Result{}, errors.New("unexpected call")
 }
 
 type defaultBranchProcess struct {
