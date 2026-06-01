@@ -45,10 +45,12 @@ type MetadataRepoSubscription struct {
 
 func NewMetadataService() *MetadataService {
 	tmux := newTmuxClient()
+	gitProcess := process.Runner{}
+	fastGit := gitcli.Git{Process: gitProcess}
 	return &MetadataService{
 		Store:                sessionOrderStore(),
 		Tmux:                 tmux,
-		Git:                  gitgo.Git{Fallback: gitcli.Git{Process: process.Runner{}}},
+		Git:                  gitgo.Git{Fallback: fastGit, Divergence: fastGit},
 		Watcher:              watchfsnotify.Watcher{},
 		Refresher:            tmux,
 		LockStore:            defaultMetadataLockStore,

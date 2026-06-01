@@ -15,6 +15,8 @@ type Git struct {
 	Process ports.ProcessPort
 }
 
+var errMissingUpstream = errors.New("missing upstream")
+
 func (g Git) RepoRoot(ctx context.Context, path string) (string, error) {
 	result, err := g.Process.Exec(ctx, "git", []string{"-C", path, "rev-parse", "--show-toplevel"})
 	if err != nil {
@@ -89,7 +91,8 @@ func (g Git) Status(ctx context.Context, path string) (ports.GitStatus, error) {
 		return ports.GitStatus{}, err
 	}
 	status := ports.GitStatus{RepoRoot: repoRoot, Branch: branch}
-	ahead, behind, upstreamConfigured, err := g.divergence(ctx, repoRoot, branch)
+	defaultRemote, _ := g.defaultRemoteBranch(ctx, repoRoot)
+	ahead, behind, upstreamConfigured, err := g.Divergence(ctx, repoRoot, branch, defaultRemote)
 	if err != nil {
 		return ports.GitStatus{}, err
 	}
@@ -167,17 +170,35 @@ func sameDefaultBranch(branch string, defaultRemote string) bool {
 	return branch == defaultRemote || strings.TrimPrefix(defaultRemote, "origin/") == branch
 }
 
-func (g Git) divergence(ctx context.Context, repoRoot string, branch string) (int, int, bool, error) {
+func (g Git) Divergence(ctx context.Context, repoRoot string, branch string, defaultRemote string) (int, int, bool, error) {
 	target := "@{upstream}"
-	if defaultRemote, ok := g.defaultRemoteBranch(ctx, repoRoot); ok && !sameDefaultBranch(branch, defaultRemote) {
+	fallbackTarget := ""
+	if defaultRemote != "" && !sameDefaultBranch(branch, defaultRemote) {
 		target = defaultRemote
 	} else if branch == "detached" {
 		return 0, 0, false, nil
+	} else if defaultRemote != "" {
+		fallbackTarget = defaultRemote
 	}
+	ahead, behind, ok, err := g.divergenceAgainst(ctx, repoRoot, target)
+	if err == nil || ok || !errors.Is(err, errMissingUpstream) {
+		return ahead, behind, ok, err
+	}
+	if fallbackTarget == "" {
+		return 0, 0, false, nil
+	}
+	ahead, behind, ok, err = g.divergenceAgainst(ctx, repoRoot, fallbackTarget)
+	if errors.Is(err, errMissingUpstream) {
+		return 0, 0, false, nil
+	}
+	return ahead, behind, ok, err
+}
+
+func (g Git) divergenceAgainst(ctx context.Context, repoRoot string, target string) (int, int, bool, error) {
 	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "rev-list", "--left-right", "--count", "HEAD..." + target})
 	if err != nil {
 		if isMissingUpstreamError(result, err) {
-			return 0, 0, false, nil
+			return 0, 0, false, errors.Join(errMissingUpstream, err)
 		}
 		return 0, 0, false, mapGitError(result, err)
 	}
@@ -264,7 +285,7 @@ func isEmptyRepositoryRevisionError(result ports.Result, err error) bool {
 
 func isMissingUpstreamError(result ports.Result, err error) bool {
 	message := strings.ToLower(result.Stderr + result.Stdout + err.Error())
-	return strings.Contains(message, "no upstream configured") || strings.Contains(message, "no upstream branch") || strings.Contains(message, "does not point to a branch") || strings.Contains(message, "upstream") && strings.Contains(message, "not found")
+	return strings.Contains(message, "no upstream configured") || strings.Contains(message, "no upstream branch") || strings.Contains(message, "does not point to a branch") || strings.Contains(message, "upstream") && strings.Contains(message, "not found") || strings.Contains(message, "unknown revision") || strings.Contains(message, "ambiguous argument") || strings.Contains(message, "no such branch")
 }
 
 func mapGitError(result ports.Result, err error) error {
