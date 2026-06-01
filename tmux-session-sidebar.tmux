@@ -67,7 +67,7 @@ install_runtime_hooks() {
 
 main() {
   set_default @session-sidebar-key                  M-b
-  set_default @session-sidebar-width                20
+  set_default @session-sidebar-width                30
   set_default @session-sidebar-project-roots        "$HOME/projects"
   set_default @session-sidebar-use-fzf              on
   set_default @session-sidebar-close-after-switch   off
