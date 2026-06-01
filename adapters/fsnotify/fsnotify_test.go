@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -137,6 +138,37 @@ func TestWatcherAddsNewDirectoriesUnderExplicitGitRefs(t *testing.T) {
 		t.Fatalf("write ref: %v", err)
 	}
 	assertWatchEvent(t, events, errs, path)
+}
+
+func TestDefaultExcludesDoNotHideVendorOrTmp(t *testing.T) {
+	excludes := (Watcher{}).excludes()
+	for _, name := range []string{"vendor", "tmp"} {
+		if slices.Contains(excludes, name) {
+			t.Fatalf("default excludes contain %q; broad language/cache excludes can hide tracked repo changes: %#v", name, excludes)
+		}
+	}
+}
+
+func TestWatcherWatchesExplicitVendorAndTmpRootsRecursively(t *testing.T) {
+	for _, name := range []string{"vendor", "tmp"} {
+		t.Run(name, func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), name)
+			if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+				t.Fatalf("mkdir root: %v", err)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			events, errs, err := (Watcher{}).Watch(ctx, []string{root})
+			if err != nil {
+				t.Fatalf("Watch error: %v", err)
+			}
+			path := filepath.Join(root, "src", "file.txt")
+			if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
+				t.Fatalf("write file: %v", err)
+			}
+			assertWatchEvent(t, events, errs, path)
+		})
+	}
 }
 
 func TestWatcherDoesNotExcludeRootWithExcludedAncestorName(t *testing.T) {

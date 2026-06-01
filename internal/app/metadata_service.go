@@ -19,20 +19,27 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-const defaultMetadataGitStatusConcurrency = 4
+const (
+	defaultMetadataGitStatusConcurrency   = 4
+	defaultMetadataCaptureFailureCooldown = 30 * time.Second
+)
 
 type MetadataService struct {
-	Store                ports.StateStorePort
-	Tmux                 ports.TmuxQueryPort
-	Git                  ports.GitPort
-	Watcher              ports.FileWatcherPort
-	Refresher            ports.SidebarRefresherPort
-	ReconcileRequests    <-chan struct{}
-	LockStore            func(context.Context, func(ports.StateStorePort) error) error
-	Debounce             time.Duration
-	ReconcileInterval    time.Duration
-	GitStatusTimeout     time.Duration
-	GitStatusConcurrency int
+	Store                  ports.StateStorePort
+	Tmux                   ports.TmuxQueryPort
+	Git                    ports.GitPort
+	Watcher                ports.FileWatcherPort
+	Refresher              ports.SidebarRefresherPort
+	ReconcileRequests      <-chan struct{}
+	LockStore              func(context.Context, func(ports.StateStorePort) error) error
+	Debounce               time.Duration
+	ReconcileInterval      time.Duration
+	GitStatusTimeout       time.Duration
+	GitStatusConcurrency   int
+	CaptureFailureCooldown time.Duration
+	Now                    func() time.Time
+	captureFailureMu       sync.Mutex
+	captureFailureUntil    map[string]time.Time
 }
 
 type MetadataRepoSubscription struct {
@@ -43,21 +50,44 @@ type MetadataRepoSubscription struct {
 	WatchDirs    []string
 }
 
+type metadataGit struct {
+	StatusGit ports.GitPort
+	RepoGit   ports.GitPort
+}
+
+func (g metadataGit) RepoRoot(ctx context.Context, path string) (string, error) {
+	return g.RepoGit.RepoRoot(ctx, path)
+}
+
+func (g metadataGit) Status(ctx context.Context, path string) (ports.GitStatus, error) {
+	return g.StatusGit.Status(ctx, path)
+}
+
+func (g metadataGit) RepoInfo(ctx context.Context, path string) (ports.GitRepoInfo, error) {
+	return g.RepoGit.RepoInfo(ctx, path)
+}
+
+func (g metadataGit) WatchTargets(ctx context.Context, path string) (ports.GitWatchTargets, error) {
+	return g.RepoGit.WatchTargets(ctx, path)
+}
+
 func NewMetadataService() *MetadataService {
 	tmux := newTmuxClient()
 	gitProcess := process.Runner{}
 	fastGit := gitcli.Git{Process: gitProcess}
+	repoGit := gitgo.Git{Fallback: fastGit, Divergence: fastGit}
 	return &MetadataService{
-		Store:                sessionOrderStore(),
-		Tmux:                 tmux,
-		Git:                  gitgo.Git{Fallback: fastGit, Divergence: fastGit},
-		Watcher:              watchfsnotify.Watcher{},
-		Refresher:            tmux,
-		LockStore:            defaultMetadataLockStore,
-		Debounce:             250 * time.Millisecond,
-		ReconcileInterval:    time.Minute,
-		GitStatusTimeout:     metadataGitStatusTimeout,
-		GitStatusConcurrency: defaultMetadataGitStatusConcurrency,
+		Store:                  sessionOrderStore(),
+		Tmux:                   tmux,
+		Git:                    metadataGit{StatusGit: fastGit, RepoGit: repoGit},
+		Watcher:                watchfsnotify.Watcher{},
+		Refresher:              tmux,
+		LockStore:              defaultMetadataLockStore,
+		Debounce:               250 * time.Millisecond,
+		ReconcileInterval:      time.Minute,
+		GitStatusTimeout:       metadataGitStatusTimeout,
+		GitStatusConcurrency:   defaultMetadataGitStatusConcurrency,
+		CaptureFailureCooldown: defaultMetadataCaptureFailureCooldown,
 	}
 }
 
@@ -385,9 +415,67 @@ func (s *MetadataService) gitStatusTimeout() time.Duration {
 	return metadataGitStatusTimeout
 }
 
+func (s *MetadataService) captureFailureCooldown() time.Duration {
+	if s.CaptureFailureCooldown != 0 {
+		return s.CaptureFailureCooldown
+	}
+	return defaultMetadataCaptureFailureCooldown
+}
+
+func (s *MetadataService) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
+}
+
+func (s *MetadataService) captureInCooldown(repoRoot string) bool {
+	cooldown := s.captureFailureCooldown()
+	if cooldown <= 0 {
+		return false
+	}
+	now := s.now()
+	s.captureFailureMu.Lock()
+	defer s.captureFailureMu.Unlock()
+	until, ok := s.captureFailureUntil[repoRoot]
+	if !ok {
+		return false
+	}
+	if !now.Before(until) {
+		delete(s.captureFailureUntil, repoRoot)
+		return false
+	}
+	return true
+}
+
+func (s *MetadataService) recordCaptureFailure(repoRoot string) {
+	cooldown := s.captureFailureCooldown()
+	if cooldown <= 0 {
+		return
+	}
+	s.captureFailureMu.Lock()
+	defer s.captureFailureMu.Unlock()
+	if s.captureFailureUntil == nil {
+		s.captureFailureUntil = map[string]time.Time{}
+	}
+	s.captureFailureUntil[repoRoot] = s.now().Add(cooldown)
+}
+
+func (s *MetadataService) clearCaptureFailure(repoRoot string) {
+	s.captureFailureMu.Lock()
+	defer s.captureFailureMu.Unlock()
+	delete(s.captureFailureUntil, repoRoot)
+}
+
 func (s *MetadataService) CaptureRepo(ctx context.Context, sub MetadataRepoSubscription) (bool, error) {
 	if s.Store == nil || s.Git == nil {
 		return false, errors.New("metadata service missing dependency")
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if s.captureInCooldown(sub.RepoRoot) {
+		return false, nil
 	}
 	statusCtx, cancel := context.WithTimeout(ctx, s.gitStatusTimeout())
 	defer cancel()
@@ -397,9 +485,11 @@ func (s *MetadataService) CaptureRepo(ctx context.Context, sub MetadataRepoSubsc
 		if errors.Is(err, ports.ErrNotGitRepository) || errors.Is(err, ports.ErrGitPathMissing) {
 			terminalDelete = true
 		} else {
+			s.recordCaptureFailure(sub.RepoRoot)
 			return false, err
 		}
 	}
+	s.clearCaptureFailure(sub.RepoRoot)
 	lockStore := s.LockStore
 	if lockStore == nil {
 		lockStore = func(ctx context.Context, fn func(ports.StateStorePort) error) error { return fn(s.Store) }
