@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -24,67 +23,11 @@ var newTmuxClient = func() tmuxcli.Client {
 }
 
 func effectiveUIClient(ctx context.Context, flags map[string]string) string {
-	if client := strings.TrimSpace(flags["client"]); client != "" {
-		return client
-	}
-	state, err := persistedSidebarState(ctx)
-	if err != nil || !state.Open {
-		return ""
-	}
-	owner := strings.TrimSpace(state.OwnerClient)
-	if owner == "" || !tmuxClientExists(ctx, owner) {
-		if client := clientViewingSidebarPane(ctx); client != "" {
-			return client
-		}
-	}
-	return owner
-}
-
-func tmuxClientExists(ctx context.Context, client string) bool {
-	out, err := tmux(ctx, "list-clients", "-F", "#{client_name}")
-	if err != nil {
-		return true
-	}
-	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
-		if strings.TrimSpace(line) == client {
-			return true
-		}
-	}
-	return false
+	return newSidebarOwnerResolver().ResolveActionClient(ctx, flags)
 }
 
 func clientViewingSidebarPane(ctx context.Context) string {
-	pane := strings.TrimSpace(os.Getenv("TMUX_PANE"))
-	if pane == "" {
-		return ""
-	}
-	windowID, err := tmux(ctx, "display-message", "-p", "-t", pane, "#{window_id}")
-	if err != nil {
-		return ""
-	}
-	windowID = strings.TrimSpace(windowID)
-	if windowID == "" {
-		return ""
-	}
-	out, err := tmux(ctx, "list-clients", "-F", "#{client_name}\t#{window_id}")
-	if err != nil {
-		return ""
-	}
-	fallback := ""
-	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
-		fields := strings.Split(line, "\t")
-		if len(fields) < 2 {
-			continue
-		}
-		client := strings.TrimSpace(fields[0])
-		if fallback == "" {
-			fallback = client
-		}
-		if strings.TrimSpace(fields[1]) == windowID {
-			return client
-		}
-	}
-	return fallback
+	return newSidebarOwnerResolver().clientViewingSidebarPane(ctx)
 }
 
 func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {

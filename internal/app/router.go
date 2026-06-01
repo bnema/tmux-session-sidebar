@@ -416,25 +416,36 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 		return err
 	}
 	persisted, _ := loadSidebarState(ctx)
-	client := effectiveUIClient(ctx, flags)
-	actions := uity.Actions{
+	actions := buildSidebarActions(ctx, flags, stdout, sidebar, ipcClient)
+	options := uity.SidebarOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, githubrelease.Client{}), AgentAttentionAnimation: cfg.AgentAttentionAnimation}
+	if persisted.Sidebar != nil {
+		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
+	}
+	program := tea.NewProgram(uity.NewSidebarModelWithOptions(items, actions, options), tea.WithOutput(stdout))
+	_, err = program.Run()
+	return err
+}
+
+func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort) uity.Actions {
+	currentClient := func() string { return effectiveUIClient(ctx, flags) }
+	return uity.Actions{
 		SwitchSession: func(name string) bool {
-			return handleActionError(ctx, "switch session", switchClient(ctx, client, name, sidebar))
+			return handleActionError(ctx, "switch session", switchClient(ctx, currentClient(), name, sidebar))
 		},
 		CreateProject: func(project uity.ProjectItem) bool {
-			return handleMetadataAction(ctx, ipcClient, "create project session", createProject(ctx, map[string]string{"client": client, "project-path": project.Path}, stdout, sidebar))
+			return handleMetadataAction(ctx, ipcClient, "create project session", createProject(ctx, map[string]string{"client": currentClient(), "project-path": project.Path}, stdout, sidebar))
 		},
 		CreateGitProject: func() bool {
-			return handleMetadataAction(ctx, ipcClient, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": client}, sidebar))
+			return handleMetadataAction(ctx, ipcClient, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": currentClient()}, sidebar))
 		},
 		CreateAdhoc: func() bool {
-			return handleMetadataAction(ctx, ipcClient, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": client}, sidebar))
+			return handleMetadataAction(ctx, ipcClient, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": currentClient()}, sidebar))
 		},
 		RenameSession: func(name string) bool {
-			return handleMetadataAction(ctx, ipcClient, "rename session", renameSession(ctx, map[string]string{"client": client, "session": name}, sidebar))
+			return handleMetadataAction(ctx, ipcClient, "rename session", renameSession(ctx, map[string]string{"client": currentClient(), "session": name}, sidebar))
 		},
 		KillSession: func(name string) bool {
-			return handleMetadataAction(ctx, ipcClient, "kill session", killSession(ctx, map[string]string{"client": client, "session": name, "confirmed": "yes"}, sidebar))
+			return handleMetadataAction(ctx, ipcClient, "kill session", killSession(ctx, map[string]string{"client": currentClient(), "session": name, "confirmed": "yes"}, sidebar))
 		},
 		TogglePinnedSession: func(name string) bool {
 			items, err := loadSessionItems(ctx)
@@ -490,13 +501,6 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 			return items
 		},
 	}
-	options := uity.SidebarOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, githubrelease.Client{}), AgentAttentionAnimation: cfg.AgentAttentionAnimation}
-	if persisted.Sidebar != nil {
-		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
-	}
-	program := tea.NewProgram(uity.NewSidebarModelWithOptions(items, actions, options), tea.WithOutput(stdout))
-	_, err = program.Run()
-	return err
 }
 
 func scheduleSidebarLayoutRestoreOnExit(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) {
@@ -548,7 +552,8 @@ func captureLiveSidebarSessionsAndRefresh(ctx context.Context, client string, se
 }
 
 func isInternalHookSession(session string) bool {
-	return strings.HasPrefix(strings.TrimSpace(session), "__")
+	session = strings.TrimSpace(session)
+	return strings.HasPrefix(session, "__") || session == "tmux-session-sidebar"
 }
 
 func quickSwitch(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {

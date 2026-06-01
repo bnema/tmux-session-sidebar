@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
@@ -12,6 +15,11 @@ import (
 func TestEffectiveUIClientFallsBackToPersistedSidebarOwner(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("TMUX_PANE", "")
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  list-clients) printf 'client-1\nclient-2\n' ;;
+esac
+`)
 	ctx := context.Background()
 	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
 		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
@@ -27,13 +35,44 @@ func TestEffectiveUIClientFallsBackToPersistedSidebarOwner(t *testing.T) {
 	}
 }
 
+func TestSidebarActionsResolveUIClientAtActionTime(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("TMUX_PANE", "")
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  switch-client) ;;
+  list-clients) printf 'client-2\n' ;;
+esac
+`)
+	ctx := context.Background()
+	if err := saveSidebarVisibility(ctx, true, "client-1"); err != nil {
+		t.Fatalf("save initial sidebar visibility: %v", err)
+	}
+	actions := buildSidebarActions(ctx, map[string]string{}, io.Discard, nil, nil)
+	if err := saveSidebarVisibility(ctx, true, "client-2"); err != nil {
+		t.Fatalf("save moved sidebar visibility: %v", err)
+	}
+
+	if ok := actions.SwitchSession("beta"); !ok {
+		t.Fatal("SwitchSession = false, want true")
+	}
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read tmux log: %v", err)
+	}
+	if got := string(logData); !strings.Contains(got, "switch-client -c client-2 -t =beta:") {
+		t.Fatalf("switch target used stale client, log = %q", got)
+	}
+}
+
 func TestEffectiveUIClientFallsBackToClientViewingSidebarPaneWhenOwnerIsStale(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("TMUX_PANE", "%sidebar")
 	installFakeTmux(t, `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
 case "$1" in
-  list-clients) printf '/dev/current\t@1\n/dev/other\t@2\n' ;;
+  list-clients) printf '/dev/current\t@1\talpha\n/dev/other\t@2\tbeta\n' ;;
   display-message) printf '@1\n' ;;
 esac
 `)
