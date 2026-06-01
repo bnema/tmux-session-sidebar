@@ -14,6 +14,47 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+func TestSwitchClientAdoptsOpenSidebarForTargetClient(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+	}); err != nil {
+		t.Fatalf("seed sidebar state: %v", err)
+	}
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  switch-client) ;;
+esac
+`)
+
+	if err := switchClient(ctx, "client-2", "beta", nil); err != nil {
+		t.Fatalf("switchClient error: %v", err)
+	}
+	state, err := persistedSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("persistedSidebarState error: %v", err)
+	}
+	if state.OwnerClient != "client-1" {
+		t.Fatalf("OwnerClient = %q, want unchanged without sidebar port", state.OwnerClient)
+	}
+
+	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	tmuxPort.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
+	tmuxPort.EXPECT().AttachSingletonSidebar(ctx, "=gamma:", "%9", mock.Anything).Return(ports.PaneRef{PaneID: "%9", WindowID: "@3"}, nil)
+	if err := switchClient(ctx, "client-2", "gamma", tmuxPort); err != nil {
+		t.Fatalf("switchClient with sidebar error: %v", err)
+	}
+	state, err = persistedSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("persistedSidebarState after switch error: %v", err)
+	}
+	if state.OwnerClient != "client-2" {
+		t.Fatalf("OwnerClient = %q, want adopted target client", state.OwnerClient)
+	}
+}
+
 func TestSwitchClientPrepositionsGlobalSidebarBeforeSwitchingSession(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()

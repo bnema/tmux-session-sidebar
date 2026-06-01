@@ -144,6 +144,9 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 		return err
 	}
 	if client != "" && sidebar != nil {
+		if err := newSidebarOwnerResolver().AdoptOpenSidebar(ctx, client); err != nil {
+			return err
+		}
 		shouldFollow, err := sidebarShouldBeVisibleForClient(ctx, client)
 		if err != nil {
 			return err
