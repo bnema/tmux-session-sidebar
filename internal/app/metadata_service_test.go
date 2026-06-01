@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bnema/tmux-session-sidebar/adapters/gitcli"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -47,6 +48,20 @@ func TestMetadataServiceDefaultGitStatusTimeoutAllowsModeratelySlowRepositories(
 	svc := MetadataService{}
 	if got := svc.gitStatusTimeout(); got < time.Second {
 		t.Fatalf("default git status timeout = %s, want at least 1s", got)
+	}
+}
+
+func TestNewMetadataServiceUsesCLIStatusBackend(t *testing.T) {
+	svc := NewMetadataService()
+	git, ok := svc.Git.(metadataGit)
+	if !ok {
+		t.Fatalf("NewMetadataService Git backend = %T, want metadataGit", svc.Git)
+	}
+	if _, ok := git.StatusGit.(gitcli.Git); !ok {
+		t.Fatalf("metadata status backend = %T, want gitcli.Git", git.StatusGit)
+	}
+	if _, ok := git.RepoGit.(gitcli.Git); ok {
+		t.Fatalf("metadata repo/watch backend = gitcli.Git, want non-CLI backend to avoid reconcile subprocess fanout")
 	}
 }
 
@@ -334,6 +349,73 @@ func TestMetadataServiceRunCoalescesBurstEventsIntoOneRepoCapture(t *testing.T) 
 	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run error: %v", err)
 	}
+}
+
+func TestMetadataServiceCaptureRepoCoolsDownAfterDeadlineExceeded(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{"alpha": {RepoRoot: "/repo", Branch: "main", Clean: true}}}}
+	now := time.Unix(100, 0)
+	git := &cooldownMetadataGit{statusErrs: []error{context.DeadlineExceeded}, status: ports.GitStatus{RepoRoot: "/repo", Branch: "main", Modified: 1}}
+	refresher := &metadataFakeRefresher{}
+	svc := MetadataService{
+		Store:                  store,
+		Git:                    git,
+		Refresher:              refresher,
+		LockStore:              metadataDirectLock(store),
+		CaptureFailureCooldown: time.Minute,
+		Now:                    func() time.Time { return now },
+	}
+	sub := MetadataRepoSubscription{RepoRoot: "/repo", WorktreeRoot: "/repo", SessionNames: []string{"alpha"}}
+
+	if _, err := svc.CaptureRepo(t.Context(), sub); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("first CaptureRepo error = %v, want context deadline", err)
+	}
+	if got := git.calls.Load(); got != 1 {
+		t.Fatalf("git status calls after first failure = %d, want 1", got)
+	}
+	changed, err := svc.CaptureRepo(t.Context(), sub)
+	if err != nil || changed {
+		t.Fatalf("cooldown CaptureRepo changed, err = %v, %v; want false, nil", changed, err)
+	}
+	if got := git.calls.Load(); got != 1 {
+		t.Fatalf("git status calls during cooldown = %d, want still 1", got)
+	}
+	now = now.Add(time.Minute + time.Second)
+	changed, err = svc.CaptureRepo(t.Context(), sub)
+	if err != nil {
+		t.Fatalf("CaptureRepo after cooldown error: %v", err)
+	}
+	if !changed || store.metadata("alpha").Modified != 1 || refresher.callCount() != 1 {
+		t.Fatalf("after cooldown changed=%v metadata=%#v refresh=%d, want updated metadata and refresh", changed, store.metadata("alpha"), refresher.callCount())
+	}
+	if got := git.calls.Load(); got != 2 {
+		t.Fatalf("git status calls after cooldown = %d, want 2", got)
+	}
+}
+
+type cooldownMetadataGit struct {
+	calls      atomic.Int64
+	status     ports.GitStatus
+	statusErrs []error
+}
+
+func (g *cooldownMetadataGit) RepoRoot(ctx context.Context, path string) (string, error) {
+	return g.status.RepoRoot, nil
+}
+
+func (g *cooldownMetadataGit) Status(ctx context.Context, path string) (ports.GitStatus, error) {
+	call := int(g.calls.Add(1)) - 1
+	if call < len(g.statusErrs) && g.statusErrs[call] != nil {
+		return ports.GitStatus{}, g.statusErrs[call]
+	}
+	return g.status, nil
+}
+
+func (g *cooldownMetadataGit) RepoInfo(ctx context.Context, path string) (ports.GitRepoInfo, error) {
+	return ports.GitRepoInfo{RepoRoot: g.status.RepoRoot, WorktreeRoot: g.status.RepoRoot, Branch: g.status.Branch}, nil
+}
+
+func (g *cooldownMetadataGit) WatchTargets(ctx context.Context, path string) (ports.GitWatchTargets, error) {
+	return ports.GitWatchTargets{RepoRoot: g.status.RepoRoot, WorktreeRoot: g.status.RepoRoot}, nil
 }
 
 func TestMetadataServiceCaptureRepoDeletesMetadataWhenRepoDisappears(t *testing.T) {
