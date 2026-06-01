@@ -85,7 +85,7 @@ func (c Client) attachSingletonSidebar(ctx context.Context, clientID string, pan
 	}
 	width = strings.TrimSpace(width)
 	if width == "" {
-		width = "20"
+		width = "30"
 	}
 	if currentWindowID == windowID {
 		if err := c.resizePaneWidth(ctx, paneID, width); err != nil {
@@ -154,7 +154,7 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 	}
 	width = strings.TrimSpace(width)
 	if width == "" {
-		width = "20"
+		width = "30"
 	}
 	if currentWindowID == windowID {
 		if err := c.resizePaneWidth(ctx, paneID, width); err != nil {

@@ -52,7 +52,7 @@ Set options before the plugin is loaded.
 
 ```tmux
 set -g @session-sidebar-key 'M-b'
-set -g @session-sidebar-width '20'
+set -g @session-sidebar-width '30'
 set -g @session-sidebar-project-roots "$HOME/projects:$HOME/dev/projects"
 set -g @session-sidebar-close-after-switch 'off'
 set -g @session-sidebar-heat-colors 'on'
@@ -69,7 +69,7 @@ set -g @session-sidebar-metadata-subline 'on'
 | Option | Default | Used for |
 | --- | --- | --- |
 | `@session-sidebar-key` | `M-b` | Global key that toggles the sidebar |
-| `@session-sidebar-width` | `20` | Sidebar pane width |
+| `@session-sidebar-width` | `30` | Sidebar pane width |
 | `@session-sidebar-project-roots` | `$HOME/projects` | Colon-separated directories scanned by the project picker |
 | `@session-sidebar-close-after-switch` | `off` | Close the sidebar after selecting a session when set to `on` |
 | `@session-sidebar-heat-colors` | `on` | Enable activity-based session colors |

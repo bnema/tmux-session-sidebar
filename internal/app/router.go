@@ -335,7 +335,7 @@ func resizeSidebarPaneToConfiguredWidth(ctx context.Context, paneID string) erro
 	}
 	width := strings.TrimSpace(widthOutput)
 	if width == "" {
-		width = "20"
+		width = "30"
 	}
 	resizeOutput, err := tmux(ctx, "resize-pane", "-t", paneID, "-x", width)
 	if err != nil && tmuxTargetGoneOutput(resizeOutput) {
