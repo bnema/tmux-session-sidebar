@@ -416,7 +416,7 @@ func (s *MetadataService) gitStatusTimeout() time.Duration {
 }
 
 func (s *MetadataService) captureFailureCooldown() time.Duration {
-	if s.CaptureFailureCooldown > 0 {
+	if s.CaptureFailureCooldown != 0 {
 		return s.CaptureFailureCooldown
 	}
 	return defaultMetadataCaptureFailureCooldown
@@ -438,7 +438,11 @@ func (s *MetadataService) captureInCooldown(repoRoot string) bool {
 	s.captureFailureMu.Lock()
 	defer s.captureFailureMu.Unlock()
 	until, ok := s.captureFailureUntil[repoRoot]
-	if !ok || !now.Before(until) {
+	if !ok {
+		return false
+	}
+	if !now.Before(until) {
+		delete(s.captureFailureUntil, repoRoot)
 		return false
 	}
 	return true
@@ -466,6 +470,9 @@ func (s *MetadataService) clearCaptureFailure(repoRoot string) {
 func (s *MetadataService) CaptureRepo(ctx context.Context, sub MetadataRepoSubscription) (bool, error) {
 	if s.Store == nil || s.Git == nil {
 		return false, errors.New("metadata service missing dependency")
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
 	}
 	if s.captureInCooldown(sub.RepoRoot) {
 		return false, nil

@@ -418,6 +418,48 @@ func (g *cooldownMetadataGit) WatchTargets(ctx context.Context, path string) (po
 	return ports.GitWatchTargets{RepoRoot: g.status.RepoRoot, WorktreeRoot: g.status.RepoRoot}, nil
 }
 
+func TestMetadataServiceCaptureRepoReturnsCanceledDuringCooldown(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{"alpha": {RepoRoot: "/repo", Branch: "main", Clean: true}}}}
+	now := time.Unix(100, 0)
+	git := &cooldownMetadataGit{statusErrs: []error{context.DeadlineExceeded}, status: ports.GitStatus{RepoRoot: "/repo", Branch: "main", Modified: 1}}
+	svc := MetadataService{Store: store, Git: git, LockStore: metadataDirectLock(store), CaptureFailureCooldown: time.Minute, Now: func() time.Time { return now }}
+	sub := MetadataRepoSubscription{RepoRoot: "/repo", WorktreeRoot: "/repo", SessionNames: []string{"alpha"}}
+	if _, err := svc.CaptureRepo(t.Context(), sub); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("first CaptureRepo error = %v, want context deadline", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := svc.CaptureRepo(ctx, sub); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled CaptureRepo during cooldown error = %v, want context canceled", err)
+	}
+}
+
+func TestMetadataServiceCaptureRepoEvictsExpiredCooldown(t *testing.T) {
+	now := time.Unix(100, 0)
+	svc := MetadataService{
+		CaptureFailureCooldown: time.Minute,
+		Now:                    func() time.Time { return now },
+		captureFailureUntil:    map[string]time.Time{"/repo": now.Add(-time.Second)},
+	}
+	if svc.captureInCooldown("/repo") {
+		t.Fatal("captureInCooldown = true for expired cooldown, want false")
+	}
+	if _, ok := svc.captureFailureUntil["/repo"]; ok {
+		t.Fatalf("expired cooldown entry was not evicted: %#v", svc.captureFailureUntil)
+	}
+}
+
+func TestMetadataServiceNegativeCaptureFailureCooldownDisablesCooldown(t *testing.T) {
+	svc := MetadataService{CaptureFailureCooldown: -time.Second}
+	if got := svc.captureFailureCooldown(); got != -time.Second {
+		t.Fatalf("captureFailureCooldown = %s, want negative override", got)
+	}
+	svc.recordCaptureFailure("/repo")
+	if len(svc.captureFailureUntil) != 0 {
+		t.Fatalf("negative cooldown recorded failure: %#v", svc.captureFailureUntil)
+	}
+}
+
 func TestMetadataServiceCaptureRepoDeletesMetadataWhenRepoDisappears(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{"alpha": {RepoRoot: "/repo", Branch: "main", Modified: 1}}}}
 	git := metadataFakeGit{statusErr: ports.ErrNotGitRepository}
