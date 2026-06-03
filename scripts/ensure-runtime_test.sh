@@ -29,7 +29,8 @@ new_fixture() {
   fakebin="$root/fakebin"
   mkdir -p "$plugin/scripts" "$plugin/cmd/tmux-session-sidebar" "$fakebin" "$root/gopath/bin"
   cp "$(dirname "$0")/ensure-runtime.sh" "$plugin/scripts/ensure-runtime.sh"
-  chmod +x "$plugin/scripts/ensure-runtime.sh"
+  cp "$(dirname "$0")/update-runtime.sh" "$plugin/scripts/update-runtime.sh"
+  chmod +x "$plugin/scripts/ensure-runtime.sh" "$plugin/scripts/update-runtime.sh"
   cat >"$plugin/go.mod" <<'MOD'
 module example.com/tmux-session-sidebar-test
 
@@ -123,7 +124,11 @@ run_ensure_without_go() {
   printf '#!/usr/bin/env bash\nexec /usr/bin/dirname "$@"\n' >"$nogobin/dirname"
   printf '#!/usr/bin/env bash\nexec /usr/bin/pwd "$@"\n' >"$nogobin/pwd"
   printf '#!/usr/bin/env bash\nexec /usr/bin/cat "$@"\n' >"$nogobin/cat"
-  chmod +x "$nogobin/dirname" "$nogobin/pwd" "$nogobin/cat"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/mkdir "$@"\n' >"$nogobin/mkdir"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/mv "$@"\n' >"$nogobin/mv"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/rm "$@"\n' >"$nogobin/rm"
+  printf '#!/usr/bin/env bash\nexec /usr/bin/chmod "$@"\n' >"$nogobin/chmod"
+  chmod +x "$nogobin/dirname" "$nogobin/pwd" "$nogobin/cat" "$nogobin/mkdir" "$nogobin/mv" "$nogobin/rm" "$nogobin/chmod"
   TEST_ROOT="$root" PATH="$nogobin" "$root/plugin/scripts/ensure-runtime.sh"
 }
 
@@ -133,7 +138,8 @@ test_uses_plugin_local_binary_even_when_path_has_stale_runtime() {
   output="$(run_ensure_from_source "$root")"
   expected="$root/plugin/.bin/tmux-session-sidebar"
   assert_eq "$expected" "$output" "ensure-runtime should return plugin-local binary"
-  assert_file_contains "$root/go-build.log" "build $expected" "source build should build plugin-local binary"
+  assert_file_contains "$root/go-build.log" "build $root/plugin/.bin/source." "source build should build a temporary candidate before plugin-local install"
+  assert_eq "built-runtime" "$($expected)" "source build should install validated runtime at plugin-local binary"
 }
 
 test_cached_runtime_is_reused_when_fingerprint_matches() {
@@ -191,6 +197,19 @@ write_exec_wrapper() {
 exec $target "\$@"
 WRAPPER
   chmod +x "$path"
+}
+
+write_invalid_release() {
+  local root="$1" checksum
+  printf '#!/usr/bin/env bash\necho invalid-runtime\n' >"$root/download-src/tmux-session-sidebar"
+  chmod +x "$root/download-src/tmux-session-sidebar"
+  tar -C "$root/download-src" -czf "$root/release.tar.gz" tmux-session-sidebar
+  if command -v sha256sum >/dev/null 2>&1; then
+    checksum="$(sha256sum "$root/release.tar.gz")"
+  else
+    checksum="$(shasum -a 256 "$root/release.tar.gz")"
+  fi
+  printf '%s  tmux-session-sidebar_Linux_x86_64.tar.gz\n' "${checksum%% *}" >"$root/checksums.txt"
 }
 
 prepare_release_download_fixture() {
@@ -369,15 +388,7 @@ test_rejects_downloaded_runtime_without_version_output() {
   expected="$root/plugin/.bin/tmux-session-sidebar"
   rm -rf "$root/plugin/.bin"
   prepare_release_download_fixture "$root"
-  printf '#!/usr/bin/env bash\necho invalid-runtime\n' >"$root/download-src/tmux-session-sidebar"
-  chmod +x "$root/download-src/tmux-session-sidebar"
-  tar -C "$root/download-src" -czf "$root/release.tar.gz" tmux-session-sidebar
-  if command -v sha256sum >/dev/null 2>&1; then
-    checksum="$(sha256sum "$root/release.tar.gz")"
-  else
-    checksum="$(shasum -a 256 "$root/release.tar.gz")"
-  fi
-  printf '%s  tmux-session-sidebar_Linux_x86_64.tar.gz\n' "${checksum%% *}" >"$root/checksums.txt"
+  write_invalid_release "$root"
 
   set +e
   output="$(TEST_ROOT="$root" PATH="$root/fakebin" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
@@ -390,6 +401,26 @@ test_rejects_downloaded_runtime_without_version_output() {
     *) fail "invalid downloaded runtime should report validation failure, got: $output" ;;
   esac
   [ ! -e "$expected" ] || fail "invalid downloaded runtime should not be installed"
+}
+
+test_invalid_release_does_not_fall_back_to_source_when_go_is_available() {
+  local root output status
+  root="$(new_fixture)"
+  rm -rf "$root/plugin/.bin"
+  prepare_release_download_fixture "$root" keep-go
+  write_invalid_release "$root"
+
+  set +e
+  output="$(TEST_ROOT="$root" PATH="$root/fakebin:$PATH" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
+  status="$?"
+  set -e
+
+  [ "$status" -ne 0 ] || fail "invalid downloaded runtime should fail even when go is available"
+  case "$output" in
+    *"runtime validation failed"*) ;;
+    *) fail "invalid downloaded runtime should report validation failure, got: $output" ;;
+  esac
+  [ ! -e "$root/go-build.log" ] || fail "invalid release artifact should not fall back to source build"
 }
 
 test_rejects_go_build_runtime_without_version_output() {
@@ -407,7 +438,7 @@ test_rejects_go_build_runtime_without_version_output() {
     *"valid output (expected 'tmux-session-sidebar <version>')"*) ;;
     *) fail "invalid built runtime should report validation failure, got: $output" ;;
   esac
-  [ -x "$expected" ] || fail "go build should have produced the runtime before validation failed"
+  [ ! -e "$expected" ] || fail "invalid built runtime should not be installed over the plugin-local binary"
   [ ! -e "$root/plugin/.bin/.build-fingerprint" ] || fail "invalid built runtime should not be stamped"
 }
 
@@ -477,6 +508,7 @@ test_reuses_cached_release_when_go_is_available
 test_refreshes_existing_release_runtime_when_requested
 test_matching_release_stamp_refreshes_invalid_cached_runtime
 test_rejects_downloaded_runtime_without_version_output
+test_invalid_release_does_not_fall_back_to_source_when_go_is_available
 test_rejects_go_build_runtime_without_version_output
 test_rejects_downloaded_runtime_with_checksum_mismatch
 test_rejects_downloaded_runtime_without_checksum_entry

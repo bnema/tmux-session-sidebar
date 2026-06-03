@@ -3,7 +3,7 @@ PLUGIN_REPO ?= bnema/$(PLUGIN_NAME)
 TPM_DIR ?= $(HOME)/.tmux/plugins
 TARGET_DIR ?= $(TPM_DIR)/$(PLUGIN_NAME)
 
-.PHONY: install uninstall mocks test-go test-runtime-bootstrap build-runtime restart-runtime
+.PHONY: install uninstall mocks test-go test-runtime-bootstrap build-runtime restart-runtime update-runtime
 
 install:
 	@mkdir -p "$(TPM_DIR)"
@@ -21,21 +21,25 @@ test-go:
 	@go test ./...
 
 test-runtime-bootstrap:
+	@bash scripts/update-runtime_test.sh
 	@bash scripts/ensure-runtime_test.sh
 	@bash scripts/install-git-update-hook_test.sh
 	@bash scripts/daemon-control_test.sh
 	@bash scripts/restart-runtime_test.sh
 
 build-runtime:
-	@runtime_bin="$$(TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1 bash scripts/ensure-runtime.sh)"; status=$$?; \
+	@runtime_bin="$$(TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1 bash scripts/update-runtime.sh --ensure)"; status=$$?; \
 		if [ $$status -ne 0 ] || [ -z "$$runtime_bin" ]; then \
 			echo "Failed to update tmux plugin runtime" >&2; \
 			exit 1; \
 		fi; \
 		echo "Updated tmux plugin runtime -> $$runtime_bin"
 
-restart-runtime: build-runtime
-	@bash scripts/restart-runtime.sh
+restart-runtime:
+	@TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1 bash scripts/update-runtime.sh
+
+update-runtime:
+	@bash scripts/update-runtime.sh
 
 uninstall:
 	@[ -n "$(TARGET_DIR)" ] || { echo "Error: TARGET_DIR is empty" >&2; exit 1; }
