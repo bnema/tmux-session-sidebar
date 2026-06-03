@@ -43,6 +43,15 @@ ENSURE
 printf 'restart-runtime %s\n' "$PWD" >>"$TEST_ROOT/restart.log"
 RESTART
   chmod +x "$plugin/scripts/restart-runtime.sh"
+  cat >"$plugin/scripts/update-runtime.sh" <<'UPDATE'
+#!/usr/bin/env bash
+printf 'update-runtime %s refresh=%s\n' "$PWD" "${TMUX_SESSION_SIDEBAR_REFRESH_RELEASE:-}" >>"$TEST_ROOT/update.log"
+if [ -f "$TEST_ROOT/fail-update" ]; then
+  echo "forced failure" >&2
+  exit 42
+fi
+UPDATE
+  chmod +x "$plugin/scripts/update-runtime.sh"
   (cd "$plugin" && git init -q && git config user.email test@example.com && git config user.name Test && touch README && git add . && git commit -qm initial)
   printf '%s\n' "$root"
 }
@@ -52,7 +61,7 @@ run_installer() {
   TEST_ROOT="$root" "$root/plugin/scripts/install-git-update-hook.sh"
 }
 
-test_installs_post_merge_hook_that_rebuilds_restarts_and_does_not_break_git_pull() {
+test_installs_post_merge_hook_that_updates_runtime_and_does_not_break_git_pull() {
   local root hook
   root="$(new_fixture)"
   hook="$root/plugin/.git/hooks/post-merge"
@@ -63,14 +72,16 @@ test_installs_post_merge_hook_that_rebuilds_restarts_and_does_not_break_git_pull
   assert_file_contains "$hook" "tmux-session-sidebar managed update hook" "hook should identify itself"
 
   TEST_ROOT="$root" "$hook"
-  assert_file_contains "$root/ensure.log" "ensure-runtime $root/plugin" "hook should run ensure-runtime from plugin root"
-  assert_file_contains "$root/restart.log" "restart-runtime $root/plugin" "hook should restart runtime from plugin root after refresh"
+  assert_file_contains "$root/update.log" "update-runtime $root/plugin refresh=1" "hook should run central update-runtime from plugin root with forced release refresh"
+  [ ! -e "$root/ensure.log" ] || fail "hook should not call legacy ensure-runtime when central updater exists"
+  [ ! -e "$root/restart.log" ] || fail "hook should not call legacy restart-runtime when central updater exists"
 
-  rm -f "$root/ensure.log" "$root/restart.log"
-  touch "$root/fail-ensure"
+  rm -f "$root/update.log" "$root/ensure.log" "$root/restart.log"
+  touch "$root/fail-update"
   TEST_ROOT="$root" "$hook"
-  assert_file_contains "$root/ensure.log" "ensure-runtime $root/plugin" "hook should still call ensure-runtime when it fails"
-  [ ! -e "$root/restart.log" ] || fail "hook should not restart runtime when ensure-runtime fails"
+  assert_file_contains "$root/update.log" "update-runtime $root/plugin refresh=1" "hook should still call update-runtime when it fails"
+  [ ! -e "$root/ensure.log" ] || fail "hook should not fall back to ensure-runtime after central updater failure"
+  [ ! -e "$root/restart.log" ] || fail "hook should not call restart-runtime after central updater failure"
 }
 
 test_installer_handles_literal_dollars_in_plugin_path() {
@@ -82,10 +93,10 @@ test_installer_handles_literal_dollars_in_plugin_path() {
   run_installer "$root"
   TEST_ROOT="$root" "$hook"
 
-  assert_file_contains "$root/ensure.log" "ensure-runtime $root/plugin" "literal dollar path should not break generated hook"
+  assert_file_contains "$root/update.log" "update-runtime $root/plugin refresh=1" "literal dollar path should not break generated hook"
 }
 
-test_hook_reports_bin_creation_failure_and_still_invokes_ensure_runtime() {
+test_hook_reports_bin_creation_failure_and_still_invokes_update_runtime() {
   local root hook output
   root="$(new_fixture)"
   hook="$root/plugin/.git/hooks/post-merge"
@@ -95,7 +106,7 @@ test_hook_reports_bin_creation_failure_and_still_invokes_ensure_runtime() {
   printf 'not a directory\n' >"$root/plugin/.bin"
 
   output="$(TEST_ROOT="$root" "$hook" 2>&1 >/dev/null)"
-  assert_file_contains "$root/ensure.log" "ensure-runtime $root/plugin" "hook should still invoke ensure-runtime when .bin cannot be created"
+  assert_file_contains "$root/update.log" "update-runtime $root/plugin refresh=1" "hook should still invoke update-runtime when .bin cannot be created"
   case "$output" in
     *"cannot create log directory"*) ;;
     *) fail "hook should report .bin log directory creation failure, got: $output" ;;
@@ -126,9 +137,9 @@ CUSTOM
   assert_eq "$before" "$after" "installer should preserve unrelated custom hooks"
 }
 
-test_installs_post_merge_hook_that_rebuilds_restarts_and_does_not_break_git_pull
+test_installs_post_merge_hook_that_updates_runtime_and_does_not_break_git_pull
 test_installer_handles_literal_dollars_in_plugin_path
-test_hook_reports_bin_creation_failure_and_still_invokes_ensure_runtime
+test_hook_reports_bin_creation_failure_and_still_invokes_update_runtime
 test_installer_is_idempotent_and_preserves_custom_hooks
 
 echo "install-git-update-hook tests passed"

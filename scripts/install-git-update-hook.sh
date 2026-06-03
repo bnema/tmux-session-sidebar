@@ -37,7 +37,7 @@ shell_quote() {
 }
 
 install_hook() {
-  local hook hook_dir quoted_plugin_dir quoted_ensure_runtime tmp
+  local hook hook_dir quoted_plugin_dir quoted_update_runtime tmp
   hook="$(hook_path)" || return 0
   hook_dir="$("$DIRNAME_BIN" "$hook")"
 
@@ -47,8 +47,7 @@ install_hook() {
 
   "$MKDIR_BIN" -p "$hook_dir" || return 0
   quoted_plugin_dir="$(shell_quote "$PLUGIN_DIR")"
-  quoted_ensure_runtime="$(shell_quote "$PLUGIN_DIR/scripts/ensure-runtime.sh")"
-  quoted_restart_runtime="$(shell_quote "$PLUGIN_DIR/scripts/restart-runtime.sh")"
+  quoted_update_runtime="$(shell_quote "$PLUGIN_DIR/scripts/update-runtime.sh")"
   if [ -n "$MKTEMP_BIN" ]; then
     tmp="$("$MKTEMP_BIN" "$hook.tmp.XXXXXX" 2>/dev/null || true)"
   else
@@ -60,16 +59,13 @@ install_hook() {
 # $MARKER
 set -u
 PLUGIN_DIR=$quoted_plugin_dir
-ENSURE_RUNTIME=$quoted_ensure_runtime
-RESTART_RUNTIME=$quoted_restart_runtime
+UPDATE_RUNTIME=$quoted_update_runtime
 LOG_DIR="\$PLUGIN_DIR/.bin"
 LOG_FILE="\$LOG_DIR/update-hook.log"
 run_update_runtime() {
   cd "\$PLUGIN_DIR" && \
-    [ -x "\$ENSURE_RUNTIME" ] && \
-    TMUX_SESSION_SIDEBAR_REFRESH_RELEASE=1 "\$ENSURE_RUNTIME" && \
-    [ -x "\$RESTART_RUNTIME" ] && \
-    "\$RESTART_RUNTIME"
+    [ -x "\$UPDATE_RUNTIME" ] && \
+    TMUX_SESSION_SIDEBAR_REFRESH_RELEASE=1 "\$UPDATE_RUNTIME"
 }
 if mkdir -p "\$LOG_DIR" 2>/dev/null; then
   run_update_runtime >>"\$LOG_FILE" 2>&1 || true
