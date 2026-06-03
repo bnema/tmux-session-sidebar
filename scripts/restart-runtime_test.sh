@@ -27,7 +27,7 @@ assert_line_equals() {
 
 line_number_for() {
   local file="$1" needle="$2"
-  grep -nF -- "$needle" "$file" | head -n 1 | cut -d: -f1
+  { grep -nF -- "$needle" "$file" || true; } | head -n 1 | cut -d: -f1
 }
 
 new_fixture() {
