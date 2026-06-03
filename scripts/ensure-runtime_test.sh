@@ -117,17 +117,25 @@ run_ensure_from_source() {
 }
 
 run_ensure_without_go() {
-  local root="$1" nogobin
+  local root="$1" nogobin bash_bin dirname_bin pwd_bin cat_bin mkdir_bin mv_bin rm_bin chmod_bin
   nogobin="$root/nogobin"
+  bash_bin="$(real_command bash)"
+  dirname_bin="$(real_command dirname)"
+  pwd_bin="$(real_command pwd)"
+  cat_bin="$(real_command cat)"
+  mkdir_bin="$(real_command mkdir)"
+  mv_bin="$(real_command mv)"
+  rm_bin="$(real_command rm)"
+  chmod_bin="$(real_command chmod)"
   mkdir -p "$nogobin"
-  ln -s /usr/bin/bash "$nogobin/bash"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/dirname "$@"\n' >"$nogobin/dirname"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/pwd "$@"\n' >"$nogobin/pwd"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/cat "$@"\n' >"$nogobin/cat"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/mkdir "$@"\n' >"$nogobin/mkdir"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/mv "$@"\n' >"$nogobin/mv"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/rm "$@"\n' >"$nogobin/rm"
-  printf '#!/usr/bin/env bash\nexec /usr/bin/chmod "$@"\n' >"$nogobin/chmod"
+  ln -s "$bash_bin" "$nogobin/bash"
+  printf '#!/usr/bin/env bash\nexec %s "$@"\n' "$dirname_bin" >"$nogobin/dirname"
+  printf '#!/usr/bin/env bash\nexec %s "$@"\n' "$pwd_bin" >"$nogobin/pwd"
+  printf '#!/usr/bin/env bash\nexec %s "$@"\n' "$cat_bin" >"$nogobin/cat"
+  printf '#!/usr/bin/env bash\nexec %s "$@"\n' "$mkdir_bin" >"$nogobin/mkdir"
+  printf '#!/usr/bin/env bash\nexec %s "$@"\n' "$mv_bin" >"$nogobin/mv"
+  printf '#!/usr/bin/env bash\nexec %s "$@"\n' "$rm_bin" >"$nogobin/rm"
+  printf '#!/usr/bin/env bash\nexec %s "$@"\n' "$chmod_bin" >"$nogobin/chmod"
   chmod +x "$nogobin/dirname" "$nogobin/pwd" "$nogobin/cat" "$nogobin/mkdir" "$nogobin/mv" "$nogobin/rm" "$nogobin/chmod"
   TEST_ROOT="$root" PATH="$nogobin" "$root/plugin/scripts/ensure-runtime.sh"
 }

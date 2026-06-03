@@ -480,7 +480,7 @@ restore_backup() {
 }
 
 update_runtime_one_shot() {
-  local backup_dir candidate release_status stamp tmp_dir
+  local backup_dir candidate release_status stamp stop_rc tmp_dir
   "$MKDIR_BIN" -p "$BIN_DIR"
   acquire_update_lock
   tmp_dir="$BIN_DIR/update.$$.$RANDOM"
@@ -525,7 +525,12 @@ update_runtime_one_shot() {
     "$CP_BIN" "$stamp_file" "$backup_dir/.build-fingerprint" || { "$RM_BIN" -rf "$tmp_dir" "$backup_dir"; return 1; }
   fi
 
-  stop_runtime_processes
+  stop_rc=0
+  stop_runtime_processes || stop_rc=$?
+  if [ "$stop_rc" -ne 0 ]; then
+    "$RM_BIN" -rf "$tmp_dir" "$backup_dir"
+    return "$stop_rc"
+  fi
   if ! atomic_install_runtime "$candidate" "$stamp"; then
     log_update 'install failed after runtime stop; restoring previous runtime'
     restore_backup "$backup_dir" || { "$RM_BIN" -rf "$tmp_dir" "$backup_dir"; return 1; }

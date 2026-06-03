@@ -25,6 +25,11 @@ assert_line_equals() {
   fi
 }
 
+line_number_for() {
+  local file="$1" needle="$2"
+  grep -nF -- "$needle" "$file" | head -n 1 | cut -d: -f1
+}
+
 new_fixture() {
   local root fakebin
   root="$(mktemp -d)"
@@ -83,8 +88,12 @@ test_stops_pidfile_daemon_before_fallback_and_reload() {
   TEST_PS_MATCH_ONCE=1 XDG_STATE_HOME="$root/statehome" run_restart "$root"
 
   assert_line_equals "$root/log" 1 "ps -o command= -p 123" "restart should inspect daemon pidfile before fallback kills"
-  assert_file_contains "$root/log" "pkill -f $runtime_pattern daemon serve" "restart should still run scoped daemon fallback after pidfile handling"
-  assert_file_contains "$root/log" "tmux source-file $HOME/.tmux.conf" "restart should reload tmux after pidfile handling"
+  local pkill_line tmux_line
+  pkill_line="$(line_number_for "$root/log" "pkill -f $runtime_pattern daemon serve")"
+  tmux_line="$(line_number_for "$root/log" "tmux source-file $HOME/.tmux.conf")"
+  [ -n "$pkill_line" ] || fail "restart should still run scoped daemon fallback after pidfile handling"
+  [ -n "$tmux_line" ] || fail "restart should reload tmux after pidfile handling"
+  [ "$pkill_line" -lt "$tmux_line" ] || fail "restart should run scoped daemon fallback before tmux reload"
 }
 
 test_restarts_tmux_sidebar_runtime_processes_and_hidden_session
