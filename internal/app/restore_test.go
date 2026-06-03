@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -366,15 +367,35 @@ case "$1" in
 esac
 `)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1200*time.Millisecond)
-	defer cancel()
-	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "daemon/serve", Flags: map[string]string{}}, nil, nil); err != nil {
-		t.Fatalf("daemon serve error: %v", err)
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- (runtimeRouter{}).Handle(ctx, Route{Path: "daemon/serve", Flags: map[string]string{}}, nil, nil)
+	}()
+	defer func() {
+		cancel()
+		if err := <-errCh; err != nil && !errors.Is(err, context.Canceled) {
+			t.Errorf("daemon serve error: %v", err)
+		}
+	}()
 
-	if log := readLog(t, logPath); !strings.Contains(log, "send-keys -t %sidebar F5") {
-		t.Fatalf("expected daemon heat tick to refresh open sidebar, log=%q", log)
+	waitForLogContains(t, logPath, "send-keys -t %sidebar F5")
+}
+
+func waitForLogContains(t *testing.T, path string, needle string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		logBytes, err := os.ReadFile(path)
+		if err == nil && strings.Contains(string(logBytes), needle) {
+			return
+		}
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatalf("read fake tmux log: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
+	t.Fatalf("timed out waiting for %q in fake tmux log: %q", needle, readLog(t, path))
 }
 
 func TestDaemonServeClearsTransientHeatStateOnStartup(t *testing.T) {
