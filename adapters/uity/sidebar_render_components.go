@@ -19,15 +19,20 @@ func padSidebarContentLines(lines []string) []string {
 }
 
 func (m SidebarModel) statusBarLines(styles sidebarStyles) []string {
-	if m.showHelp {
-		return []string{
-			styles.dim.Render("↵ switch  c create  n layout  / filter"),
-			styles.dim.Render(spaceKeySymbol + " pin  J/K move  r rename"),
-			styles.dim.Render("x kill  h nums  u update  esc back"),
-			styles.dim.Render("? hide"),
-		}
-	}
 	return []string{m.collapsedHelpLine(styles)}
+}
+
+func (m SidebarModel) helpSheetContent(styles sidebarStyles) string {
+	lines := []string{
+		styles.accent.Render("navigation"),
+		"↵ switch    / filter    esc close",
+		"j/k move    " + spaceKeySymbol + " pin       h nums",
+		"",
+		styles.accent.Render("sessions"),
+		"c create    r rename    x kill",
+		"u update    n layout    J/K",
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m SidebarModel) collapsedHelpLine(styles sidebarStyles) string {
@@ -105,7 +110,7 @@ func sessionMarker(item SessionItem, animationStyle config.AgentAttentionAnimati
 	if item.Pinned {
 		return pinnedMarkerSymbol
 	}
-	return " "
+	return inactiveMarkerSymbol
 }
 
 func (m SidebarModel) statusLine() string {

@@ -18,7 +18,7 @@ func TestTreeSidebarRenderUsesCompactSlotsTreeGuidesAndAttentionRight(t *testing
 	model.attentionAnimationFrame = 1
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "▾ Work") || !strings.Contains(view, "├─ 1   alpha "+attentionMarkerSymbol) || !strings.Contains(view, "└─ 2   beta") {
+	if !strings.Contains(view, "▾ Work") || !strings.Contains(view, "├─ 1 "+inactiveMarkerSymbol+" alpha "+attentionMarkerSymbol) || !strings.Contains(view, "└─ 2 "+inactiveMarkerSymbol+" beta") {
 		t.Fatalf("tree render missing compact slots, guides, or right attention marker: %q", view)
 	}
 	if strings.Contains(view, "[1]") || strings.Contains(view, "[2]") {
@@ -266,11 +266,16 @@ func TestTreeSidebarCOpensCreateSessionSheetAndRunsGitChoice(t *testing.T) {
 
 func TestTreeSidebarCreateSessionNamedPrompt(t *testing.T) {
 	created := ""
+	reloaded := false
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{CreateNamedSession: func(name string) bool {
 		created = name
 		return true
 	}, ReloadTreeItems: func() []TreeItem {
-		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}
+		reloaded = true
+		return []TreeItem{
+			{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+			{Kind: TreeRowSession, ID: "category:work/session:scratch", CategoryID: "category:work", Session: SessionItem{Name: "scratch", Current: true}, Branch: "└─"},
+		}
 	}}, SidebarOptions{})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 10})
 	model = requireSidebarModel(t, updated)
@@ -291,8 +296,11 @@ func TestTreeSidebarCreateSessionNamedPrompt(t *testing.T) {
 	}
 	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = requireSidebarModel(t, updated)
-	if created != "scratch" || model.mode != ModeBrowse {
-		t.Fatalf("created=%q mode=%s, want named session", created, model.mode)
+	if created != "scratch" || model.mode != ModeBrowse || !reloaded {
+		t.Fatalf("created=%q mode=%s reloaded=%v, want named session and tree reload", created, model.mode, reloaded)
+	}
+	if item, ok := model.selectedTreeItem(); !ok || item.Session.Name != "scratch" {
+		t.Fatalf("selected tree item = %#v, %v; want reloaded scratch session", item, ok)
 	}
 }
 
@@ -303,7 +311,7 @@ func TestTreeSidebarRenderShowsMetadataAsTreeChild(t *testing.T) {
 	}, Actions{}, SidebarOptions{})
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "└─ 1   alpha") || !strings.Contains(view, "    feature/category-tree  2") {
+	if !strings.Contains(view, "└─ 1 "+inactiveMarkerSymbol+" alpha") || !strings.Contains(view, "    feature/category-tree  2") {
 		t.Fatalf("tree render missing session metadata child: %q", view)
 	}
 }

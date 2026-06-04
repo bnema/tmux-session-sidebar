@@ -224,7 +224,7 @@ func sidebarlayoutSelectionForItem(itemID string) sidebarlayout.Selection {
 func saveMovedSidebarLayoutItem(ctx context.Context, selection sidebarlayout.Selection, delta int, live []string) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
 		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
-		layout = sidebarlayout.MoveSelection(layout, selection, delta)
+		layout = sidebarlayout.MoveSelectionVisible(layout, selection, delta, persistedShowNumeric(*state))
 		state.SidebarLayout = persistedLayoutFromCore(layout)
 	})
 }

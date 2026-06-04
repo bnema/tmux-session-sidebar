@@ -616,23 +616,23 @@ func quickSwitch(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 	if err != nil || slot <= 0 {
 		return fmt.Errorf("invalid quick-switch slot %q", flags["slot"])
 	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		return err
+	}
 	views, err := runtimeService().SessionViews(ctx)
 	if err != nil {
 		return err
 	}
-	visible := sessions.FilterVisible(views, false)
-	target, err := contextualQuickSwitchTarget(ctx, visible, slot)
+	visible := sessions.FilterVisible(views, persistedShowNumeric(state))
+	target, err := contextualQuickSwitchTarget(ctx, state, visible, slot)
 	if err != nil {
 		return nil
 	}
 	return switchClient(ctx, flags["client"], target, sidebar)
 }
 
-func contextualQuickSwitchTarget(ctx context.Context, visible []sessions.View, slot int) (string, error) {
-	state, err := loadSidebarState(ctx)
-	if err != nil {
-		return "", err
-	}
+func contextualQuickSwitchTarget(ctx context.Context, state ports.PersistedState, visible []sessions.View, slot int) (string, error) {
 	current, _ := tmux(ctx, "display-message", "-p", "#{session_name}")
 	layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), sessionNames(visible), state.SessionOrder)
 	active := sidebarlayout.ActiveCategoryID(layout, sidebarlayout.Selection{Kind: sidebarlayout.RowKindSession, Session: strings.TrimSpace(current)})

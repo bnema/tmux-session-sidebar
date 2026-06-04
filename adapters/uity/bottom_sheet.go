@@ -23,7 +23,7 @@ func (s BottomSheet) render(width int, maxHeight int) string {
 	if width <= 0 {
 		width = metadataSublineFallbackWidth
 	}
-	innerWidth := max(width-2, 1)
+	innerWidth := max(width, 1)
 	titleLines := []string{}
 	if strings.TrimSpace(s.Title) != "" {
 		titleLines = append(titleLines, bottomSheetTitleStyle().Render(fitMetadataText(s.Title, innerWidth, MetadataIconsASCII)))
@@ -37,8 +37,12 @@ func (s BottomSheet) render(width int, maxHeight int) string {
 		footerLines = append(footerLines, bottomSheetFooterStyle().Render(fitMetadataText(s.Footer, innerWidth, MetadataIconsASCII)))
 	}
 	bodyLines := boundedBottomSheetLines(titleLines, contentLines, footerLines, maxHeight)
-	content := strings.Join(bodyLines, "\n")
-	return bottomSheetBoxStyle(width).Render(content)
+	separator := bottomSheetSeparator(width)
+	lines := make([]string, 0, len(bodyLines)+2)
+	lines = append(lines, separator)
+	lines = append(lines, bodyLines...)
+	lines = append(lines, separator)
+	return strings.Join(lines, "\n")
 }
 
 func boundedBottomSheetLines(titleLines []string, contentLines []string, footerLines []string, maxHeight int) []string {
@@ -86,13 +90,8 @@ func (s BottomSheet) RenderOverlay(base string, width int, height int) string {
 	return canvas.Render()
 }
 
-func bottomSheetBoxStyle(width int) lipgloss.Style {
-	return lipgloss.NewStyle().
-		Width(max(width-2, 1)).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#334155")).
-		Background(lipgloss.Color("#0f172a")).
-		Padding(0, 0)
+func bottomSheetSeparator(width int) string {
+	return strings.Repeat("─", max(width, 1))
 }
 
 func bottomSheetTitleStyle() lipgloss.Style {

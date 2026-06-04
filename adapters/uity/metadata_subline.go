@@ -160,7 +160,7 @@ func gitBranchPart(meta SessionMetadataSubline, icons MetadataIconMode, width in
 
 func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level gitDetailLevel) []metadataPart {
 	if meta.Clean {
-		return []metadataPart{{Text: "clean", Role: metadataPartBase}}
+		return nil
 	}
 	if !meta.hasDivergence() && meta.stagedCount() == 0 && meta.unstagedCount() == 0 && meta.Conflicts == 0 {
 		return nil

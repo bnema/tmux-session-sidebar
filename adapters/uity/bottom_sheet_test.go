@@ -20,7 +20,14 @@ func TestBottomSheetOverlaysFullWidthAtBottom(t *testing.T) {
 	if !strings.Contains(view, "one") {
 		t.Fatalf("overlay should preserve uncovered base content: %q", view)
 	}
-	for _, line := range lines[len(lines)-6:] {
+	sheetLines := lines[len(lines)-6:]
+	if sheetLines[0] != strings.Repeat("─", 30) || sheetLines[len(sheetLines)-1] != strings.Repeat("─", 30) {
+		t.Fatalf("bottom sheet should use full-width horizontal separators only: %#v", sheetLines)
+	}
+	for _, line := range sheetLines {
+		if strings.ContainsAny(line, "╭╮╰╯│") {
+			t.Fatalf("bottom sheet should not render side borders: %q", line)
+		}
 		if metadataDisplayWidth(line) > 30 {
 			t.Fatalf("bottom sheet line width = %d, want <= 30: %q", metadataDisplayWidth(line), line)
 		}
@@ -36,8 +43,8 @@ func TestBottomSheetClipsToBoundedHeight(t *testing.T) {
 	if len(lines) != 5 {
 		t.Fatalf("height = %d, want 5: %q", len(lines), view)
 	}
-	if strings.Count(view, "╭") != 1 || strings.Count(view, "╰") != 1 {
-		t.Fatalf("expected preserved top and bottom sheet borders: %q", view)
+	if strings.Count(view, strings.Repeat("─", 20)) != 2 {
+		t.Fatalf("expected preserved top and bottom sheet separators: %q", view)
 	}
 	if !strings.Contains(view, "esc cancel") {
 		t.Fatalf("expected clipped sheet to preserve footer: %q", view)

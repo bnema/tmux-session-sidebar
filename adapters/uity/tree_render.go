@@ -130,7 +130,7 @@ func treeSessionMarker(item SessionItem) string {
 	if item.Pinned {
 		return pinnedMarkerSymbol
 	}
-	return " "
+	return inactiveMarkerSymbol
 }
 
 func slotPrefix(slot int) string {

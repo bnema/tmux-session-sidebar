@@ -109,6 +109,7 @@ func renameSessionState(state *ports.PersistedState, oldName string, newName str
 		removeSessionState(state, oldName)
 		return
 	}
+	updateSidebarLayoutSessionRef(state.SidebarLayout, oldName, newName)
 	if state.Sessions != nil {
 		metadata, ok := state.Sessions[oldName]
 		if ok {
@@ -236,6 +237,43 @@ func removeSessionState(state *ports.PersistedState, name string) {
 	state.PinnedSessions = pinned
 	delete(state.PinColors, name)
 	delete(state.Metadata, name)
+	removeSidebarLayoutSessionRef(state.SidebarLayout, name)
+}
+
+func updateSidebarLayoutSessionRef(layout *ports.SidebarLayout, oldName string, newName string) {
+	if layout == nil {
+		return
+	}
+	for itemIndex := range layout.Items {
+		category := layout.Items[itemIndex].Category
+		if category == nil {
+			continue
+		}
+		for refIndex := range category.Sessions {
+			if category.Sessions[refIndex].Name == oldName {
+				category.Sessions[refIndex].Name = newName
+			}
+		}
+	}
+}
+
+func removeSidebarLayoutSessionRef(layout *ports.SidebarLayout, name string) {
+	if layout == nil {
+		return
+	}
+	for itemIndex := range layout.Items {
+		category := layout.Items[itemIndex].Category
+		if category == nil {
+			continue
+		}
+		filtered := category.Sessions[:0]
+		for _, ref := range category.Sessions {
+			if ref.Name != name {
+				filtered = append(filtered, ref)
+			}
+		}
+		category.Sessions = filtered
+	}
 }
 
 func clonePersistedState(state ports.PersistedState) ports.PersistedState {

@@ -230,6 +230,10 @@ func SlotMap(refs []SessionRef, showNumeric bool) map[string]int {
 // The sidebar currently exposes single-step J/K movement, so deltas larger than one
 // are intentionally normalized instead of interpreted as multi-step movement.
 func MoveSelection(layout Layout, selection Selection, delta int) Layout {
+	return MoveSelectionVisible(layout, selection, delta, true)
+}
+
+func MoveSelectionVisible(layout Layout, selection Selection, delta int, showNumeric bool) Layout {
 	delta = stepDelta(delta)
 	if delta == 0 {
 		return layout
@@ -238,7 +242,7 @@ func MoveSelection(layout Layout, selection Selection, delta int) Layout {
 	case RowKindCategory, RowKindSeparator, RowKindSpacer:
 		return moveTopLevel(layout, selection.ItemID, delta)
 	case RowKindSession:
-		return moveSession(layout, selection.CategoryID, selection.Session, delta)
+		return moveSession(layout, selection.CategoryID, selection.Session, delta, showNumeric)
 	default:
 		return layout
 	}
@@ -274,7 +278,7 @@ func moveTopLevel(layout Layout, itemIDValue string, delta int) Layout {
 	return Layout{Items: items}
 }
 
-func moveSession(layout Layout, categoryID string, sessionName string, delta int) Layout {
+func moveSession(layout Layout, categoryID string, sessionName string, delta int, showNumeric bool) Layout {
 	if categoryID == "" {
 		resolved, ok := findSessionCategory(layout, sessionName)
 		if !ok {
@@ -302,16 +306,16 @@ func moveSession(layout Layout, categoryID string, sessionName string, delta int
 		return layout
 	}
 	if delta < 0 {
-		return moveSessionUp(items, catIndexes, catPos, fromSession)
+		return moveSessionUp(items, catIndexes, catPos, fromSession, showNumeric)
 	}
-	return moveSessionDown(items, catIndexes, catPos, fromSession)
+	return moveSessionDown(items, catIndexes, catPos, fromSession, showNumeric)
 }
 
-func moveSessionUp(items []LayoutItem, catIndexes []int, catPos int, fromSession int) Layout {
+func moveSessionUp(items []LayoutItem, catIndexes []int, catPos int, fromSession int, showNumeric bool) Layout {
 	catIndex := catIndexes[catPos]
-	if fromSession > 0 {
-		sessions := items[catIndex].Category.Sessions
-		sessions[fromSession-1], sessions[fromSession] = sessions[fromSession], sessions[fromSession-1]
+	sessions := items[catIndex].Category.Sessions
+	if previous := previousVisibleSessionIndex(sessions, fromSession, showNumeric); previous >= 0 {
+		sessions[previous], sessions[fromSession] = sessions[fromSession], sessions[previous]
 		items[catIndex].Category.Sessions = sessions
 		return Layout{Items: items}
 	}
@@ -325,11 +329,11 @@ func moveSessionUp(items []LayoutItem, catIndexes []int, catPos int, fromSession
 	return Layout{Items: items}
 }
 
-func moveSessionDown(items []LayoutItem, catIndexes []int, catPos int, fromSession int) Layout {
+func moveSessionDown(items []LayoutItem, catIndexes []int, catPos int, fromSession int, showNumeric bool) Layout {
 	catIndex := catIndexes[catPos]
 	sessions := items[catIndex].Category.Sessions
-	if fromSession < len(sessions)-1 {
-		sessions[fromSession], sessions[fromSession+1] = sessions[fromSession+1], sessions[fromSession]
+	if next := nextVisibleSessionIndex(sessions, fromSession, showNumeric); next >= 0 {
+		sessions[fromSession], sessions[next] = sessions[next], sessions[fromSession]
 		items[catIndex].Category.Sessions = sessions
 		return Layout{Items: items}
 	}
@@ -341,6 +345,24 @@ func moveSessionDown(items []LayoutItem, catIndexes []int, catPos int, fromSessi
 	nextIndex := catIndexes[catPos+1]
 	items[nextIndex].Category.Sessions = append([]SessionRef{moving}, items[nextIndex].Category.Sessions...)
 	return Layout{Items: items}
+}
+
+func previousVisibleSessionIndex(refs []SessionRef, from int, showNumeric bool) int {
+	for i := from - 1; i >= 0; i-- {
+		if showNumeric || !sessions.IsNumericName(refs[i].Name) {
+			return i
+		}
+	}
+	return -1
+}
+
+func nextVisibleSessionIndex(refs []SessionRef, from int, showNumeric bool) int {
+	for i := from + 1; i < len(refs); i++ {
+		if showNumeric || !sessions.IsNumericName(refs[i].Name) {
+			return i
+		}
+	}
+	return -1
 }
 
 func validLiveNames(names []string) []string {

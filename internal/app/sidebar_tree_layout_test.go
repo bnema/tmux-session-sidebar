@@ -49,9 +49,38 @@ func TestSaveNewSidebarLayoutItemsAndMove(t *testing.T) {
 		t.Fatalf("loadSidebarState error: %v", err)
 	}
 	layout := coreLayoutFromPersisted(state.SidebarLayout)
-	if got := layoutKinds(layout); !reflect.DeepEqual(got, []sidebarlayout.ItemKind{sidebarlayout.ItemKindCategory, sidebarlayout.ItemKindSeparator, sidebarlayout.ItemKindCategory, sidebarlayout.ItemKindSpacer}) {
-		t.Fatalf("layout kinds = %#v, want default, separator, work, spacer", got)
+	if len(layout.Items) != 4 {
+		t.Fatalf("layout item count = %d, want 4: %#v", len(layout.Items), layout.Items)
 	}
+	if got := layout.Items[0]; got.ID != "category:default" || got.Category.Name != "Default" || !reflect.DeepEqual(sessionNamesFromRefs(got.Category.Sessions), []string{"alpha", "beta"}) {
+		t.Fatalf("default category = %#v, want alpha,beta", got)
+	}
+	if got := layout.Items[1]; got.ID != "separator:1" || got.Kind != sidebarlayout.ItemKindSeparator {
+		t.Fatalf("moved separator = %#v, want separator:1 at index 1", got)
+	}
+	if got := layout.Items[2]; got.ID != "category:1" || got.Category.Name != "Work" || len(got.Category.Sessions) != 0 {
+		t.Fatalf("work category = %#v, want empty category:1 Work", got)
+	}
+	if got := layout.Items[3]; got.ID != "spacer:1" || got.Kind != sidebarlayout.ItemKindSpacer {
+		t.Fatalf("spacer = %#v, want spacer:1 at index 3", got)
+	}
+}
+
+func sessionNamesFromRefs(refs []sidebarlayout.SessionRef) []string {
+	names := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		names = append(names, ref.Name)
+	}
+	return names
+}
+
+func findSidebarTreeSession(items []sidebarTreeItem, name string) (sidebarTreeItem, bool) {
+	for _, item := range items {
+		if item.Kind == sidebarTreeRowSession && item.Session.Name == name {
+			return item, true
+		}
+	}
+	return sidebarTreeItem{}, false
 }
 
 func TestLoadSidebarTreeItemsMigratesDefaultAndContextualMetadata(t *testing.T) {
@@ -117,10 +146,12 @@ func TestLoadSidebarTreeItemsCanShowInactiveMetadata(t *testing.T) {
 		t.Fatalf("loadSidebarTreeItemsWithConfig error: %v", err)
 	}
 
-	for _, item := range items {
-		if item.Kind == sidebarTreeRowSession && item.Session.Name == "beta" && !item.ShowMetadata {
-			t.Fatalf("beta ShowMetadata = false, want true when inactive metadata enabled: %#v", item)
-		}
+	beta, found := findSidebarTreeSession(items, "beta")
+	if !found {
+		t.Fatalf("beta row not found in %#v", items)
+	}
+	if beta.Session.Metadata.Branch != "dev" || !beta.ShowMetadata {
+		t.Fatalf("beta tree item = %#v, want dev metadata shown when inactive metadata enabled", beta)
 	}
 }
 
@@ -145,12 +176,34 @@ esac
 		t.Fatalf("save state: %v", err)
 	}
 
-	target, err := contextualQuickSwitchTarget(ctx, []sessions.View{{Name: "alpha", Visible: true}, {Name: "beta", Visible: true}, {Name: "gamma", Visible: true}}, 2)
+	target, err := contextualQuickSwitchTarget(ctx, state, []sessions.View{{Name: "alpha", Visible: true}, {Name: "beta", Visible: true}, {Name: "gamma", Visible: true}}, 2)
 	if err != nil {
 		t.Fatalf("contextualQuickSwitchTarget error: %v", err)
 	}
 	if target != "gamma" {
 		t.Fatalf("target = %q, want gamma from current category", target)
+	}
+}
+
+func TestContextualQuickSwitchTargetIncludesNumericSessionsWhenShown(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  display-message) printf 'alpha\n' ;;
+esac
+`)
+	ctx := context.Background()
+	state := ports.PersistedState{Sidebar: &ports.SidebarState{ShowNumericSessions: true}, SessionOrder: []string{"alpha", "3", "beta"}, SidebarLayout: &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+		{ID: "category:default", Kind: string(sidebarlayout.ItemKindCategory), Category: &ports.SidebarLayoutCategory{ID: "category:default", Name: "Default", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}, {Name: "3"}, {Name: "beta"}}}},
+	}}}
+	visible := []sessions.View{{Name: "alpha", Visible: true}, {Name: "3", Visible: true}, {Name: "beta", Visible: true}}
+
+	target, err := contextualQuickSwitchTarget(ctx, state, visible, 2)
+	if err != nil {
+		t.Fatalf("contextualQuickSwitchTarget error: %v", err)
+	}
+	if target != "3" {
+		t.Fatalf("target = %q, want numeric session in visible slot 2", target)
 	}
 }
 
@@ -210,14 +263,6 @@ func TestSidebarCategoryNameValidationRejectsEmptyNames(t *testing.T) {
 	if err := saveRenamedSidebarCategory(ctx, "category:default", "\t", []string{"alpha"}); err == nil {
 		t.Fatal("saveRenamedSidebarCategory empty name error = nil, want error")
 	}
-}
-
-func layoutKinds(layout sidebarlayout.Layout) []sidebarlayout.ItemKind {
-	kinds := make([]sidebarlayout.ItemKind, 0, len(layout.Items))
-	for _, item := range layout.Items {
-		kinds = append(kinds, item.Kind)
-	}
-	return kinds
 }
 
 func sidebarTreeFakeTmuxScript(metadataInactive string) string {

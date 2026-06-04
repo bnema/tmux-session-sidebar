@@ -137,6 +137,26 @@ func TestMoveSelectionMovesSessionAcrossCategories(t *testing.T) {
 	}
 }
 
+func TestMoveSelectionVisibleSkipsHiddenNumericSessions(t *testing.T) {
+	layout := Layout{Items: []LayoutItem{
+		CategoryItem("category:work", "Work", false, []string{"alpha", "3", "beta"}),
+		CategoryItem("category:personal", "Personal", false, []string{"4", "notes"}),
+	}}
+
+	movedDown := MoveSelectionVisible(layout, Selection{Kind: RowKindSession, CategoryID: "category:work", Session: "alpha"}, 1, false)
+	if names := sessionNames(movedDown.Items[0].Category.Sessions); !reflect.DeepEqual(names, []string{"beta", "3", "alpha"}) {
+		t.Fatalf("work after visible move down = %#v, want beta,3,alpha", names)
+	}
+
+	movedAcross := MoveSelectionVisible(layout, Selection{Kind: RowKindSession, CategoryID: "category:work", Session: "beta"}, 1, false)
+	if names := sessionNames(movedAcross.Items[0].Category.Sessions); !reflect.DeepEqual(names, []string{"alpha", "3"}) {
+		t.Fatalf("work after boundary move = %#v, want alpha,3", names)
+	}
+	if names := sessionNames(movedAcross.Items[1].Category.Sessions); !reflect.DeepEqual(names, []string{"beta", "4", "notes"}) {
+		t.Fatalf("personal after boundary move = %#v, want beta,4,notes", names)
+	}
+}
+
 func TestMoveSelectionResolvesSessionCategoryWhenSelectionOmitsIt(t *testing.T) {
 	layout := Layout{Items: []LayoutItem{
 		CategoryItem("category:work", "Work", false, []string{"alpha"}),

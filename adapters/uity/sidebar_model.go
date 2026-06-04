@@ -15,6 +15,7 @@ import (
 
 const attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
 const currentMarkerSymbol = "\uf444"   // Nerd Font dot-fill glyph (U+F444 / nf-oct-dot_fill).
+const inactiveMarkerSymbol = "\uf10c"  // Nerd Font hollow circle glyph (U+F10C / nf-fa-circle_o).
 const pinnedMarkerSymbol = "\uf08d"    // Nerd Font thumb-tack glyph (U+F08D / nf-fa-thumb_tack).
 const spaceKeySymbol = "\U000F1050"    // Nerd Font keyboard-space glyph (U+F1050 / nf-md-keyboard_space).
 const updateAvailableSymbol = "\uf062" // Nerd Font arrow-up glyph (U+F062 / nf-fa-arrow_up).
@@ -298,6 +299,10 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "esc":
+		if m.showHelp && m.mode == ModeBrowse {
+			m.showHelp = false
+			return m.finishInteractiveUpdate()
+		}
 		if m.mode == ModeSearch {
 			m.mode = ModeBrowse
 			m.filter = ""
@@ -570,7 +575,16 @@ func (m *SidebarModel) reloadSessionsSelectingCurrent() {
 
 func (m *SidebarModel) reloadSessionsWithSelection(preservePreviousCurrent bool) {
 	if m.treeMode {
+		previous := m.currentSessionName()
 		m.reloadTreeItems()
+		current := m.currentSessionName()
+		if preservePreviousCurrent && previous != "" && previous != current {
+			m.selectSession(previous)
+			return
+		}
+		if !preservePreviousCurrent && current != "" {
+			m.selectSession(current)
+		}
 		return
 	}
 	if m.actions.ReloadSessions == nil {
@@ -681,6 +695,17 @@ func (m *SidebarModel) reorderSelected(delta int) {
 }
 
 func (m *SidebarModel) selectSession(name string) {
+	if m.treeMode {
+		selectable := m.selectableTreeItems()
+		for i, item := range selectable {
+			if item.Kind == TreeRowSession && item.Session.Name == name {
+				m.cursor = i
+				return
+			}
+		}
+		m.cursor = 0
+		return
+	}
 	for i, item := range m.visibleItems() {
 		if item.Name == name {
 			m.cursor = i
@@ -797,6 +822,9 @@ func (m SidebarModel) Render() string {
 	}
 	if m.mode == ModeCreateNamed {
 		return m.renderBottomSheet(content, BottomSheet{Title: "named session", Content: "> " + m.createNamedInput, Footer: "esc cancel  ↵ create", Height: 5})
+	}
+	if m.showHelp {
+		return m.renderBottomSheet(content, BottomSheet{Title: "keys", Content: m.helpSheetContent(styles), Footer: "esc close", Height: 14})
 	}
 	return content
 }

@@ -98,17 +98,20 @@ func defaultMetadataLockStore(ctx context.Context, fn func(ports.StateStorePort)
 }
 
 func (s *MetadataService) CaptureAndRefresh(ctx context.Context, cfg ports.ConfigSnapshot) error {
-	changed, err := s.Capture(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	if changed && s.Refresher != nil {
+	_, err := s.capture(ctx, cfg, func() error {
+		if s.Refresher == nil {
+			return nil
+		}
 		return s.Refresher.RefreshAllSidebars(ctx)
-	}
-	return nil
+	})
+	return err
 }
 
 func (s *MetadataService) Capture(ctx context.Context, cfg ports.ConfigSnapshot) (bool, error) {
+	return s.capture(ctx, cfg, nil)
+}
+
+func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot, onChange func() error) (bool, error) {
 	if !cfg.MetadataSublineEnabled {
 		return false, nil
 	}
@@ -156,67 +159,153 @@ func (s *MetadataService) Capture(ctx context.Context, cfg ports.ConfigSnapshot)
 		sessionPaths[session.Name] = path
 	}
 
-	results := make(map[string]ports.GitStatus, len(sessionPaths))
-	var mu sync.Mutex
+	changed := false
+	var changedMu sync.Mutex
+	markChanged := func() {
+		changedMu.Lock()
+		changed = true
+		changedMu.Unlock()
+	}
+	refreshIfChanged := func(didChange bool) error {
+		if !didChange {
+			return nil
+		}
+		markChanged()
+		if onChange != nil {
+			return onChange()
+		}
+		return nil
+	}
+	for name := range terminalDeletes {
+		didChange, err := s.saveMetadataDelete(ctx, lockStore, liveNames, name)
+		if err != nil {
+			return changed, err
+		}
+		if err := refreshIfChanged(didChange); err != nil {
+			return changed, err
+		}
+	}
+
+	jobs := make(chan metadataCaptureJob)
+	results := make(chan metadataCaptureResult)
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, concurrency)
-	for sessionName, path := range sessionPaths {
-		wg.Add(1)
-		go func(sessionName string, path string) {
-			defer wg.Done()
+	workerCount := min(max(concurrency, 1), max(len(sessionPaths), 1))
+	for range workerCount {
+		wg.Go(func() {
+			for job := range jobs {
+				statusCtx, cancel := context.WithTimeout(ctx, gitStatusTimeout)
+				status, err := s.Git.Status(statusCtx, job.Path)
+				cancel()
+				select {
+				case results <- metadataCaptureResult{SessionName: job.SessionName, Path: job.Path, Status: status, Err: err}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		})
+	}
+	go func() {
+		defer close(jobs)
+		for sessionName, path := range sessionPaths {
 			select {
-			case sem <- struct{}{}:
-				defer func() { <-sem }()
+			case jobs <- metadataCaptureJob{SessionName: sessionName, Path: path}:
 			case <-ctx.Done():
 				return
 			}
-			statusCtx, cancel := context.WithTimeout(ctx, gitStatusTimeout)
-			defer cancel()
-			status, err := s.Git.Status(statusCtx, path)
-			if err != nil {
-				if errors.Is(err, ports.ErrNotGitRepository) || errors.Is(err, ports.ErrGitPathMissing) {
-					mu.Lock()
-					terminalDeletes[sessionName] = struct{}{}
-					mu.Unlock()
-					return
-				}
-				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: git status failed for session %q path %q: %v\n", sessionName, path, err)
-				return
-			}
-			mu.Lock()
-			results[sessionName] = status
-			mu.Unlock()
-		}(sessionName, path)
-	}
-	wg.Wait()
+		}
+	}()
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
 
+	for result := range results {
+		if result.Err != nil {
+			if errors.Is(result.Err, ports.ErrNotGitRepository) || errors.Is(result.Err, ports.ErrGitPathMissing) {
+				didChange, err := s.saveMetadataDelete(ctx, lockStore, liveNames, result.SessionName)
+				if err != nil {
+					return changed, err
+				}
+				if err := refreshIfChanged(didChange); err != nil {
+					return changed, err
+				}
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: git status failed for session %q path %q: %v\n", result.SessionName, result.Path, result.Err)
+			continue
+		}
+		didChange, err := s.saveMetadataStatus(ctx, lockStore, liveNames, result.SessionName, result.Status)
+		if err != nil {
+			return changed, err
+		}
+		if err := refreshIfChanged(didChange); err != nil {
+			return changed, err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return changed, err
+	}
+	return changed, nil
+}
+
+type metadataCaptureJob struct {
+	SessionName string
+	Path        string
+}
+
+type metadataCaptureResult struct {
+	SessionName string
+	Path        string
+	Status      ports.GitStatus
+	Err         error
+}
+
+func (s *MetadataService) saveMetadataStatus(ctx context.Context, lockStore func(context.Context, func(ports.StateStorePort) error) error, liveNames map[string]struct{}, sessionName string, status ports.GitStatus) (bool, error) {
 	changed := false
-	err = lockStore(ctx, func(store ports.StateStorePort) error {
+	err := lockStore(ctx, func(store ports.StateStorePort) error {
 		latest, err := store.Load(ctx, "tmux")
 		if err != nil {
 			return err
 		}
-		next := make(map[string]ports.GitStatus, len(liveNames))
-		for name := range liveNames {
-			if _, ok := terminalDeletes[name]; ok {
-				continue
-			}
-			if status, ok := results[name]; ok {
-				next[name] = status
-				continue
-			}
-			if status, ok := latest.Metadata[name]; ok {
-				next[name] = status
-			}
-		}
-		if gitMetadataEqual(latest.Metadata, next) {
+		next := liveMetadata(latest.Metadata, liveNames)
+		if current, ok := next[sessionName]; ok && gitStatusEqual(current, status) {
 			return nil
 		}
+		next[sessionName] = status
 		latest.Metadata = next
 		changed = true
 		return store.Save(ctx, "tmux", latest)
 	})
 	return changed, err
+}
+
+func (s *MetadataService) saveMetadataDelete(ctx context.Context, lockStore func(context.Context, func(ports.StateStorePort) error) error, liveNames map[string]struct{}, sessionName string) (bool, error) {
+	changed := false
+	err := lockStore(ctx, func(store ports.StateStorePort) error {
+		latest, err := store.Load(ctx, "tmux")
+		if err != nil {
+			return err
+		}
+		next := liveMetadata(latest.Metadata, liveNames)
+		if _, ok := next[sessionName]; !ok {
+			return nil
+		}
+		delete(next, sessionName)
+		latest.Metadata = next
+		changed = true
+		return store.Save(ctx, "tmux", latest)
+	})
+	return changed, err
+}
+
+func liveMetadata(current map[string]ports.GitStatus, liveNames map[string]struct{}) map[string]ports.GitStatus {
+	next := make(map[string]ports.GitStatus, len(current))
+	for name, status := range current {
+		if _, ok := liveNames[name]; ok {
+			next[name] = status
+		}
+	}
+	return next
 }
 
 var errMetadataReconcile = errors.New("metadata reconcile requested")

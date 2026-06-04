@@ -65,6 +65,39 @@ func TestNewMetadataServiceUsesCLIStatusBackend(t *testing.T) {
 	}
 }
 
+func TestMetadataServiceCaptureAndRefreshPublishesReadyMetadataBeforeSlowRepoFinishes(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}
+	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, paths: map[string]string{"alpha": "/fast", "beta": "/slow"}}
+	git := newBlockingMetadataGit(map[string]ports.GitStatus{
+		"/fast": {RepoRoot: "/fast", Branch: "main", Modified: 1},
+		"/slow": {RepoRoot: "/slow", Branch: "dev", Modified: 2},
+	}, "/slow")
+	refresher := &metadataFakeRefresher{}
+	svc := MetadataService{Store: store, Tmux: tmux, Git: git, Refresher: refresher, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 2}
+
+	done := make(chan error, 1)
+	go func() { done <- svc.CaptureAndRefresh(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true}) }()
+
+	eventually(t, func() bool {
+		return store.metadata("alpha").Modified == 1 && refresher.callCount() >= 1
+	})
+	if got := store.metadata("beta"); got.Modified != 0 {
+		t.Fatalf("slow metadata was saved before release: %#v", got)
+	}
+	git.release("/slow")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("CaptureAndRefresh error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("CaptureAndRefresh did not finish after slow repo release")
+	}
+	if got := store.metadata("beta"); got.Modified != 2 {
+		t.Fatalf("slow metadata after release = %#v, want beta status", got)
+	}
+}
+
 func TestMetadataServiceCaptureAndRefreshRefreshesOnlyWhenMetadataChanges(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}
 	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
@@ -149,6 +182,37 @@ func (t metadataFakeTmux) SessionPath(ctx context.Context, sessionName string) (
 }
 func (t metadataFakeTmux) PaneSize(ctx context.Context, paneID string) (ports.PaneSize, error) {
 	return ports.PaneSize{}, nil
+}
+
+type blockingMetadataGit struct {
+	metadataFakeGit
+	blocked map[string]chan struct{}
+}
+
+func newBlockingMetadataGit(statuses map[string]ports.GitStatus, blockedPaths ...string) *blockingMetadataGit {
+	blocked := make(map[string]chan struct{}, len(blockedPaths))
+	for _, path := range blockedPaths {
+		blocked[path] = make(chan struct{})
+	}
+	return &blockingMetadataGit{metadataFakeGit: metadataFakeGit{statuses: statuses}, blocked: blocked}
+}
+
+func (g *blockingMetadataGit) Status(ctx context.Context, path string) (ports.GitStatus, error) {
+	if ch, ok := g.blocked[path]; ok {
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return ports.GitStatus{}, ctx.Err()
+		}
+	}
+	return g.metadataFakeGit.Status(ctx, path)
+}
+
+func (g *blockingMetadataGit) release(path string) {
+	if ch, ok := g.blocked[path]; ok {
+		close(ch)
+		delete(g.blocked, path)
+	}
 }
 
 type metadataFakeGit struct {

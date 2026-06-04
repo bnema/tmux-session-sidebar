@@ -1517,23 +1517,33 @@ func TestSidebarModelRenderAppliesSelectedStyleAcrossEntireRow(t *testing.T) {
 	}
 }
 
-func TestSidebarModelHelpToggleHidesExpandedFooterByDefault(t *testing.T) {
+func TestSidebarModelHelpToggleOpensBottomSheetCheatSheet(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 12})
+	model = requireSidebarModel(t, updated)
 	view := model.Render()
 	if !strings.Contains(view, "? keys") {
 		t.Fatalf("collapsed footer missing help hint: %q", view)
 	}
-	if strings.Contains(view, "n project") || strings.Contains(view, "r rename") {
-		t.Fatalf("collapsed footer includes expanded help: %q", view)
+	if strings.Contains(view, "navigation") || strings.Contains(view, "n layout") {
+		t.Fatalf("collapsed footer includes cheat sheet help: %q", view)
 	}
 
-	updated, _ := model.Update(keyPress("?", 0))
+	updated, _ = model.Update(keyPress("?", 0))
 	model = requireSidebarModel(t, updated)
-	view = model.Render()
-	for _, want := range []string{"↵ switch", "c create", "n layout", spaceKeySymbol + " pin", "h nums", "J/K move", "r rename", "x kill", "? hide"} {
+	view = stripANSI(model.Render())
+	for _, want := range []string{"keys", "navigation", "↵ switch", "c create", "n layout", spaceKeySymbol + " pin", "h nums", "J/K", "r rename", "x kill", "esc close"} {
 		if !strings.Contains(view, want) {
-			t.Fatalf("expanded footer missing %q in %q", want, view)
+			t.Fatalf("help sheet missing %q in %q", want, view)
 		}
+	}
+	if strings.ContainsAny(view, "╭╮╰╯│") {
+		t.Fatalf("help sheet should not use side borders: %q", view)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}))
+	model = requireSidebarModel(t, updated)
+	if model.showHelp {
+		t.Fatal("esc should close help sheet")
 	}
 }
 
