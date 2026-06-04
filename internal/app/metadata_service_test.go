@@ -270,6 +270,7 @@ func (t metadataFakeTmux) PaneSize(ctx context.Context, paneID string) (ports.Pa
 
 type blockingMetadataGit struct {
 	metadataFakeGit
+	mu      sync.Mutex
 	blocked map[string]chan struct{}
 }
 
@@ -282,7 +283,10 @@ func newBlockingMetadataGit(statuses map[string]ports.GitStatus, blockedPaths ..
 }
 
 func (g *blockingMetadataGit) Status(ctx context.Context, path string) (ports.GitStatus, error) {
-	if ch, ok := g.blocked[path]; ok {
+	g.mu.Lock()
+	ch, ok := g.blocked[path]
+	g.mu.Unlock()
+	if ok {
 		select {
 		case <-ch:
 		case <-ctx.Done():
@@ -293,9 +297,14 @@ func (g *blockingMetadataGit) Status(ctx context.Context, path string) (ports.Gi
 }
 
 func (g *blockingMetadataGit) release(path string) {
-	if ch, ok := g.blocked[path]; ok {
-		close(ch)
+	g.mu.Lock()
+	ch, ok := g.blocked[path]
+	if ok {
 		delete(g.blocked, path)
+	}
+	g.mu.Unlock()
+	if ok {
+		close(ch)
 	}
 }
 

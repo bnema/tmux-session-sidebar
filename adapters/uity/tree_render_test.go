@@ -321,7 +321,7 @@ func TestTreeSidebarCreateMenuUsesSelectedSessionCategory(t *testing.T) {
 				model = requireSidebarModel(t, updated)
 			}
 			updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
-			model = requireSidebarModel(t, updated)
+			requireSidebarModel(t, updated)
 			if gotAction != tt.want || gotCategoryID != "category:work" {
 				t.Fatalf("action/category = %q/%q, want %q/category:work", gotAction, gotCategoryID, tt.want)
 			}
@@ -350,7 +350,7 @@ func TestTreeSidebarCreateNamedSessionUsesSelectedSessionCategory(t *testing.T) 
 		model = requireSidebarModel(t, updated)
 	}
 	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
-	model = requireSidebarModel(t, updated)
+	requireSidebarModel(t, updated)
 	if gotName != "scratch" || gotCategoryID != "category:work" {
 		t.Fatalf("CreateNamedSession = %q/%q, want scratch/category:work", gotName, gotCategoryID)
 	}
@@ -393,7 +393,7 @@ func TestTreeSidebarCreateNamedSessionUsesSelectedCategory(t *testing.T) {
 		model = requireSidebarModel(t, updated)
 	}
 	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
-	model = requireSidebarModel(t, updated)
+	requireSidebarModel(t, updated)
 	if gotName != "scratch" || gotCategoryID != "category:work" {
 		t.Fatalf("CreateNamedSession = %q/%q, want scratch/category:work", gotName, gotCategoryID)
 	}
@@ -416,7 +416,7 @@ func TestTreeSidebarCategoryCollapseShortcuts(t *testing.T) {
 	updated, _ := model.Update(keyPress("h", 0))
 	model = requireSidebarModel(t, updated)
 	updated, _ = model.Update(keyPress("l", 0))
-	model = requireSidebarModel(t, updated)
+	requireSidebarModel(t, updated)
 	if len(calls) != 2 || calls[0].categoryID != "category:work" || !calls[0].collapsed || calls[1].categoryID != "category:work" || calls[1].collapsed {
 		t.Fatalf("collapse calls = %#v, want category collapse then expand", calls)
 	}
