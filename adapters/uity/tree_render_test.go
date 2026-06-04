@@ -41,6 +41,16 @@ func TestTreeSidebarRenderDisplaysContinuousDoubleDigitSlots(t *testing.T) {
 	}
 }
 
+func TestTreeSidebarSeparatorUsesRendererWidth(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowSeparator, ID: "separator:1"}}, Actions{}, SidebarOptions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 12, Height: 8})
+	model = requireSidebarModel(t, updated)
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, strings.Repeat("─", 12)) || strings.Contains(view, strings.Repeat("─", 24)) {
+		t.Fatalf("separator should fit renderer width, view=%q", view)
+	}
+}
+
 func TestTreeSidebarReloadsTreeAfterCreateSpacer(t *testing.T) {
 	reloaded := false
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{

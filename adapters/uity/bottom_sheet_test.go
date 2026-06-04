@@ -34,6 +34,15 @@ func TestBottomSheetOverlaysFullWidthAtBottom(t *testing.T) {
 	}
 }
 
+func TestFitBottomSheetContentLineHandlesUltraNarrowWidths(t *testing.T) {
+	for width := 0; width <= 3; width++ {
+		got := fitBottomSheetContentLine("abcdef", width)
+		if metadataDisplayWidth(got) > width {
+			t.Fatalf("fitBottomSheetContentLine width %d = %q (%d), want <= width", width, got, metadataDisplayWidth(got))
+		}
+	}
+}
+
 func TestBottomSheetClipsToBoundedHeight(t *testing.T) {
 	base := strings.Join([]string{"1", "2", "3", "4", "5"}, "\n")
 	sheet := bottomSheet{Title: "menu", Content: "a\nb\nc\nd\nz", Footer: "esc cancel", Height: 5}

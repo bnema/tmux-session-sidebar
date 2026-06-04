@@ -135,6 +135,25 @@ func TestSidebarModelBrowseShortcuts(t *testing.T) {
 			t.Fatalf("kill confirmation state = mode=%s pending=%q", model.mode, model.pendingKill)
 		}
 	})
+	for _, kind := range []TreeRowKind{TreeRowSeparator, TreeRowSpacer} {
+		t.Run("create from "+string(kind)+" keeps nearest category", func(t *testing.T) {
+			gotCategoryID := ""
+			model := NewTreeSidebarModelWithOptions([]TreeItem{
+				{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+				{Kind: kind, ID: "layout:middle"},
+				{Kind: TreeRowCategory, ID: "category:other", CategoryID: "category:other", CategoryName: "Other", CategoryOpen: true},
+			}, Actions{CreateGitProject: func(categoryID string) bool {
+				gotCategoryID = categoryID
+				return true
+			}}, SidebarOptions{})
+			model.cursor = 1
+			updated, _ := model.Update(keyPress("g", 0))
+			requireSidebarModel(t, updated)
+			if gotCategoryID != "category:work" {
+				t.Fatalf("CreateGitProject category = %q, want category:work", gotCategoryID)
+			}
+		})
+	}
 }
 
 func TestSidebarModelSwitchSelectedReloadsAndKeepsPreviousCurrentSelected(t *testing.T) {

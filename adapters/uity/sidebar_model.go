@@ -616,6 +616,33 @@ func (m SidebarModel) selectedCategoryID() string {
 			return item.CategoryID
 		case TreeRowSession:
 			return item.CategoryID
+		case TreeRowSeparator, TreeRowSpacer:
+			return m.nearestVisibleCategoryID(item.ID)
+		}
+	}
+	return ""
+}
+
+func (m SidebarModel) nearestVisibleCategoryID(itemID string) string {
+	visible := m.visibleTreeItems()
+	selectedIndex := -1
+	for i, item := range visible {
+		if item.ID == itemID {
+			selectedIndex = i
+			break
+		}
+	}
+	if selectedIndex < 0 {
+		return ""
+	}
+	for i := selectedIndex - 1; i >= 0; i-- {
+		if visible[i].CategoryID != "" {
+			return visible[i].CategoryID
+		}
+	}
+	for i := selectedIndex + 1; i < len(visible); i++ {
+		if visible[i].CategoryID != "" {
+			return visible[i].CategoryID
 		}
 	}
 	return ""

@@ -76,7 +76,11 @@ func FormatMetadataSubline(meta SessionMetadataSubline, options MetadataSublineO
 	case MetadataKindAdhoc:
 		return formatAdhocMetadataSubline(meta, options.Icons, width)
 	case MetadataKindLoading:
-		return fitMetadataText("…", width, options.Icons)
+		loading := "…"
+		if options.Icons == MetadataIconsASCII {
+			loading = "..."
+		}
+		return fitMetadataText(loading, width, options.Icons)
 	default:
 		return fitMetadataText(strings.TrimSpace(meta.Label), width, options.Icons)
 	}

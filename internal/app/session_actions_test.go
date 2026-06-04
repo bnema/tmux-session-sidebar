@@ -811,6 +811,7 @@ esac
 }
 
 func TestConfirmedKillDoesNotSwitchWhenTargetIsNotCurrent(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	logPath := installFakeTmux(t, `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
@@ -871,6 +872,7 @@ esac
 }
 
 func TestConfirmedKillSwitchesAwayBeforeKillingCurrentSession(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	logPath := installFakeTmux(t, `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
@@ -942,6 +944,7 @@ esac
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			ctx := t.Context()
 			logPath := installFakeTmux(t, tt.script)
 			sidebar := mocks.NewMockTmuxSidebarPort(t)

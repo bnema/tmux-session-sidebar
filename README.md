@@ -139,7 +139,7 @@ Global quick-switch keys are also installed:
 - `Ctrl+1` through `Ctrl+9` switch to slots 1 through 9 in the active category
 - `Ctrl+0` switches to slot 10 in the active category
 
-Session names that are all digits, or that start with `__`, are hidden by default. `h` toggles numeric names. Hidden `__` sessions are not shown.
+Session names that are all digits, or that start with `__`, are hidden by default. `Alt+h` toggles numeric names. Hidden `__` sessions are not shown.
 
 ## Sidebar layout
 

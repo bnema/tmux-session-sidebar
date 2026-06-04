@@ -39,6 +39,13 @@ func TestFormatMetadataSublineASCIIGitStates(t *testing.T) {
 	}
 }
 
+func TestFormatMetadataSublineLoadingUsesAsciiEllipsisInAsciiMode(t *testing.T) {
+	got := FormatMetadataSubline(SessionMetadataSubline{Kind: MetadataKindLoading}, MetadataSublineOptions{Icons: MetadataIconsASCII, Width: 10})
+	if got != "..." {
+		t.Fatalf("ASCII loading metadata = %q, want ...", got)
+	}
+}
+
 func TestFormatMetadataSublineShowsCleanGitBranch(t *testing.T) {
 	tests := []struct {
 		name  string

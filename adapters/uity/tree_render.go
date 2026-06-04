@@ -42,9 +42,10 @@ func (r treeRenderer) Render(items []TreeItem) []string {
 				selectableIndex++
 			}
 		case TreeRowSeparator:
-			line := r.styles.dim.Render("────────────────────────")
+			separator := r.separatorLine()
+			line := r.styles.dim.Render(separator)
 			if selected {
-				line = r.styles.selected.Render("────────────────────────")
+				line = r.styles.selected.Render(separator)
 			}
 			lines = append(lines, line)
 			if selectable {
@@ -62,6 +63,14 @@ func (r treeRenderer) Render(items []TreeItem) []string {
 		}
 	}
 	return lines
+}
+
+func (r treeRenderer) separatorLine() string {
+	width := r.width
+	if width <= 0 {
+		width = 24
+	}
+	return strings.Repeat("─", width)
 }
 
 func (r treeRenderer) renderCategory(item TreeItem, selected bool) string {

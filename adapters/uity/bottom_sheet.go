@@ -112,9 +112,15 @@ func fitBlockWidth(value string, width int) []string {
 }
 
 func fitBottomSheetContentLine(line string, width int) string {
-	if width <= 0 || metadataDisplayWidth(line) <= width {
+	if width <= 0 {
+		return ""
+	}
+	if metadataDisplayWidth(line) <= width {
 		return line
 	}
 	ellipsis := "..."
+	if width <= metadataDisplayWidth(ellipsis) {
+		return strings.Repeat(".", width)
+	}
 	return trimDisplayRight(line, max(width-metadataDisplayWidth(ellipsis), 0)) + ellipsis
 }
