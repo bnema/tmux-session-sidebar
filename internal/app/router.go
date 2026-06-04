@@ -493,6 +493,9 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 		SetShowNumericItems: func(show bool) bool {
 			return handleActionError(ctx, "save sidebar state", saveShowNumericSessions(ctx, show))
 		},
+		SelfUpdate: func() bool {
+			return handleActionError(ctx, "start self update", startSelfUpdateBackground())
+		},
 		LoadProjects: func() []uity.ProjectItem { return loadProjectItems(ctx) },
 		ReloadSessions: func() []uity.SessionItem {
 			items, err := loadSessionItems(ctx)

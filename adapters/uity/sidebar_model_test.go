@@ -149,6 +149,19 @@ func TestSidebarModelSingleKeyBrowseShortcuts(t *testing.T) {
 		}
 	})
 
+	t.Run("u starts self update", func(t *testing.T) {
+		called := 0
+		model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() bool { called++; return true }})
+		updated, _ := model.Update(keyPress("u", 0))
+		model = requireSidebarModel(t, updated)
+		if called != 1 {
+			t.Fatalf("u shortcut called SelfUpdate %d times, want 1", called)
+		}
+		if model.message != "Update started" {
+			t.Fatalf("message = %q, want Update started", model.message)
+		}
+	})
+
 	t.Run("shift j and k reorder selected session", func(t *testing.T) {
 		var deltas []int
 		model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{ReorderSession: func(name string, delta int) bool {
@@ -176,16 +189,17 @@ func TestSidebarModelSingleKeyShortcutsRemainSearchInput(t *testing.T) {
 		RenameSession:       func(string) bool { t.Fatal("r should not rename while searching"); return false },
 		KillSession:         func(string) bool { t.Fatal("x should not kill while searching"); return false },
 		SetShowNumericItems: func(bool) bool { t.Fatal("h should not toggle numeric while searching"); return false },
+		SelfUpdate:          func() bool { t.Fatal("u should not update while searching"); return false },
 		ReorderSession:      func(string, int) bool { t.Fatal("J/K should not reorder while searching"); return false },
 	})
 	updated, _ := model.Update(keyPress("/", 0))
 	model = requireSidebarModel(t, updated)
-	for _, key := range []tea.KeyPressMsg{keyPress("n", 0), keyPress("g", 0), keyPress("a", 0), keyPress("r", 0), keyPress("x", 0), keyPress("h", 0), keyPress("J", tea.ModShift), keyPress("K", tea.ModShift)} {
+	for _, key := range []tea.KeyPressMsg{keyPress("n", 0), keyPress("g", 0), keyPress("a", 0), keyPress("r", 0), keyPress("x", 0), keyPress("h", 0), keyPress("u", 0), keyPress("J", tea.ModShift), keyPress("K", tea.ModShift)} {
 		updated, _ = model.Update(key)
 		model = requireSidebarModel(t, updated)
 	}
-	if model.filter != "ngarxhJK" {
-		t.Fatalf("search filter = %q, want ngarxhJK", model.filter)
+	if model.filter != "ngarxhuJK" {
+		t.Fatalf("search filter = %q, want ngarxhuJK", model.filter)
 	}
 }
 

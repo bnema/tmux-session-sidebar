@@ -51,6 +51,7 @@ type Actions struct {
 	PinSessionWithColor func(string, string) bool
 	ReorderSession      func(string, int) bool
 	SetShowNumericItems func(bool) bool
+	SelfUpdate          func() bool
 	LoadProjects        func() []ProjectItem
 	ReloadSessions      func() []SessionItem
 }
@@ -306,6 +307,14 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.appendPrintable(msg)
 	case "f5":
 		m.reloadSessions()
+	case "u":
+		if m.mode == ModeBrowse {
+			if m.actions.SelfUpdate != nil && m.actions.SelfUpdate() {
+				m.message = "Update started"
+			}
+		} else {
+			m.appendPrintable(msg)
+		}
 	case "?":
 		if m.mode == ModeBrowse {
 			m.showHelp = !m.showHelp
@@ -616,8 +625,8 @@ func (m SidebarModel) statusBarLines(styles sidebarStyles) []string {
 	if m.showHelp {
 		return []string{
 			styles.dim.Render("↵ choose  " + spaceKeySymbol + " pin  / filter  esc back"),
-			styles.dim.Render("n project  a adhoc  h nums"),
-			styles.dim.Render("J/K reorder  r rename"),
+			styles.dim.Render("n project  a adhoc  u update"),
+			styles.dim.Render("J/K reorder  r rename  h nums"),
 			styles.dim.Render("x kill  ? hide"),
 		}
 	}

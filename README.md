@@ -125,6 +125,7 @@ Inside the sidebar:
 | `a` | Create or switch to a session for the current pane's directory when not searching/filtering |
 | `r` | Rename the selected session when not searching/filtering |
 | `x` | Kill the selected session after confirmation when not searching/filtering |
+| `u` | Start a runtime self-update in the background when not searching/filtering |
 | `J` / `K` | Move the selected session in the sidebar order when not searching/filtering |
 | `h` | Show or hide numeric session names when not searching/filtering |
 | `?` | Show or hide key help when not searching/filtering |
