@@ -60,6 +60,35 @@ func TestSidebarModelMouseWheelNavigatesFilteredSessions(t *testing.T) {
 	}
 }
 
+func TestSidebarModelSelfUpdateShowsSpinner(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() bool { return true }})
+
+	updated, cmd := model.Update(keyPress("u", 0))
+	model = requireSidebarModel(t, updated)
+	if !model.updateInProgress {
+		t.Fatal("u shortcut did not mark update in progress")
+	}
+	if cmd == nil {
+		t.Fatal("u shortcut did not schedule spinner tick")
+	}
+	if !strings.Contains(stripANSI(model.Render()), "Updating runtime") {
+		t.Fatalf("render missing update spinner message: %q", stripANSI(model.Render()))
+	}
+}
+
+func TestSidebarModelSelfUpdateDoesNotSpinWhenLaunchFails(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() bool { return false }})
+
+	updated, cmd := model.Update(keyPress("u", 0))
+	model = requireSidebarModel(t, updated)
+	if model.updateInProgress {
+		t.Fatal("failed self-update launch marked update in progress")
+	}
+	if cmd != nil {
+		t.Fatal("failed self-update launch scheduled spinner tick")
+	}
+}
+
 func TestSidebarModelQuestionMarkTogglesHelpOnlyOutsideSearch(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
 
@@ -157,8 +186,8 @@ func TestSidebarModelSingleKeyBrowseShortcuts(t *testing.T) {
 		if called != 1 {
 			t.Fatalf("u shortcut called SelfUpdate %d times, want 1", called)
 		}
-		if model.message != "Update started" {
-			t.Fatalf("message = %q, want Update started", model.message)
+		if !model.updateInProgress || !strings.Contains(stripANSI(model.message), "Updating runtime") {
+			t.Fatalf("update state/message = %v/%q, want spinner update message", model.updateInProgress, stripANSI(model.message))
 		}
 	})
 

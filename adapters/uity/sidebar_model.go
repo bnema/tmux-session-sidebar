@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
 
@@ -79,6 +80,8 @@ type SidebarModel struct {
 	actions                          Actions
 	version                          string
 	updateCheck                      updateCheckState
+	updateSpinner                    spinner.Model
+	updateInProgress                 bool
 	metadataIconMode                 MetadataIconMode
 	width                            int
 	height                           int
@@ -116,6 +119,9 @@ func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options Si
 	if attentionAnimationTickPending {
 		attentionAnimationTickGeneration = 1
 	}
+	updateSpinner := spinner.New()
+	updateSpinner.Spinner = spinner.Dot
+	updateSpinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc"))
 	return SidebarModel{
 		items:                            items,
 		actions:                          actions,
@@ -123,6 +129,7 @@ func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options Si
 		showNumeric:                      options.ShowNumericItems,
 		version:                          options.Version,
 		updateCheck:                      newUpdateCheckState(options.Version, options.CheckUpdateAvailable),
+		updateSpinner:                    updateSpinner,
 		metadataIconMode:                 iconMode,
 		attentionAnimationStyle:          attentionAnimationStyle,
 		attentionAnimationTickPending:    attentionAnimationTickPending,
@@ -146,6 +153,13 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case updateCheckTickMsg:
 		var cmd tea.Cmd
 		m.updateCheck, cmd = m.updateCheck.handleTick()
+		return m, cmd
+	case spinner.TickMsg:
+		if !m.updateInProgress {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.updateSpinner, cmd = m.updateSpinner.Update(msg)
 		return m, cmd
 	case attentionAnimationTickMsg:
 		if msg.Generation != untrackedAttentionAnimationTick && msg.Generation != m.attentionAnimationTickGeneration {
@@ -310,7 +324,9 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		if m.mode == ModeBrowse {
 			if m.actions.SelfUpdate != nil && m.actions.SelfUpdate() {
-				m.message = "Update started"
+				m.updateInProgress = true
+				m.message = "Updating runtime " + m.updateSpinner.View()
+				return m, m.updateSpinner.Tick
 			}
 		} else {
 			m.appendPrintable(msg)
@@ -602,7 +618,9 @@ func (m SidebarModel) Render() string {
 	if status := m.statusLine(); status != "" {
 		lines = append(lines, "", styles.accent.Render(status))
 	}
-	if m.message != "" {
+	if m.updateInProgress {
+		lines = append(lines, "", styles.accent.Render("Updating runtime "+m.updateSpinner.View()))
+	} else if m.message != "" {
 		lines = append(lines, "", styles.accent.Render(m.message))
 	}
 	lines = StatusBar{Lines: m.statusBarLines(styles), Height: m.height}.RenderBelow(padSidebarContentLines(lines))
