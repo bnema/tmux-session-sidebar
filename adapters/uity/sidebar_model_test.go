@@ -1,6 +1,7 @@
 package uity
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -61,7 +62,9 @@ func TestSidebarModelMouseWheelNavigatesFilteredSessions(t *testing.T) {
 }
 
 func TestSidebarModelSelfUpdateShowsSpinner(t *testing.T) {
-	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() bool { return true }})
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() tea.Cmd {
+		return func() tea.Msg { return SelfUpdateFinishedMsg{} }
+	}})
 
 	updated, cmd := model.Update(keyPress("u", 0))
 	model = requireSidebarModel(t, updated)
@@ -76,8 +79,32 @@ func TestSidebarModelSelfUpdateShowsSpinner(t *testing.T) {
 	}
 }
 
+func TestSidebarModelSelfUpdateFinishedStopsSpinnerAndReportsFailure(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() tea.Cmd {
+		return func() tea.Msg { return SelfUpdateFinishedMsg{Err: errors.New("download failed")} }
+	}})
+
+	updated, cmd := model.Update(keyPress("u", 0))
+	model = requireSidebarModel(t, updated)
+	if cmd == nil || !model.updateInProgress {
+		t.Fatal("self-update did not start spinner before completion")
+	}
+
+	updated, cmd = model.Update(SelfUpdateFinishedMsg{Err: errors.New("download failed")})
+	model = requireSidebarModel(t, updated)
+	if model.updateInProgress {
+		t.Fatal("self-update failure did not stop spinner")
+	}
+	if cmd != nil {
+		t.Fatal("self-update failure scheduled unexpected command")
+	}
+	if !strings.Contains(model.message, "Update failed: download failed") {
+		t.Fatalf("message = %q, want failure message", model.message)
+	}
+}
+
 func TestSidebarModelSelfUpdateDoesNotSpinWhenLaunchFails(t *testing.T) {
-	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() bool { return false }})
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() tea.Cmd { return nil }})
 
 	updated, cmd := model.Update(keyPress("u", 0))
 	model = requireSidebarModel(t, updated)
@@ -180,7 +207,10 @@ func TestSidebarModelSingleKeyBrowseShortcuts(t *testing.T) {
 
 	t.Run("u starts self update", func(t *testing.T) {
 		called := 0
-		model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() bool { called++; return true }})
+		model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() tea.Cmd {
+			called++
+			return func() tea.Msg { return SelfUpdateFinishedMsg{} }
+		}})
 		updated, _ := model.Update(keyPress("u", 0))
 		model = requireSidebarModel(t, updated)
 		if called != 1 {
@@ -218,7 +248,7 @@ func TestSidebarModelSingleKeyShortcutsRemainSearchInput(t *testing.T) {
 		RenameSession:       func(string) bool { t.Fatal("r should not rename while searching"); return false },
 		KillSession:         func(string) bool { t.Fatal("x should not kill while searching"); return false },
 		SetShowNumericItems: func(bool) bool { t.Fatal("h should not toggle numeric while searching"); return false },
-		SelfUpdate:          func() bool { t.Fatal("u should not update while searching"); return false },
+		SelfUpdate:          func() tea.Cmd { t.Fatal("u should not update while searching"); return nil },
 		ReorderSession:      func(string, int) bool { t.Fatal("J/K should not reorder while searching"); return false },
 	})
 	updated, _ := model.Update(keyPress("/", 0))

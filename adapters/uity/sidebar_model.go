@@ -52,9 +52,13 @@ type Actions struct {
 	PinSessionWithColor func(string, string) bool
 	ReorderSession      func(string, int) bool
 	SetShowNumericItems func(bool) bool
-	SelfUpdate          func() bool
+	SelfUpdate          func() tea.Cmd
 	LoadProjects        func() []ProjectItem
 	ReloadSessions      func() []SessionItem
+}
+
+type SelfUpdateFinishedMsg struct {
+	Err error
 }
 
 type SidebarOptions struct {
@@ -161,6 +165,14 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.updateSpinner, cmd = m.updateSpinner.Update(msg)
 		return m, cmd
+	case SelfUpdateFinishedMsg:
+		m.updateInProgress = false
+		if msg.Err != nil {
+			m.message = "Update failed: " + msg.Err.Error()
+		} else {
+			m.message = "Update complete"
+		}
+		return m, nil
 	case attentionAnimationTickMsg:
 		if msg.Generation != untrackedAttentionAnimationTick && msg.Generation != m.attentionAnimationTickGeneration {
 			return m, nil
@@ -323,10 +335,13 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.reloadSessions()
 	case "u":
 		if m.mode == ModeBrowse {
-			if m.actions.SelfUpdate != nil && m.actions.SelfUpdate() {
-				m.updateInProgress = true
-				m.message = "Updating runtime " + m.updateSpinner.View()
-				return m, m.updateSpinner.Tick
+			if m.actions.SelfUpdate != nil {
+				updateCmd := m.actions.SelfUpdate()
+				if updateCmd != nil {
+					m.updateInProgress = true
+					m.message = "Updating runtime " + m.updateSpinner.View()
+					return m, tea.Batch(updateCmd, m.updateSpinner.Tick)
+				}
 			}
 		} else {
 			m.appendPrintable(msg)

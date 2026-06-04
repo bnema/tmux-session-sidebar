@@ -71,7 +71,7 @@ func configureBackgroundSelfUpdateCommand(cmd *exec.Cmd, pluginDir string) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
 
-func startSelfUpdateBackground() error {
+func runSelfUpdateBackground() error {
 	pluginDir, updaterPath, err := selfUpdatePaths()
 	if err != nil {
 		return err
@@ -80,5 +80,5 @@ func startSelfUpdateBackground() error {
 	configureBackgroundSelfUpdateCommand(cmd, pluginDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
-	return cmd.Start()
+	return cmd.Run()
 }

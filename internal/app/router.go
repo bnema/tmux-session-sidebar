@@ -493,8 +493,10 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 		SetShowNumericItems: func(show bool) bool {
 			return handleActionError(ctx, "save sidebar state", saveShowNumericSessions(ctx, show))
 		},
-		SelfUpdate: func() bool {
-			return handleActionError(ctx, "start self update", startSelfUpdateBackground())
+		SelfUpdate: func() tea.Cmd {
+			return func() tea.Msg {
+				return uity.SelfUpdateFinishedMsg{Err: runSelfUpdateBackground()}
+			}
 		},
 		LoadProjects: func() []uity.ProjectItem { return loadProjectItems(ctx) },
 		ReloadSessions: func() []uity.SessionItem {
