@@ -778,6 +778,32 @@ esac
 	}
 }
 
+func TestConfirmedKillSwitchesAwayBeforeKillingCurrentSession(t *testing.T) {
+	ctx := t.Context()
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions)
+    printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n'
+    ;;
+  display-message)
+    printf 'alpha\n'
+    ;;
+esac
+`)
+	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar.EXPECT().RefreshSidebar(ctx, "").Return(nil)
+	if err := killSession(ctx, map[string]string{"session": "alpha", "confirmed": "yes"}, sidebar); err != nil {
+		t.Fatalf("killSession returned error: %v", err)
+	}
+	log := readLog(t, logPath)
+	switchIndex := strings.Index(log, "switch-client -t =beta:")
+	killIndex := strings.Index(log, "kill-session -t =alpha")
+	if switchIndex < 0 || killIndex < 0 || switchIndex > killIndex {
+		t.Fatalf("expected switch to beta before kill alpha, log=%q", log)
+	}
+}
+
 func TestConfirmedKill(t *testing.T) {
 	tests := []struct {
 		name         string

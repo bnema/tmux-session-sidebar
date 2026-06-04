@@ -55,7 +55,7 @@ func displayVersion(version string) string {
 
 func newSidebarStyles() sidebarStyles {
 	return sidebarStyles{
-		accent:          lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
+		accent:          lipgloss.NewStyle().Foreground(lipgloss.Color("#86efac")),
 		dim:             lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
 		active:          lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
 		stale:           lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),

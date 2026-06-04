@@ -18,7 +18,7 @@ func TestTreeSidebarRenderUsesCompactSlotsTreeGuidesAndAttentionRight(t *testing
 	model.attentionAnimationFrame = 1
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "▾ Work") || !strings.Contains(view, "├─ 1 "+currentMarkerSymbol+" alpha "+attentionMarkerSymbol) || !strings.Contains(view, "└─ 2 "+inactiveMarkerSymbol+" beta") {
+	if !strings.Contains(view, "▾ Work") || !strings.Contains(view, "├─ 1 alpha "+attentionMarkerSymbol) || !strings.Contains(view, "└─ 2 beta") {
 		t.Fatalf("tree render missing compact slots, guides, or right attention marker: %q", view)
 	}
 	if strings.Contains(view, "[1]") || strings.Contains(view, "[2]") {
@@ -33,10 +33,10 @@ func TestTreeSidebarRenderDisplaysContinuousDoubleDigitSlots(t *testing.T) {
 		{Kind: TreeRowSession, ID: "category:work/session:lambda", CategoryID: "category:work", Session: SessionItem{Name: "lambda"}, Slot: 11, Depth: 1, LastChild: true},
 	}, Actions{}, SidebarOptions{})
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "├─ 10 "+inactiveMarkerSymbol+" kappa") || !strings.Contains(view, "└─ 11 "+inactiveMarkerSymbol+" lambda") {
+	if !strings.Contains(view, "├─ 10 kappa") || !strings.Contains(view, "└─ 11 lambda") {
 		t.Fatalf("tree render missing continuous double-digit slots: %q", view)
 	}
-	if strings.Contains(view, " 0 "+inactiveMarkerSymbol) {
+	if strings.Contains(view, " 0 ") {
 		t.Fatalf("tree render should not display slot 10 as 0: %q", view)
 	}
 }
@@ -425,7 +425,7 @@ func TestTreeSidebarRenderShowsMetadataAsTreeChild(t *testing.T) {
 	}, Actions{}, SidebarOptions{})
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "└─ 1 "+inactiveMarkerSymbol+" alpha") || !strings.Contains(view, "     feature/category-tree  2") {
+	if !strings.Contains(view, "└─ 1 alpha") || !strings.Contains(view, "     feature/category-tree  2") {
 		t.Fatalf("tree render missing session metadata child: %q", view)
 	}
 }

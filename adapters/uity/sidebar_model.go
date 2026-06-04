@@ -18,8 +18,6 @@ import (
 )
 
 const attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
-const currentMarkerSymbol = "\uf444"   // Nerd Font dot-fill glyph (U+F444 / nf-oct-dot_fill).
-const inactiveMarkerSymbol = "\uf4c3"  // Nerd Font small hollow dot glyph (U+F4C3 / nf-oct-dot).
 const pinnedMarkerSymbol = "\uf08d"    // Nerd Font thumb-tack glyph (U+F08D / nf-fa-thumb_tack).
 const spaceKeySymbol = "\U000F1050"    // Nerd Font keyboard-space glyph (U+F1050 / nf-md-keyboard_space).
 const updateAvailableSymbol = "\uf062" // Nerd Font arrow-up glyph (U+F062 / nf-fa-arrow_up).

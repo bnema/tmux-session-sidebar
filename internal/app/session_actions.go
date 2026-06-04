@@ -10,6 +10,7 @@ import (
 
 	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/core/projects"
+	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -163,6 +164,9 @@ func killSession(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 	if err != nil {
 		return err
 	}
+	if err := switchAwayBeforeKillingCurrentSession(ctx, flags["client"], session, existing, sidebar); err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: switch away before kill failed: %v\n", err)
+	}
 	if err := withRemovedPersistedSessionDuringTmuxAction(ctx, session, func() error {
 		return runtimeService().KillSession(ctx, existing, session)
 	}); err != nil {
@@ -172,6 +176,55 @@ func killSession(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: sidebar refresh failed after kill: %v\n", err)
 	}
 	return nil
+}
+
+func switchAwayBeforeKillingCurrentSession(ctx context.Context, client string, target string, existing []sessions.View, sidebar ports.TmuxSidebarPort) error {
+	current, err := currentSessionForKill(ctx, client, existing)
+	if err != nil {
+		return err
+	}
+	if current != target {
+		return nil
+	}
+	replacement := replacementSessionForKill(existing, target)
+	if replacement == "" {
+		return nil
+	}
+	return switchClient(ctx, client, replacement, sidebar)
+}
+
+func currentSessionForKill(ctx context.Context, client string, existing []sessions.View) (string, error) {
+	if strings.TrimSpace(client) != "" {
+		out, err := tmux(ctx, "display-message", "-p", "-t", client, "#{session_name}")
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(out), nil
+	}
+	out, err := tmux(ctx, "display-message", "-p", "#{session_name}")
+	if err == nil && strings.TrimSpace(out) != "" {
+		return strings.TrimSpace(out), nil
+	}
+	for _, session := range existing {
+		if session.Current {
+			return session.Name, nil
+		}
+	}
+	return "", nil
+}
+
+func replacementSessionForKill(existing []sessions.View, target string) string {
+	for _, session := range existing {
+		if session.Name != target && session.Visible {
+			return session.Name
+		}
+	}
+	for _, session := range existing {
+		if session.Name != target {
+			return session.Name
+		}
+	}
+	return ""
 }
 
 func withPersistedSessionDuringTmuxAction(ctx context.Context, name string, metadata ports.SessionMetadata, action func() error) error {

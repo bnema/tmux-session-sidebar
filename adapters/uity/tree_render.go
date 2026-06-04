@@ -84,9 +84,9 @@ func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 	session := item.Session
 	branch := r.styles.dim.Render(treeBranch(item))
 	slot := slotPrefix(item.Slot)
-	marker := treeSessionMarker(session, selected)
+	marker := treeSessionMarker(session)
 	name := sanitizeSessionName(session.Name)
-	bodyText := fmt.Sprintf(" %s%s %s", slot, marker, name)
+	bodyText := sessionBodyText(slot, marker, name)
 	if selected {
 		body := r.styles.selected.Render(bodyText)
 		return branch + body + r.renderAttention(session, true)
@@ -146,14 +146,23 @@ func treeMetadataPrefix(item TreeItem) string {
 	return "│  "
 }
 
-func treeSessionMarker(item SessionItem, selected bool) string {
-	if selected || item.Current {
-		return currentMarkerSymbol
-	}
+func treeSessionMarker(item SessionItem) string {
 	if item.Pinned {
 		return pinnedMarkerSymbol
 	}
-	return inactiveMarkerSymbol
+	return ""
+}
+
+func sessionBodyText(slot string, marker string, name string) string {
+	parts := make([]string, 0, 3)
+	if strings.TrimSpace(slot) != "" {
+		parts = append(parts, strings.TrimSpace(slot))
+	}
+	if strings.TrimSpace(marker) != "" {
+		parts = append(parts, strings.TrimSpace(marker))
+	}
+	parts = append(parts, name)
+	return " " + strings.Join(parts, " ")
 }
 
 func slotPrefix(slot int) string {

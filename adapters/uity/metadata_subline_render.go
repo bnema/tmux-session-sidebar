@@ -43,7 +43,7 @@ func renderMetadataParts(parts []metadataPart, selected bool, active bool) strin
 	if !active {
 		return metadataInactiveSublineStyle().Render(metadataPartText(parts))
 	}
-	base := metadataSublineStyle(selected)
+	base := metadataSublineStyle()
 	var b strings.Builder
 	for i, part := range parts {
 		if i > 0 {
@@ -54,11 +54,8 @@ func renderMetadataParts(parts []metadataPart, selected bool, active bool) strin
 	return b.String()
 }
 
-func metadataSublineStyle(selected bool) lipgloss.Style {
-	if selected {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#64748b"))
-	}
-	return metadataInactiveSublineStyle()
+func metadataSublineStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("#cccccc"))
 }
 
 func metadataInactiveSublineStyle() lipgloss.Style {
@@ -79,7 +76,7 @@ func metadataPartStyle(role metadataPartRole, selected bool) lipgloss.Style {
 	case metadataPartUnstaged:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.unstaged))
 	default:
-		return metadataSublineStyle(selected)
+		return metadataSublineStyle()
 	}
 }
 
