@@ -89,11 +89,13 @@ func (m SidebarModel) visibleTreeItems() []TreeItem {
 	filtered := make([]TreeItem, 0, len(m.treeItems))
 	var category TreeItem
 	categoryAdded := false
+	lastSessionIndex := -1
 	for _, item := range m.treeItems {
 		switch item.Kind {
 		case TreeRowCategory:
 			category = item
 			categoryAdded = false
+			lastSessionIndex = -1
 		case TreeRowSession:
 			if !strings.Contains(strings.ToLower(item.Session.Name), filter) {
 				continue
@@ -102,8 +104,13 @@ func (m SidebarModel) visibleTreeItems() []TreeItem {
 				filtered = append(filtered, category)
 				categoryAdded = true
 			}
+			if lastSessionIndex >= 0 {
+				filtered[lastSessionIndex].LastChild = false
+			}
 			item.OverflowHidden = false
+			item.LastChild = true
 			filtered = append(filtered, item)
+			lastSessionIndex = len(filtered) - 1
 		}
 	}
 	return filtered

@@ -108,6 +108,32 @@ func TestTreeSidebarTinyHeightsDoNotOverflow(t *testing.T) {
 	}
 }
 
+func TestTreeSidebarZeroTreeHeightRendersOnlyStatus(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 1})
+	model = requireSidebarModel(t, updated)
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "alpha") || strings.Contains(view, "beta") || !strings.Contains(view, "? keys") {
+		t.Fatalf("height 1 should render status only, view=%q", view)
+	}
+}
+
+func TestTreeSidebarPageNavigationCountsRenderedMetadataRows(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "main", Clean: true}}, Depth: 1, ShowMetadata: true},
+		{Kind: TreeRowSession, ID: "category:work/session:beta", CategoryID: "category:work", Session: SessionItem{Name: "beta", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "main", Clean: true}}, Depth: 1, ShowMetadata: true},
+		{Kind: TreeRowSession, ID: "category:work/session:gamma", CategoryID: "category:work", Session: SessionItem{Name: "gamma"}, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 5})
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgDown}))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
+		t.Fatalf("page down selected = %#v ok=%v, want beta because alpha renders two rows", item, ok)
+	}
+}
+
 func TestTreeSidebarPageNavigationClampsInsteadOfWrapping(t *testing.T) {
 	items := make([]SessionItem, 0, 8)
 	for i := 1; i <= 8; i++ {
@@ -153,6 +179,25 @@ func TestTreeSidebarReloadsTreeAfterCreateSpacer(t *testing.T) {
 
 	if !reloaded || len(model.treeItems) != 1 || model.treeItems[0].Kind != TreeRowSpacer {
 		t.Fatalf("tree reload after new spacer: reloaded=%v tree=%#v", reloaded, model.treeItems)
+	}
+}
+
+func TestTreeSidebarFilterRecomputesLastChildBranches(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:work/session:beta", CategoryID: "category:work", Session: SessionItem{Name: "beta"}, Depth: 1},
+		{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 1},
+	}, Actions{}, SidebarOptions{})
+	updated, _ := model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+	for _, key := range []string{"b", "e"} {
+		updated, _ = model.Update(keyPress(key, 0))
+		model = requireSidebarModel(t, updated)
+	}
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "└─ beta") || strings.Contains(view, "├─ beta") {
+		t.Fatalf("filtered last session should render as last child, view=%q", view)
 	}
 }
 

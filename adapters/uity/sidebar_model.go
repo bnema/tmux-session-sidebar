@@ -485,8 +485,29 @@ func (m *SidebarModel) movePage(delta int) {
 	if step <= 0 {
 		step = 1
 	}
-	m.cursor = min(max(m.cursor+(delta*step), 0), len(visible)-1)
+	direction := 1
+	if delta < 0 {
+		direction = -1
+	}
+	m.cursor = min(max(m.cursor+m.pageItemDelta(visible, step, direction, newSidebarStyles()), 0), len(visible)-1)
 	m.ensureTreeCursorVisible()
+}
+
+func (m SidebarModel) pageItemDelta(visible []TreeItem, step int, direction int, styles sidebarStyles) int {
+	if direction == 0 || len(visible) == 0 {
+		return 0
+	}
+	renderer := m.treeLineCounter(styles)
+	lines := 0
+	items := 0
+	for index := m.cursor + direction; index >= 0 && index < len(visible); index += direction {
+		items += direction
+		lines += renderer.renderedTreeItemLineCount(visible[index])
+		if lines >= step {
+			break
+		}
+	}
+	return items
 }
 
 func (m SidebarModel) selectedSession() (SessionItem, bool) {

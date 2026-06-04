@@ -18,11 +18,17 @@ func (m SidebarModel) availableTreeHeight() int {
 
 func (m SidebarModel) renderScrollableTree(styles sidebarStyles) []string {
 	lines := m.renderTree(styles)
-	viewportHeight := m.availableTreeHeight()
-	if viewportHeight <= 0 || len(lines) <= viewportHeight {
+	if m.height <= 0 {
 		return lines
 	}
-	scroll := m.normalizedTreeScroll(len(lines), viewportHeight)
+	viewportHeight := m.availableTreeHeight()
+	if viewportHeight <= 0 {
+		return nil
+	}
+	if len(lines) <= viewportHeight {
+		return lines
+	}
+	scroll := m.normalizedTreeScroll(len(lines), viewportHeight, styles)
 	return lines[scroll:min(scroll+viewportHeight, len(lines))]
 }
 
@@ -48,14 +54,31 @@ func (m *SidebarModel) ensureTreeCursorVisible() {
 	if selectedLine >= m.treeScroll+viewportHeight {
 		m.treeScroll = selectedLine - viewportHeight + 1
 	}
-	m.treeScroll = m.normalizedTreeScroll(renderedHeight, viewportHeight)
+	m.treeScroll = m.normalizedTreeScroll(renderedHeight, viewportHeight, styles)
 }
 
-func (m SidebarModel) normalizedTreeScroll(renderedHeight int, viewportHeight int) int {
+func (m SidebarModel) normalizedTreeScroll(renderedHeight int, viewportHeight int, styles sidebarStyles) int {
 	if viewportHeight <= 0 || renderedHeight <= viewportHeight {
 		return 0
 	}
-	return min(max(m.treeScroll, 0), renderedHeight-viewportHeight)
+	scroll := min(max(m.treeScroll, 0), renderedHeight-viewportHeight)
+	return m.snapTreeScrollToItemStart(scroll, styles)
+}
+
+func (m SidebarModel) snapTreeScrollToItemStart(scroll int, styles sidebarStyles) int {
+	if scroll <= 0 {
+		return 0
+	}
+	renderer := m.treeLineCounter(styles)
+	line := 0
+	for _, item := range m.visibleTreeItems() {
+		next := line + renderer.renderedTreeItemLineCount(item)
+		if scroll < next {
+			return line
+		}
+		line = next
+	}
+	return line
 }
 
 func (m SidebarModel) renderedTreeLineCount(styles sidebarStyles) int {
