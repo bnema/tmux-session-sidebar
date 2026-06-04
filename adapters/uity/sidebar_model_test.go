@@ -1542,7 +1542,7 @@ func TestSidebarModelRenderAppliesSelectedStyleAcrossEntireRow(t *testing.T) {
 	}
 }
 
-func TestSidebarModelHelpToggleOpensBottomSheetCheatSheet(t *testing.T) {
+func TestSidebarModelHelpToggleOpensbottomSheetCheatSheet(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 12})
 	model = requireSidebarModel(t, updated)

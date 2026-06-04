@@ -177,7 +177,8 @@ esac
 		t.Fatalf("save state: %v", err)
 	}
 
-	target, err := contextualQuickSwitchTarget(ctx, state, []sessions.View{{Name: "alpha", Visible: true}, {Name: "beta", Visible: true}, {Name: "gamma", Visible: true}}, 2)
+	visible := []sessions.View{{Name: "alpha", Visible: true}, {Name: "beta", Visible: true}, {Name: "gamma", Visible: true}}
+	target, err := contextualQuickSwitchTarget(ctx, state, visible, visible, 2)
 	if err != nil {
 		t.Fatalf("contextualQuickSwitchTarget error: %v", err)
 	}
@@ -199,12 +200,54 @@ esac
 	}}}
 	visible := []sessions.View{{Name: "alpha", Visible: true}, {Name: "3", Visible: true}, {Name: "beta", Visible: true}}
 
-	target, err := contextualQuickSwitchTarget(ctx, state, visible, 2)
+	target, err := contextualQuickSwitchTarget(ctx, state, visible, visible, 2)
 	if err != nil {
 		t.Fatalf("contextualQuickSwitchTarget error: %v", err)
 	}
 	if target != "3" {
 		t.Fatalf("target = %q, want numeric session in visible slot 2", target)
+	}
+}
+
+func TestContextualQuickSwitchTargetUsesNumericCurrentForActiveCategoryWhenHidden(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  display-message) printf '3\n' ;;
+esac
+`)
+	ctx := context.Background()
+	state := ports.PersistedState{SessionOrder: []string{"alpha", "3", "beta"}, SidebarLayout: &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+		{ID: "category:work", Kind: string(sidebarlayout.ItemKindCategory), Category: &ports.SidebarLayoutCategory{ID: "category:work", Name: "Work", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}}}},
+		{ID: "category:nums", Kind: string(sidebarlayout.ItemKindCategory), Category: &ports.SidebarLayoutCategory{ID: "category:nums", Name: "Nums", Sessions: []ports.SidebarLayoutSessionRef{{Name: "3"}, {Name: "beta"}}}},
+	}}}
+	layoutVisible := []sessions.View{{Name: "alpha", Visible: true}, {Name: "3", Visible: true}, {Name: "beta", Visible: true}}
+	fallbackVisible := []sessions.View{{Name: "alpha", Visible: true}, {Name: "beta", Visible: true}}
+
+	target, err := contextualQuickSwitchTarget(ctx, state, layoutVisible, fallbackVisible, 1)
+	if err != nil {
+		t.Fatalf("contextualQuickSwitchTarget error: %v", err)
+	}
+	if target != "beta" {
+		t.Fatalf("target = %q, want beta from numeric current category visible slot", target)
+	}
+}
+
+func TestContextualQuickSwitchTargetSkipsCollapsedActiveCategory(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  display-message) printf 'alpha\n' ;;
+esac
+`)
+	ctx := context.Background()
+	state := ports.PersistedState{SessionOrder: []string{"alpha", "beta"}, SidebarLayout: &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+		{ID: "category:work", Kind: string(sidebarlayout.ItemKindCategory), Category: &ports.SidebarLayoutCategory{ID: "category:work", Name: "Work", Collapsed: true, Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}, {Name: "beta"}}}},
+	}}}
+	visible := []sessions.View{{Name: "alpha", Visible: true}, {Name: "beta", Visible: true}}
+
+	if target, err := contextualQuickSwitchTarget(ctx, state, visible, visible, 1); err == nil || target != "" {
+		t.Fatalf("contextualQuickSwitchTarget = %q, %v; want no visible slot in collapsed category", target, err)
 	}
 }
 

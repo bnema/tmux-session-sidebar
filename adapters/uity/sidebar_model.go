@@ -145,13 +145,19 @@ func NewSidebarModel(items []SessionItem, actions Actions) SidebarModel {
 
 func NewTreeSidebarModelWithOptions(treeItems []TreeItem, actions Actions, options SidebarOptions) SidebarModel {
 	items := sessionItemsFromTree(treeItems)
-	model := NewSidebarModelWithOptions(items, actions, options)
+	model := newSidebarModelBase(items, actions, options)
 	model.treeItems = treeItems
 	model.treeMode = true
 	return model
 }
 
 func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options SidebarOptions) SidebarModel {
+	model := newSidebarModelBase(items, actions, options)
+	model.treeItems = SessionItemsToTree(items)
+	return model
+}
+
+func newSidebarModelBase(items []SessionItem, actions Actions, options SidebarOptions) SidebarModel {
 	iconMode := options.MetadataIconMode
 	if iconMode == "" {
 		iconMode = bestEffortMetadataIconMode()
@@ -754,13 +760,13 @@ func (m SidebarModel) Render() string {
 		return m.pinColorPicker.RenderOverlay(content, m.width, m.height)
 	}
 	if m.menuActive() {
-		return m.renderBottomSheet(content, BottomSheet{Title: m.menu.Spec.Title, Content: m.renderMenuRows(styles), Footer: m.menu.Spec.Footer, Height: m.menu.Spec.Height})
+		return m.renderBottomSheet(content, bottomSheet{Title: m.menu.Spec.Title, Content: m.renderMenuRows(styles), Footer: m.menu.Spec.Footer, Height: m.menu.Spec.Height})
 	}
 	if m.mode == ModeCreateNamed {
-		return m.renderBottomSheet(content, BottomSheet{Title: "named session", Content: "> " + m.createNamedInput, Footer: "esc cancel  ↵ create", Height: 5})
+		return m.renderBottomSheet(content, bottomSheet{Title: "named session", Content: "> " + m.createNamedInput, Footer: "esc cancel  ↵ create", Height: 5})
 	}
 	if m.showHelp {
-		return m.renderBottomSheet(content, BottomSheet{Title: "keys", Content: m.helpSheetContent(styles), Footer: "esc close", Height: 14})
+		return m.renderBottomSheet(content, bottomSheet{Title: "keys", Content: m.helpSheetContent(styles), Footer: "esc close", Height: 14})
 	}
 	return content
 }

@@ -8,18 +8,18 @@ import (
 
 const defaultBottomSheetHeight = 7
 
-type BottomSheet struct {
+type bottomSheet struct {
 	Title   string
 	Content string
 	Footer  string
 	Height  int
 }
 
-func (s BottomSheet) Render(width int) string {
+func (s bottomSheet) Render(width int) string {
 	return s.render(width, 0)
 }
 
-func (s BottomSheet) render(width int, maxHeight int) string {
+func (s bottomSheet) render(width int, maxHeight int) string {
 	if width <= 0 {
 		width = metadataSublineFallbackWidth
 	}
@@ -65,7 +65,7 @@ func boundedBottomSheetLines(titleLines []string, contentLines []string, footerL
 	return lines
 }
 
-func (s BottomSheet) RenderOverlay(base string, width int, height int) string {
+func (s bottomSheet) RenderOverlay(base string, width int, height int) string {
 	if width <= 0 {
 		width = max(lipgloss.Width(base), 1)
 	}

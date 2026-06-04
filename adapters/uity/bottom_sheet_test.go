@@ -7,7 +7,7 @@ import (
 
 func TestBottomSheetOverlaysFullWidthAtBottom(t *testing.T) {
 	base := strings.Join([]string{"one", "two", "three", "four", "five"}, "\n")
-	sheet := BottomSheet{Title: "create session", Content: "> Git repo\n  Current dir", Footer: "esc cancel", Height: 6}
+	sheet := bottomSheet{Title: "create session", Content: "> Git repo\n  Current dir", Footer: "esc cancel", Height: 6}
 
 	view := stripANSI(sheet.RenderOverlay(base, 30, 8))
 	lines := strings.Split(view, "\n")
@@ -36,7 +36,7 @@ func TestBottomSheetOverlaysFullWidthAtBottom(t *testing.T) {
 
 func TestBottomSheetClipsToBoundedHeight(t *testing.T) {
 	base := strings.Join([]string{"1", "2", "3", "4", "5"}, "\n")
-	sheet := BottomSheet{Title: "menu", Content: "a\nb\nc\nd\nz", Footer: "esc cancel", Height: 5}
+	sheet := bottomSheet{Title: "menu", Content: "a\nb\nc\nd\nz", Footer: "esc cancel", Height: 5}
 
 	view := stripANSI(sheet.RenderOverlay(base, 20, 5))
 	lines := strings.Split(view, "\n")

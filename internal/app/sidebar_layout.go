@@ -170,6 +170,7 @@ func saveRenamedSidebarCategory(ctx context.Context, categoryID string, name str
 			if item.Kind == sidebarlayout.ItemKindCategory && item.Category.ID == categoryID {
 				layout.Items[i].Category.Name = name
 				found = true
+				break
 			}
 		}
 		if !found {
@@ -261,10 +262,11 @@ func uniqueLayoutID(prefix string, layout sidebarlayout.Layout) string {
 	for _, item := range layout.Items {
 		used[item.ID] = true
 	}
-	for i := 1; ; i++ {
+	for i := 1; i <= 10000; i++ {
 		id := fmt.Sprintf("%s:%d", prefix, i)
 		if !used[id] {
 			return id
 		}
 	}
+	return fmt.Sprintf("%s:%d", prefix, time.Now().UnixNano())
 }
