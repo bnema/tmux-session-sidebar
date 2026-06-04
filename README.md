@@ -125,6 +125,7 @@ Inside the sidebar:
 | `c` | Open the create sheet: git repo, current dir, named session, project, category, separator, or empty space |
 | `n` | Create a new named session from a quick prompt |
 | `r` | Rename the selected category inline when not searching/filtering |
+| `d` | Delete the selected session, category, separator, or empty space after confirmation |
 | `x` | Kill the selected session after confirmation when not searching/filtering |
 | `u` | Start a runtime self-update in the background when not searching/filtering |
 | `J` / `K` | Move the selected category, session, separator, or spacer when not searching/filtering |

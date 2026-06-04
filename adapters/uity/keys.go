@@ -10,5 +10,6 @@ const (
 	ModeCreateNamed    Mode = "create-named"
 	ModeRenameCategory Mode = "rename-category"
 	ModeConfirmKill    Mode = "confirm-kill"
+	ModeConfirmDelete  Mode = "confirm-delete"
 	ModePinColor       Mode = "pin-color"
 )

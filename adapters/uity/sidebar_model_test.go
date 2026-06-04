@@ -128,6 +128,57 @@ func TestSidebarModelSwitchSelectedReloadsAndKeepsPreviousCurrentSelected(t *tes
 	}
 }
 
+func TestSidebarModelDeleteSelectedTreeItemRequiresConfirmationAndReloadsTree(t *testing.T) {
+	deleted := TreeItem{}
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+		DeleteTreeItem:  func(item TreeItem) bool { deleted = item; return true },
+		ReloadTreeItems: reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "beta"}} }),
+	})
+	updated, _ := model.Update(keyPress("d", 0))
+	model = requireSidebarModel(t, updated)
+	if model.mode != ModeConfirmDelete || !strings.Contains(model.message, "Delete session alpha") {
+		t.Fatalf("delete confirmation state = mode=%s message=%q", model.mode, model.message)
+	}
+	updated, _ = model.Update(keyPress("y", 0))
+	model = requireSidebarModel(t, updated)
+	items := sessionItemsFromTree(model.treeItems)
+	if deleted.Session.Name != "alpha" || len(items) != 1 || items[0].Name != "beta" || model.mode != ModeBrowse {
+		t.Fatalf("deleted=%#v items=%#v mode=%s", deleted, items, model.mode)
+	}
+}
+
+func TestSidebarModelDeleteSelectedCategory(t *testing.T) {
+	deleted := TreeItem{}
+	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{DeleteTreeItem: func(item TreeItem) bool {
+		deleted = item
+		return true
+	}, ReloadTreeItems: func() []TreeItem {
+		return []TreeItem{{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true}}
+	}}, SidebarOptions{})
+	updated, _ := model.Update(keyPress("d", 0))
+	model = requireSidebarModel(t, updated)
+	if model.mode != ModeConfirmDelete || !strings.Contains(model.message, "Delete category Work") {
+		t.Fatalf("delete category confirmation = mode=%s message=%q", model.mode, model.message)
+	}
+	updated, _ = model.Update(keyPress("y", 0))
+	model = requireSidebarModel(t, updated)
+	if deleted.ID != "category:work" || model.treeItems[0].ID != "category:default" {
+		t.Fatalf("deleted=%#v tree=%#v", deleted, model.treeItems)
+	}
+}
+
+func TestSidebarModelDeleteConfirmationCanBeCancelled(t *testing.T) {
+	called := false
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{DeleteTreeItem: func(TreeItem) bool { called = true; return true }})
+	updated, _ := model.Update(keyPress("d", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("n", 0))
+	model = requireSidebarModel(t, updated)
+	if called || model.mode != ModeBrowse || model.message != "" {
+		t.Fatalf("cancel state called=%v mode=%s message=%q", called, model.mode, model.message)
+	}
+}
+
 func TestSidebarModelKillRequiresConfirmationAndReloadsTree(t *testing.T) {
 	called := 0
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
@@ -207,7 +258,7 @@ func TestSidebarModelHelpToggleOpensBottomSheetCheatSheet(t *testing.T) {
 	updated, _ = model.Update(keyPress("?", 0))
 	model = requireSidebarModel(t, updated)
 	view := stripANSI(model.Render())
-	for _, want := range []string{"keys", "navigation", "↵ switch", "c create", "n new", spaceKeySymbol + " pin", "h nums", "J/K", "r rename", "x kill", "esc close"} {
+	for _, want := range []string{"keys", "navigation", "↵ switch", "c create", "n new", spaceKeySymbol + " pin", "h nums", "J/K", "r rename", "d del", "esc close"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("help sheet missing %q in %q", want, view)
 		}

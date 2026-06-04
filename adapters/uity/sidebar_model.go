@@ -79,6 +79,7 @@ type Actions struct {
 	CreateSpacer        func() bool
 	CreateSeparator     func() bool
 	MoveTreeItem        func(string, int) bool
+	DeleteTreeItem      func(TreeItem) bool
 }
 
 type SelfUpdateFinishedMsg struct {
@@ -103,6 +104,7 @@ type SidebarModel struct {
 	message                          string
 	menu                             menuState
 	pendingKill                      string
+	pendingDelete                    TreeItem
 	renameCategoryID                 string
 	renameCategoryInput              string
 	createNamedInput                 string
@@ -248,6 +250,17 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.mode == ModeConfirmDelete {
+		if isDeleteConfirmYes(msg) {
+			m.confirmDelete()
+			return m.finishInteractiveUpdate()
+		}
+		if isDeleteConfirmCancel(msg) {
+			m.clearDeleteConfirmation()
+			return m.finishInteractiveUpdate()
+		}
+		return m, nil
+	}
 	if m.mode == ModeBrowse && toggleNumericKey(msg) {
 		next := !m.showNumeric
 		if m.actions.SetShowNumericItems != nil && !m.actions.SetShowNumericItems(next) {
@@ -378,6 +391,12 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.pendingKill = item.Name
 				m.message = "Kill " + item.Name + "? y/N"
 			}
+		} else {
+			m.appendPrintable(msg)
+		}
+	case "d":
+		if m.mode == ModeBrowse {
+			m.openDeleteConfirmation()
 		} else {
 			m.appendPrintable(msg)
 		}
@@ -599,6 +618,45 @@ func (m *SidebarModel) clearKillConfirmation() {
 	m.message = ""
 }
 
+func (m *SidebarModel) openDeleteConfirmation() {
+	item, ok := m.selectedTreeItem()
+	if !ok || m.actions.DeleteTreeItem == nil {
+		return
+	}
+	m.mode = ModeConfirmDelete
+	m.pendingDelete = item
+	m.message = "Delete " + deleteLabel(item) + "? y/N"
+}
+
+func (m *SidebarModel) confirmDelete() {
+	item := m.pendingDelete
+	m.clearDeleteConfirmation()
+	if item.ID != "" && m.actions.DeleteTreeItem != nil && m.actions.DeleteTreeItem(item) {
+		m.reloadSessions()
+	}
+}
+
+func (m *SidebarModel) clearDeleteConfirmation() {
+	m.mode = ModeBrowse
+	m.pendingDelete = TreeItem{}
+	m.message = ""
+}
+
+func deleteLabel(item TreeItem) string {
+	switch item.Kind {
+	case TreeRowSession:
+		return "session " + item.Session.Name
+	case TreeRowCategory:
+		return "category " + item.CategoryName
+	case TreeRowSeparator:
+		return "separator"
+	case TreeRowSpacer:
+		return "empty space"
+	default:
+		return "item"
+	}
+}
+
 func (m *SidebarModel) appendPrintable(msg tea.KeyPressMsg) {
 	if key, ok := printableKey(msg); ok {
 		if m.mode == ModeSearch {
@@ -656,7 +714,7 @@ func (m *SidebarModel) handleMouseWheel(msg tea.MouseWheelMsg) {
 }
 
 func (m *SidebarModel) moveWheel(delta int) {
-	if m.mode == ModeConfirmKill {
+	if m.mode == ModeConfirmKill || m.mode == ModeConfirmDelete {
 		return
 	}
 	if m.menuActive() {
@@ -709,6 +767,15 @@ func isKillConfirmYes(msg tea.KeyPressMsg) bool {
 }
 
 func isKillConfirmCancel(msg tea.KeyPressMsg) bool {
+	key := msg.Keystroke()
+	return msg.Key().Text == "n" || msg.Key().Text == "N" || key == "enter" || key == "esc"
+}
+
+func isDeleteConfirmYes(msg tea.KeyPressMsg) bool {
+	return msg.Key().Text == "y" || msg.Key().Text == "Y"
+}
+
+func isDeleteConfirmCancel(msg tea.KeyPressMsg) bool {
 	key := msg.Keystroke()
 	return msg.Key().Text == "n" || msg.Key().Text == "N" || key == "enter" || key == "esc"
 }

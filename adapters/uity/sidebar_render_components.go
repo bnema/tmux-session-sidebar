@@ -27,7 +27,7 @@ func (m SidebarModel) helpSheetContent(styles sidebarStyles) string {
 		"j/k move    " + spaceKeySymbol + " pin       h nums",
 		"",
 		styles.accent.Render("sessions"),
-		"c create    r rename    x kill",
+		"c create    r rename    d del",
 		"u update    n new      J/K",
 	}
 	return strings.Join(lines, "\n")
@@ -100,6 +100,8 @@ func (m SidebarModel) statusLine() string {
 		return "rename category: " + m.renameCategoryInput
 	case ModeConfirmKill:
 		return "confirm kill"
+	case ModeConfirmDelete:
+		return "confirm delete"
 	default:
 		return ""
 	}

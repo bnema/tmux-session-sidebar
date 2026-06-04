@@ -520,6 +520,17 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 			selection := sidebarlayoutSelectionForItem(itemID)
 			return handleActionError(ctx, "move sidebar item", saveMovedSidebarLayoutItem(ctx, selection, delta, live))
 		},
+		DeleteTreeItem: func(item uity.TreeItem) bool {
+			if item.Kind == uity.TreeRowSession {
+				return handleMetadataAction(ctx, ipcClient, "delete session", killSession(ctx, map[string]string{"client": currentClient(), "session": item.Session.Name, "confirmed": "yes"}, sidebar))
+			}
+			live, err := currentLiveSessionNames(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for layout delete", err)
+			}
+			selection := sidebarlayoutSelectionForItem(item.ID)
+			return handleActionError(ctx, "delete sidebar item", saveDeletedSidebarLayoutItem(ctx, selection, live))
+		},
 	}
 }
 

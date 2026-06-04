@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
@@ -121,6 +122,35 @@ func TestLoadSidebarTreeItemsMigratesDefaultAndContextualMetadata(t *testing.T) 
 	}
 	if beta.Session.Metadata.Branch != "dev" || beta.ShowMetadata || beta.Slot != 0 {
 		t.Fatalf("beta tree item = %#v, want inactive metadata hidden and no contextual slot", beta)
+	}
+}
+
+func TestLoadSidebarTreeItemsShowsLoadingMetadataWhenCurrentSessionIsSidebar(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, strings.Replace(sidebarTreeFakeTmuxScript("off"), "display-message) printf 'alpha\\n' ;;", "display-message) printf 'tmux-session-sidebar\\n' ;;", 1))
+	ctx := context.Background()
+	store := sessionOrderStore()
+	state, err := store.Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	state.SidebarLayout = &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+		{ID: "category:default", Kind: string(sidebarlayout.ItemKindCategory), Category: &ports.SidebarLayoutCategory{ID: "category:default", Name: "Default", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}, {Name: "beta"}}}},
+	}}
+	if err := store.Save(ctx, "tmux", state); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	items, err := loadSidebarTreeItemsWithConfig(ctx, loadSidebarConfig(ctx))
+	if err != nil {
+		t.Fatalf("loadSidebarTreeItemsWithConfig error: %v", err)
+	}
+	alpha, found := findSidebarTreeSession(items, "alpha")
+	if !found {
+		t.Fatalf("alpha row not found in %#v", items)
+	}
+	if !alpha.ShowMetadata || alpha.Session.Metadata.Kind != uity.MetadataKindLoading || alpha.Slot != 1 {
+		t.Fatalf("alpha metadata = %#v show=%v slot=%d, want active fallback loading metadata", alpha.Session.Metadata, alpha.ShowMetadata, alpha.Slot)
 	}
 }
 
@@ -312,6 +342,61 @@ esac
 	}
 	if !reflect.DeepEqual(got.SidebarLayout, state.SidebarLayout) {
 		t.Fatalf("SidebarLayout changed after live-session failure: got %#v want %#v", got.SidebarLayout, state.SidebarLayout)
+	}
+}
+
+func TestSaveDeletedSidebarLayoutItemRemovesSeparatorAndSpacerAndPreservesSessions(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	live := []string{"alpha"}
+	if err := saveReconciledSidebarLayout(ctx, live); err != nil {
+		t.Fatalf("saveReconciledSidebarLayout error: %v", err)
+	}
+	if err := saveNewSidebarSeparator(ctx, live); err != nil {
+		t.Fatalf("saveNewSidebarSeparator error: %v", err)
+	}
+	if err := saveNewSidebarSpacer(ctx, live); err != nil {
+		t.Fatalf("saveNewSidebarSpacer error: %v", err)
+	}
+	if err := saveDeletedSidebarLayoutItem(ctx, sidebarlayout.Selection{Kind: sidebarlayout.RowKindSeparator, ItemID: "separator:1"}, live); err != nil {
+		t.Fatalf("saveDeletedSidebarLayoutItem separator error: %v", err)
+	}
+	if err := saveDeletedSidebarLayoutItem(ctx, sidebarlayout.Selection{Kind: sidebarlayout.RowKindSpacer, ItemID: "spacer:1"}, live); err != nil {
+		t.Fatalf("saveDeletedSidebarLayoutItem spacer error: %v", err)
+	}
+	state, err := sessionOrderStore().Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	layout := coreLayoutFromPersisted(state.SidebarLayout)
+	if len(layout.Items) != 1 || layout.Items[0].Kind != sidebarlayout.ItemKindCategory || len(layout.Items[0].Category.Sessions) != 1 || layout.Items[0].Category.Sessions[0].Name != "alpha" {
+		t.Fatalf("layout after delete = %#v, want default category with alpha only", layout.Items)
+	}
+}
+
+func TestSaveDeletedSidebarCategoryMovesSessionsToDefault(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	live := []string{"alpha"}
+	store := sessionOrderStore()
+	state, err := store.Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	state.SidebarLayout = &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{{ID: "category:work", Kind: string(sidebarlayout.ItemKindCategory), Category: &ports.SidebarLayoutCategory{ID: "category:work", Name: "Work", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}}}}}}
+	if err := store.Save(ctx, "tmux", state); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+	if err := saveDeletedSidebarLayoutItem(ctx, sidebarlayout.Selection{Kind: sidebarlayout.RowKindCategory, CategoryID: "category:work"}, live); err != nil {
+		t.Fatalf("saveDeletedSidebarLayoutItem error: %v", err)
+	}
+	state, err = store.Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("reload state: %v", err)
+	}
+	layout := coreLayoutFromPersisted(state.SidebarLayout)
+	if len(layout.Items) != 1 || layout.Items[0].Category.ID != sidebarlayout.DefaultCategoryID || len(layout.Items[0].Category.Sessions) != 1 || layout.Items[0].Category.Sessions[0].Name != "alpha" {
+		t.Fatalf("layout after category delete = %#v, want default category with alpha", layout.Items)
 	}
 }
 

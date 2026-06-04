@@ -220,16 +220,51 @@ func saveMovedSidebarLayoutItem(ctx context.Context, selection sidebarlayout.Sel
 	})
 }
 
-func sidebarSelectionForCurrent(layout sidebarlayout.Layout, current string) sidebarlayout.Selection {
-	if current != "" {
-		return sidebarlayout.Selection{Kind: sidebarlayout.RowKindSession, Session: current}
+func saveDeletedSidebarLayoutItem(ctx context.Context, selection sidebarlayout.Selection, live []string) error {
+	return updateSidebarState(ctx, func(state *ports.PersistedState) {
+		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
+		items := make([]sidebarlayout.LayoutItem, 0, len(layout.Items))
+		for _, item := range layout.Items {
+			if sidebarLayoutItemMatchesSelection(item, selection) {
+				continue
+			}
+			items = append(items, item)
+		}
+		state.SidebarLayout = persistedLayoutFromCore(sidebarlayout.EnsureLayout(sidebarlayout.Layout{Items: items}, live, state.SessionOrder))
+	})
+}
+
+func sidebarLayoutItemMatchesSelection(item sidebarlayout.LayoutItem, selection sidebarlayout.Selection) bool {
+	switch selection.Kind {
+	case sidebarlayout.RowKindCategory:
+		return item.Kind == sidebarlayout.ItemKindCategory && item.Category.ID == selection.CategoryID
+	case sidebarlayout.RowKindSeparator, sidebarlayout.RowKindSpacer:
+		return item.ID == selection.ItemID
+	default:
+		return false
 	}
+}
+
+func sidebarSelectionForCurrent(layout sidebarlayout.Layout, current string) sidebarlayout.Selection {
+	var firstCategory sidebarlayout.Selection
 	for _, item := range layout.Items {
-		if item.Kind == sidebarlayout.ItemKindCategory {
-			return sidebarlayout.Selection{Kind: sidebarlayout.RowKindCategory, CategoryID: item.Category.ID, ItemID: item.ID}
+		if item.Kind != sidebarlayout.ItemKindCategory {
+			continue
+		}
+		category := item.Category
+		if firstCategory.Kind == "" {
+			firstCategory = sidebarlayout.Selection{Kind: sidebarlayout.RowKindCategory, CategoryID: category.ID, ItemID: item.ID}
+		}
+		if current == "" {
+			continue
+		}
+		for _, ref := range category.Sessions {
+			if ref.Name == current {
+				return sidebarlayout.Selection{Kind: sidebarlayout.RowKindSession, Session: current, CategoryID: category.ID, ItemID: item.ID + "/session:" + current}
+			}
 		}
 	}
-	return sidebarlayout.Selection{}
+	return firstCategory
 }
 
 func persistedShowNumeric(state ports.PersistedState) bool {
