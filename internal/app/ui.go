@@ -44,7 +44,7 @@ func loadSessionItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) (
 		return nil, err
 	}
 	current = strings.TrimSpace(current)
-	items, _ := sessionItemsFromState(current, views, persisted, cfg)
+	items, _ := sessionItemsFromState(current, views, persisted, cfg) // by-name index is only needed by tree layout rendering.
 	slot := 1
 	for i := range items {
 		if !sessions.IsNumericName(items[i].Name) {

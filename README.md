@@ -122,10 +122,10 @@ Inside the sidebar:
 | `Enter` | Switch to the selected session or apply a filter |
 | `Esc` | Leave the current mode, or close the sidebar |
 | `F5` | Reload the sidebar tree |
-| `c` | Open the create sheet: git repo, current dir, named session, project, category, separator, or empty space |
+| `c` | Open the create sheet: git repo, current dir, named session, project, category, separator, or spacer |
 | `n` | Create a new named session from a quick prompt |
 | `r` | Rename the selected category inline when not searching/filtering |
-| `d` | Delete the selected session, category, separator, or empty space after confirmation |
+| `d` | Delete the selected session, category, separator, or spacer after confirmation |
 | `x` | Kill the selected session after confirmation when not searching/filtering |
 | `u` | Start a runtime self-update in the background when not searching/filtering |
 | `h` / `l`, left/right | Collapse or expand the selected category |
@@ -161,7 +161,7 @@ The sidebar is category-first. The top level contains categories, separators, an
 
 On first run after upgrading, the runtime creates a `Default` category and places existing sessions there using the saved session order. Category layout is saved in the plugin state file.
 
-`n` opens the layout bottom sheet for adding a category, spacer, or separator. `J` / `K` moves the selected layout item. Moving a session past the top or bottom of a category moves it into the neighboring category.
+`c` opens the create sheet for adding a category, spacer, or separator. `J` / `K` moves the selected layout item. Moving a session past the top or bottom of a category moves it into the neighboring category.
 
 Metadata is shown in all categories by default. Set `@session-sidebar-metadata-inactive` to `off` to show metadata only in the active category.
 

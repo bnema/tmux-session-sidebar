@@ -161,6 +161,8 @@ func gitBranchPart(meta SessionMetadataSubline, icons MetadataIconMode, width in
 	return metadataPart{Text: fitMetadataTextPreserveSpace(prefix+branch, width, icons), Role: metadataPartBase}
 }
 
+// fitMetadataTextPreserveSpace truncates without trimming so Nerd Font branch
+// prefixes keep their intentional leading spacing.
 func fitMetadataTextPreserveSpace(value string, width int, icons MetadataIconMode) string {
 	if width <= 0 || metadataDisplayWidth(value) <= width {
 		return value
