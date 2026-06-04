@@ -76,6 +76,7 @@ func newRootCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, rou
 			return nil
 		},
 	})
+	command.AddCommand(leafCommand("self-update", "Update the installed plugin runtime", runRoute("runtime/self-update")))
 
 	command.AddCommand(groupCommand("daemon", "Manage the background sidebar daemon",
 		leafCommand("serve", "Run the sidebar daemon", runRoute("daemon/serve")),

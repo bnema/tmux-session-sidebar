@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
 
@@ -51,8 +52,13 @@ type Actions struct {
 	PinSessionWithColor func(string, string) bool
 	ReorderSession      func(string, int) bool
 	SetShowNumericItems func(bool) bool
+	SelfUpdate          func() tea.Cmd
 	LoadProjects        func() []ProjectItem
 	ReloadSessions      func() []SessionItem
+}
+
+type SelfUpdateFinishedMsg struct {
+	Err error
 }
 
 type SidebarOptions struct {
@@ -78,6 +84,8 @@ type SidebarModel struct {
 	actions                          Actions
 	version                          string
 	updateCheck                      updateCheckState
+	updateSpinner                    spinner.Model
+	updateInProgress                 bool
 	metadataIconMode                 MetadataIconMode
 	width                            int
 	height                           int
@@ -115,6 +123,9 @@ func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options Si
 	if attentionAnimationTickPending {
 		attentionAnimationTickGeneration = 1
 	}
+	updateSpinner := spinner.New()
+	updateSpinner.Spinner = spinner.Meter
+	updateSpinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc"))
 	return SidebarModel{
 		items:                            items,
 		actions:                          actions,
@@ -122,6 +133,7 @@ func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options Si
 		showNumeric:                      options.ShowNumericItems,
 		version:                          options.Version,
 		updateCheck:                      newUpdateCheckState(options.Version, options.CheckUpdateAvailable),
+		updateSpinner:                    updateSpinner,
 		metadataIconMode:                 iconMode,
 		attentionAnimationStyle:          attentionAnimationStyle,
 		attentionAnimationTickPending:    attentionAnimationTickPending,
@@ -146,6 +158,21 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.updateCheck, cmd = m.updateCheck.handleTick()
 		return m, cmd
+	case spinner.TickMsg:
+		if !m.updateInProgress {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.updateSpinner, cmd = m.updateSpinner.Update(msg)
+		return m, cmd
+	case SelfUpdateFinishedMsg:
+		m.updateInProgress = false
+		if msg.Err != nil {
+			m.message = "Update failed: " + msg.Err.Error()
+		} else {
+			m.message = "Update complete"
+		}
+		return m, nil
 	case attentionAnimationTickMsg:
 		if msg.Generation != untrackedAttentionAnimationTick && msg.Generation != m.attentionAnimationTickGeneration {
 			return m, nil
@@ -175,9 +202,11 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.handlePinColorKey(msg)
 		return m.finishInteractiveUpdate()
 	}
-	if delta, ok := reorderKeyDelta(msg); ok {
-		m.reorderSelected(delta)
-		return m.finishInteractiveUpdate()
+	if m.mode == ModeBrowse {
+		if delta, ok := reorderKeyDelta(msg); ok {
+			m.reorderSelected(delta)
+			return m.finishInteractiveUpdate()
+		}
 	}
 	if m.mode == ModeConfirmKill {
 		if isKillConfirmYes(msg) {
@@ -190,7 +219,7 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	if toggleNumericKey(msg) {
+	if m.mode == ModeBrowse && toggleNumericKey(msg) {
 		next := !m.showNumeric
 		if m.actions.SetShowNumericItems != nil && !m.actions.SetShowNumericItems(next) {
 			return m, nil
@@ -255,37 +284,77 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.move(-1)
 		}
-	case "alt+n":
-		if m.actions.LoadProjects != nil {
-			m.projects = m.actions.LoadProjects()
+	case "n":
+		if m.mode == ModeBrowse {
+			if m.actions.LoadProjects != nil {
+				m.projects = m.actions.LoadProjects()
+			}
+			m.mode = ModeProject
+			m.projectCursor = 0
+			m.projectFilter = ""
+		} else {
+			m.appendPrintable(msg)
 		}
-		m.mode = ModeProject
-		m.projectCursor = 0
-		m.projectFilter = ""
-	case "alt+g":
-		if m.actions.CreateGitProject != nil && m.actions.CreateGitProject() {
-			m.reloadSessionsSelectingCurrent()
+	case "g":
+		if m.mode == ModeBrowse {
+			if m.actions.CreateGitProject != nil && m.actions.CreateGitProject() {
+				m.reloadSessionsSelectingCurrent()
+			}
+		} else {
+			m.appendPrintable(msg)
 		}
-	case "alt+a":
-		if m.actions.CreateAdhoc != nil && m.actions.CreateAdhoc() {
-			m.reloadSessionsSelectingCurrent()
+	case "a":
+		if m.mode == ModeBrowse {
+			if m.actions.CreateAdhoc != nil && m.actions.CreateAdhoc() {
+				m.reloadSessionsSelectingCurrent()
+			}
+		} else {
+			m.appendPrintable(msg)
 		}
-	case "alt+r":
-		if item, ok := m.selectedSession(); ok && m.actions.RenameSession != nil && m.actions.RenameSession(item.Name) {
-			m.reloadSessions()
+	case "r":
+		if m.mode == ModeBrowse {
+			if item, ok := m.selectedSession(); ok && m.actions.RenameSession != nil && m.actions.RenameSession(item.Name) {
+				m.reloadSessions()
+			}
+		} else {
+			m.appendPrintable(msg)
 		}
-	case "alt+x":
-		if item, ok := m.selectedSession(); ok && m.actions.KillSession != nil {
-			m.mode = ModeConfirmKill
-			m.pendingKill = item.Name
-			m.message = "Kill " + item.Name + "? y/N"
+	case "x":
+		if m.mode == ModeBrowse {
+			if item, ok := m.selectedSession(); ok && m.actions.KillSession != nil {
+				m.mode = ModeConfirmKill
+				m.pendingKill = item.Name
+				m.message = "Kill " + item.Name + "? y/N"
+			}
+		} else {
+			m.appendPrintable(msg)
 		}
-	case "y", "n":
+	case "y":
 		m.appendPrintable(msg)
 	case "f5":
 		m.reloadSessions()
-	case "alt+?":
-		m.showHelp = !m.showHelp
+	case "u":
+		if m.mode == ModeBrowse {
+			if m.updateInProgress {
+				return m, nil
+			}
+			if m.actions.SelfUpdate != nil {
+				updateCmd := m.actions.SelfUpdate()
+				if updateCmd != nil {
+					m.updateInProgress = true
+					m.message = "Updating runtime " + m.updateSpinner.View()
+					return m, tea.Batch(updateCmd, m.updateSpinner.Tick)
+				}
+			}
+		} else {
+			m.appendPrintable(msg)
+		}
+	case "?":
+		if m.mode == ModeBrowse {
+			m.showHelp = !m.showHelp
+		} else {
+			m.appendPrintable(msg)
+		}
 	case "backspace":
 		if m.mode == ModeSearch && m.filter != "" {
 			m.filter = trimLastRune(m.filter)
@@ -567,7 +636,9 @@ func (m SidebarModel) Render() string {
 	if status := m.statusLine(); status != "" {
 		lines = append(lines, "", styles.accent.Render(status))
 	}
-	if m.message != "" {
+	if m.updateInProgress {
+		lines = append(lines, "", styles.accent.Render("Updating runtime "+m.updateSpinner.View()))
+	} else if m.message != "" {
 		lines = append(lines, "", styles.accent.Render(m.message))
 	}
 	lines = StatusBar{Lines: m.statusBarLines(styles), Height: m.height}.RenderBelow(padSidebarContentLines(lines))
@@ -590,9 +661,9 @@ func (m SidebarModel) statusBarLines(styles sidebarStyles) []string {
 	if m.showHelp {
 		return []string{
 			styles.dim.Render("↵ choose  " + spaceKeySymbol + " pin  / filter  esc back"),
-			styles.dim.Render("M-n project  M-a adhoc  M-H nums"),
-			styles.dim.Render("M-J/K reorder  M-r rename"),
-			styles.dim.Render("M-x kill  M-? hide"),
+			styles.dim.Render("n project  g git  a adhoc  u update"),
+			styles.dim.Render("J/K reorder  r rename  h nums"),
+			styles.dim.Render("x kill  ? hide"),
 		}
 	}
 	return []string{m.collapsedHelpLine(styles)}
@@ -601,12 +672,12 @@ func (m SidebarModel) statusBarLines(styles sidebarStyles) []string {
 func (m SidebarModel) collapsedHelpLine(styles sidebarStyles) string {
 	version := displayVersion(m.version)
 	if version == "" {
-		return styles.dim.Render("M-? keys")
+		return styles.dim.Render("? keys")
 	}
 	if m.updateCheck.available {
-		return styles.versionBadge.Render(" "+version) + styles.updateIndicator.Render(updateAvailableSymbol+" ") + styles.dim.Render(" M-? keys")
+		return styles.versionBadge.Render(" "+version) + styles.updateIndicator.Render(updateAvailableSymbol+" ") + styles.dim.Render(" ? keys")
 	}
-	return styles.versionBadge.Render(" "+version+" ") + styles.dim.Render(" M-? keys")
+	return styles.versionBadge.Render(" "+version+" ") + styles.dim.Render(" ? keys")
 }
 
 func displayVersion(version string) string {
@@ -799,24 +870,10 @@ func (m *SidebarModel) moveWheel(delta int) {
 }
 
 func reorderKeyDelta(msg tea.KeyPressMsg) (int, bool) {
-	key := msg.Key()
-	if !key.Mod.Contains(tea.ModAlt) {
-		return 0, false
-	}
-	switch key.Code {
-	case tea.KeyDown:
+	switch msg.Key().Text {
+	case "J":
 		return 1, true
-	case tea.KeyUp:
-		return -1, true
-	case 'j', 'J':
-		return 1, true
-	case 'k', 'K':
-		return -1, true
-	}
-	switch key.Text {
-	case "j", "J":
-		return 1, true
-	case "k", "K":
+	case "K":
 		return -1, true
 	default:
 		return 0, false
@@ -825,10 +882,7 @@ func reorderKeyDelta(msg tea.KeyPressMsg) (int, bool) {
 
 func toggleNumericKey(msg tea.KeyPressMsg) bool {
 	key := msg.Key()
-	if !key.Mod.Contains(tea.ModAlt) {
-		return false
-	}
-	return key.Text == "h" || key.Text == "H" || key.Code == 'h' || key.Code == 'H'
+	return key.Mod == 0 && key.Text == "h"
 }
 
 func pinnedToggleKey(msg tea.KeyPressMsg) bool {

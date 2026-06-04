@@ -244,6 +244,37 @@ GOFAKE
   assert_file_not_contains "$root/tmux.log" "source-file" "invalid update should not restart tmux"
 }
 
+test_release_only_update_does_not_fall_back_to_source_build() {
+  local root expected output status
+  root="$(new_fixture)"
+  prepare_fake_tools "$root"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  cat >"$root/fakebin/curl" <<'CURLFAIL'
+#!/usr/bin/env bash
+exit 22
+CURLFAIL
+  chmod +x "$root/fakebin/curl"
+  cat >"$root/fakebin/go" <<'GOFAKE'
+#!/usr/bin/env bash
+printf 'go should not run\n' >>"$TEST_ROOT/go.log"
+exit 1
+GOFAKE
+  chmod +x "$root/fakebin/go"
+
+  set +e
+  output="$(TMUX_SESSION_SIDEBAR_RELEASE_ONLY=1 run_update "$root" 2>&1)"
+  status="$?"
+  set -e
+
+  [ "$status" -ne 0 ] || fail "release-only update should fail when release download fails"
+  case "$output" in
+    *"release update failed; existing runtime left untouched"*) ;;
+    *) fail "release-only failure should report no source fallback, got: $output" ;;
+  esac
+  assert_eq "stale-runtime" "$("$expected")" "release-only download failure should preserve existing runtime"
+  [ ! -e "$root/go.log" ] || fail "release-only update should not fall back to source build"
+}
+
 test_restart_failure_restores_previous_runtime_and_stamp() {
   local root expected output source_attempts status
   root="$(new_fixture)"
@@ -274,6 +305,7 @@ test_make_update_runtime_target_uses_central_update_path() {
 
 test_manual_update_refreshes_release_replaces_runtime_and_restarts_tmux
 test_invalid_candidate_preserves_existing_runtime_and_does_not_restart
+test_release_only_update_does_not_fall_back_to_source_build
 test_restart_failure_restores_previous_runtime_and_stamp
 test_make_update_runtime_target_uses_central_update_path
 

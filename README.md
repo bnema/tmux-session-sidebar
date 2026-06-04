@@ -120,14 +120,15 @@ Inside the sidebar:
 | `Enter` | Switch to the selected session, apply a filter, or choose a project |
 | `Esc` | Leave the current mode, or close the sidebar |
 | `F5` | Reload the session list |
-| `M-n` | Open the project picker |
-| `M-g` | Create or switch to a session for the current pane's git repository |
-| `M-a` | Create or switch to a session for the current pane's directory |
-| `M-r` | Rename the selected session |
-| `M-x` | Kill the selected session after confirmation |
-| `M-j` / `M-k` or `M-Down` / `M-Up` | Move the selected session in the sidebar order |
-| `M-h` | Show or hide numeric session names |
-| `M-?` | Show or hide key help |
+| `n` | Open the project picker when not searching/filtering |
+| `g` | Create or switch to a session for the current pane's git repository when not searching/filtering |
+| `a` | Create or switch to a session for the current pane's directory when not searching/filtering |
+| `r` | Rename the selected session when not searching/filtering |
+| `x` | Kill the selected session after confirmation when not searching/filtering |
+| `u` | Start a runtime self-update in the background when not searching/filtering |
+| `J` / `K` | Move the selected session in the sidebar order when not searching/filtering |
+| `h` | Show or hide numeric session names when not searching/filtering |
+| `?` | Show or hide key help when not searching/filtering |
 | `Ctrl+c` | Quit the sidebar UI |
 
 Global quick-switch keys are also installed:
@@ -135,25 +136,25 @@ Global quick-switch keys are also installed:
 - `Ctrl+1` through `Ctrl+9` switch to visible sidebar slots 1 through 9
 - `Ctrl+0` switches to visible slot 10
 
-Session names that are all digits, or that start with `__`, are hidden by default. `M-h` toggles numeric names. Hidden `__` sessions are not shown.
+Session names that are all digits, or that start with `__`, are hidden by default. `h` toggles numeric names. Hidden `__` sessions are not shown.
 
 ## Session actions
 
 ### Project sessions
 
-`M-n` lists one directory level under each configured project root. Selecting a project creates or switches to a tmux session named from the directory basename.
+`n` lists one directory level under each configured project root. Selecting a project creates or switches to a tmux session named from the directory basename.
 
-`M-g` uses `git rev-parse --show-toplevel` from the current pane path and creates or switches to that repository session.
+`g` uses `git rev-parse --show-toplevel` from the current pane path and creates or switches to that repository session.
 
 Generated names are lowercased and normalized to letters, digits, `_`, and `-`. Invalid or empty names fall back to `session`.
 
 ### Ad-hoc sessions
 
-`M-a` creates or switches to a session for the current pane path, using the normalized directory basename as the session name.
+`a` creates or switches to a session for the current pane path, using the normalized directory basename as the session name.
 
 ### Rename, kill, and reorder
 
-`M-r` uses tmux `command-prompt` for the new name. `M-x` asks for inline confirmation before killing, and the runtime refuses to kill the last remaining session. Reordering is saved in the plugin state file.
+`r` uses tmux `command-prompt` for the new name. `x` asks for inline confirmation before killing, and the runtime refuses to kill the last remaining session. Reordering is saved in the plugin state file.
 
 ## Session restore
 
@@ -232,10 +233,16 @@ Check the runtime binary:
 Force a runtime refresh from the latest GitHub release and restart the daemon/UI:
 
 ```bash
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar self-update
+```
+
+This binary shortcut delegates to `scripts/update-runtime.sh`. You can also run that updater script directly if the installed runtime is too old to support `self-update` yet:
+
+```bash
 ~/.tmux/plugins/tmux-session-sidebar/scripts/update-runtime.sh
 ```
 
-TPM updates normally run that same command through the managed git update hook. If TPM updates still leave an old binary, reload tmux once so the plugin can install that hook:
+TPM updates normally run that same command through the managed git update hook. If TPM updates still leave an old binary, use `self-update` or the updater script once, then reload tmux so the plugin can install the hook:
 
 ```bash
 tmux source-file ~/.tmux.conf

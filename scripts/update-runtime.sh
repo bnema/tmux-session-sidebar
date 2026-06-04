@@ -506,6 +506,11 @@ update_runtime_one_shot() {
         "$RM_BIN" -rf "$tmp_dir" "$backup_dir"
         return 1
       fi
+      if [ "${TMUX_SESSION_SIDEBAR_RELEASE_ONLY:-}" = "1" ]; then
+        log_update 'release update failed; existing runtime left untouched'
+        "$RM_BIN" -rf "$tmp_dir" "$backup_dir"
+        return 1
+      fi
       if [ -n "$GO_BIN" ]; then
         log_update 'release download failed during update; falling back to local go build'
         stamp="$(source_fingerprint)"
