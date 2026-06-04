@@ -64,6 +64,7 @@ set -g @session-sidebar-auto-sort-recent 'off'
 set -g @session-sidebar-restore-sessions 'auto'
 set -g @session-sidebar-continuum-grace-seconds '3'
 set -g @session-sidebar-metadata-subline 'on'
+set -g @session-sidebar-metadata-inactive 'on'
 ```
 
 | Option | Default | Used for |
@@ -81,6 +82,7 @@ set -g @session-sidebar-metadata-subline 'on'
 | `@session-sidebar-restore-sessions` | `auto` | Lightweight missing-session restore mode: `auto` skips during tmux-continuum startup restore, `on` always restores, `off` never restores |
 | `@session-sidebar-continuum-grace-seconds` | `3` | Extra seconds added to `@continuum-restore-max-delay` before lightweight restore resumes in `auto` mode |
 | `@session-sidebar-metadata-subline` | `on` | Show an event-driven metadata line under each session when available; set to `off` to keep one-line session rows |
+| `@session-sidebar-metadata-inactive` | `on` | Show metadata lines outside the active category in the category tree layout; set to `off` for active-category-only metadata |
 
 Persistent state and the daemon IPC socket are stored under `${XDG_STATE_HOME:-~/.local/state}/tmux-session-sidebar`.
 
@@ -115,46 +117,70 @@ Inside the sidebar:
 
 | Key | Action |
 | --- | --- |
-| `j` / `k`, arrows, mouse wheel | Move selection |
+| `j` / `k`, arrows, mouse wheel | Move selection through categories, sessions, separators, and spacers |
 | `/` | Filter sessions |
-| `Enter` | Switch to the selected session, apply a filter, or choose a project |
+| `Enter` | Switch to the selected session or apply a filter |
 | `Esc` | Leave the current mode, or close the sidebar |
-| `F5` | Reload the session list |
-| `n` | Open the project picker when not searching/filtering |
-| `g` | Create or switch to a session for the current pane's git repository when not searching/filtering |
-| `a` | Create or switch to a session for the current pane's directory when not searching/filtering |
-| `r` | Rename the selected session when not searching/filtering |
+| `F5` | Reload the sidebar tree |
+| `c` | Open the create sheet: git repo, current dir, named session, project, category, separator, or spacer |
+| `n` | Create a new named session from a quick prompt |
+| `r` | Rename the selected category inline when not searching/filtering |
+| `d` | Delete the selected session, category, separator, or spacer after confirmation |
 | `x` | Kill the selected session after confirmation when not searching/filtering |
 | `u` | Start a runtime self-update in the background when not searching/filtering |
-| `J` / `K` | Move the selected session in the sidebar order when not searching/filtering |
-| `h` | Show or hide numeric session names when not searching/filtering |
+| `h` / `l`, left/right | Collapse or expand the selected category |
+| `J` / `K` | Move the selected category, session, separator, or spacer when not searching/filtering |
+| `Alt+h` | Show or hide numeric session names when not searching/filtering |
 | `?` | Show or hide key help when not searching/filtering |
 | `Ctrl+c` | Quit the sidebar UI |
 
 Global quick-switch keys are also installed:
 
-- `Ctrl+1` through `Ctrl+9` switch to visible sidebar slots 1 through 9
-- `Ctrl+0` switches to visible slot 10
+- `Ctrl+1` through `Ctrl+9` switch to slots 1 through 9 in the active category
+- `Ctrl+0` switches to slot 10 in the active category
 
-Session names that are all digits, or that start with `__`, are hidden by default. `h` toggles numeric names. Hidden `__` sessions are not shown.
+Session names that are all digits, or that start with `__`, are hidden by default. `Alt+h` toggles numeric names. Hidden `__` sessions are not shown.
+
+## Sidebar layout
+
+The sidebar is category-first. The top level contains categories, separators, and spacers. Sessions appear as tree children under categories, and session metadata appears as a child line when available:
+
+```text
+▾ Work
+├─ 1 ● tmux-session-sidebar 󰂞
+│  └─  feature/category-tree…  2
+└─ 2 ○ pi-coding-agent
+   └─  main clean
+
+────────────────────────
+
+▾ Default
+└─ 1 ○ scratch
+   └─  ~/tmp/scratch
+```
+
+On first run after upgrading, the runtime creates a `Default` category and places existing sessions there using the saved session order. Category layout is saved in the plugin state file.
+
+`c` opens the create sheet for adding a category, spacer, or separator. `J` / `K` moves the selected layout item. Moving a session past the top or bottom of a category moves it into the neighboring category.
+
+Metadata is shown in all categories by default. Set `@session-sidebar-metadata-inactive` to `off` to show metadata only in the active category.
 
 ## Session actions
 
-### Project sessions
+### Create sessions
 
-`n` lists one directory level under each configured project root. Selecting a project creates or switches to a tmux session named from the directory basename.
+`c` opens the create-session bottom sheet:
 
-`g` uses `git rev-parse --show-toplevel` from the current pane path and creates or switches to that repository session.
+- `Git repo` uses `git rev-parse --show-toplevel` from the active pane path and creates or switches to a session named from the repository root.
+- `Current dir` creates or switches to a session named from the active pane directory.
+- `Named…` prompts for an explicit session name and starts it in the active pane directory.
+- `Project…` opens the project picker from configured project roots.
 
 Generated names are lowercased and normalized to letters, digits, `_`, and `-`. Invalid or empty names fall back to `session`.
 
-### Ad-hoc sessions
-
-`a` creates or switches to a session for the current pane path, using the normalized directory basename as the session name.
-
 ### Rename, kill, and reorder
 
-`r` uses tmux `command-prompt` for the new name. `x` asks for inline confirmation before killing, and the runtime refuses to kill the last remaining session. Reordering is saved in the plugin state file.
+`r` renames the selected category inline. `x` asks for inline confirmation before killing the selected session, and the runtime refuses to kill the last remaining session. Reordering is saved in the plugin state file.
 
 ## Session restore
 

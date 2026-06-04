@@ -321,6 +321,33 @@ func TestLoadConfigParsesMetadataSublineBool(t *testing.T) {
 	}
 }
 
+func TestLoadConfigParsesMetadataInactiveBool(t *testing.T) {
+	tests := map[string]struct {
+		raw  string
+		want bool
+	}{
+		"default empty is on": {raw: "\n", want: true},
+		"on":                  {raw: "on\n", want: true},
+		"off":                 {raw: "off\n", want: false},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			process := mocks.NewMockProcessPort(t)
+			allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
+			expectLoadConfigWithMetadataInactive(process, ctx, "b\n", "20\n", "\n", "off\n", "off\n", "on\n", tt.raw)
+
+			got, err := (Client{Process: process}).LoadConfig(ctx)
+			if err != nil {
+				t.Fatalf("LoadConfig error: %v", err)
+			}
+			if got.MetadataInactiveEnabled != tt.want {
+				t.Fatalf("MetadataInactiveEnabled = %v, want %v", got.MetadataInactiveEnabled, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadConfigParsesAgentAttentionAnimation(t *testing.T) {
 	tests := map[string]struct {
 		raw  string
@@ -337,7 +364,7 @@ func TestLoadConfigParsesAgentAttentionAnimation(t *testing.T) {
 			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
 			allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
-			expectLoadConfigWithAttentionAnimation(process, ctx, "b\n", "20\n", "\n", "off\n", "off\n", "on\n", tt.raw)
+			expectLoadConfigWithAttentionAnimation(process, ctx, "b\n", "20\n", "\n", "off\n", "off\n", "on\n", "off\n", tt.raw)
 
 			got, err := (Client{Process: process}).LoadConfig(ctx)
 			if err != nil {
@@ -406,10 +433,14 @@ func expectLoadConfig(process *mocks.MockProcessPort, ctx context.Context, key s
 }
 
 func expectLoadConfigWithMetadata(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string, metadataSubline string) {
-	expectLoadConfigWithAttentionAnimation(process, ctx, key, width, roots, closeAfterSwitch, autoSortRecent, metadataSubline, "pulse\n")
+	expectLoadConfigWithMetadataInactive(process, ctx, key, width, roots, closeAfterSwitch, autoSortRecent, metadataSubline, "off\n")
 }
 
-func expectLoadConfigWithAttentionAnimation(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string, metadataSubline string, attentionAnimation string) {
+func expectLoadConfigWithMetadataInactive(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string, metadataSubline string, metadataInactive string) {
+	expectLoadConfigWithAttentionAnimation(process, ctx, key, width, roots, closeAfterSwitch, autoSortRecent, metadataSubline, metadataInactive, "pulse\n")
+}
+
+func expectLoadConfigWithAttentionAnimation(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string, metadataSubline string, metadataInactive string, attentionAnimation string) {
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-key"}).Return(ports.Result{Stdout: key}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-width"}).Return(ports.Result{Stdout: width}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-project-roots"}).Return(ports.Result{Stdout: roots}, nil)
@@ -427,6 +458,7 @@ func expectLoadConfigWithAttentionAnimation(process *mocks.MockProcessPort, ctx 
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-restore-sessions"}).Return(ports.Result{Stdout: "auto\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-continuum-grace-seconds"}).Return(ports.Result{Stdout: "3\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-metadata-subline"}).Return(ports.Result{Stdout: metadataSubline}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-metadata-inactive"}).Return(ports.Result{Stdout: metadataInactive}, nil)
 }
 
 func TestFindSidebarPaneIgnoresDeadMarkedPane(t *testing.T) {

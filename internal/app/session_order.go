@@ -12,14 +12,6 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-func loadSessionOrder(ctx context.Context) []string {
-	state, err := loadSidebarState(ctx)
-	if err != nil {
-		return nil
-	}
-	return state.SessionOrder
-}
-
 func loadSidebarState(ctx context.Context) (ports.PersistedState, error) {
 	return sessionOrderStore().Load(ctx, "tmux")
 }
@@ -117,6 +109,7 @@ func renameSessionState(state *ports.PersistedState, oldName string, newName str
 		removeSessionState(state, oldName)
 		return
 	}
+	updateSidebarLayoutSessionRef(state.SidebarLayout, oldName, newName)
 	if state.Sessions != nil {
 		metadata, ok := state.Sessions[oldName]
 		if ok {
@@ -244,6 +237,43 @@ func removeSessionState(state *ports.PersistedState, name string) {
 	state.PinnedSessions = pinned
 	delete(state.PinColors, name)
 	delete(state.Metadata, name)
+	removeSidebarLayoutSessionRef(state.SidebarLayout, name)
+}
+
+func updateSidebarLayoutSessionRef(layout *ports.SidebarLayout, oldName string, newName string) {
+	if layout == nil {
+		return
+	}
+	for itemIndex := range layout.Items {
+		category := layout.Items[itemIndex].Category
+		if category == nil {
+			continue
+		}
+		for refIndex := range category.Sessions {
+			if category.Sessions[refIndex].Name == oldName {
+				category.Sessions[refIndex].Name = newName
+			}
+		}
+	}
+}
+
+func removeSidebarLayoutSessionRef(layout *ports.SidebarLayout, name string) {
+	if layout == nil {
+		return
+	}
+	for itemIndex := range layout.Items {
+		category := layout.Items[itemIndex].Category
+		if category == nil {
+			continue
+		}
+		filtered := category.Sessions[:0]
+		for _, ref := range category.Sessions {
+			if ref.Name != name {
+				filtered = append(filtered, ref)
+			}
+		}
+		category.Sessions = filtered
+	}
 }
 
 func clonePersistedState(state ports.PersistedState) ports.PersistedState {
@@ -268,6 +298,9 @@ func clonePersistedState(state ports.PersistedState) ports.PersistedState {
 		sidebar := *state.Sidebar
 		clone.Sidebar = &sidebar
 	}
+	if state.SidebarLayout != nil {
+		clone.SidebarLayout = clonePersistedSidebarLayout(state.SidebarLayout)
+	}
 	if state.Clients != nil {
 		clone.Clients = make(map[string][]byte, len(state.Clients))
 		for key, value := range state.Clients {
@@ -284,6 +317,30 @@ func clonePersistedState(state ports.PersistedState) ports.PersistedState {
 		clone.AgentAttention = make(map[string][]byte, len(state.AgentAttention))
 		for key, value := range state.AgentAttention {
 			clone.AgentAttention[key] = append([]byte(nil), value...)
+		}
+	}
+	return clone
+}
+
+func clonePersistedSidebarLayout(layout *ports.SidebarLayout) *ports.SidebarLayout {
+	if layout == nil {
+		return nil
+	}
+	clone := &ports.SidebarLayout{Items: make([]ports.SidebarLayoutItem, len(layout.Items))}
+	for i, item := range layout.Items {
+		clone.Items[i] = item
+		if item.Category != nil {
+			category := *item.Category
+			category.Sessions = append([]ports.SidebarLayoutSessionRef(nil), item.Category.Sessions...)
+			clone.Items[i].Category = &category
+		}
+		if item.Separator != nil {
+			separator := *item.Separator
+			clone.Items[i].Separator = &separator
+		}
+		if item.Spacer != nil {
+			spacer := *item.Spacer
+			clone.Items[i].Spacer = &spacer
 		}
 	}
 	return clone

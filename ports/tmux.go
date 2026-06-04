@@ -26,6 +26,7 @@ type ConfigSnapshot struct {
 	RestoreSessionsMode     string
 	ContinuumGraceSeconds   int
 	MetadataSublineEnabled  bool
+	MetadataInactiveEnabled bool
 }
 
 type TmuxSessionSnapshot struct {

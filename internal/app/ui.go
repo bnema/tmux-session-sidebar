@@ -43,43 +43,14 @@ func loadSessionItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) (
 	if err != nil {
 		return nil, err
 	}
-	heatStates := decodePersistedHeat(persisted.Heat)
-	attentionStates := attention.DecodeStateMap(persisted.AgentAttention)
-	now := time.Now().UTC()
 	current = strings.TrimSpace(current)
-	names := sessions.ApplyOrder(sessionNames(sessions.FilterVisible(views, true)), persisted.SessionOrder)
-	pinned := pinnedSessionSet(persisted.PinnedSessions)
-	items := make([]uity.SessionItem, 0, len(names))
-	viewsByName := make(map[string]sessions.View, len(views))
-	for _, view := range views {
-		viewsByName[view.Name] = view
-	}
-	heatDisplays := heat.DisplayByRecentActivity(names, heatStates, now, recentHeatWindow(cfg), cfg.HeatMaxHighlighted)
+	items, _ := sessionItemsFromState(current, views, persisted, cfg) // by-name index is only needed by tree layout rendering.
 	slot := 1
-	for _, name := range names {
-		_, isPinned := pinned[name]
-		item := uity.SessionItem{Name: name, Current: name == current, Pinned: isPinned, PinColor: persisted.PinColors[name]}
-		if display, ok := heatDisplays[name]; ok && cfg.HeatColorsEnabled {
-			item.Heat = string(display.Bucket)
-			item.HeatIntensity = display.Intensity
-		}
-		if cfg.AgentAttentionEnabled {
-			if state, ok := attentionStateForSession(attentionStates, viewsByName[name]); ok {
-				item.Attention = state.Attention
-			}
-		}
-		if cfg.MetadataSublineEnabled {
-			if metadata, ok := persisted.Metadata[name]; ok {
-				item.Metadata = gitStatusMetadataSubline(metadata)
-			} else if path, ok := sessionMetadataPath(persisted.Sessions[name]); ok {
-				item.Metadata = uity.SessionMetadataSubline{Kind: uity.MetadataKindDirectory, SessionName: name, Path: path}
-			}
-		}
-		if !sessions.IsNumericName(name) {
-			item.Slot = slot
+	for i := range items {
+		if !sessions.IsNumericName(items[i].Name) {
+			items[i].Slot = slot
 			slot++
 		}
-		items = append(items, item)
 	}
 	return items, nil
 }
@@ -160,6 +131,7 @@ func defaultSidebarConfig() ports.ConfigSnapshot {
 		RestoreSessionsMode:     "auto",
 		ContinuumGraceSeconds:   3,
 		MetadataSublineEnabled:  true,
+		MetadataInactiveEnabled: true,
 	}
 }
 

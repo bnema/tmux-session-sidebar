@@ -30,7 +30,7 @@ func createProject(ctx context.Context, flags map[string]string, stdout io.Write
 		projectPath = selected
 	}
 	candidate := projects.CandidateFromPath(projectPath)
-	return createOrSwitchProject(ctx, flags["client"], candidate, sidebar)
+	return createOrSwitchProject(ctx, flags["client"], candidate, flags["category-id"], sidebar)
 }
 
 func projectCandidates(ctx context.Context) ([]projects.Candidate, error) {
@@ -124,7 +124,7 @@ func pickProjectNumbered(stdout io.Writer, candidates []projects.Candidate) (str
 	return candidates[index-1].Path, nil
 }
 
-func createOrSwitchProject(ctx context.Context, client string, candidate projects.Candidate, sidebar ports.TmuxSidebarPort) error {
+func createOrSwitchProject(ctx context.Context, client string, candidate projects.Candidate, categoryID string, sidebar ports.TmuxSidebarPort) error {
 	existing, err := loadSessionViews(ctx)
 	if err != nil {
 		return err
@@ -134,6 +134,9 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 	if err := withPersistedSessionDuringTmuxAction(ctx, plan.SessionName, metadata, func() error {
 		return runtimeService().CreateDetachedProjectSession(ctx, existing, plan)
 	}); err != nil {
+		return err
+	}
+	if err := saveCreatedSessionCategory(ctx, plan.SessionName, categoryID); err != nil {
 		return err
 	}
 	return switchClient(ctx, client, plan.SessionName, sidebar)

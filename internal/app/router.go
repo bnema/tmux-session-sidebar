@@ -18,6 +18,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
 	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
+	sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -413,7 +414,7 @@ func serveSidebarUI(ctx context.Context, flags map[string]string, stdout io.Writ
 func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort) error {
 	defer scheduleSidebarLayoutRestoreOnExit(ctx, flags, sidebar)
 	cfg := loadSidebarConfig(ctx)
-	items, err := loadSessionItemsWithConfig(ctx, cfg)
+	items, err := loadSidebarTreeItemsWithConfig(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -423,7 +424,7 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}
-	program := tea.NewProgram(uity.NewSidebarModelWithOptions(items, actions, options), tea.WithOutput(stdout))
+	program := tea.NewProgram(uity.NewTreeSidebarModelWithOptions(items, actions, options), tea.WithOutput(stdout))
 	_, err = program.Run()
 	return err
 }
@@ -434,61 +435,34 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 		SwitchSession: func(name string) bool {
 			return handleActionError(ctx, "switch session", switchClient(ctx, currentClient(), name, sidebar))
 		},
-		CreateProject: func(project uity.ProjectItem) bool {
-			return handleMetadataAction(ctx, ipcClient, "create project session", createProject(ctx, map[string]string{"client": currentClient(), "project-path": project.Path}, stdout, sidebar))
+		CreateProject: func(project uity.ProjectItem, categoryID string) bool {
+			return handleMetadataAction(ctx, ipcClient, "create project session", createProject(ctx, map[string]string{"client": currentClient(), "project-path": project.Path, "category-id": categoryID}, stdout, sidebar))
 		},
-		CreateGitProject: func() bool {
-			return handleMetadataAction(ctx, ipcClient, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": currentClient()}, sidebar))
+		CreateGitProject: func(categoryID string) bool {
+			return handleMetadataAction(ctx, ipcClient, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": currentClient(), "category-id": categoryID}, sidebar))
 		},
-		CreateAdhoc: func() bool {
-			return handleMetadataAction(ctx, ipcClient, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": currentClient()}, sidebar))
+		CreateAdhoc: func(categoryID string) bool {
+			return handleMetadataAction(ctx, ipcClient, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": currentClient(), "category-id": categoryID}, sidebar))
 		},
-		RenameSession: func(name string) bool {
-			return handleMetadataAction(ctx, ipcClient, "rename session", renameSession(ctx, map[string]string{"client": currentClient(), "session": name}, sidebar))
+		CreateNamedSession: func(name string, categoryID string) bool {
+			return handleMetadataAction(ctx, ipcClient, "create named session", createAdhoc(ctx, map[string]string{"client": currentClient(), "name": name, "category-id": categoryID}, sidebar))
 		},
 		KillSession: func(name string) bool {
 			return handleMetadataAction(ctx, ipcClient, "kill session", killSession(ctx, map[string]string{"client": currentClient(), "session": name, "confirmed": "yes"}, sidebar))
 		},
 		TogglePinnedSession: func(name string) bool {
-			items, err := loadSessionItems(ctx)
+			names, err := currentLiveSessionNames(ctx)
 			if err != nil {
 				return handleActionError(ctx, "load sessions for pin", err)
-			}
-			names := make([]string, 0, len(items))
-			for _, item := range items {
-				names = append(names, item.Name)
 			}
 			return handleActionError(ctx, "toggle pinned session", saveToggledPinnedSession(ctx, names, name))
 		},
 		PinSessionWithColor: func(name string, color string) bool {
-			items, err := loadSessionItems(ctx)
+			names, err := currentLiveSessionNames(ctx)
 			if err != nil {
 				return handleActionError(ctx, "load sessions for pin color", err)
 			}
-			names := make([]string, 0, len(items))
-			for _, item := range items {
-				names = append(names, item.Name)
-			}
 			return handleActionError(ctx, "pin session color", savePinnedSessionColor(ctx, names, name, color))
-		},
-		ReorderSession: func(name string, delta int) bool {
-			items, err := loadSessionItems(ctx)
-			if err != nil {
-				return handleActionError(ctx, "load sessions for reorder", err)
-			}
-			names := make([]string, 0, len(items))
-			for _, item := range items {
-				names = append(names, item.Name)
-			}
-			state, err := loadSidebarState(ctx)
-			if err != nil {
-				return handleActionError(ctx, "reorder session", err)
-			}
-			showNumeric := false
-			if state.Sidebar != nil {
-				showNumeric = state.Sidebar.ShowNumericSessions
-			}
-			return handleActionError(ctx, "reorder session", saveMovedVisibleSessionOrder(ctx, names, name, delta, showNumeric))
 		},
 		SetShowNumericItems: func(show bool) bool {
 			return handleActionError(ctx, "save sidebar state", saveShowNumericSessions(ctx, show))
@@ -499,13 +473,67 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 			}
 		},
 		LoadProjects: func() []uity.ProjectItem { return loadProjectItems(ctx) },
-		ReloadSessions: func() []uity.SessionItem {
-			items, err := loadSessionItems(ctx)
+		ReloadTreeItems: func() []uity.TreeItem {
+			items, err := loadSidebarTreeItemsWithConfig(ctx, loadSidebarConfig(ctx))
 			if err != nil {
-				handleActionError(ctx, "reload sessions", err)
+				handleActionError(ctx, "reload sidebar tree", err)
 				return nil
 			}
 			return items
+		},
+		CreateCategory: func(name string) bool {
+			live, err := currentLiveSessionNames(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for category create", err)
+			}
+			return handleActionError(ctx, "create sidebar category", saveNewSidebarCategory(ctx, name, live))
+		},
+		RenameCategory: func(categoryID string, name string) bool {
+			live, err := currentLiveSessionNames(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for category rename", err)
+			}
+			return handleActionError(ctx, "rename sidebar category", saveRenamedSidebarCategory(ctx, categoryID, name, live))
+		},
+		CreateSpacer: func() bool {
+			live, err := currentLiveSessionNames(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for spacer create", err)
+			}
+			return handleActionError(ctx, "create sidebar spacer", saveNewSidebarSpacer(ctx, live))
+		},
+		CreateSeparator: func() bool {
+			live, err := currentLiveSessionNames(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for separator create", err)
+			}
+			return handleActionError(ctx, "create sidebar separator", saveNewSidebarSeparator(ctx, live))
+		},
+		MoveTreeItem: func(itemID string, delta int) bool {
+			live, err := currentLiveSessionNames(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for layout move", err)
+			}
+			selection := sidebarlayoutSelectionForItem(itemID)
+			return handleActionError(ctx, "move sidebar item", saveMovedSidebarLayoutItem(ctx, selection, delta, live))
+		},
+		DeleteTreeItem: func(item uity.TreeItem) bool {
+			if item.Kind == uity.TreeRowSession {
+				return handleMetadataAction(ctx, ipcClient, "delete session", killSession(ctx, map[string]string{"client": currentClient(), "session": item.Session.Name, "confirmed": "yes"}, sidebar))
+			}
+			live, err := currentLiveSessionNames(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for layout delete", err)
+			}
+			selection := sidebarlayoutSelectionForItem(item.ID)
+			return handleActionError(ctx, "delete sidebar item", saveDeletedSidebarLayoutItem(ctx, selection, live))
+		},
+		SetCategoryCollapsed: func(categoryID string, collapsed bool) bool {
+			live, err := currentLiveSessionNames(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for category collapse", err)
+			}
+			return handleActionError(ctx, "set category collapse", saveSidebarCategoryCollapsed(ctx, categoryID, collapsed, live))
 		},
 	}
 }
@@ -568,21 +596,44 @@ func quickSwitch(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 	if err != nil || slot <= 0 {
 		return fmt.Errorf("invalid quick-switch slot %q", flags["slot"])
 	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		return err
+	}
 	views, err := runtimeService().SessionViews(ctx)
 	if err != nil {
 		return err
 	}
-	visible := sessions.FilterVisible(views, false)
-	names := sessions.ApplyOrder(sessionNames(visible), loadSessionOrder(ctx))
-	ordered := make([]sessions.View, 0, len(names))
-	for _, name := range names {
-		ordered = append(ordered, sessions.View{Name: name, Visible: true})
-	}
-	target, err := coreruntime.QuickSwitchTarget(ordered, slot)
+	layoutVisible := sessions.FilterVisible(views, true)
+	fallbackVisible := sessions.FilterVisible(views, persistedShowNumeric(state))
+	target, err := contextualQuickSwitchTarget(ctx, state, layoutVisible, fallbackVisible, slot)
 	if err != nil {
 		return nil
 	}
 	return switchClient(ctx, flags["client"], target, sidebar)
+}
+
+func contextualQuickSwitchTarget(ctx context.Context, state ports.PersistedState, layoutVisible []sessions.View, fallbackVisible []sessions.View, slot int) (string, error) {
+	current, err := tmux(ctx, "display-message", "-p", "#{session_name}")
+	if err != nil {
+		current = ""
+	}
+	layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), sessionNames(layoutVisible), state.SessionOrder)
+	active := sidebarlayout.ActiveCategoryID(layout, sidebarlayout.Selection{Kind: sidebarlayout.RowKindSession, Session: strings.TrimSpace(current)})
+	if active != "" {
+		for _, row := range sidebarlayout.Flatten(layout, sidebarlayout.Selection{Kind: sidebarlayout.RowKindSession, Session: strings.TrimSpace(current)}, persistedShowNumeric(state)) {
+			if row.Kind == sidebarlayout.RowKindSession && row.CategoryID == active && row.Slot == slot {
+				return row.Session, nil
+			}
+		}
+		return "", fmt.Errorf("slot %d has no visible session", slot)
+	}
+	names := sessions.ApplyOrder(sessionNames(fallbackVisible), state.SessionOrder)
+	ordered := make([]sessions.View, 0, len(names))
+	for _, name := range names {
+		ordered = append(ordered, sessions.View{Name: name, Visible: true})
+	}
+	return coreruntime.QuickSwitchTarget(ordered, slot)
 }
 
 func tmux(ctx context.Context, args ...string) (string, error) {

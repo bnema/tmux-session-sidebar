@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	MetadataNerdGit        = ""      // git branch glyph
 	MetadataNerdGitCompare = "\uf440" // nf-oct-diff; desired compare glyph in supported Nerd Fonts
 	MetadataNerdStaged     = "\uf45e" // nf-oct-checklist; staged/index changes
 	MetadataNerdWorktree   = "\uf448" // nf-oct-pencil; unstaged/untracked worktree changes
@@ -26,6 +27,7 @@ const (
 	MetadataKindGit       MetadataKind = "git"
 	MetadataKindDirectory MetadataKind = "directory"
 	MetadataKindAdhoc     MetadataKind = "adhoc"
+	MetadataKindLoading   MetadataKind = "loading"
 )
 
 type MetadataIconMode string
@@ -73,6 +75,12 @@ func FormatMetadataSubline(meta SessionMetadataSubline, options MetadataSublineO
 		return formatDirectoryMetadataSubline(meta, options.Icons, width)
 	case MetadataKindAdhoc:
 		return formatAdhocMetadataSubline(meta, options.Icons, width)
+	case MetadataKindLoading:
+		loading := "…"
+		if options.Icons == MetadataIconsASCII {
+			loading = "..."
+		}
+		return fitMetadataText(loading, width, options.Icons)
 	default:
 		return fitMetadataText(strings.TrimSpace(meta.Label), width, options.Icons)
 	}
@@ -113,17 +121,68 @@ func formatGitMetadataSublineParts(meta SessionMetadataSubline, icons MetadataIc
 		gitDetailParts(meta, icons, gitDetailsSummary),
 		gitDetailParts(meta, icons, gitDetailsDivergence),
 	}
-	for _, parts := range partSets {
+	for _, details := range partSets {
+		parts := withBranchPart(meta, icons, width, details)
 		line := metadataPartText(parts)
 		if line != "" && metadataDisplayWidth(line) <= width {
 			return parts
 		}
 	}
+	branch := gitBranchPart(meta, icons, width)
+	if branch.Text != "" {
+		return []metadataPart{branch}
+	}
 	return nil
 }
 
+func withBranchPart(meta SessionMetadataSubline, icons MetadataIconMode, width int, details []metadataPart) []metadataPart {
+	branchBudget := width
+	if detailText := metadataPartText(details); detailText != "" {
+		branchBudget = width - metadataDisplayWidth(detailText) - 1
+	}
+	branch := gitBranchPart(meta, icons, branchBudget)
+	if branch.Text == "" {
+		return details
+	}
+	parts := make([]metadataPart, 0, len(details)+1)
+	parts = append(parts, branch)
+	parts = append(parts, details...)
+	return parts
+}
+
+func gitBranchPart(meta SessionMetadataSubline, icons MetadataIconMode, width int) metadataPart {
+	branch := strings.TrimSpace(meta.Branch)
+	if branch == "" {
+		return metadataPart{}
+	}
+	prefix := "git "
+	if icons == MetadataIconsNerd {
+		prefix = "  "
+	}
+	if width < metadataDisplayWidth(prefix)+2 {
+		return metadataPart{}
+	}
+	return metadataPart{Text: fitMetadataTextPreserveSpace(prefix+branch, width, icons), Role: metadataPartBase}
+}
+
+// fitMetadataTextPreserveSpace truncates without trimming so Nerd Font branch
+// prefixes keep their intentional leading spacing.
+func fitMetadataTextPreserveSpace(value string, width int, icons MetadataIconMode) string {
+	if width <= 0 || metadataDisplayWidth(value) <= width {
+		return value
+	}
+	ellipsis := "…"
+	if icons == MetadataIconsASCII {
+		ellipsis = "..."
+	}
+	return trimDisplayRight(value, max(width-metadataDisplayWidth(ellipsis), 0)) + ellipsis
+}
+
 func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level gitDetailLevel) []metadataPart {
-	if meta.Clean || (!meta.hasDivergence() && meta.stagedCount() == 0 && meta.unstagedCount() == 0 && meta.Conflicts == 0) {
+	if meta.Clean {
+		return nil
+	}
+	if !meta.hasDivergence() && meta.stagedCount() == 0 && meta.unstagedCount() == 0 && meta.Conflicts == 0 {
 		return nil
 	}
 	parts := make([]metadataPart, 0, 8)
