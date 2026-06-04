@@ -103,6 +103,29 @@ func TestSidebarModelSelfUpdateFinishedStopsSpinnerAndReportsFailure(t *testing.
 	}
 }
 
+func TestSidebarModelSelfUpdateIgnoresRepeatedLaunchWhileInProgress(t *testing.T) {
+	called := 0
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() tea.Cmd {
+		called++
+		return func() tea.Msg { return SelfUpdateFinishedMsg{} }
+	}})
+
+	updated, cmd := model.Update(keyPress("u", 0))
+	model = requireSidebarModel(t, updated)
+	if cmd == nil || !model.updateInProgress || called != 1 {
+		t.Fatalf("first update state: cmd nil=%v inProgress=%v called=%d", cmd == nil, model.updateInProgress, called)
+	}
+
+	updated, cmd = model.Update(keyPress("u", 0))
+	model = requireSidebarModel(t, updated)
+	if cmd != nil {
+		t.Fatal("repeated u scheduled another command")
+	}
+	if called != 1 {
+		t.Fatalf("repeated u called SelfUpdate %d times, want 1", called)
+	}
+}
+
 func TestSidebarModelSelfUpdateDoesNotSpinWhenLaunchFails(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SelfUpdate: func() tea.Cmd { return nil }})
 
@@ -1507,7 +1530,7 @@ func TestSidebarModelHelpToggleHidesExpandedFooterByDefault(t *testing.T) {
 	updated, _ := model.Update(keyPress("?", 0))
 	model = requireSidebarModel(t, updated)
 	view = model.Render()
-	for _, want := range []string{"↵ choose", spaceKeySymbol + " pin", "n project", "a adhoc", "h nums", "J/K reorder", "r rename", "x kill", "? hide"} {
+	for _, want := range []string{"↵ choose", spaceKeySymbol + " pin", "n project", "g git", "a adhoc", "h nums", "J/K reorder", "r rename", "x kill", "? hide"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expanded footer missing %q in %q", want, view)
 		}

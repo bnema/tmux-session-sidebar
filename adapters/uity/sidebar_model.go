@@ -335,6 +335,9 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.reloadSessions()
 	case "u":
 		if m.mode == ModeBrowse {
+			if m.updateInProgress {
+				return m, nil
+			}
 			if m.actions.SelfUpdate != nil {
 				updateCmd := m.actions.SelfUpdate()
 				if updateCmd != nil {
@@ -658,7 +661,7 @@ func (m SidebarModel) statusBarLines(styles sidebarStyles) []string {
 	if m.showHelp {
 		return []string{
 			styles.dim.Render("↵ choose  " + spaceKeySymbol + " pin  / filter  esc back"),
-			styles.dim.Render("n project  a adhoc  u update"),
+			styles.dim.Render("n project  g git  a adhoc  u update"),
 			styles.dim.Render("J/K reorder  r rename  h nums"),
 			styles.dim.Render("x kill  ? hide"),
 		}
