@@ -257,11 +257,13 @@ func TestTreeSidebarCOpensCreateSessionSheetAndRunsGitChoice(t *testing.T) {
 	updated, _ = model.Update(keyPress("c", 0))
 	model = requireSidebarModel(t, updated)
 	view := stripANSI(model.Render())
-	for _, want := range []string{"CREATE MENU", "SESSIONS", "repo session", "current directory", "named session", "project picker", "LAYOUT", "category", "separator", "empty space"} {
+	for _, want := range []string{"CREATE MENU", "SESSIONS", "new named session", "from git repo", "from pwd", "from project picker", "LAYOUT", "category", "separator", "empty space"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("create sheet missing %q: %q", want, view)
 		}
 	}
+	updated, _ = model.Update(keyPress("j", 0))
+	model = requireSidebarModel(t, updated)
 	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = requireSidebarModel(t, updated)
 	if !called || model.mode != ModeBrowse {
@@ -273,8 +275,8 @@ func TestTreeSidebarCreateMenuNavigationSkipsGroupHeaders(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{}, SidebarOptions{})
 	updated, _ := model.Update(keyPress("c", 0))
 	model = requireSidebarModel(t, updated)
-	if model.menu.Cursor != 1 || model.menu.Items[model.menu.Cursor].Label != "repo session" {
-		t.Fatalf("initial create cursor = %d/%q, want first selectable repo session", model.menu.Cursor, model.menu.Items[model.menu.Cursor].Label)
+	if model.menu.Cursor != 1 || model.menu.Items[model.menu.Cursor].Label != "new named session" {
+		t.Fatalf("initial create cursor = %d/%q, want first selectable new named session", model.menu.Cursor, model.menu.Items[model.menu.Cursor].Label)
 	}
 	updated, _ = model.Update(keyPress("k", 0))
 	model = requireSidebarModel(t, updated)
@@ -283,8 +285,8 @@ func TestTreeSidebarCreateMenuNavigationSkipsGroupHeaders(t *testing.T) {
 	}
 	updated, _ = model.Update(keyPress("j", 0))
 	model = requireSidebarModel(t, updated)
-	if model.menu.Items[model.menu.Cursor].Header || model.menu.Items[model.menu.Cursor].Label != "repo session" {
-		t.Fatalf("cursor after wrap-down = %d/%q header=%v, want repo session", model.menu.Cursor, model.menu.Items[model.menu.Cursor].Label, model.menu.Items[model.menu.Cursor].Header)
+	if model.menu.Items[model.menu.Cursor].Header || model.menu.Items[model.menu.Cursor].Label != "new named session" {
+		t.Fatalf("cursor after wrap-down = %d/%q header=%v, want new named session", model.menu.Cursor, model.menu.Items[model.menu.Cursor].Label, model.menu.Items[model.menu.Cursor].Header)
 	}
 }
 
@@ -304,10 +306,6 @@ func TestTreeSidebarCreateSessionNamedPrompt(t *testing.T) {
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 10})
 	model = requireSidebarModel(t, updated)
 	updated, _ = model.Update(keyPress("c", 0))
-	model = requireSidebarModel(t, updated)
-	updated, _ = model.Update(keyPress("j", 0))
-	model = requireSidebarModel(t, updated)
-	updated, _ = model.Update(keyPress("j", 0))
 	model = requireSidebarModel(t, updated)
 	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = requireSidebarModel(t, updated)

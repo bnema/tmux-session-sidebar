@@ -19,10 +19,10 @@ const (
 func (m *SidebarModel) openCreateMenu() {
 	m.openMenu(ModeCreate, []menuItem{
 		{Label: "sessions", Header: true},
-		{Label: "repo session", Value: createSessionGit},
-		{Label: "current directory", Value: createSessionCurrent},
-		{Label: "named session", Value: createSessionNamed},
-		{Label: "project picker", Value: createSessionProject},
+		{Label: "new named session", Value: createSessionNamed},
+		{Label: "from git repo", Value: createSessionGit},
+		{Label: "from pwd", Value: createSessionCurrent},
+		{Label: "from project picker", Value: createSessionProject},
 		{Label: "layout", Header: true},
 		{Label: "category", Value: createCategory},
 		{Label: "separator", Value: createSeparator},
