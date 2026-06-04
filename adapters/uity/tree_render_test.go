@@ -1,6 +1,7 @@
 package uity
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -48,6 +49,86 @@ func TestTreeSidebarSeparatorUsesRendererWidth(t *testing.T) {
 	view := stripANSI(model.Render())
 	if !strings.Contains(view, strings.Repeat("─", 12)) || strings.Contains(view, strings.Repeat("─", 24)) {
 		t.Fatalf("separator should fit renderer width, view=%q", view)
+	}
+}
+
+func TestTreeSidebarScrollsOverflowToKeepSelectionVisible(t *testing.T) {
+	items := make([]SessionItem, 0, 8)
+	for i := 1; i <= 8; i++ {
+		items = append(items, SessionItem{Name: fmt.Sprintf("session-%02d", i), Slot: i})
+	}
+	model := newTestSidebarModel(items, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 6})
+	model = requireSidebarModel(t, updated)
+	for range 5 {
+		updated, _ = model.Update(keyPress("j", 0))
+		model = requireSidebarModel(t, updated)
+	}
+
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "session-01") || strings.Contains(view, "session-02") {
+		t.Fatalf("scrolled view should clip early sessions: %q", view)
+	}
+	if !strings.Contains(view, "session-06") {
+		t.Fatalf("scrolled view should keep selected session visible: %q", view)
+	}
+	if got := len(strings.Split(view, "\n")); got != 6 {
+		t.Fatalf("rendered height = %d, want 6: %q", got, view)
+	}
+}
+
+func TestTreeSidebarScrollAccountingMatchesSuppressedMetadata(t *testing.T) {
+	items := make([]SessionItem, 0, 8)
+	for i := 1; i <= 8; i++ {
+		items = append(items, SessionItem{Name: fmt.Sprintf("session-%02d", i), Slot: i, Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Clean: true}})
+	}
+	model := newTestSidebarModel(items, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 6})
+	model = requireSidebarModel(t, updated)
+	for range 5 {
+		updated, _ = model.Update(keyPress("j", 0))
+		model = requireSidebarModel(t, updated)
+	}
+
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "session-06") {
+		t.Fatalf("selected session should remain visible when metadata is suppressed: %q", view)
+	}
+}
+
+func TestTreeSidebarTinyHeightsDoNotOverflow(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{})
+	for _, height := range []int{1, 2} {
+		updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: height})
+		model = requireSidebarModel(t, updated)
+		view := stripANSI(model.Render())
+		if got := len(strings.Split(view, "\n")); got != height {
+			t.Fatalf("height %d rendered %d lines: %q", height, got, view)
+		}
+	}
+}
+
+func TestTreeSidebarPageNavigationClampsInsteadOfWrapping(t *testing.T) {
+	items := make([]SessionItem, 0, 8)
+	for i := 1; i <= 8; i++ {
+		items = append(items, SessionItem{Name: fmt.Sprintf("session-%02d", i), Slot: i})
+	}
+	model := newTestSidebarModel(items, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 6})
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgDown}))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgDown}))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedSession(); !ok || item.Name != "session-08" {
+		t.Fatalf("page down selected = %#v ok=%v, want last session", item, ok)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgUp}))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgUp}))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedTreeItem(); !ok || item.ID != "category:default" {
+		t.Fatalf("page up selected = %#v ok=%v, want first category", item, ok)
 	}
 }
 

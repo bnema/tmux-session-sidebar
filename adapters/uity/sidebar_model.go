@@ -122,6 +122,7 @@ type SidebarModel struct {
 	metadataIconMode                 MetadataIconMode
 	width                            int
 	height                           int
+	treeScroll                       int
 	pinColorPicker                   PinColorPicker
 	pinColorSession                  string
 	attentionAnimationStyle          config.AgentAttentionAnimation
@@ -181,6 +182,7 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.ensureTreeCursorVisible()
 		return m, nil
 	case updateAvailableMsg:
 		m.updateCheck = m.updateCheck.handleResult(msg)
@@ -281,6 +283,10 @@ func (m SidebarModel) updateDeleteConfirmationKey(msg tea.KeyPressMsg) (tea.Mode
 }
 
 func (m SidebarModel) updateSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if delta, ok := pageKeyDelta(msg); ok {
+		m.movePage(delta)
+		return m.finishInteractiveUpdate()
+	}
 	switch msg.Keystroke() {
 	case "esc":
 		m.mode = ModeBrowse
@@ -291,6 +297,10 @@ func (m SidebarModel) updateSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m.move(1)
 	case "k", "up":
 		m.move(-1)
+	case "pagedown":
+		m.movePage(1)
+	case "pageup":
+		m.movePage(-1)
 	case "backspace":
 		if m.filter != "" {
 			m.filter = trimLastRune(m.filter)
@@ -328,6 +338,10 @@ func (m SidebarModel) updateMenuKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m SidebarModel) updateBrowseKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if delta, ok := pageKeyDelta(msg); ok {
+		m.movePage(delta)
+		return m.finishInteractiveUpdate()
+	}
 	if delta, ok := reorderKeyDelta(msg); ok {
 		m.reorderSelected(delta)
 		return m.finishInteractiveUpdate()
@@ -362,6 +376,10 @@ func (m SidebarModel) updateBrowseKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m.move(1)
 	case "k", "up":
 		m.move(-1)
+	case "pagedown":
+		m.movePage(1)
+	case "pageup":
+		m.movePage(-1)
 	case "n":
 		m.startCreateNamed()
 	case "c":
@@ -439,10 +457,12 @@ func (m *SidebarModel) startSelfUpdate() (tea.Model, tea.Cmd) {
 	}
 	m.updateInProgress = true
 	m.message = "Updating runtime " + m.updateSpinner.View()
+	m.ensureTreeCursorVisible()
 	return *m, tea.Batch(updateCmd, m.updateSpinner.Tick)
 }
 
 func (m *SidebarModel) finishInteractiveUpdate() (tea.Model, tea.Cmd) {
+	m.ensureTreeCursorVisible()
 	return *m, m.startAttentionAnimationCmd()
 }
 
@@ -450,9 +470,26 @@ func (m *SidebarModel) move(delta int) {
 	visible := m.selectableTreeItems()
 	if len(visible) == 0 {
 		m.cursor = 0
+		m.treeScroll = 0
 		return
 	}
 	m.cursor = (m.cursor + delta + len(visible)) % len(visible)
+	m.ensureTreeCursorVisible()
+}
+
+func (m *SidebarModel) movePage(delta int) {
+	visible := m.selectableTreeItems()
+	if len(visible) == 0 {
+		m.cursor = 0
+		m.treeScroll = 0
+		return
+	}
+	step := m.availableTreeHeight()
+	if step <= 0 {
+		step = 1
+	}
+	m.cursor = min(max(m.cursor+(delta*step), 0), len(visible)-1)
+	m.ensureTreeCursorVisible()
 }
 
 func (m SidebarModel) selectedSession() (SessionItem, bool) {
@@ -732,7 +769,7 @@ func (m SidebarModel) View() tea.View {
 func (m SidebarModel) Render() string {
 	styles := newSidebarStyles()
 	lines := []string{""}
-	lines = append(lines, m.renderTree(styles)...)
+	lines = append(lines, m.renderScrollableTree(styles)...)
 	if status := m.statusLine(); status != "" {
 		lines = append(lines, "", styles.accent.Render(status))
 	}
@@ -780,6 +817,17 @@ func (m *SidebarModel) moveWheel(delta int) {
 		return
 	}
 	m.move(delta)
+}
+
+func pageKeyDelta(msg tea.KeyPressMsg) (int, bool) {
+	switch msg.Key().Code {
+	case tea.KeyPgDown:
+		return 1, true
+	case tea.KeyPgUp:
+		return -1, true
+	default:
+		return 0, false
+	}
 }
 
 func reorderKeyDelta(msg tea.KeyPressMsg) (int, bool) {
