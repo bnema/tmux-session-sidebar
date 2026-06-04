@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
@@ -37,11 +40,11 @@ func (s Store) Save(_ context.Context, serverID string, state ports.PersistedSta
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(state, "", "  ")
+	path := s.path(serverID)
+	data, err := marshalStatePreservingUnknownFields(path, state)
 	if err != nil {
 		return err
 	}
-	path := s.path(serverID)
 	tmp, err := os.CreateTemp(s.Dir, filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return err
@@ -76,6 +79,55 @@ func (s Store) Save(_ context.Context, serverID string, state ports.PersistedSta
 
 func (s Store) path(serverID string) string {
 	return filepath.Join(s.Dir, filepath.Base(serverID)+".json")
+}
+
+func marshalStatePreservingUnknownFields(path string, state ports.PersistedState) ([]byte, error) {
+	current, err := json.Marshal(state)
+	if err != nil {
+		return nil, err
+	}
+	merged := map[string]json.RawMessage{}
+	if data, err := os.ReadFile(path); err == nil {
+		var existing map[string]json.RawMessage
+		if err := json.Unmarshal(data, &existing); err == nil {
+			for key, value := range existing {
+				if !knownPersistedStateKey(key) {
+					merged[key] = value
+				}
+			}
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	var known map[string]json.RawMessage
+	if err := json.Unmarshal(current, &known); err != nil {
+		return nil, err
+	}
+	maps.Copy(merged, known)
+	return json.MarshalIndent(merged, "", "  ")
+}
+
+var knownPersistedStateKeys = persistedStateJSONKeys()
+
+func knownPersistedStateKey(key string) bool {
+	_, ok := knownPersistedStateKeys[key]
+	return ok
+}
+
+func persistedStateJSONKeys() map[string]struct{} {
+	typeOfState := reflect.TypeFor[ports.PersistedState]()
+	keys := make(map[string]struct{}, typeOfState.NumField())
+	for field := range typeOfState.Fields() {
+		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		switch name {
+		case "-":
+			continue
+		case "":
+			name = field.Name
+		}
+		keys[name] = struct{}{}
+	}
+	return keys
 }
 
 func initializeMaps(state *ports.PersistedState) {
