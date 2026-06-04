@@ -23,7 +23,8 @@ test-go:
 test-runtime-bootstrap:
 	@bash scripts/update-runtime_test.sh
 	@bash scripts/ensure-runtime_test.sh
-	@bash scripts/install-git-update-hook_test.sh
+	@bash scripts/no-git-update-hook_test.sh
+	@bash scripts/remove-git-update-hook_test.sh
 	@bash scripts/daemon-control_test.sh
 	@bash scripts/restart-runtime_test.sh
 

@@ -2,6 +2,7 @@ package storefs
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -60,6 +61,77 @@ func TestStoreLoadSaveSessionRestoreMetadata(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, state) {
 		t.Fatalf("loaded state = %#v, want %#v", got, state)
+	}
+}
+
+func TestStoreSavePreservesUnknownTopLevelFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "server.json")
+	original := `{
+  "sessions": {
+    "alpha": {"kind": "project", "projectPath": "/tmp/alpha"}
+  },
+  "sidebar": {"showNumericSessions": true, "nestedFuture": {"discard": true}},
+  "sidebarLayout": {
+    "items": [
+      {
+        "id": "category:work",
+        "kind": "category",
+        "category": {
+          "id": "category:work",
+          "name": "Work",
+          "sessions": [{"name": "alpha"}]
+        }
+      }
+    ]
+  },
+  "futureState": {"nested": true},
+  "futureArray": [1, {"two": 2}]
+}`
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	store := New(dir)
+	state, err := store.Load(context.Background(), "server")
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	state.SessionOrder = []string{"alpha"}
+	state.Sidebar = &ports.SidebarState{Open: true}
+	if err := store.Save(context.Background(), "server", state); err != nil {
+		t.Fatalf("Save error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	var saved map[string]json.RawMessage
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatalf("Unmarshal saved state error: %v", err)
+	}
+	assertRawJSONEqual(t, saved["futureState"], `{"nested": true}`)
+	assertRawJSONEqual(t, saved["futureArray"], `[1, {"two": 2}]`)
+	assertRawJSONEqual(t, saved["sessionOrder"], `["alpha"]`)
+	assertRawJSONEqual(t, saved["sidebar"], `{"open": true}`)
+}
+
+func assertRawJSONEqual(t *testing.T, got json.RawMessage, want string) {
+	t.Helper()
+	if len(got) == 0 {
+		t.Fatalf("missing JSON field, want %s", want)
+	}
+	var gotValue any
+	if err := json.Unmarshal(got, &gotValue); err != nil {
+		t.Fatalf("Unmarshal got JSON error: %v", err)
+	}
+	var wantValue any
+	if err := json.Unmarshal([]byte(want), &wantValue); err != nil {
+		t.Fatalf("Unmarshal want JSON error: %v", err)
+	}
+	if !reflect.DeepEqual(gotValue, wantValue) {
+		t.Fatalf("JSON = %s, want %s", got, want)
 	}
 }
 

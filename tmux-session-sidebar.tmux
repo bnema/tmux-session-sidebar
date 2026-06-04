@@ -93,7 +93,7 @@ main() {
     sidebar_key=M-b
     "$TMUX_BIN" set-option -gq @session-sidebar-key "$sidebar_key"
   fi
-  "$SCRIPTS_DIR/install-git-update-hook.sh" >/dev/null 2>&1 || true
+  "$SCRIPTS_DIR/remove-git-update-hook.sh" >/dev/null 2>&1 || true
   runtime_bin="$("$SCRIPTS_DIR/ensure-runtime.sh")"
   printf -v quoted_daemon_control '%q' "$SCRIPTS_DIR/daemon-control.sh"
   printf -v quoted_runtime '%q' "$runtime_bin"
