@@ -67,7 +67,7 @@ func (m SidebarModel) selectableTreeItems() []TreeItem {
 
 func isSelectableTreeKind(kind TreeRowKind) bool {
 	switch kind {
-	case TreeRowSession, TreeRowCategory, TreeRowSeparator, TreeRowSpacer:
+	case TreeRowSession, TreeRowCategory, TreeRowSeparator, TreeRowSpacer, TreeRowMore:
 		return true
 	default:
 		return false
@@ -76,17 +76,26 @@ func isSelectableTreeKind(kind TreeRowKind) bool {
 
 func (m SidebarModel) visibleTreeItems() []TreeItem {
 	if m.filter == "" {
-		return m.treeItems
+		visible := make([]TreeItem, 0, len(m.treeItems))
+		for _, item := range m.treeItems {
+			if item.OverflowHidden {
+				continue
+			}
+			visible = append(visible, item)
+		}
+		return visible
 	}
 	filter := strings.ToLower(m.filter)
 	filtered := make([]TreeItem, 0, len(m.treeItems))
 	var category TreeItem
 	categoryAdded := false
+	lastSessionIndex := -1
 	for _, item := range m.treeItems {
 		switch item.Kind {
 		case TreeRowCategory:
 			category = item
 			categoryAdded = false
+			lastSessionIndex = -1
 		case TreeRowSession:
 			if !strings.Contains(strings.ToLower(item.Session.Name), filter) {
 				continue
@@ -95,7 +104,13 @@ func (m SidebarModel) visibleTreeItems() []TreeItem {
 				filtered = append(filtered, category)
 				categoryAdded = true
 			}
+			if lastSessionIndex >= 0 {
+				filtered[lastSessionIndex].LastChild = false
+			}
+			item.OverflowHidden = false
+			item.LastChild = true
 			filtered = append(filtered, item)
+			lastSessionIndex = len(filtered) - 1
 		}
 	}
 	return filtered

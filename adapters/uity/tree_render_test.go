@@ -1,6 +1,7 @@
 package uity
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -51,6 +52,112 @@ func TestTreeSidebarSeparatorUsesRendererWidth(t *testing.T) {
 	}
 }
 
+func TestTreeSidebarScrollsOverflowToKeepSelectionVisible(t *testing.T) {
+	items := make([]SessionItem, 0, 8)
+	for i := 1; i <= 8; i++ {
+		items = append(items, SessionItem{Name: fmt.Sprintf("session-%02d", i), Slot: i})
+	}
+	model := newTestSidebarModel(items, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 6})
+	model = requireSidebarModel(t, updated)
+	for range 5 {
+		updated, _ = model.Update(keyPress("j", 0))
+		model = requireSidebarModel(t, updated)
+	}
+
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "session-01") || strings.Contains(view, "session-02") {
+		t.Fatalf("scrolled view should clip early sessions: %q", view)
+	}
+	if !strings.Contains(view, "session-06") {
+		t.Fatalf("scrolled view should keep selected session visible: %q", view)
+	}
+	if got := len(strings.Split(view, "\n")); got != 6 {
+		t.Fatalf("rendered height = %d, want 6: %q", got, view)
+	}
+}
+
+func TestTreeSidebarScrollAccountingMatchesSuppressedMetadata(t *testing.T) {
+	items := make([]SessionItem, 0, 8)
+	for i := 1; i <= 8; i++ {
+		items = append(items, SessionItem{Name: fmt.Sprintf("session-%02d", i), Slot: i, Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Clean: true}})
+	}
+	model := newTestSidebarModel(items, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 6})
+	model = requireSidebarModel(t, updated)
+	for range 5 {
+		updated, _ = model.Update(keyPress("j", 0))
+		model = requireSidebarModel(t, updated)
+	}
+
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "session-06") {
+		t.Fatalf("selected session should remain visible when metadata is suppressed: %q", view)
+	}
+}
+
+func TestTreeSidebarTinyHeightsDoNotOverflow(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{})
+	for _, height := range []int{1, 2} {
+		updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: height})
+		model = requireSidebarModel(t, updated)
+		view := stripANSI(model.Render())
+		if got := len(strings.Split(view, "\n")); got != height {
+			t.Fatalf("height %d rendered %d lines: %q", height, got, view)
+		}
+	}
+}
+
+func TestTreeSidebarZeroTreeHeightRendersOnlyStatus(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 1})
+	model = requireSidebarModel(t, updated)
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "alpha") || strings.Contains(view, "beta") || !strings.Contains(view, "? keys") {
+		t.Fatalf("height 1 should render status only, view=%q", view)
+	}
+}
+
+func TestTreeSidebarPageNavigationCountsRenderedMetadataRows(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "main", Clean: true}}, Depth: 1, ShowMetadata: true},
+		{Kind: TreeRowSession, ID: "category:work/session:beta", CategoryID: "category:work", Session: SessionItem{Name: "beta", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "main", Clean: true}}, Depth: 1, ShowMetadata: true},
+		{Kind: TreeRowSession, ID: "category:work/session:gamma", CategoryID: "category:work", Session: SessionItem{Name: "gamma"}, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 5})
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgDown}))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
+		t.Fatalf("page down selected = %#v ok=%v, want beta because alpha renders two rows", item, ok)
+	}
+}
+
+func TestTreeSidebarPageNavigationClampsInsteadOfWrapping(t *testing.T) {
+	items := make([]SessionItem, 0, 8)
+	for i := 1; i <= 8; i++ {
+		items = append(items, SessionItem{Name: fmt.Sprintf("session-%02d", i), Slot: i})
+	}
+	model := newTestSidebarModel(items, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 6})
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgDown}))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgDown}))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedSession(); !ok || item.Name != "session-08" {
+		t.Fatalf("page down selected = %#v ok=%v, want last session", item, ok)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgUp}))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgUp}))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedTreeItem(); !ok || item.ID != "category:default" {
+		t.Fatalf("page up selected = %#v ok=%v, want first category", item, ok)
+	}
+}
+
 func TestTreeSidebarReloadsTreeAfterCreateSpacer(t *testing.T) {
 	reloaded := false
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{
@@ -72,6 +179,96 @@ func TestTreeSidebarReloadsTreeAfterCreateSpacer(t *testing.T) {
 
 	if !reloaded || len(model.treeItems) != 1 || model.treeItems[0].Kind != TreeRowSpacer {
 		t.Fatalf("tree reload after new spacer: reloaded=%v tree=%#v", reloaded, model.treeItems)
+	}
+}
+
+func TestTreeSidebarFilterRecomputesLastChildBranches(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:work/session:beta", CategoryID: "category:work", Session: SessionItem{Name: "beta"}, Depth: 1},
+		{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 1},
+	}, Actions{}, SidebarOptions{})
+	updated, _ := model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+	for _, key := range []string{"b", "e"} {
+		updated, _ = model.Update(keyPress(key, 0))
+		model = requireSidebarModel(t, updated)
+	}
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "└─ beta") || strings.Contains(view, "├─ beta") {
+		t.Fatalf("filtered last session should render as last child, view=%q", view)
+	}
+}
+
+func TestTreeSidebarFilterIncludesOverflowHiddenSessions(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:s10", CategoryID: "category:work", Session: SessionItem{Name: "s10"}, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:work/session:s11", CategoryID: "category:work", Session: SessionItem{Name: "s11"}, Depth: 1, OverflowHidden: true},
+		{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 1},
+	}, Actions{}, SidebarOptions{})
+
+	if view := stripANSI(model.Render()); strings.Contains(view, "s11") {
+		t.Fatalf("collapsed render should hide overflow session: %q", view)
+	}
+	updated, _ := model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+	for _, key := range []string{"s", "1", "1"} {
+		updated, _ = model.Update(keyPress(key, 0))
+		model = requireSidebarModel(t, updated)
+	}
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "Work") || !strings.Contains(view, "s11") || strings.Contains(view, "And 1 more") {
+		t.Fatalf("filter should reveal hidden matching session without more row: %q", view)
+	}
+}
+
+func TestTreeSidebarMoreRowKeepsSelectedCategoryContext(t *testing.T) {
+	gotCategoryID := ""
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 3},
+	}, Actions{CreateGitProject: func(categoryID string) bool {
+		gotCategoryID = categoryID
+		return true
+	}}, SidebarOptions{})
+	model.cursor = 1
+
+	updated, _ := model.Update(keyPress("g", 0))
+	requireSidebarModel(t, updated)
+	if gotCategoryID != "category:work" {
+		t.Fatalf("CreateGitProject category = %q, want category:work", gotCategoryID)
+	}
+}
+
+func TestTreeSidebarRendersAndTogglesMoreRow(t *testing.T) {
+	expanded := false
+	items := []TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:one", CategoryID: "category:work", Session: SessionItem{Name: "one"}, Depth: 1},
+		{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 3},
+	}
+	model := NewTreeSidebarModelWithOptions(items, Actions{SetCategorySessionsExpanded: func(categoryID string, next bool) bool {
+		expanded = next
+		return categoryID == "category:work"
+	}, ReloadTreeItems: func() []TreeItem {
+		return []TreeItem{
+			{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+			{Kind: TreeRowSession, ID: "category:work/session:one", CategoryID: "category:work", Session: SessionItem{Name: "one"}, Depth: 1},
+			{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreExpanded: expanded},
+		}
+	}}, SidebarOptions{})
+	model.cursor = 2
+
+	view := model.Render()
+	if !strings.Contains(stripANSI(view), "And 3 more....") || !strings.Contains(view, ";3;") {
+		t.Fatalf("more row should render italic count, view=%q", view)
+	}
+	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	if !expanded || model.cursor != 2 || !strings.Contains(stripANSI(model.Render()), "Show less....") {
+		t.Fatalf("more toggle expanded=%v cursor=%d view=%q", expanded, model.cursor, stripANSI(model.Render()))
 	}
 }
 

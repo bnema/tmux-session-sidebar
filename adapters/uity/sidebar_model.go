@@ -49,41 +49,46 @@ const (
 	TreeRowSession   TreeRowKind = "session"
 	TreeRowSeparator TreeRowKind = "separator"
 	TreeRowSpacer    TreeRowKind = "spacer"
+	TreeRowMore      TreeRowKind = "more"
 )
 
 type TreeItem struct {
-	Kind         TreeRowKind
-	ID           string
-	CategoryID   string
-	CategoryName string
-	CategoryOpen bool
-	Session      SessionItem
-	Slot         int
-	Depth        int
-	LastChild    bool
-	ShowMetadata bool
+	Kind           TreeRowKind
+	ID             string
+	CategoryID     string
+	CategoryName   string
+	CategoryOpen   bool
+	Session        SessionItem
+	Slot           int
+	Depth          int
+	LastChild      bool
+	ShowMetadata   bool
+	MoreCount      int
+	MoreExpanded   bool
+	OverflowHidden bool
 }
 
 type Actions struct {
-	SwitchSession        func(string) bool
-	CreateProject        func(ProjectItem, string) bool
-	CreateGitProject     func(string) bool
-	CreateAdhoc          func(string) bool
-	CreateNamedSession   func(string, string) bool
-	KillSession          func(string) bool
-	TogglePinnedSession  func(string) bool
-	PinSessionWithColor  func(string, string) bool
-	SetShowNumericItems  func(bool) bool
-	SelfUpdate           func() tea.Cmd
-	LoadProjects         func() []ProjectItem
-	ReloadTreeItems      func() []TreeItem
-	CreateCategory       func(string) bool
-	RenameCategory       func(string, string) bool
-	CreateSpacer         func() bool
-	CreateSeparator      func() bool
-	MoveTreeItem         func(string, int) bool
-	DeleteTreeItem       func(TreeItem) bool
-	SetCategoryCollapsed func(string, bool) bool
+	SwitchSession               func(string) bool
+	CreateProject               func(ProjectItem, string) bool
+	CreateGitProject            func(string) bool
+	CreateAdhoc                 func(string) bool
+	CreateNamedSession          func(string, string) bool
+	KillSession                 func(string) bool
+	TogglePinnedSession         func(string) bool
+	PinSessionWithColor         func(string, string) bool
+	SetShowNumericItems         func(bool) bool
+	SelfUpdate                  func() tea.Cmd
+	LoadProjects                func() []ProjectItem
+	ReloadTreeItems             func() []TreeItem
+	CreateCategory              func(string) bool
+	RenameCategory              func(string, string) bool
+	CreateSpacer                func() bool
+	CreateSeparator             func() bool
+	MoveTreeItem                func(string, int) bool
+	DeleteTreeItem              func(TreeItem) bool
+	SetCategoryCollapsed        func(string, bool) bool
+	SetCategorySessionsExpanded func(string, bool) bool
 }
 
 type SelfUpdateFinishedMsg struct {
@@ -122,6 +127,7 @@ type SidebarModel struct {
 	metadataIconMode                 MetadataIconMode
 	width                            int
 	height                           int
+	treeScroll                       int
 	pinColorPicker                   PinColorPicker
 	pinColorSession                  string
 	attentionAnimationStyle          config.AgentAttentionAnimation
@@ -181,6 +187,7 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.ensureTreeCursorVisible()
 		return m, nil
 	case updateAvailableMsg:
 		m.updateCheck = m.updateCheck.handleResult(msg)
@@ -281,6 +288,10 @@ func (m SidebarModel) updateDeleteConfirmationKey(msg tea.KeyPressMsg) (tea.Mode
 }
 
 func (m SidebarModel) updateSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if delta, ok := pageKeyDelta(msg); ok {
+		m.movePage(delta)
+		return m.finishInteractiveUpdate()
+	}
 	switch msg.Keystroke() {
 	case "esc":
 		m.mode = ModeBrowse
@@ -328,6 +339,10 @@ func (m SidebarModel) updateMenuKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m SidebarModel) updateBrowseKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if delta, ok := pageKeyDelta(msg); ok {
+		m.movePage(delta)
+		return m.finishInteractiveUpdate()
+	}
 	if delta, ok := reorderKeyDelta(msg); ok {
 		m.reorderSelected(delta)
 		return m.finishInteractiveUpdate()
@@ -357,7 +372,7 @@ func (m SidebarModel) updateBrowseKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	case "/":
 		m.mode = ModeSearch
 	case "enter":
-		m.switchSelected()
+		m.activateSelected()
 	case "j", "down":
 		m.move(1)
 	case "k", "up":
@@ -439,10 +454,12 @@ func (m *SidebarModel) startSelfUpdate() (tea.Model, tea.Cmd) {
 	}
 	m.updateInProgress = true
 	m.message = "Updating runtime " + m.updateSpinner.View()
+	m.ensureTreeCursorVisible()
 	return *m, tea.Batch(updateCmd, m.updateSpinner.Tick)
 }
 
 func (m *SidebarModel) finishInteractiveUpdate() (tea.Model, tea.Cmd) {
+	m.ensureTreeCursorVisible()
 	return *m, m.startAttentionAnimationCmd()
 }
 
@@ -450,9 +467,47 @@ func (m *SidebarModel) move(delta int) {
 	visible := m.selectableTreeItems()
 	if len(visible) == 0 {
 		m.cursor = 0
+		m.treeScroll = 0
 		return
 	}
 	m.cursor = (m.cursor + delta + len(visible)) % len(visible)
+	m.ensureTreeCursorVisible()
+}
+
+func (m *SidebarModel) movePage(delta int) {
+	visible := m.selectableTreeItems()
+	if len(visible) == 0 {
+		m.cursor = 0
+		m.treeScroll = 0
+		return
+	}
+	step := m.availableTreeHeight()
+	if step <= 0 {
+		step = 1
+	}
+	direction := 1
+	if delta < 0 {
+		direction = -1
+	}
+	m.cursor = min(max(m.cursor+m.pageItemDelta(visible, step, direction, newSidebarStyles()), 0), len(visible)-1)
+	m.ensureTreeCursorVisible()
+}
+
+func (m SidebarModel) pageItemDelta(visible []TreeItem, step int, direction int, styles sidebarStyles) int {
+	if direction == 0 || len(visible) == 0 {
+		return 0
+	}
+	renderer := m.treeLineCounter(styles)
+	lines := 0
+	items := 0
+	for index := m.cursor + direction; index >= 0 && index < len(visible); index += direction {
+		items += direction
+		lines += renderer.renderedTreeItemLineCount(visible[index])
+		if lines >= step {
+			break
+		}
+	}
+	return items
 }
 
 func (m SidebarModel) selectedSession() (SessionItem, bool) {
@@ -463,12 +518,30 @@ func (m SidebarModel) selectedSession() (SessionItem, bool) {
 	return item.Session, true
 }
 
-func (m *SidebarModel) switchSelected() {
-	item, ok := m.selectedSession()
+func (m *SidebarModel) activateSelected() {
+	item, ok := m.selectedTreeItem()
 	if !ok {
 		return
 	}
-	m.switchItem(item)
+	if item.Kind == TreeRowMore {
+		m.toggleSelectedMore(item)
+		return
+	}
+	if item.Kind == TreeRowSession {
+		m.switchItem(item.Session)
+	}
+}
+
+func (m *SidebarModel) toggleSelectedMore(item TreeItem) {
+	if m.actions.SetCategorySessionsExpanded == nil || item.CategoryID == "" {
+		return
+	}
+	next := !item.MoreExpanded
+	if !m.actions.SetCategorySessionsExpanded(item.CategoryID, next) {
+		return
+	}
+	m.reloadTreeItems()
+	m.selectTreeItem(item.ID)
 }
 
 func (m *SidebarModel) switchSlot(slot int) {
@@ -616,6 +689,8 @@ func (m SidebarModel) selectedCategoryID() string {
 			return item.CategoryID
 		case TreeRowSession:
 			return item.CategoryID
+		case TreeRowMore:
+			return item.CategoryID
 		case TreeRowSeparator, TreeRowSpacer:
 			return m.nearestVisibleCategoryID(item.ID)
 		}
@@ -675,7 +750,7 @@ func (m *SidebarModel) clearKillConfirmation() {
 
 func (m *SidebarModel) openDeleteConfirmation() {
 	item, ok := m.selectedTreeItem()
-	if !ok || m.actions.DeleteTreeItem == nil {
+	if !ok || item.Kind == TreeRowMore || m.actions.DeleteTreeItem == nil {
 		return
 	}
 	m.mode = ModeConfirmDelete
@@ -732,7 +807,7 @@ func (m SidebarModel) View() tea.View {
 func (m SidebarModel) Render() string {
 	styles := newSidebarStyles()
 	lines := []string{""}
-	lines = append(lines, m.renderTree(styles)...)
+	lines = append(lines, m.renderScrollableTree(styles)...)
 	if status := m.statusLine(); status != "" {
 		lines = append(lines, "", styles.accent.Render(status))
 	}
@@ -780,6 +855,17 @@ func (m *SidebarModel) moveWheel(delta int) {
 		return
 	}
 	m.move(delta)
+}
+
+func pageKeyDelta(msg tea.KeyPressMsg) (int, bool) {
+	switch msg.Key().Code {
+	case tea.KeyPgDown:
+		return 1, true
+	case tea.KeyPgUp:
+		return -1, true
+	default:
+		return 0, false
+	}
 }
 
 func reorderKeyDelta(msg tea.KeyPressMsg) (int, bool) {

@@ -535,6 +535,13 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 			}
 			return handleActionError(ctx, "set category collapse", saveSidebarCategoryCollapsed(ctx, categoryID, collapsed, live))
 		},
+		SetCategorySessionsExpanded: func(categoryID string, expanded bool) bool {
+			live, err := currentLiveSessionNames(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for category overflow", err)
+			}
+			return handleActionError(ctx, "set category overflow", saveSidebarCategorySessionsExpanded(ctx, categoryID, expanded, live))
+		},
 	}
 }
 

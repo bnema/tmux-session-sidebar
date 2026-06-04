@@ -14,7 +14,7 @@ import (
 
 func TestSidebarLayoutPersistenceRoundTrip(t *testing.T) {
 	core := sidebarlayout.Layout{Items: []sidebarlayout.LayoutItem{
-		sidebarlayout.CategoryItem("category:work", "Work", false, []string{"alpha", "beta"}),
+		sidebarlayout.CategoryItemWithSessionExpansion("category:work", "Work", false, true, []string{"alpha", "beta"}),
 		sidebarlayout.SeparatorItem("separator:one"),
 		sidebarlayout.SpacerItem("spacer:one"),
 	}}

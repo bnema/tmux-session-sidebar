@@ -41,6 +41,11 @@ func (r treeRenderer) Render(items []TreeItem) []string {
 			if selectable {
 				selectableIndex++
 			}
+		case TreeRowMore:
+			lines = append(lines, r.renderMore(item, selected))
+			if selectable {
+				selectableIndex++
+			}
 		case TreeRowSeparator:
 			separator := r.separatorLine()
 			line := r.styles.dim.Render(separator)
@@ -102,6 +107,19 @@ func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 	}
 	body := sessionRowStyle(r.styles, session).Render(bodyText)
 	return branch + body + r.renderAttention(session, false)
+}
+
+func (r treeRenderer) renderMore(item TreeItem, selected bool) string {
+	branch := r.styles.dim.Render(treeBranch(item))
+	label := "Show less...."
+	if !item.MoreExpanded {
+		label = fmt.Sprintf("And %d more....", item.MoreCount)
+	}
+	bodyText := " " + label
+	if selected {
+		return branch + r.styles.selected.Italic(true).Render(bodyText)
+	}
+	return branch + r.styles.dim.Italic(true).Render(bodyText)
 }
 
 func (r treeRenderer) renderAttention(session SessionItem, selected bool) string {
