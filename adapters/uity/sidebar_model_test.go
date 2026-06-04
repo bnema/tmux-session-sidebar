@@ -60,6 +60,135 @@ func TestSidebarModelMouseWheelNavigatesFilteredSessions(t *testing.T) {
 	}
 }
 
+func TestSidebarModelQuestionMarkTogglesHelpOnlyOutsideSearch(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
+
+	updated, _ := model.Update(keyPress("?", 0))
+	model = requireSidebarModel(t, updated)
+	if !model.showHelp {
+		t.Fatal("? in browse mode did not show help")
+	}
+
+	updated, _ = model.Update(keyPress("?", 0))
+	model = requireSidebarModel(t, updated)
+	if model.showHelp {
+		t.Fatal("second ? in browse mode did not hide help")
+	}
+
+	updated, _ = model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("?", 0))
+	model = requireSidebarModel(t, updated)
+	if model.showHelp {
+		t.Fatal("? while searching should not toggle help")
+	}
+	if model.filter != "?" {
+		t.Fatalf("search filter = %q, want ?", model.filter)
+	}
+}
+
+func TestSidebarModelSingleKeyBrowseShortcuts(t *testing.T) {
+	t.Run("n opens project mode", func(t *testing.T) {
+		loaded := 0
+		model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{LoadProjects: func() []ProjectItem {
+			loaded++
+			return []ProjectItem{{Name: "proj", Path: "/tmp/proj"}}
+		}})
+		updated, _ := model.Update(keyPress("n", 0))
+		model = requireSidebarModel(t, updated)
+		if loaded != 1 || model.mode != ModeProject {
+			t.Fatalf("n shortcut loaded=%d mode=%s, want loaded once and project mode", loaded, model.mode)
+		}
+	})
+
+	t.Run("g creates git project", func(t *testing.T) {
+		called := 0
+		model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{CreateGitProject: func() bool { called++; return false }})
+		updated, _ := model.Update(keyPress("g", 0))
+		_ = requireSidebarModel(t, updated)
+		if called != 1 {
+			t.Fatalf("g shortcut called CreateGitProject %d times, want 1", called)
+		}
+	})
+
+	t.Run("a creates adhoc", func(t *testing.T) {
+		called := 0
+		model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{CreateAdhoc: func() bool { called++; return false }})
+		updated, _ := model.Update(keyPress("a", 0))
+		_ = requireSidebarModel(t, updated)
+		if called != 1 {
+			t.Fatalf("a shortcut called CreateAdhoc %d times, want 1", called)
+		}
+	})
+
+	t.Run("r renames selected session", func(t *testing.T) {
+		var renamed string
+		model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{RenameSession: func(name string) bool { renamed = name; return false }})
+		updated, _ := model.Update(keyPress("r", 0))
+		_ = requireSidebarModel(t, updated)
+		if renamed != "alpha" {
+			t.Fatalf("r shortcut renamed %q, want alpha", renamed)
+		}
+	})
+
+	t.Run("x starts kill confirmation", func(t *testing.T) {
+		model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{KillSession: func(string) bool { return true }})
+		updated, _ := model.Update(keyPress("x", 0))
+		model = requireSidebarModel(t, updated)
+		if model.mode != ModeConfirmKill || model.pendingKill != "alpha" {
+			t.Fatalf("x shortcut mode=%s pending=%q, want confirm kill alpha", model.mode, model.pendingKill)
+		}
+	})
+
+	t.Run("h toggles numeric sessions", func(t *testing.T) {
+		model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{SetShowNumericItems: func(show bool) bool { return show }})
+		updated, _ := model.Update(keyPress("h", 0))
+		model = requireSidebarModel(t, updated)
+		if !model.showNumeric {
+			t.Fatal("h shortcut did not toggle numeric sessions on")
+		}
+	})
+
+	t.Run("shift j and k reorder selected session", func(t *testing.T) {
+		var deltas []int
+		model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{ReorderSession: func(name string, delta int) bool {
+			if name != "alpha" {
+				t.Fatalf("reordered session = %q, want alpha", name)
+			}
+			deltas = append(deltas, delta)
+			return false
+		}})
+		updated, _ := model.Update(keyPress("J", tea.ModShift))
+		model = requireSidebarModel(t, updated)
+		updated, _ = model.Update(keyPress("K", tea.ModShift))
+		_ = requireSidebarModel(t, updated)
+		if fmt.Sprint(deltas) != "[1 -1]" {
+			t.Fatalf("J/K reorder deltas = %v, want [1 -1]", deltas)
+		}
+	})
+}
+
+func TestSidebarModelSingleKeyShortcutsRemainSearchInput(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+		LoadProjects:        func() []ProjectItem { t.Fatal("n should not open projects while searching"); return nil },
+		CreateGitProject:    func() bool { t.Fatal("g should not create git project while searching"); return false },
+		CreateAdhoc:         func() bool { t.Fatal("a should not create adhoc while searching"); return false },
+		RenameSession:       func(string) bool { t.Fatal("r should not rename while searching"); return false },
+		KillSession:         func(string) bool { t.Fatal("x should not kill while searching"); return false },
+		SetShowNumericItems: func(bool) bool { t.Fatal("h should not toggle numeric while searching"); return false },
+		ReorderSession:      func(string, int) bool { t.Fatal("J/K should not reorder while searching"); return false },
+	})
+	updated, _ := model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+	for _, key := range []tea.KeyPressMsg{keyPress("n", 0), keyPress("g", 0), keyPress("a", 0), keyPress("r", 0), keyPress("x", 0), keyPress("h", 0), keyPress("J", tea.ModShift), keyPress("K", tea.ModShift)} {
+		updated, _ = model.Update(key)
+		model = requireSidebarModel(t, updated)
+	}
+	if model.filter != "ngarxhJK" {
+		t.Fatalf("search filter = %q, want ngarxhJK", model.filter)
+	}
+}
+
 func TestSidebarModelF5ReloadsSessionsOnDemand(t *testing.T) {
 	reloaded := 0
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
@@ -528,7 +657,7 @@ func TestSidebarModelRenderOmitsHeaderAndMovesFilterAboveHelp(t *testing.T) {
 	model = requireSidebarModel(t, updated)
 	view = model.Render()
 	filterIndex := strings.Index(view, "filter: a")
-	helpIndex := strings.Index(view, "M-? keys")
+	helpIndex := strings.Index(view, "? keys")
 	if filterIndex < 0 || helpIndex < 0 || filterIndex > helpIndex {
 		t.Fatalf("filter should appear between list and help, view=%q", view)
 	}
@@ -630,7 +759,7 @@ func TestSidebarModelRenderOmitsMetadataSublineWhenUnavailable(t *testing.T) {
 func TestSidebarModelRenderShowsVersionInCollapsedHelp(t *testing.T) {
 	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "0.10.2"})
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, " v0.10.2  M-? keys") {
+	if !strings.Contains(view, " v0.10.2  ? keys") {
 		t.Fatalf("render should include versioned help hint: %q", view)
 	}
 }
@@ -638,7 +767,7 @@ func TestSidebarModelRenderShowsVersionInCollapsedHelp(t *testing.T) {
 func TestSidebarModelRenderShowsGreenUpdateIndicatorForDevBuilds(t *testing.T) {
 	model := NewSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "dev"})
 	view := model.Render()
-	if !strings.Contains(stripANSI(view), " dev"+updateAvailableSymbol+"  M-? keys") {
+	if !strings.Contains(stripANSI(view), " dev"+updateAvailableSymbol+"  ? keys") {
 		t.Fatalf("render should include update indicator attached to dev version: %q", view)
 	}
 	if !strings.Contains(view, "38;2;34;197;94") {
@@ -701,7 +830,7 @@ func TestSidebarModelInitChecksForUpdatesAsynchronously(t *testing.T) {
 	close(release)
 	updated, _ := model.Update(<-result)
 	model = requireSidebarModel(t, updated)
-	if !strings.Contains(stripANSI(model.Render()), " v0.10.2"+updateAvailableSymbol+"  M-? keys") {
+	if !strings.Contains(stripANSI(model.Render()), " v0.10.2"+updateAvailableSymbol+"  ? keys") {
 		t.Fatalf("render should include update indicator attached to version after async check completes: %q", model.Render())
 	}
 }
@@ -712,7 +841,7 @@ func TestSidebarModelRenderStylesVersionBadge(t *testing.T) {
 	if !strings.Contains(view, "48;2;51;65;85") {
 		t.Fatalf("render should give version badge a distinct background: %q", view)
 	}
-	if !strings.Contains(stripANSI(view), " dev"+updateAvailableSymbol+"  M-? keys") {
+	if !strings.Contains(stripANSI(view), " dev"+updateAvailableSymbol+"  ? keys") {
 		t.Fatalf("render should pad the version badge text and show dev update indicator: %q", view)
 	}
 	lastLine := lastRenderedLine(view)
@@ -730,7 +859,7 @@ func TestSidebarModelAnchorsCollapsedStatusBarToWindowBottom(t *testing.T) {
 	if len(lines) != 7 {
 		t.Fatalf("rendered height = %d, want 7; lines=%q", len(lines), lines)
 	}
-	if !strings.Contains(lines[len(lines)-1], " dev"+updateAvailableSymbol+"  M-? keys") {
+	if !strings.Contains(lines[len(lines)-1], " dev"+updateAvailableSymbol+"  ? keys") {
 		t.Fatalf("statusbar should be on the last line: %q", lines)
 	}
 }
@@ -746,7 +875,7 @@ func TestSidebarModelRecalculatesStatusBarPositionAfterResize(t *testing.T) {
 	if len(lines) != 5 {
 		t.Fatalf("rendered height after resize = %d, want 5; lines=%q", len(lines), lines)
 	}
-	if !strings.Contains(lines[len(lines)-1], " dev"+updateAvailableSymbol+"  M-? keys") {
+	if !strings.Contains(lines[len(lines)-1], " dev"+updateAvailableSymbol+"  ? keys") {
 		t.Fatalf("statusbar should remain on the last line after resize: %q", lines)
 	}
 }
@@ -1311,17 +1440,17 @@ func TestSidebarModelRenderAppliesSelectedStyleAcrossEntireRow(t *testing.T) {
 func TestSidebarModelHelpToggleHidesExpandedFooterByDefault(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
 	view := model.Render()
-	if !strings.Contains(view, "M-? keys") {
+	if !strings.Contains(view, "? keys") {
 		t.Fatalf("collapsed footer missing help hint: %q", view)
 	}
-	if strings.Contains(view, "M-n project") || strings.Contains(view, "M-r rename") {
+	if strings.Contains(view, "n project") || strings.Contains(view, "r rename") {
 		t.Fatalf("collapsed footer includes expanded help: %q", view)
 	}
 
 	updated, _ := model.Update(keyPress("?", tea.ModAlt))
 	model = requireSidebarModel(t, updated)
 	view = model.Render()
-	for _, want := range []string{"↵ choose", spaceKeySymbol + " pin", "M-n project", "M-a adhoc", "M-H nums", "M-J/K reorder", "M-r rename", "M-x kill", "M-? hide"} {
+	for _, want := range []string{"↵ choose", spaceKeySymbol + " pin", "n project", "a adhoc", "h nums", "J/K reorder", "r rename", "x kill", "? hide"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expanded footer missing %q in %q", want, view)
 		}

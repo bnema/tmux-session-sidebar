@@ -76,6 +76,20 @@ func InterpretKey(mode Mode, seq []byte) Intent {
 			return IntentMoveUp
 		case '/':
 			return IntentEnterSearch
+		case 'n':
+			return IntentCreateProject
+		case 'g':
+			return IntentCreateGitProject
+		case 'a':
+			return IntentCreateAdhoc
+		case 'r':
+			return IntentRename
+		case 'x':
+			return IntentKill
+		case 'h', 'H':
+			return IntentToggleNumeric
+		case '?':
+			return IntentToggleHelp
 		}
 	}
 	return IntentNone

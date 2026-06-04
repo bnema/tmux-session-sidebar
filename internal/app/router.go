@@ -111,6 +111,8 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 		return recordAgentHookEvent(ctx, route.Flags)
 	case "hooks/run":
 		return runHooksCommand(ctx, route.Args, route.Flags, stdout, stderr)
+	case "runtime/self-update":
+		return runSelfUpdate(ctx, stdout, stderr)
 	case "daemon/serve":
 		return serveSidebarDaemon(ctx, r.ipcServer, r.direct())
 	default:

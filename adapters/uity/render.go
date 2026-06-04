@@ -43,7 +43,7 @@ func RenderScreen(screen Screen) string {
 	}
 	fmt.Fprintf(&b, " nums:%s\n", numberedStatus(screen.ShowNumericSessions))
 	fmt.Fprintf(&b, "↵ switch  / search  Esc close  M-n project\n")
-	fmt.Fprintf(&b, "M-g git  M-a adhoc  M-r rename  M-x kill  M-h nums\n\n")
+	fmt.Fprintf(&b, "M-g git  M-a adhoc  M-r rename  M-x kill  M-h nums  ? help\n\n")
 	b.WriteString(Render(screen.Rows, screen.Capability))
 	return b.String()
 }
