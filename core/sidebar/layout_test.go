@@ -62,6 +62,16 @@ func TestFlattenBuildsTreeRowsAndContextualSlots(t *testing.T) {
 	assertRow(t, rows[5], TreeRow{Kind: RowKindSession, ItemID: "category:personal/session:notes", CategoryID: "category:personal", Session: "notes", Depth: 1, LastChild: true})
 }
 
+func TestFlattenAssignsContinuousContextualSlotsBeyondTen(t *testing.T) {
+	layout := Layout{Items: []LayoutItem{
+		CategoryItem("category:work", "Work", false, []string{"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"}),
+	}}
+	rows := Flatten(layout, Selection{Kind: RowKindCategory, CategoryID: "category:work"}, false)
+	if rows[10].Slot != 10 || rows[11].Slot != 11 || rows[12].Slot != 12 {
+		t.Fatalf("slots 10+ = %d/%d/%d, want 10/11/12", rows[10].Slot, rows[11].Slot, rows[12].Slot)
+	}
+}
+
 func TestActiveCategoryIDFallsBackToSessionLookup(t *testing.T) {
 	layout := Layout{Items: []LayoutItem{
 		CategoryItem("category:work", "Work", false, []string{"alpha"}),

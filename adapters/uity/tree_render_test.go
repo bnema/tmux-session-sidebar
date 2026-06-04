@@ -26,6 +26,21 @@ func TestTreeSidebarRenderUsesCompactSlotsTreeGuidesAndAttentionRight(t *testing
 	}
 }
 
+func TestTreeSidebarRenderDisplaysContinuousDoubleDigitSlots(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:kappa", CategoryID: "category:work", Session: SessionItem{Name: "kappa"}, Slot: 10, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:work/session:lambda", CategoryID: "category:work", Session: SessionItem{Name: "lambda"}, Slot: 11, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "├─ 10 "+inactiveMarkerSymbol+" kappa") || !strings.Contains(view, "└─ 11 "+inactiveMarkerSymbol+" lambda") {
+		t.Fatalf("tree render missing continuous double-digit slots: %q", view)
+	}
+	if strings.Contains(view, " 0 "+inactiveMarkerSymbol) {
+		t.Fatalf("tree render should not display slot 10 as 0: %q", view)
+	}
+}
+
 func TestTreeSidebarReloadsTreeAfterCreateSpacer(t *testing.T) {
 	reloaded := false
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{

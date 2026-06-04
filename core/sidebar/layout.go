@@ -225,9 +225,6 @@ func SlotMap(refs []SessionRef, showNumeric bool) map[string]int {
 		if name == "" || (!showNumeric && sessions.IsNumericName(name)) {
 			continue
 		}
-		if slot > 10 {
-			break
-		}
 		slots[name] = slot
 		slot++
 	}

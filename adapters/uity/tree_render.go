@@ -157,11 +157,8 @@ func treeSessionMarker(item SessionItem, selected bool) string {
 }
 
 func slotPrefix(slot int) string {
-	if slot <= 0 || slot > 10 {
+	if slot <= 0 {
 		return ""
-	}
-	if slot == 10 {
-		return "0 "
 	}
 	return fmt.Sprintf("%d ", slot)
 }
