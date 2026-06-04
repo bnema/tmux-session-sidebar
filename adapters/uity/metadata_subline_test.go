@@ -1,6 +1,9 @@
 package uity
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFormatMetadataSublineNerdGitStates(t *testing.T) {
 	got := FormatMetadataSubline(SessionMetadataSubline{
@@ -13,7 +16,7 @@ func TestFormatMetadataSublineNerdGitStates(t *testing.T) {
 		Untracked: 1,
 	}, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 80})
 
-	want := " 2 -1  1  4"
+	want := " feat/ui  2 -1  1  4"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}
@@ -30,13 +33,13 @@ func TestFormatMetadataSublineASCIIGitStates(t *testing.T) {
 		Untracked: 1,
 	}, MetadataSublineOptions{Icons: MetadataIconsASCII, Width: 80})
 
-	want := "2 -1 S1 U4"
+	want := "git feat/ui 2 -1 S1 U4"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}
 }
 
-func TestFormatMetadataSublineOmitsCleanGitStates(t *testing.T) {
+func TestFormatMetadataSublineShowsCleanGitBranch(t *testing.T) {
 	tests := []struct {
 		name  string
 		icons MetadataIconMode
@@ -47,21 +50,21 @@ func TestFormatMetadataSublineOmitsCleanGitStates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := FormatMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Branch: "main", Clean: true}, MetadataSublineOptions{Icons: tt.icons, Width: 80})
-			if got != "" {
-				t.Fatalf("FormatMetadataSubline() = %q, want empty", got)
+			if got == "" {
+				t.Fatalf("FormatMetadataSubline() = empty, want branch with clean state")
 			}
 		})
 	}
 }
 
-func TestFormatMetadataSublineOmitsCleanGitWithoutUpstream(t *testing.T) {
+func TestFormatMetadataSublineShowsCleanGitWithoutUpstream(t *testing.T) {
 	got := FormatMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Branch: "work", Clean: true, UpstreamMissing: true}, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 80})
-	if got != "" {
-		t.Fatalf("FormatMetadataSubline() = %q, want empty", got)
+	if got != " work clean" {
+		t.Fatalf("FormatMetadataSubline() = %q, want branch with clean state", got)
 	}
 }
 
-func TestFormatMetadataSublineOmitsBranchEvenWhenLong(t *testing.T) {
+func TestFormatMetadataSublineEllipsizesLongBranch(t *testing.T) {
 	meta := SessionMetadataSubline{
 		Kind:     MetadataKindGit,
 		Branch:   "feature/add-session-metadata-subline",
@@ -70,9 +73,10 @@ func TestFormatMetadataSublineOmitsBranchEvenWhenLong(t *testing.T) {
 	}
 
 	got := FormatMetadataSubline(meta, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 24})
-	want := " 2  3"
-	if got != want {
-		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
+	for _, want := range []string{" feature", "…", " 2", " 3"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("FormatMetadataSubline() = %q, want to contain %q", got, want)
+		}
 	}
 	if width := metadataDisplayWidth(got); width > 24 {
 		t.Fatalf("FormatMetadataSubline() width = %d, want <= 24 (%q)", width, got)

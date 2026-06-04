@@ -2,7 +2,6 @@ package uity
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"unicode"
 
@@ -11,7 +10,6 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 
 	"github.com/bnema/tmux-session-sidebar/core/config"
-	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
 
@@ -41,11 +39,34 @@ type ProjectItem struct {
 	Path string
 }
 
+type TreeRowKind string
+
+const (
+	TreeRowCategory  TreeRowKind = "category"
+	TreeRowSession   TreeRowKind = "session"
+	TreeRowSeparator TreeRowKind = "separator"
+	TreeRowSpacer    TreeRowKind = "spacer"
+)
+
+type TreeItem struct {
+	Kind           TreeRowKind
+	ID             string
+	CategoryID     string
+	CategoryName   string
+	CategoryOpen   bool
+	Session        SessionItem
+	Slot           int
+	Branch         string
+	MetadataPrefix string
+	ShowMetadata   bool
+}
+
 type Actions struct {
 	SwitchSession       func(string) bool
 	CreateProject       func(ProjectItem) bool
 	CreateGitProject    func() bool
 	CreateAdhoc         func() bool
+	CreateNamedSession  func(string) bool
 	RenameSession       func(string) bool
 	KillSession         func(string) bool
 	TogglePinnedSession func(string) bool
@@ -55,6 +76,12 @@ type Actions struct {
 	SelfUpdate          func() tea.Cmd
 	LoadProjects        func() []ProjectItem
 	ReloadSessions      func() []SessionItem
+	ReloadTreeItems     func() []TreeItem
+	CreateCategory      func(string) bool
+	RenameCategory      func(string, string) bool
+	CreateSpacer        func() bool
+	CreateSeparator     func() bool
+	MoveTreeItem        func(string, int) bool
 }
 
 type SelfUpdateFinishedMsg struct {
@@ -71,6 +98,8 @@ type SidebarOptions struct {
 
 type SidebarModel struct {
 	items                            []SessionItem
+	treeItems                        []TreeItem
+	treeMode                         bool
 	cursor                           int
 	mode                             Mode
 	filter                           string
@@ -81,6 +110,9 @@ type SidebarModel struct {
 	projectCursor                    int
 	projectFilter                    string
 	pendingKill                      string
+	renameCategoryID                 string
+	renameCategoryInput              string
+	createNamedInput                 string
 	actions                          Actions
 	version                          string
 	updateCheck                      updateCheckState
@@ -112,6 +144,14 @@ func NewSidebarModel(items []SessionItem, actions Actions) SidebarModel {
 	return NewSidebarModelWithOptions(items, actions, SidebarOptions{})
 }
 
+func NewTreeSidebarModelWithOptions(treeItems []TreeItem, actions Actions, options SidebarOptions) SidebarModel {
+	items := sessionItemsFromTree(treeItems)
+	model := NewSidebarModelWithOptions(items, actions, options)
+	model.treeItems = treeItems
+	model.treeMode = true
+	return model
+}
+
 func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options SidebarOptions) SidebarModel {
 	iconMode := options.MetadataIconMode
 	if iconMode == "" {
@@ -128,6 +168,7 @@ func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options Si
 	updateSpinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc"))
 	return SidebarModel{
 		items:                            items,
+		treeItems:                        SessionItemsToTree(items),
 		actions:                          actions,
 		mode:                             ModeBrowse,
 		showNumeric:                      options.ShowNumericItems,
@@ -202,6 +243,14 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.handlePinColorKey(msg)
 		return m.finishInteractiveUpdate()
 	}
+	if m.mode == ModeRenameCategory {
+		m.handleRenameCategoryKey(msg)
+		return m.finishInteractiveUpdate()
+	}
+	if m.mode == ModeCreateNamed {
+		m.handleCreateNamedKey(msg)
+		return m.finishInteractiveUpdate()
+	}
 	if m.mode == ModeBrowse {
 		if delta, ok := reorderKeyDelta(msg); ok {
 			m.reorderSelected(delta)
@@ -225,6 +274,16 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.showNumeric = next
+		if m.treeMode {
+			selectedID := ""
+			if item, ok := m.selectedTreeItem(); ok {
+				selectedID = item.ID
+			}
+			m.reloadTreeItems()
+			if selectedID != "" {
+				m.selectTreeItem(selectedID)
+			}
+		}
 		return m.finishInteractiveUpdate()
 	}
 	if pinnedToggleKey(msg) && m.mode == ModeBrowse {
@@ -249,6 +308,19 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.projectFilter = ""
 			return m.finishInteractiveUpdate()
 		}
+		if m.mode == ModeNewItem || m.mode == ModeCreateSession {
+			m.mode = ModeBrowse
+			m.projectCursor = 0
+			return m.finishInteractiveUpdate()
+		}
+		if m.mode == ModeCreateNamed {
+			m.clearCreateNamed()
+			return m.finishInteractiveUpdate()
+		}
+		if m.mode == ModeRenameCategory {
+			m.clearRenameCategory()
+			return m.finishInteractiveUpdate()
+		}
 		if m.mode == ModeConfirmKill {
 			m.clearKillConfirmation()
 			return m.finishInteractiveUpdate()
@@ -267,29 +339,51 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.createSelectedProject()
 			return m.finishInteractiveUpdate()
 		}
+		if m.mode == ModeNewItem {
+			m.createSelectedNewItem()
+			return m.finishInteractiveUpdate()
+		}
+		if m.mode == ModeCreateSession {
+			m.createSelectedSessionChoice()
+			return m.finishInteractiveUpdate()
+		}
 		if m.mode == ModeConfirmKill {
 			m.clearKillConfirmation()
 			return m.finishInteractiveUpdate()
 		}
 		m.switchSelected()
 	case "j", "down":
-		if m.mode == ModeProject {
+		if m.mode == ModeProject || m.mode == ModeNewItem || m.mode == ModeCreateSession {
 			m.moveProject(1)
 		} else {
 			m.move(1)
 		}
 	case "k", "up":
-		if m.mode == ModeProject {
+		if m.mode == ModeProject || m.mode == ModeNewItem || m.mode == ModeCreateSession {
 			m.moveProject(-1)
 		} else {
 			m.move(-1)
 		}
 	case "n":
 		if m.mode == ModeBrowse {
-			if m.actions.LoadProjects != nil {
-				m.projects = m.actions.LoadProjects()
+			if m.treeMode {
+				m.projects = newItemMenuItems()
+				m.mode = ModeNewItem
+			} else {
+				if m.actions.LoadProjects != nil {
+					m.projects = m.actions.LoadProjects()
+				}
+				m.mode = ModeProject
 			}
-			m.mode = ModeProject
+			m.projectCursor = 0
+			m.projectFilter = ""
+		} else {
+			m.appendPrintable(msg)
+		}
+	case "c":
+		if m.mode == ModeBrowse {
+			m.projects = createSessionMenuItems()
+			m.mode = ModeCreateSession
 			m.projectCursor = 0
 			m.projectFilter = ""
 		} else {
@@ -313,6 +407,14 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "r":
 		if m.mode == ModeBrowse {
+			if m.treeMode {
+				if item, ok := m.selectedTreeItem(); ok && item.Kind == TreeRowCategory {
+					m.mode = ModeRenameCategory
+					m.renameCategoryID = item.ID
+					m.renameCategoryInput = item.CategoryName
+				}
+				return m.finishInteractiveUpdate()
+			}
 			if item, ok := m.selectedSession(); ok && m.actions.RenameSession != nil && m.actions.RenameSession(item.Name) {
 				m.reloadSessions()
 			}
@@ -359,7 +461,7 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.mode == ModeSearch && m.filter != "" {
 			m.filter = trimLastRune(m.filter)
 		}
-		if m.mode == ModeProject && m.projectFilter != "" {
+		if (m.mode == ModeProject || m.mode == ModeCreateSession) && m.projectFilter != "" {
 			m.projectFilter = trimLastRune(m.projectFilter)
 		}
 	default:
@@ -373,6 +475,15 @@ func (m *SidebarModel) finishInteractiveUpdate() (tea.Model, tea.Cmd) {
 }
 
 func (m *SidebarModel) move(delta int) {
+	if m.treeMode {
+		visible := m.selectableTreeItems()
+		if len(visible) == 0 {
+			m.cursor = 0
+			return
+		}
+		m.cursor = (m.cursor + delta + len(visible)) % len(visible)
+		return
+	}
 	visible := m.visibleItems()
 	if len(visible) == 0 {
 		m.cursor = 0
@@ -391,6 +502,13 @@ func (m *SidebarModel) moveProject(delta int) {
 }
 
 func (m SidebarModel) selectedSession() (SessionItem, bool) {
+	if m.treeMode {
+		item, ok := m.selectedTreeItem()
+		if !ok || item.Kind != TreeRowSession {
+			return SessionItem{}, false
+		}
+		return item.Session, true
+	}
 	visible := m.visibleItems()
 	if len(visible) == 0 || m.cursor >= len(visible) {
 		return SessionItem{}, false
@@ -407,6 +525,15 @@ func (m *SidebarModel) switchSelected() {
 }
 
 func (m *SidebarModel) switchSlot(slot int) {
+	if m.treeMode {
+		for _, item := range m.visibleTreeItems() {
+			if item.Kind == TreeRowSession && item.Slot == slot {
+				m.switchItem(item.Session)
+				return
+			}
+		}
+		return
+	}
 	for _, item := range m.visibleItems() {
 		if item.Slot == slot {
 			m.switchItem(item)
@@ -442,6 +569,10 @@ func (m *SidebarModel) reloadSessionsSelectingCurrent() {
 }
 
 func (m *SidebarModel) reloadSessionsWithSelection(preservePreviousCurrent bool) {
+	if m.treeMode {
+		m.reloadTreeItems()
+		return
+	}
 	if m.actions.ReloadSessions == nil {
 		return
 	}
@@ -449,6 +580,7 @@ func (m *SidebarModel) reloadSessionsWithSelection(preservePreviousCurrent bool)
 	// a session switch, so the sidebar is ready to toggle back to where the user came from.
 	previous := m.currentSessionName()
 	m.items = m.actions.ReloadSessions()
+	m.treeItems = SessionItemsToTree(m.items)
 	current := m.currentSessionName()
 	if current == "" {
 		return
@@ -529,6 +661,15 @@ func (m *SidebarModel) togglePinnedSelected() {
 
 func (m *SidebarModel) reorderSelected(delta int) {
 	if m.mode != ModeBrowse && m.mode != ModeSearch {
+		return
+	}
+	if m.treeMode {
+		item, ok := m.selectedTreeItem()
+		if !ok || m.actions.MoveTreeItem == nil || !m.actions.MoveTreeItem(item.ID, delta) {
+			return
+		}
+		m.reloadTreeItems()
+		m.selectTreeItem(item.ID)
 		return
 	}
 	item, ok := m.selectedSession()
@@ -630,6 +771,8 @@ func (m SidebarModel) Render() string {
 	lines := []string{""}
 	if m.mode == ModeProject {
 		lines = append(lines, m.renderProjects(styles)...)
+	} else if m.treeMode {
+		lines = append(lines, m.renderTree(styles)...)
 	} else {
 		lines = append(lines, m.renderSessions(styles)...)
 	}
@@ -646,206 +789,16 @@ func (m SidebarModel) Render() string {
 	if m.mode == ModePinColor {
 		return m.pinColorPicker.RenderOverlay(content, m.width, m.height)
 	}
+	if m.mode == ModeNewItem {
+		return m.renderBottomSheet(content, BottomSheet{Title: "new layout item", Content: m.renderMenuContent(styles), Footer: "esc cancel  ↵ create", Height: 7})
+	}
+	if m.mode == ModeCreateSession {
+		return m.renderBottomSheet(content, BottomSheet{Title: "create session", Content: m.renderMenuContent(styles), Footer: "esc cancel  ↵ choose", Height: 8})
+	}
+	if m.mode == ModeCreateNamed {
+		return m.renderBottomSheet(content, BottomSheet{Title: "named session", Content: "> " + m.createNamedInput, Footer: "esc cancel  ↵ create", Height: 5})
+	}
 	return content
-}
-
-func padSidebarContentLines(lines []string) []string {
-	padded := make([]string, len(lines))
-	for i, line := range lines {
-		padded[i] = " " + line + " "
-	}
-	return padded
-}
-
-func (m SidebarModel) statusBarLines(styles sidebarStyles) []string {
-	if m.showHelp {
-		return []string{
-			styles.dim.Render("↵ choose  " + spaceKeySymbol + " pin  / filter  esc back"),
-			styles.dim.Render("n project  g git  a adhoc  u update"),
-			styles.dim.Render("J/K reorder  r rename  h nums"),
-			styles.dim.Render("x kill  ? hide"),
-		}
-	}
-	return []string{m.collapsedHelpLine(styles)}
-}
-
-func (m SidebarModel) collapsedHelpLine(styles sidebarStyles) string {
-	version := displayVersion(m.version)
-	if version == "" {
-		return styles.dim.Render("? keys")
-	}
-	if m.updateCheck.available {
-		return styles.versionBadge.Render(" "+version) + styles.updateIndicator.Render(updateAvailableSymbol+" ") + styles.dim.Render(" ? keys")
-	}
-	return styles.versionBadge.Render(" "+version+" ") + styles.dim.Render(" ? keys")
-}
-
-func displayVersion(version string) string {
-	version = strings.TrimSpace(version)
-	if version == "" || version == "dev" || strings.HasPrefix(version, "v") {
-		return version
-	}
-	return "v" + version
-}
-
-func newSidebarStyles() sidebarStyles {
-	return sidebarStyles{
-		accent:          lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc")),
-		dim:             lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
-		active:          lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
-		stale:           lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
-		selected:        lipgloss.NewStyle().Background(lipgloss.Color(selectedRowBackgroundRGB.Hex())).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
-		pinned:          lipgloss.NewStyle().Foreground(lipgloss.Color(defaultPinColor)).Bold(true),
-		versionBadge:    lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#e0f2fe")).Bold(true),
-		updateIndicator: lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#22c55e")).Bold(true),
-	}
-}
-
-func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
-	if item.Pinned {
-		return styles.pinned.Foreground(lipgloss.Color(pinColor(item)))
-	}
-	if item.Current {
-		return styles.active
-	}
-	if item.Heat == "" || item.Heat == string(heat.BucketStale) {
-		return styles.stale
-	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(heatColor(item.HeatIntensity)))
-}
-
-func sessionMarkerStyle(styles sidebarStyles, item SessionItem, animationStyle config.AgentAttentionAnimation, animationFrame int, background rgbColor) lipgloss.Style {
-	if item.Attention {
-		return animatedAttentionMarkerStyle(styles.active, animationStyle, animationFrame, background)
-	}
-	if item.Current {
-		return styles.active
-	}
-	if item.Pinned {
-		return styles.pinned.Foreground(lipgloss.Color(pinColor(item)))
-	}
-	return sessionRowStyle(styles, item)
-}
-
-func pinColor(item SessionItem) string {
-	if strings.TrimSpace(item.PinColor) == "" {
-		return defaultPinColor
-	}
-	return item.PinColor
-}
-
-func sessionMarker(item SessionItem, animationStyle config.AgentAttentionAnimation, animationFrame int) string {
-	if item.Attention {
-		return animatedAttentionMarkerSymbol(attentionMarkerSymbol, animationStyle, animationFrame)
-	}
-	if item.Current {
-		return currentMarkerSymbol
-	}
-	if item.Pinned {
-		return pinnedMarkerSymbol
-	}
-	return " "
-}
-
-func (m SidebarModel) statusLine() string {
-	switch m.mode {
-	case ModeSearch:
-		return "filter: " + m.filter
-	case ModeProject:
-		return "projects: " + m.projectFilter
-	case ModeConfirmKill:
-		return "confirm kill"
-	default:
-		return ""
-	}
-}
-
-func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
-	visible := m.visibleItems()
-	lines := make([]string, 0, len(visible)+1)
-	for i, item := range visible {
-		badge := "    "
-		if item.Slot > 0 {
-			badge = fmt.Sprintf("[%s] ", slotLabel(item.Slot))
-		}
-		lines = append(lines, m.renderSessionRow(styles, item, badge, i == m.cursor))
-		if subline := m.renderSessionMetadataSubline(styles, item, badge, i == m.cursor); subline != "" {
-			lines = append(lines, subline)
-		}
-	}
-	if len(visible) == 0 {
-		lines = append(lines, styles.dim.Render("no sessions"))
-	}
-	return lines
-}
-
-func (m SidebarModel) renderSessionRow(styles sidebarStyles, item SessionItem, badge string, selected bool) string {
-	if selected {
-		if item.Pinned || item.Attention {
-			marker := sessionMarkerStyle(styles, item, m.attentionAnimationStyle, m.attentionAnimationFrame, selectedRowBackgroundRGB).
-				Background(lipgloss.Color(selectedRowBackgroundRGB.Hex())).
-				Render(sessionMarker(item, m.attentionAnimationStyle, m.attentionAnimationFrame))
-			body := styles.selected.Render(fmt.Sprintf(" %s%s", badge, item.Name))
-			return marker + body
-		}
-		return styles.selected.Render(fmt.Sprintf("%s %s%s", sessionMarker(item, m.attentionAnimationStyle, m.attentionAnimationFrame), badge, item.Name))
-	}
-	marker := sessionMarkerStyle(styles, item, m.attentionAnimationStyle, m.attentionAnimationFrame, defaultAttentionBackgroundRGB).
-		Render(sessionMarker(item, m.attentionAnimationStyle, m.attentionAnimationFrame))
-	body := sessionRowStyle(styles, item).Render(fmt.Sprintf("%s%s", badge, item.Name))
-	return marker + " " + body
-}
-
-func (m SidebarModel) renderSessionMetadataSubline(_ sidebarStyles, item SessionItem, badge string, selected bool) string {
-	if item.Metadata.Kind == "" {
-		return ""
-	}
-	// Account for outer padding plus the metadata indent; fallback keeps rendering useful before the first WindowSizeMsg.
-	width := m.width - metadataSublinePaddingWidth
-	if width <= 0 {
-		width = metadataSublineFallbackWidth
-	}
-	subline := RenderMetadataSubline(item.Metadata, MetadataSublineRenderOptions{Icons: m.metadataIconMode, Width: width, Selected: selected, Active: metadataColorActive(item)})
-	if subline == "" {
-		return ""
-	}
-	indent := "  " + strings.Repeat(" ", metadataDisplayWidth(badge))
-	return indent + subline
-}
-
-func metadataColorActive(item SessionItem) bool {
-	return item.Current || (item.Heat != "" && item.Heat != string(heat.BucketStale))
-}
-
-func bestEffortMetadataIconMode() MetadataIconMode {
-	term := strings.ToLower(os.Getenv("TERM"))
-	localeValues := []string{}
-	for _, key := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
-		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-			localeValues = append(localeValues, value)
-		}
-	}
-	locale := strings.ToLower(strings.Join(localeValues, ":"))
-	if term == "dumb" || strings.Contains(locale, "ascii") || (!strings.Contains(locale, "utf") && locale != "") {
-		return MetadataIconsASCII
-	}
-	return MetadataIconsNerd
-}
-
-func (m SidebarModel) renderProjects(styles sidebarStyles) []string {
-	visible := m.visibleProjects()
-	lines := make([]string, 0, len(visible)+1)
-	for i, project := range visible {
-		row := fmt.Sprintf("  %-18s", project.Name)
-		if i == m.projectCursor {
-			row = styles.selected.Render(row)
-		}
-		lines = append(lines, row)
-	}
-	if len(visible) == 0 {
-		lines = append(lines, styles.dim.Render("no projects"))
-	}
-	return lines
 }
 
 func (m *SidebarModel) handleMouseWheel(msg tea.MouseWheelMsg) {
@@ -862,7 +815,7 @@ func (m *SidebarModel) moveWheel(delta int) {
 	if m.mode == ModeConfirmKill {
 		return
 	}
-	if m.mode == ModeProject {
+	if m.mode == ModeProject || m.mode == ModeNewItem || m.mode == ModeCreateSession {
 		m.moveProject(delta)
 		return
 	}

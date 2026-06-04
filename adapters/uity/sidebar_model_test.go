@@ -749,7 +749,7 @@ func TestSidebarModelRenderShowsMetadataSublineBelowSessionRow(t *testing.T) {
 	model = requireSidebarModel(t, updated)
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, " [1] alpha \n        2") {
+	if !strings.Contains(view, " [1] alpha \n        main  2") {
 		t.Fatalf("render should include metadata subline below session row: %q", view)
 	}
 }
@@ -1530,7 +1530,7 @@ func TestSidebarModelHelpToggleHidesExpandedFooterByDefault(t *testing.T) {
 	updated, _ := model.Update(keyPress("?", 0))
 	model = requireSidebarModel(t, updated)
 	view = model.Render()
-	for _, want := range []string{"↵ choose", spaceKeySymbol + " pin", "n project", "g git", "a adhoc", "h nums", "J/K reorder", "r rename", "x kill", "? hide"} {
+	for _, want := range []string{"↵ switch", "c create", "n layout", spaceKeySymbol + " pin", "h nums", "J/K move", "r rename", "x kill", "? hide"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expanded footer missing %q in %q", want, view)
 		}

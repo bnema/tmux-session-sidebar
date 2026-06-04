@@ -84,6 +84,7 @@ main() {
   set_default @session-sidebar-restore-sessions auto
   set_default @session-sidebar-continuum-grace-seconds 3
   set_default @session-sidebar-metadata-subline on
+  set_default @session-sidebar-metadata-inactive off
 
   local sidebar_key previous_key quoted_daemon_control quoted_runtime quoted_state_dir runtime_bin slot state_dir
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"

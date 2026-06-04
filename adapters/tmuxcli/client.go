@@ -124,6 +124,10 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
+	metadataInactive, err := c.option(ctx, "@session-sidebar-metadata-inactive")
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
 	return ports.ConfigSnapshot{
 		Loaded:                  true,
 		KeyBinding:              key,
@@ -143,6 +147,7 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		RestoreSessionsMode:     normalizeRestoreSessionsMode(restoreSessionsMode),
 		ContinuumGraceSeconds:   continuumGraceSeconds,
 		MetadataSublineEnabled:  metadataSubline == "" || parseTmuxBool(metadataSubline),
+		MetadataInactiveEnabled: parseTmuxBool(metadataInactive),
 	}, nil
 }
 

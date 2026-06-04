@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	MetadataNerdGit        = ""      // git branch glyph
 	MetadataNerdGitCompare = "\uf440" // nf-oct-diff; desired compare glyph in supported Nerd Fonts
 	MetadataNerdStaged     = "\uf45e" // nf-oct-checklist; staged/index changes
 	MetadataNerdWorktree   = "\uf448" // nf-oct-pencil; unstaged/untracked worktree changes
@@ -113,17 +114,55 @@ func formatGitMetadataSublineParts(meta SessionMetadataSubline, icons MetadataIc
 		gitDetailParts(meta, icons, gitDetailsSummary),
 		gitDetailParts(meta, icons, gitDetailsDivergence),
 	}
-	for _, parts := range partSets {
+	for _, details := range partSets {
+		parts := withBranchPart(meta, icons, width, details)
 		line := metadataPartText(parts)
 		if line != "" && metadataDisplayWidth(line) <= width {
 			return parts
 		}
 	}
+	branch := gitBranchPart(meta, icons, width)
+	if branch.Text != "" {
+		return []metadataPart{branch}
+	}
 	return nil
 }
 
+func withBranchPart(meta SessionMetadataSubline, icons MetadataIconMode, width int, details []metadataPart) []metadataPart {
+	branchBudget := width
+	if detailText := metadataPartText(details); detailText != "" {
+		branchBudget = width - metadataDisplayWidth(detailText) - 1
+	}
+	branch := gitBranchPart(meta, icons, branchBudget)
+	if branch.Text == "" {
+		return details
+	}
+	parts := make([]metadataPart, 0, len(details)+1)
+	parts = append(parts, branch)
+	parts = append(parts, details...)
+	return parts
+}
+
+func gitBranchPart(meta SessionMetadataSubline, icons MetadataIconMode, width int) metadataPart {
+	branch := strings.TrimSpace(meta.Branch)
+	if branch == "" {
+		return metadataPart{}
+	}
+	prefix := "git "
+	if icons == MetadataIconsNerd {
+		prefix = MetadataNerdGit + " "
+	}
+	if width < metadataDisplayWidth(prefix)+2 {
+		return metadataPart{}
+	}
+	return metadataPart{Text: fitMetadataText(prefix+branch, width, icons), Role: metadataPartBase}
+}
+
 func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level gitDetailLevel) []metadataPart {
-	if meta.Clean || (!meta.hasDivergence() && meta.stagedCount() == 0 && meta.unstagedCount() == 0 && meta.Conflicts == 0) {
+	if meta.Clean {
+		return []metadataPart{{Text: "clean", Role: metadataPartBase}}
+	}
+	if !meta.hasDivergence() && meta.stagedCount() == 0 && meta.unstagedCount() == 0 && meta.Conflicts == 0 {
 		return nil
 	}
 	parts := make([]metadataPart, 0, 8)
