@@ -26,7 +26,7 @@ func TestTreeSidebarRenderUsesCompactSlotsTreeGuidesAndAttentionRight(t *testing
 	}
 }
 
-func TestTreeSidebarReloadsTreeAfterNewItem(t *testing.T) {
+func TestTreeSidebarReloadsTreeAfterCreateSpacer(t *testing.T) {
 	reloaded := false
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{
 		CreateSpacer: func() bool { return true },
@@ -36,10 +36,12 @@ func TestTreeSidebarReloadsTreeAfterNewItem(t *testing.T) {
 		},
 	}, SidebarOptions{})
 
-	updated, _ := model.Update(keyPress("n", 0))
+	updated, _ := model.Update(keyPress("c", 0))
 	model = requireSidebarModel(t, updated)
-	updated, _ = model.Update(keyPress("j", 0))
-	model = requireSidebarModel(t, updated)
+	for range 6 {
+		updated, _ = model.Update(keyPress("j", 0))
+		model = requireSidebarModel(t, updated)
+	}
 	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = requireSidebarModel(t, updated)
 
@@ -211,32 +213,33 @@ func TestTreeSidebarFilterNoMatchShowsNoSessions(t *testing.T) {
 	}
 }
 
-func TestTreeSidebarNOpensNewItemMenu(t *testing.T) {
+func TestTreeSidebarNOpensQuickNamedSessionPrompt(t *testing.T) {
 	created := ""
+	reloaded := false
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
 		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Depth: 1, LastChild: true},
-	}, Actions{CreateCategory: func(name string) bool {
+	}, Actions{CreateNamedSession: func(name string) bool {
 		created = name
 		return true
+	}, ReloadTreeItems: func() []TreeItem {
+		reloaded = true
+		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}
 	}}, SidebarOptions{})
 
-	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 10})
+	updated, _ := model.Update(keyPress("n", 0))
 	model = requireSidebarModel(t, updated)
-	updated, _ = model.Update(keyPress("n", 0))
-	model = requireSidebarModel(t, updated)
-	view := stripANSI(model.Render())
-	if !strings.Contains(view, "new layout item") || !strings.Contains(view, "New category") || !strings.Contains(view, "New spacer") || !strings.Contains(view, "New separator") {
-		t.Fatalf("new item menu missing bottom sheet choices: %q", view)
+	if model.mode != ModeCreateNamed || !strings.Contains(stripANSI(model.Render()), "new session") {
+		t.Fatalf("n did not open quick named session prompt: mode=%s view=%q", model.mode, stripANSI(model.Render()))
 	}
-	if !strings.Contains(view, "alpha") {
-		t.Fatalf("bottom sheet should preserve sidebar content behind menu: %q", view)
+	for _, key := range []string{"s", "c", "r", "a", "t", "c", "h"} {
+		updated, _ = model.Update(keyPress(key, 0))
+		model = requireSidebarModel(t, updated)
 	}
-
 	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = requireSidebarModel(t, updated)
-	if created != "New category" || model.mode != ModeBrowse {
-		t.Fatalf("created=%q mode=%s, want default category creation and browse", created, model.mode)
+	if created != "scratch" || !reloaded || model.mode != ModeBrowse {
+		t.Fatalf("created=%q reloaded=%v mode=%s, want scratch reload browse", created, reloaded, model.mode)
 	}
 }
 
@@ -254,8 +257,10 @@ func TestTreeSidebarCOpensCreateSessionSheetAndRunsGitChoice(t *testing.T) {
 	updated, _ = model.Update(keyPress("c", 0))
 	model = requireSidebarModel(t, updated)
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "create session") || !strings.Contains(view, "Git repo") || !strings.Contains(view, "Current dir") || !strings.Contains(view, "Named") {
-		t.Fatalf("create session sheet missing choices: %q", view)
+	for _, want := range []string{"create", "Git repo", "Current dir", "Named", "Project", "Category", "Separator", "Empty space"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("create sheet missing %q: %q", want, view)
+		}
 	}
 	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = requireSidebarModel(t, updated)

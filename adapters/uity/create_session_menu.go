@@ -11,40 +11,67 @@ const (
 	createSessionCurrent = "current"
 	createSessionNamed   = "named"
 	createSessionProject = "project"
+	createCategory       = "category"
+	createSeparator      = "separator"
+	createSpacer         = "spacer"
 )
 
-func (m *SidebarModel) openCreateSessionMenu() {
-	m.openMenu(ModeCreateSession, []menuItem{
+func (m *SidebarModel) openCreateMenu() {
+	m.openMenu(ModeCreate, []menuItem{
 		{Label: "Git repo", Value: createSessionGit},
 		{Label: "Current dir", Value: createSessionCurrent},
 		{Label: "Named…", Value: createSessionNamed},
 		{Label: "Project…", Value: createSessionProject},
-	}, menuSpec{Title: "create session", Footer: "esc cancel  ↵ choose", EmptyLabel: "no items", Height: 8, Choose: chooseCreateSession})
+		{Label: "Category", Value: createCategory},
+		{Label: "Separator", Value: createSeparator},
+		{Label: "Empty space", Value: createSpacer},
+	}, menuSpec{Title: "create", Footer: "", EmptyLabel: "no items", Height: 10, Choose: chooseCreate})
 }
 
-func chooseCreateSession(m *SidebarModel, choice menuItem) {
-	success := false
+func (m *SidebarModel) startCreateNamed() {
+	m.menu = menuState{}
+	m.mode = ModeCreateNamed
+	m.createNamedInput = ""
+}
+
+func chooseCreate(m *SidebarModel, choice menuItem) {
+	sessionCreated := false
+	layoutChanged := false
 	switch choice.Value {
 	case createSessionGit:
 		if m.actions.CreateGitProject != nil {
-			success = m.actions.CreateGitProject()
+			sessionCreated = m.actions.CreateGitProject()
 		}
 	case createSessionCurrent:
 		if m.actions.CreateAdhoc != nil {
-			success = m.actions.CreateAdhoc()
+			sessionCreated = m.actions.CreateAdhoc()
 		}
 	case createSessionNamed:
-		m.menu = menuState{}
-		m.mode = ModeCreateNamed
-		m.createNamedInput = ""
+		m.startCreateNamed()
 		return
 	case createSessionProject:
 		m.openProjectMenu()
 		return
+	case createCategory:
+		if m.actions.CreateCategory != nil {
+			layoutChanged = m.actions.CreateCategory("New category")
+		}
+	case createSeparator:
+		if m.actions.CreateSeparator != nil {
+			layoutChanged = m.actions.CreateSeparator()
+		}
+	case createSpacer:
+		if m.actions.CreateSpacer != nil {
+			layoutChanged = m.actions.CreateSpacer()
+		}
 	}
-	if success {
+	if sessionCreated {
 		m.closeMenu()
 		m.reloadSessionsSelectingCurrent()
+	}
+	if layoutChanged {
+		m.closeMenu()
+		m.reloadTreeItems()
 	}
 }
 

@@ -7,14 +7,14 @@ import (
 
 func TestBottomSheetOverlaysFullWidthAtBottom(t *testing.T) {
 	base := strings.Join([]string{"one", "two", "three", "four", "five"}, "\n")
-	sheet := bottomSheet{Title: "create session", Content: "> Git repo\n  Current dir", Footer: "esc cancel", Height: 6}
+	sheet := bottomSheet{Title: "create", Content: "> Git repo\n  Current dir", Footer: "esc cancel", Height: 6}
 
 	view := stripANSI(sheet.RenderOverlay(base, 30, 8))
 	lines := strings.Split(view, "\n")
 	if len(lines) != 8 {
 		t.Fatalf("height = %d, want 8: %q", len(lines), view)
 	}
-	if !strings.Contains(view, "create session") || !strings.Contains(view, "Git repo") {
+	if !strings.Contains(view, "create") || !strings.Contains(view, "Git repo") {
 		t.Fatalf("overlay missing sheet content: %q", view)
 	}
 	if !strings.Contains(view, "one") {

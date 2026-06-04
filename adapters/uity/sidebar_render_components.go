@@ -28,7 +28,7 @@ func (m SidebarModel) helpSheetContent(styles sidebarStyles) string {
 		"",
 		styles.accent.Render("sessions"),
 		"c create    r rename    x kill",
-		"u update    n layout    J/K",
+		"u update    n new      J/K",
 	}
 	return strings.Join(lines, "\n")
 }
@@ -89,13 +89,13 @@ func (m SidebarModel) statusLine() string {
 	switch m.mode {
 	case ModeSearch:
 		return "filter: " + m.filter
-	case ModeProject, ModeNewItem, ModeCreateSession:
+	case ModeProject, ModeCreate:
 		if m.menu.Spec.Filterable && m.menu.Filter != "" {
 			return m.menu.Spec.Title + ": " + m.menu.Filter
 		}
 		return m.menu.Spec.Title
 	case ModeCreateNamed:
-		return "named session: " + m.createNamedInput
+		return "new session: " + m.createNamedInput
 	case ModeRenameCategory:
 		return "rename category: " + m.renameCategoryInput
 	case ModeConfirmKill:

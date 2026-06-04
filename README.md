@@ -122,8 +122,8 @@ Inside the sidebar:
 | `Enter` | Switch to the selected session or apply a filter |
 | `Esc` | Leave the current mode, or close the sidebar |
 | `F5` | Reload the sidebar tree |
-| `c` | Open the create-session sheet: git repo, current dir, named session, or project |
-| `n` | Open the layout sheet: category, spacer, or separator |
+| `c` | Open the create sheet: git repo, current dir, named session, project, category, separator, or empty space |
+| `n` | Create a new named session from a quick prompt |
 | `r` | Rename the selected category inline when not searching/filtering |
 | `x` | Kill the selected session after confirmation when not searching/filtering |
 | `u` | Start a runtime self-update in the background when not searching/filtering |

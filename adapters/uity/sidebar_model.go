@@ -13,7 +13,7 @@ import (
 
 const attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
 const currentMarkerSymbol = "\uf444"   // Nerd Font dot-fill glyph (U+F444 / nf-oct-dot_fill).
-const inactiveMarkerSymbol = "\uf4a8"  // Nerd Font small hollow dot glyph (nf-oct-dot).
+const inactiveMarkerSymbol = "\uf4c3"  // Nerd Font small hollow dot glyph (U+F4C3 / nf-oct-dot).
 const pinnedMarkerSymbol = "\uf08d"    // Nerd Font thumb-tack glyph (U+F08D / nf-fa-thumb_tack).
 const spaceKeySymbol = "\U000F1050"    // Nerd Font keyboard-space glyph (U+F1050 / nf-md-keyboard_space).
 const updateAvailableSymbol = "\uf062" // Nerd Font arrow-up glyph (U+F062 / nf-fa-arrow_up).
@@ -334,13 +334,13 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "n":
 		if m.mode == ModeBrowse {
-			m.openNewItemMenu()
+			m.startCreateNamed()
 		} else {
 			m.appendPrintable(msg)
 		}
 	case "c":
 		if m.mode == ModeBrowse {
-			m.openCreateSessionMenu()
+			m.openCreateMenu()
 		} else {
 			m.appendPrintable(msg)
 		}
@@ -637,7 +637,7 @@ func (m SidebarModel) Render() string {
 		return m.renderBottomSheet(content, bottomSheet{Title: m.menu.Spec.Title, Content: m.renderMenuRows(styles), Footer: m.menu.Spec.Footer, Height: m.menu.Spec.Height})
 	}
 	if m.mode == ModeCreateNamed {
-		return m.renderBottomSheet(content, bottomSheet{Title: "named session", Content: "> " + m.createNamedInput, Footer: "esc cancel  ↵ create", Height: 5})
+		return m.renderBottomSheet(content, bottomSheet{Title: "new session", Content: "> " + m.createNamedInput, Footer: "esc cancel  ↵ create", Height: 5})
 	}
 	if m.showHelp {
 		return m.renderBottomSheet(content, bottomSheet{Title: "keys", Content: m.helpSheetContent(styles), Footer: "esc close", Height: 14})

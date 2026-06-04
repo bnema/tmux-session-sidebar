@@ -78,20 +78,25 @@ func TestSidebarModelSearchFiltersTreeSessions(t *testing.T) {
 }
 
 func TestSidebarModelBrowseShortcuts(t *testing.T) {
-	t.Run("c opens create session menu", func(t *testing.T) {
+	t.Run("c opens create menu", func(t *testing.T) {
 		model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
-		updated, _ := model.Update(keyPress("c", 0))
+		updated, _ := model.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
 		model = requireSidebarModel(t, updated)
-		if model.mode != ModeCreateSession || !strings.Contains(stripANSI(model.Render()), "Git repo") {
-			t.Fatalf("create menu not opened: mode=%s view=%q", model.mode, stripANSI(model.Render()))
+		updated, _ = model.Update(keyPress("c", 0))
+		model = requireSidebarModel(t, updated)
+		view := stripANSI(model.Render())
+		for _, want := range []string{"create", "Git repo", "Current dir", "Named…", "Project…", "Category", "Separator", "Empty space"} {
+			if model.mode != ModeCreate || !strings.Contains(view, want) {
+				t.Fatalf("create menu missing %q: mode=%s view=%q", want, model.mode, view)
+			}
 		}
 	})
-	t.Run("n opens layout menu", func(t *testing.T) {
+	t.Run("n opens quick named session prompt", func(t *testing.T) {
 		model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
 		updated, _ := model.Update(keyPress("n", 0))
 		model = requireSidebarModel(t, updated)
-		if model.mode != ModeNewItem || !strings.Contains(stripANSI(model.Render()), "New category") {
-			t.Fatalf("layout menu not opened: mode=%s view=%q", model.mode, stripANSI(model.Render()))
+		if model.mode != ModeCreateNamed || !strings.Contains(stripANSI(model.Render()), "new session") {
+			t.Fatalf("new session prompt not opened: mode=%s view=%q", model.mode, stripANSI(model.Render()))
 		}
 	})
 	t.Run("x starts kill confirmation", func(t *testing.T) {
@@ -202,7 +207,7 @@ func TestSidebarModelHelpToggleOpensBottomSheetCheatSheet(t *testing.T) {
 	updated, _ = model.Update(keyPress("?", 0))
 	model = requireSidebarModel(t, updated)
 	view := stripANSI(model.Render())
-	for _, want := range []string{"keys", "navigation", "↵ switch", "c create", "n layout", spaceKeySymbol + " pin", "h nums", "J/K", "r rename", "x kill", "esc close"} {
+	for _, want := range []string{"keys", "navigation", "↵ switch", "c create", "n new", spaceKeySymbol + " pin", "h nums", "J/K", "r rename", "x kill", "esc close"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("help sheet missing %q in %q", want, view)
 		}

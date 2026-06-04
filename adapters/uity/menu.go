@@ -28,7 +28,7 @@ type menuState struct {
 }
 
 func (m SidebarModel) menuActive() bool {
-	return m.mode == ModeProject || m.mode == ModeNewItem || m.mode == ModeCreateSession
+	return m.mode == ModeProject || m.mode == ModeCreate
 }
 
 func (m *SidebarModel) openMenu(mode Mode, items []menuItem, spec menuSpec) {
