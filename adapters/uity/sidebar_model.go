@@ -226,239 +226,221 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	key := msg.Keystroke()
-	if key == "ctrl+c" {
+	if msg.Keystroke() == "ctrl+c" {
 		return m, tea.Quit
 	}
-	if m.mode == ModePinColor {
+	switch m.mode {
+	case ModePinColor:
 		m.handlePinColorKey(msg)
 		return m.finishInteractiveUpdate()
-	}
-	if m.mode == ModeRenameCategory {
+	case ModeRenameCategory:
 		m.handleRenameCategoryKey(msg)
 		return m.finishInteractiveUpdate()
-	}
-	if m.mode == ModeCreateNamed {
+	case ModeCreateNamed:
 		m.handleCreateNamedKey(msg)
 		return m.finishInteractiveUpdate()
-	}
-	if m.mode == ModeCreateCategory {
+	case ModeCreateCategory:
 		m.handleCreateCategoryKey(msg)
 		return m.finishInteractiveUpdate()
-	}
-	if m.mode == ModeBrowse {
-		if delta, ok := reorderKeyDelta(msg); ok {
-			m.reorderSelected(delta)
-			return m.finishInteractiveUpdate()
-		}
-	}
-	if m.mode == ModeConfirmKill {
-		if isKillConfirmYes(msg) {
-			m.confirmKill()
-			return m.finishInteractiveUpdate()
-		}
-		if isKillConfirmCancel(msg) {
-			m.clearKillConfirmation()
-			return m.finishInteractiveUpdate()
-		}
+	case ModeConfirmKill:
+		return m.updateKillConfirmationKey(msg)
+	case ModeConfirmDelete:
+		return m.updateDeleteConfirmationKey(msg)
+	case ModeSearch:
+		return m.updateSearchKey(msg)
+	case ModeCreate, ModeProject:
+		return m.updateMenuKey(msg)
+	case ModeBrowse:
+		return m.updateBrowseKey(msg)
+	default:
 		return m, nil
 	}
-	if m.mode == ModeConfirmDelete {
-		if isDeleteConfirmYes(msg) {
-			m.confirmDelete()
-			return m.finishInteractiveUpdate()
-		}
-		if isDeleteConfirmCancel(msg) {
-			m.clearDeleteConfirmation()
-			return m.finishInteractiveUpdate()
-		}
-		return m, nil
-	}
-	if m.mode == ModeBrowse {
-		if collapsed, ok := categoryCollapseKey(msg); ok && m.setSelectedCategoryCollapsed(collapsed) {
-			return m.finishInteractiveUpdate()
-		}
-	}
-	if m.mode == ModeBrowse && toggleNumericKey(msg) {
-		next := !m.showNumeric
-		if m.actions.SetShowNumericItems != nil && !m.actions.SetShowNumericItems(next) {
-			return m, nil
-		}
-		m.showNumeric = next
-		selectedID := ""
-		if item, ok := m.selectedTreeItem(); ok {
-			selectedID = item.ID
-		}
-		m.reloadTreeItems()
-		if selectedID != "" {
-			m.selectTreeItem(selectedID)
-		}
+}
+
+func (m SidebarModel) updateKillConfirmationKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if isKillConfirmYes(msg) {
+		m.confirmKill()
 		return m.finishInteractiveUpdate()
 	}
-	if pinnedToggleKey(msg) && m.mode == ModeBrowse {
-		m.handlePinKey()
+	if isKillConfirmCancel(msg) {
+		m.clearKillConfirmation()
 		return m.finishInteractiveUpdate()
 	}
-	if slot, ok := numericSlotKey(msg); ok && m.mode == ModeBrowse {
-		m.switchSlot(slot)
+	return m, nil
+}
+
+func (m SidebarModel) updateDeleteConfirmationKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if isDeleteConfirmYes(msg) {
+		m.confirmDelete()
 		return m.finishInteractiveUpdate()
 	}
-	switch key {
-	case "ctrl+c":
-		return m, tea.Quit
+	if isDeleteConfirmCancel(msg) {
+		m.clearDeleteConfirmation()
+		return m.finishInteractiveUpdate()
+	}
+	return m, nil
+}
+
+func (m SidebarModel) updateSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.Keystroke() {
 	case "esc":
-		if m.showHelp && m.mode == ModeBrowse {
-			m.showHelp = false
-			return m.finishInteractiveUpdate()
-		}
-		if m.mode == ModeSearch {
-			m.mode = ModeBrowse
-			m.filter = ""
-			return m.finishInteractiveUpdate()
-		}
-		if m.menuActive() {
-			m.closeMenu()
-			return m.finishInteractiveUpdate()
-		}
-		if m.mode == ModeCreateNamed {
-			m.clearCreateNamed()
-			return m.finishInteractiveUpdate()
-		}
-		if m.mode == ModeCreateCategory {
-			m.clearCreateCategory()
-			return m.finishInteractiveUpdate()
-		}
-		if m.mode == ModeRenameCategory {
-			m.clearRenameCategory()
-			return m.finishInteractiveUpdate()
-		}
-		if m.mode == ModeConfirmKill {
-			m.clearKillConfirmation()
-			return m.finishInteractiveUpdate()
-		}
-		return m, tea.Quit
-	case "/":
-		if m.mode == ModeBrowse {
-			m.mode = ModeSearch
-		}
+		m.mode = ModeBrowse
+		m.filter = ""
 	case "enter":
-		if m.mode == ModeSearch {
-			m.mode = ModeBrowse
-			return m.finishInteractiveUpdate()
-		}
-		if m.menuActive() {
-			m.chooseMenuItem()
-			return m.finishInteractiveUpdate()
-		}
-		if m.mode == ModeConfirmKill {
-			m.clearKillConfirmation()
-			return m.finishInteractiveUpdate()
-		}
-		m.switchSelected()
+		m.mode = ModeBrowse
 	case "j", "down":
-		if m.menuActive() {
-			m.moveMenu(1)
-		} else {
-			m.move(1)
-		}
+		m.move(1)
 	case "k", "up":
-		if m.menuActive() {
-			m.moveMenu(-1)
-		} else {
-			m.move(-1)
-		}
-	case "n":
-		if m.mode == ModeBrowse {
-			m.startCreateNamed()
-		} else {
-			m.appendPrintable(msg)
-		}
-	case "c":
-		if m.mode == ModeBrowse {
-			m.openCreateMenu()
-		} else {
-			m.appendPrintable(msg)
-		}
-	case "g":
-		if m.mode == ModeBrowse {
-			if m.actions.CreateGitProject != nil && m.actions.CreateGitProject(m.selectedCategoryID()) {
-				m.reloadSessionsSelectingCurrent()
-			}
-		} else {
-			m.appendPrintable(msg)
-		}
-	case "a":
-		if m.mode == ModeBrowse {
-			if m.actions.CreateAdhoc != nil && m.actions.CreateAdhoc(m.selectedCategoryID()) {
-				m.reloadSessionsSelectingCurrent()
-			}
-		} else {
-			m.appendPrintable(msg)
-		}
-	case "r":
-		if m.mode == ModeBrowse {
-			if item, ok := m.selectedTreeItem(); ok && item.Kind == TreeRowCategory {
-				m.mode = ModeRenameCategory
-				m.renameCategoryID = item.ID
-				m.renameCategoryInput = item.CategoryName
-			}
-			return m.finishInteractiveUpdate()
-		} else {
-			m.appendPrintable(msg)
-		}
-	case "x":
-		if m.mode == ModeBrowse {
-			if item, ok := m.selectedSession(); ok && m.actions.KillSession != nil {
-				m.mode = ModeConfirmKill
-				m.pendingKill = item.Name
-				m.message = "Kill " + item.Name + "? y/N"
-			}
-		} else {
-			m.appendPrintable(msg)
-		}
-	case "d":
-		if m.mode == ModeBrowse {
-			m.openDeleteConfirmation()
-		} else {
-			m.appendPrintable(msg)
-		}
-	case "y":
-		m.appendPrintable(msg)
-	case "f5":
-		m.reloadSessions()
-	case "u":
-		if m.mode == ModeBrowse {
-			if m.updateInProgress {
-				return m, nil
-			}
-			if m.actions.SelfUpdate != nil {
-				updateCmd := m.actions.SelfUpdate()
-				if updateCmd != nil {
-					m.updateInProgress = true
-					m.message = "Updating runtime " + m.updateSpinner.View()
-					return m, tea.Batch(updateCmd, m.updateSpinner.Tick)
-				}
-			}
-		} else {
-			m.appendPrintable(msg)
-		}
-	case "?":
-		if m.mode == ModeBrowse {
-			m.showHelp = !m.showHelp
-		} else {
-			m.appendPrintable(msg)
-		}
+		m.move(-1)
 	case "backspace":
-		if m.mode == ModeSearch && m.filter != "" {
+		if m.filter != "" {
 			m.filter = trimLastRune(m.filter)
 		}
-		if m.menuActive() {
-			m.backspaceMenuFilter()
-		}
+	case "f5":
+		m.reloadSessions()
+	case "/":
+		// Preserve previous behavior: slash opens search from browse, but is not added to the search text.
 	default:
 		m.appendPrintable(msg)
 	}
 	return m.finishInteractiveUpdate()
+}
+
+func (m SidebarModel) updateMenuKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.Keystroke() {
+	case "esc":
+		m.closeMenu()
+	case "enter":
+		m.chooseMenuItem()
+	case "j", "down":
+		m.moveMenu(1)
+	case "k", "up":
+		m.moveMenu(-1)
+	case "backspace":
+		m.backspaceMenuFilter()
+	case "f5":
+		m.reloadSessions()
+	case "/":
+		// Preserve previous behavior: slash is ignored while a menu is open.
+	default:
+		m.appendPrintable(msg)
+	}
+	return m.finishInteractiveUpdate()
+}
+
+func (m SidebarModel) updateBrowseKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if delta, ok := reorderKeyDelta(msg); ok {
+		m.reorderSelected(delta)
+		return m.finishInteractiveUpdate()
+	}
+	if collapsed, ok := categoryCollapseKey(msg); ok && m.setSelectedCategoryCollapsed(collapsed) {
+		return m.finishInteractiveUpdate()
+	}
+	if toggleNumericKey(msg) {
+		return m.toggleNumericItems()
+	}
+	if pinnedToggleKey(msg) {
+		m.handlePinKey()
+		return m.finishInteractiveUpdate()
+	}
+	if slot, ok := numericSlotKey(msg); ok {
+		m.switchSlot(slot)
+		return m.finishInteractiveUpdate()
+	}
+
+	switch msg.Keystroke() {
+	case "esc":
+		if m.showHelp {
+			m.showHelp = false
+			return m.finishInteractiveUpdate()
+		}
+		return m, tea.Quit
+	case "/":
+		m.mode = ModeSearch
+	case "enter":
+		m.switchSelected()
+	case "j", "down":
+		m.move(1)
+	case "k", "up":
+		m.move(-1)
+	case "n":
+		m.startCreateNamed()
+	case "c":
+		m.openCreateMenu()
+	case "g":
+		if m.actions.CreateGitProject != nil && m.actions.CreateGitProject(m.selectedCategoryID()) {
+			m.reloadSessionsSelectingCurrent()
+		}
+	case "a":
+		if m.actions.CreateAdhoc != nil && m.actions.CreateAdhoc(m.selectedCategoryID()) {
+			m.reloadSessionsSelectingCurrent()
+		}
+	case "r":
+		m.startRenameSelectedCategory()
+		return m.finishInteractiveUpdate()
+	case "x":
+		m.openKillConfirmation()
+	case "d":
+		m.openDeleteConfirmation()
+	case "f5":
+		m.reloadSessions()
+	case "u":
+		return m.startSelfUpdate()
+	case "?":
+		m.showHelp = !m.showHelp
+	default:
+		m.appendPrintable(msg)
+	}
+	return m.finishInteractiveUpdate()
+}
+
+func (m *SidebarModel) toggleNumericItems() (tea.Model, tea.Cmd) {
+	next := !m.showNumeric
+	if m.actions.SetShowNumericItems != nil && !m.actions.SetShowNumericItems(next) {
+		return *m, nil
+	}
+	m.showNumeric = next
+	selectedID := ""
+	if item, ok := m.selectedTreeItem(); ok {
+		selectedID = item.ID
+	}
+	m.reloadTreeItems()
+	if selectedID != "" {
+		m.selectTreeItem(selectedID)
+	}
+	return m.finishInteractiveUpdate()
+}
+
+func (m *SidebarModel) startRenameSelectedCategory() {
+	if item, ok := m.selectedTreeItem(); ok && item.Kind == TreeRowCategory {
+		m.mode = ModeRenameCategory
+		m.renameCategoryID = item.ID
+		m.renameCategoryInput = item.CategoryName
+	}
+}
+
+func (m *SidebarModel) openKillConfirmation() {
+	if item, ok := m.selectedSession(); ok && m.actions.KillSession != nil {
+		m.mode = ModeConfirmKill
+		m.pendingKill = item.Name
+		m.message = "Kill " + item.Name + "? y/N"
+	}
+}
+
+func (m *SidebarModel) startSelfUpdate() (tea.Model, tea.Cmd) {
+	if m.updateInProgress {
+		return *m, nil
+	}
+	if m.actions.SelfUpdate == nil {
+		return m.finishInteractiveUpdate()
+	}
+	updateCmd := m.actions.SelfUpdate()
+	if updateCmd == nil {
+		return m.finishInteractiveUpdate()
+	}
+	m.updateInProgress = true
+	m.message = "Updating runtime " + m.updateSpinner.View()
+	return *m, tea.Batch(updateCmd, m.updateSpinner.Tick)
 }
 
 func (m *SidebarModel) finishInteractiveUpdate() (tea.Model, tea.Cmd) {
