@@ -131,7 +131,7 @@ func defaultSidebarConfig() ports.ConfigSnapshot {
 		RestoreSessionsMode:     "auto",
 		ContinuumGraceSeconds:   3,
 		MetadataSublineEnabled:  true,
-		MetadataInactiveEnabled: false,
+		MetadataInactiveEnabled: true,
 	}
 }
 

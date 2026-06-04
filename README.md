@@ -64,7 +64,7 @@ set -g @session-sidebar-auto-sort-recent 'off'
 set -g @session-sidebar-restore-sessions 'auto'
 set -g @session-sidebar-continuum-grace-seconds '3'
 set -g @session-sidebar-metadata-subline 'on'
-set -g @session-sidebar-metadata-inactive 'off'
+set -g @session-sidebar-metadata-inactive 'on'
 ```
 
 | Option | Default | Used for |
@@ -82,7 +82,7 @@ set -g @session-sidebar-metadata-inactive 'off'
 | `@session-sidebar-restore-sessions` | `auto` | Lightweight missing-session restore mode: `auto` skips during tmux-continuum startup restore, `on` always restores, `off` never restores |
 | `@session-sidebar-continuum-grace-seconds` | `3` | Extra seconds added to `@continuum-restore-max-delay` before lightweight restore resumes in `auto` mode |
 | `@session-sidebar-metadata-subline` | `on` | Show an event-driven metadata line under each session when available; set to `off` to keep one-line session rows |
-| `@session-sidebar-metadata-inactive` | `off` | Show metadata lines outside the active category in the category tree layout |
+| `@session-sidebar-metadata-inactive` | `on` | Show metadata lines outside the active category in the category tree layout; set to `off` for active-category-only metadata |
 
 Persistent state and the daemon IPC socket are stored under `${XDG_STATE_HOME:-~/.local/state}/tmux-session-sidebar`.
 
@@ -163,7 +163,7 @@ On first run after upgrading, the runtime creates a `Default` category and place
 
 `n` opens the layout bottom sheet for adding a category, spacer, or separator. `J` / `K` moves the selected layout item. Moving a session past the top or bottom of a category moves it into the neighboring category.
 
-Metadata is shown for the active category by default. Set `@session-sidebar-metadata-inactive` to `on` to show metadata lines in inactive categories too.
+Metadata is shown in all categories by default. Set `@session-sidebar-metadata-inactive` to `off` to show metadata only in the active category.
 
 ## Session actions
 

@@ -147,7 +147,7 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		RestoreSessionsMode:     normalizeRestoreSessionsMode(restoreSessionsMode),
 		ContinuumGraceSeconds:   continuumGraceSeconds,
 		MetadataSublineEnabled:  metadataSubline == "" || parseTmuxBool(metadataSubline),
-		MetadataInactiveEnabled: parseTmuxBool(metadataInactive),
+		MetadataInactiveEnabled: metadataInactive == "" || parseTmuxBool(metadataInactive),
 	}, nil
 }
 

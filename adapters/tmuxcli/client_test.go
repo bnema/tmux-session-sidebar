@@ -326,9 +326,9 @@ func TestLoadConfigParsesMetadataInactiveBool(t *testing.T) {
 		raw  string
 		want bool
 	}{
-		"default empty is off": {raw: "\n", want: false},
-		"on":                   {raw: "on\n", want: true},
-		"off":                  {raw: "off\n", want: false},
+		"default empty is on": {raw: "\n", want: true},
+		"on":                  {raw: "on\n", want: true},
+		"off":                 {raw: "off\n", want: false},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {

@@ -183,6 +183,34 @@ func TestLoadSidebarTreeItemsShowsLoadingMetadataLineWhileGitIsPending(t *testin
 	}
 }
 
+func TestLoadSidebarTreeItemsShowsInactiveMetadataByDefault(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, sidebarTreeFakeTmuxScript(""))
+	ctx := context.Background()
+	store := sessionOrderStore()
+	state, err := store.Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	state.Metadata = map[string]ports.GitStatus{"beta": {Branch: "dev", Clean: true}}
+	state.SidebarLayout = &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+		{ID: "category:work", Kind: string(sidebarlayout.ItemKindCategory), Category: &ports.SidebarLayoutCategory{ID: "category:work", Name: "Work", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}}}},
+		{ID: "category:default", Kind: string(sidebarlayout.ItemKindCategory), Category: &ports.SidebarLayoutCategory{ID: "category:default", Name: "Default", Sessions: []ports.SidebarLayoutSessionRef{{Name: "beta"}}}},
+	}}
+	if err := store.Save(ctx, "tmux", state); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	items, err := loadSidebarTreeItemsWithConfig(ctx, loadSidebarConfig(ctx))
+	if err != nil {
+		t.Fatalf("loadSidebarTreeItemsWithConfig error: %v", err)
+	}
+	beta, found := findSidebarTreeSession(items, "beta")
+	if !found || beta.Session.Metadata.Branch != "dev" || !beta.ShowMetadata {
+		t.Fatalf("beta tree item = %#v found=%v, want inactive metadata shown by default", beta, found)
+	}
+}
+
 func TestLoadSidebarTreeItemsCanShowInactiveMetadata(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	installFakeTmux(t, sidebarTreeFakeTmuxScript("on"))
