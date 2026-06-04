@@ -89,7 +89,7 @@ func (m SidebarModel) statusLine() string {
 	switch m.mode {
 	case ModeSearch:
 		return "filter: " + m.filter
-	case ModeProject, ModeCreate:
+	case ModeProject:
 		if m.menu.Spec.Filterable && m.menu.Filter != "" {
 			return m.menu.Spec.Title + ": " + m.menu.Filter
 		}

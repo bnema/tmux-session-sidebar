@@ -80,12 +80,12 @@ func TestSidebarModelSearchFiltersTreeSessions(t *testing.T) {
 func TestSidebarModelBrowseShortcuts(t *testing.T) {
 	t.Run("c opens create menu", func(t *testing.T) {
 		model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
-		updated, _ := model.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
+		updated, _ := model.Update(tea.WindowSizeMsg{Width: 40, Height: 16})
 		model = requireSidebarModel(t, updated)
 		updated, _ = model.Update(keyPress("c", 0))
 		model = requireSidebarModel(t, updated)
 		view := stripANSI(model.Render())
-		for _, want := range []string{"create", "Git repo", "Current dir", "Named…", "Project…", "Category", "Separator", "Empty space"} {
+		for _, want := range []string{"create", "sessions", "repo session", "from current git repo", "current directory", "named session", "project picker", "layout", "category", "separator", "empty space"} {
 			if model.mode != ModeCreate || !strings.Contains(view, want) {
 				t.Fatalf("create menu missing %q: mode=%s view=%q", want, model.mode, view)
 			}

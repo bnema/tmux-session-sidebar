@@ -251,13 +251,13 @@ func TestTreeSidebarCOpensCreateSessionSheetAndRunsGitChoice(t *testing.T) {
 	}, ReloadTreeItems: func() []TreeItem {
 		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}
 	}}, SidebarOptions{})
-	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 10})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 16})
 	model = requireSidebarModel(t, updated)
 
 	updated, _ = model.Update(keyPress("c", 0))
 	model = requireSidebarModel(t, updated)
 	view := stripANSI(model.Render())
-	for _, want := range []string{"create", "Git repo", "Current dir", "Named", "Project", "Category", "Separator", "Empty space"} {
+	for _, want := range []string{"create", "sessions", "repo session", "from current git repo", "current directory", "named session", "project picker", "layout", "category", "separator", "empty space"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("create sheet missing %q: %q", want, view)
 		}
@@ -266,6 +266,25 @@ func TestTreeSidebarCOpensCreateSessionSheetAndRunsGitChoice(t *testing.T) {
 	model = requireSidebarModel(t, updated)
 	if !called || model.mode != ModeBrowse {
 		t.Fatalf("git choice called=%v mode=%s, want called and browse", called, model.mode)
+	}
+}
+
+func TestTreeSidebarCreateMenuNavigationSkipsGroupHeaders(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{}, SidebarOptions{})
+	updated, _ := model.Update(keyPress("c", 0))
+	model = requireSidebarModel(t, updated)
+	if model.menu.Cursor != 1 || model.menu.Items[model.menu.Cursor].Label != "repo session" {
+		t.Fatalf("initial create cursor = %d/%q, want first selectable repo session", model.menu.Cursor, model.menu.Items[model.menu.Cursor].Label)
+	}
+	updated, _ = model.Update(keyPress("k", 0))
+	model = requireSidebarModel(t, updated)
+	if model.menu.Items[model.menu.Cursor].Header || model.menu.Items[model.menu.Cursor].Label != "empty space" {
+		t.Fatalf("cursor after wrap-up = %d/%q header=%v, want empty space", model.menu.Cursor, model.menu.Items[model.menu.Cursor].Label, model.menu.Items[model.menu.Cursor].Header)
+	}
+	updated, _ = model.Update(keyPress("j", 0))
+	model = requireSidebarModel(t, updated)
+	if model.menu.Items[model.menu.Cursor].Header || model.menu.Items[model.menu.Cursor].Label != "repo session" {
+		t.Fatalf("cursor after wrap-down = %d/%q header=%v, want repo session", model.menu.Cursor, model.menu.Items[model.menu.Cursor].Label, model.menu.Items[model.menu.Cursor].Header)
 	}
 }
 

@@ -18,14 +18,16 @@ const (
 
 func (m *SidebarModel) openCreateMenu() {
 	m.openMenu(ModeCreate, []menuItem{
-		{Label: "Git repo", Value: createSessionGit},
-		{Label: "Current dir", Value: createSessionCurrent},
-		{Label: "Named…", Value: createSessionNamed},
-		{Label: "Project…", Value: createSessionProject},
-		{Label: "Category", Value: createCategory},
-		{Label: "Separator", Value: createSeparator},
-		{Label: "Empty space", Value: createSpacer},
-	}, menuSpec{Title: "create", Footer: "", EmptyLabel: "no items", Height: 10, Choose: chooseCreate})
+		{Label: "sessions", Header: true},
+		{Label: "repo session", Description: "from current git repo", Value: createSessionGit},
+		{Label: "current directory", Description: "from pane path", Value: createSessionCurrent},
+		{Label: "named session", Description: "prompt for name", Value: createSessionNamed},
+		{Label: "project picker", Description: "choose project", Value: createSessionProject},
+		{Label: "layout", Header: true},
+		{Label: "category", Description: "group sessions", Value: createCategory},
+		{Label: "separator", Description: "visual divider", Value: createSeparator},
+		{Label: "empty space", Description: "breathing room", Value: createSpacer},
+	}, menuSpec{Title: "create", Footer: "↵ create   esc close", EmptyLabel: "no items", Height: 14, Choose: chooseCreate})
 }
 
 func (m *SidebarModel) startCreateNamed() {
