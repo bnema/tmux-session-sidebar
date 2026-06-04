@@ -56,7 +56,14 @@ func (m *SidebarModel) selectTreeItem(id string) {
 }
 
 func (m SidebarModel) selectableTreeItems() []TreeItem {
-	return m.visibleTreeItems()
+	items := m.visibleTreeItems()
+	selectable := make([]TreeItem, 0, len(items))
+	for _, item := range items {
+		if isSelectableTreeKind(item.Kind) {
+			selectable = append(selectable, item)
+		}
+	}
+	return selectable
 }
 
 func isSelectableTreeKind(kind TreeRowKind) bool {

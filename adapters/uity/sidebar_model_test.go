@@ -1048,6 +1048,31 @@ func TestSidebarModelCreateActionsSelectNewCurrentSession(t *testing.T) {
 	}
 }
 
+func TestSidebarModelProjectFilterClampsMenuCursor(t *testing.T) {
+	model := NewSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{LoadProjects: func() []ProjectItem {
+		return []ProjectItem{{Name: "alpha", Path: "/alpha"}, {Name: "beta", Path: "/beta"}, {Name: "gamma", Path: "/gamma"}}
+	}})
+	updated, _ := model.Update(keyPress("n", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("j", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("j", 0))
+	model = requireSidebarModel(t, updated)
+	if model.menu.Cursor != 2 {
+		t.Fatalf("setup cursor = %d, want 2", model.menu.Cursor)
+	}
+
+	updated, _ = model.Update(keyPress("b", 0))
+	model = requireSidebarModel(t, updated)
+	if model.menu.Cursor != 0 {
+		t.Fatalf("filtered cursor = %d, want clamped to 0", model.menu.Cursor)
+	}
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "> beta") {
+		t.Fatalf("filtered menu should highlight beta: %q", view)
+	}
+}
+
 func TestSidebarModelChoosingProjectReturnsToBrowseMode(t *testing.T) {
 	model := NewSidebarModel([]SessionItem{{Name: "alpha", Current: true}}, Actions{
 		LoadProjects: func() []ProjectItem {

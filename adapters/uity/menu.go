@@ -73,12 +73,25 @@ func (m *SidebarModel) chooseMenuItem() {
 func (m *SidebarModel) backspaceMenuFilter() {
 	if m.menu.Spec.Filterable && m.menu.Filter != "" {
 		m.menu.Filter = trimLastRune(m.menu.Filter)
+		m.clampMenuCursor()
 	}
 }
 
 func (m *SidebarModel) appendMenuFilter(key string) {
 	if m.menu.Spec.Filterable {
 		m.menu.Filter += key
+		m.clampMenuCursor()
+	}
+}
+
+func (m *SidebarModel) clampMenuCursor() {
+	visible := m.visibleMenuItems()
+	if len(visible) == 0 {
+		m.menu.Cursor = 0
+		return
+	}
+	if m.menu.Cursor >= len(visible) {
+		m.menu.Cursor = len(visible) - 1
 	}
 }
 
