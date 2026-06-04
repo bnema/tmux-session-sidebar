@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 var selfUpdateExecutablePath = os.Executable
@@ -42,10 +43,26 @@ func selfUpdatePaths() (string, string, error) {
 
 func runUpdater(ctx context.Context, pluginDir string, updaterPath string, stdout io.Writer, stderr io.Writer) error {
 	cmd := exec.CommandContext(ctx, updaterPath)
-	cmd.Dir = pluginDir
+	configureSelfUpdateCommand(cmd, pluginDir)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	return cmd.Run()
+}
+
+func configureSelfUpdateCommand(cmd *exec.Cmd, pluginDir string) {
+	cmd.Dir = pluginDir
+	cmd.Env = selfUpdateEnvironment(os.Environ())
+}
+
+func selfUpdateEnvironment(environ []string) []string {
+	filtered := make([]string, 0, len(environ)+1)
+	for _, entry := range environ {
+		if strings.HasPrefix(entry, "TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=") || strings.HasPrefix(entry, "TMUX_SESSION_SIDEBAR_RELEASE_ONLY=") {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return append(filtered, "TMUX_SESSION_SIDEBAR_RELEASE_ONLY=1")
 }
 
 func startSelfUpdateBackground() error {
@@ -54,7 +71,7 @@ func startSelfUpdateBackground() error {
 		return err
 	}
 	cmd := exec.Command(updaterPath)
-	cmd.Dir = pluginDir
+	configureSelfUpdateCommand(cmd, pluginDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	return cmd.Start()

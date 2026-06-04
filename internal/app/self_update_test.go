@@ -27,6 +27,8 @@ func TestSelfUpdateRunsPluginUpdaterBesideRuntimeBinary(t *testing.T) {
 	logPath := filepath.Join(pluginDir, "update.log")
 	updater := "#!/usr/bin/env bash\n" +
 		"printf 'cwd=%s\\n' \"$PWD\" >>\"$TEST_UPDATE_LOG\"\n" +
+		"printf 'release_only=%s\\n' \"${TMUX_SESSION_SIDEBAR_RELEASE_ONLY:-}\" >>\"$TEST_UPDATE_LOG\"\n" +
+		"printf 'build_from_source=%s\\n' \"${TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE:-}\" >>\"$TEST_UPDATE_LOG\"\n" +
 		"printf 'stdout from updater\\n'\n" +
 		"printf 'stderr from updater\\n' >&2\n"
 	if err := os.WriteFile(updaterPath, []byte(updater), 0o755); err != nil {
@@ -47,8 +49,9 @@ func TestSelfUpdateRunsPluginUpdaterBesideRuntimeBinary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read updater log: %v", err)
 	}
-	if got := strings.TrimSpace(string(logBytes)); got != "cwd="+pluginDir {
-		t.Fatalf("updater cwd log = %q, want cwd=%s", got, pluginDir)
+	wantLog := "cwd=" + pluginDir + "\nrelease_only=1\nbuild_from_source="
+	if got := strings.TrimSpace(string(logBytes)); got != wantLog {
+		t.Fatalf("updater log = %q, want %q", got, wantLog)
 	}
 	if !strings.Contains(stdout.String(), "stdout from updater") {
 		t.Fatalf("stdout missing updater output: %q", stdout.String())
