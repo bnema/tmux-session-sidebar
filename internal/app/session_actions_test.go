@@ -477,6 +477,7 @@ func TestRenameSessionMovesMetadataAndRollsBackOnFailure(t *testing.T) {
 		name         string
 		newName      string
 		renameExit   string
+		liveSessions string
 		initial      map[string]ports.SessionMetadata
 		initialOrder []string
 		wantSessions map[string]ports.SessionMetadata
@@ -510,6 +511,7 @@ func TestRenameSessionMovesMetadataAndRollsBackOnFailure(t *testing.T) {
 				"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"},
 				"beta":  {Kind: "project", ProjectPath: "/tmp/beta", LastPath: "/tmp/beta"},
 			},
+			liveSessions: "$1\talpha\t1\t1\n$2\tbeta\t1\t0\n$3\tgamma\t1\t0\n",
 			initialOrder: []string{"alpha", "beta", "gamma"},
 			wantSessions: map[string]ports.SessionMetadata{
 				"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"},
@@ -542,10 +544,14 @@ func TestRenameSessionMovesMetadataAndRollsBackOnFailure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			seedPersistedState(t, tt.initial, tt.initialOrder)
+			liveSessions := tt.liveSessions
+			if liveSessions == "" {
+				liveSessions = "$1\talpha\t1\t1\n$2\tgamma\t1\t0\n"
+			}
 			installFakeTmux(t, `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
 case "$1" in
-  list-sessions) printf '$1\talpha\t1\t1\n$2\tgamma\t1\t0\n' ;;
+  list-sessions) printf '`+liveSessions+`' ;;
   rename-session) exit `+tt.renameExit+` ;;
 esac
 `)

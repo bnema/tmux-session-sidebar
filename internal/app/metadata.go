@@ -25,10 +25,6 @@ func sessionMetadataPath(metadata ports.SessionMetadata) (string, bool) {
 	return "", false
 }
 
-func gitStatusEqual(left, right ports.GitStatus) bool {
-	return left == right
-}
-
 func gitMetadataEqual(left, right map[string]ports.GitStatus) bool {
 	if len(left) != len(right) {
 		return false

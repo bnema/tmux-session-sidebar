@@ -256,13 +256,17 @@ func withRenamedPersistedSessionDuringTmuxAction(ctx context.Context, oldName st
 			return err
 		}
 		if err := action(); err != nil {
-			if !liveSessionExists(ctx, newName) {
+			if !renameLiveStateSucceeded(ctx, oldName, newName) {
 				rollbackLoadedSidebarState(ctx, store, previous)
 			}
 			return err
 		}
 		return nil
 	})
+}
+
+func renameLiveStateSucceeded(ctx context.Context, oldName string, newName string) bool {
+	return !liveSessionExists(ctx, oldName) && liveSessionExists(ctx, newName)
 }
 
 func withRemovedPersistedSessionDuringTmuxAction(ctx context.Context, name string, action func() error) error {

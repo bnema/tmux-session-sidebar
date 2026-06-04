@@ -98,6 +98,46 @@ func TestMetadataServiceCaptureAndRefreshPublishesReadyMetadataBeforeSlowRepoFin
 	}
 }
 
+func TestMetadataServiceCapturePersistsStaleMetadataPruneWhenLiveStatusUnchanged(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{
+		"alpha": {RepoRoot: "/repo", Branch: "main", Modified: 1},
+		"gone":  {RepoRoot: "/gone", Branch: "old", Modified: 9},
+	}}}
+	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
+	git := metadataFakeGit{statuses: map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "main", Modified: 1}}}
+	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
+
+	changed, err := svc.Capture(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	if err != nil {
+		t.Fatalf("Capture error: %v", err)
+	}
+	if !changed {
+		t.Fatal("Capture changed = false, want stale metadata prune to be persisted")
+	}
+	store.mu.Lock()
+	_, ok := store.state.Metadata["gone"]
+	state := cloneMetadataState(store.state)
+	store.mu.Unlock()
+	if ok {
+		t.Fatalf("stale metadata survived: %#v", state.Metadata)
+	}
+}
+
+func TestMetadataServiceCaptureAndRefreshCleansNotifierOnSaveError(t *testing.T) {
+	store := &metadataFailingSaveStore{metadataFakeStore: metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}}
+	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
+	git := metadataFakeGit{statuses: map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "main", Modified: 1}}}
+	refresher := &metadataFakeRefresher{}
+	svc := MetadataService{Store: store, Tmux: tmux, Git: git, Refresher: refresher, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
+
+	if err := svc.CaptureAndRefresh(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true}); err == nil {
+		t.Fatal("CaptureAndRefresh error = nil, want save error")
+	}
+	if refresher.callCount() != 0 {
+		t.Fatalf("refresh calls = %d, want none when save failed before signaling", refresher.callCount())
+	}
+}
+
 func TestMetadataServiceCaptureAndRefreshDoesNotBlockResultDrainOnSlowRefresh(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}
 	tmux := metadataFakeTmux{
@@ -190,6 +230,14 @@ func cloneMetadataState(state ports.PersistedState) ports.PersistedState {
 		maps.Copy(cloned.Metadata, state.Metadata)
 	}
 	return cloned
+}
+
+type metadataFailingSaveStore struct {
+	metadataFakeStore
+}
+
+func (s *metadataFailingSaveStore) Save(ctx context.Context, serverID string, state ports.PersistedState) error {
+	return errors.New("save failed")
 }
 
 func metadataDirectLock(store ports.StateStorePort) func(context.Context, func(ports.StateStorePort) error) error {

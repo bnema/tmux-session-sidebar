@@ -77,6 +77,33 @@ func TestSidebarModelSearchFiltersTreeSessions(t *testing.T) {
 	}
 }
 
+func TestSidebarModelSearchFiltersToMatchingSessionsAndAncestorCategories(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Depth: 1},
+		{Kind: TreeRowSeparator, ID: "separator:1"},
+		{Kind: TreeRowCategory, ID: "category:other", CategoryID: "category:other", CategoryName: "Other", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:other/session:beta", CategoryID: "category:other", Session: SessionItem{Name: "beta"}, Depth: 1},
+	}, Actions{}, SidebarOptions{})
+	updated, _ := model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+	for _, r := range "bet" {
+		updated, _ = model.Update(keyPress(string(r), 0))
+		model = requireSidebarModel(t, updated)
+	}
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "Work") || strings.Contains(view, "alpha") || strings.Contains(view, "──") {
+		t.Fatalf("filter rendered unrelated rows: %q", view)
+	}
+	if !strings.Contains(view, "Other") || !strings.Contains(view, "beta") {
+		t.Fatalf("filter missing matching session and ancestor: %q", view)
+	}
+	visible := model.selectableTreeItems()
+	if len(visible) != 2 || visible[0].ID != "category:other" || visible[1].Session.Name != "beta" {
+		t.Fatalf("selectable filtered items = %#v, want other category and beta only", visible)
+	}
+}
+
 func TestSidebarModelBrowseShortcuts(t *testing.T) {
 	t.Run("c opens create menu", func(t *testing.T) {
 		model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})

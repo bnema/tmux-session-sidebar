@@ -111,7 +111,7 @@ func (s *MetadataService) Capture(ctx context.Context, cfg ports.ConfigSnapshot)
 	return s.capture(ctx, cfg, nil)
 }
 
-func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot, onChange func() error) (bool, error) {
+func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot, onChange func() error) (changed bool, err error) {
 	if !cfg.MetadataSublineEnabled {
 		return false, nil
 	}
@@ -159,7 +159,6 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 		sessionPaths[session.Name] = path
 	}
 
-	changed := false
 	var changedMu sync.Mutex
 	markChanged := func() {
 		changedMu.Lock()
@@ -167,6 +166,11 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 		changedMu.Unlock()
 	}
 	notifier := newMetadataChangeNotifier(onChange)
+	defer func() {
+		if closeErr := notifier.CloseAndWait(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
 	refreshIfChanged := func(didChange bool) error {
 		if !didChange {
 			return nil
@@ -185,6 +189,8 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 		}
 	}
 
+	captureCtx, cancelCapture := context.WithCancel(ctx)
+	defer cancelCapture()
 	jobs := make(chan metadataCaptureJob)
 	results := make(chan metadataCaptureResult)
 	var wg sync.WaitGroup
@@ -192,12 +198,12 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 	for range workerCount {
 		wg.Go(func() {
 			for job := range jobs {
-				statusCtx, cancel := context.WithTimeout(ctx, gitStatusTimeout)
+				statusCtx, cancel := context.WithTimeout(captureCtx, gitStatusTimeout)
 				status, err := s.Git.Status(statusCtx, job.Path)
 				cancel()
 				select {
 				case results <- metadataCaptureResult{SessionName: job.SessionName, Path: job.Path, Status: status, Err: err}:
-				case <-ctx.Done():
+				case <-captureCtx.Done():
 					return
 				}
 			}
@@ -208,7 +214,7 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 		for sessionName, path := range sessionPaths {
 			select {
 			case jobs <- metadataCaptureJob{SessionName: sessionName, Path: path}:
-			case <-ctx.Done():
+			case <-captureCtx.Done():
 				return
 			}
 		}
@@ -242,12 +248,6 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		if closeErr := notifier.CloseAndWait(); closeErr != nil {
-			return changed, errors.Join(err, closeErr)
-		}
-		return changed, err
-	}
-	if err := notifier.CloseAndWait(); err != nil {
 		return changed, err
 	}
 	return changed, nil
@@ -326,10 +326,10 @@ func (s *MetadataService) saveMetadataStatus(ctx context.Context, lockStore func
 			return err
 		}
 		next := liveMetadata(latest.Metadata, liveNames)
-		if current, ok := next[sessionName]; ok && gitStatusEqual(current, status) {
+		next[sessionName] = status
+		if gitMetadataEqual(latest.Metadata, next) {
 			return nil
 		}
-		next[sessionName] = status
 		latest.Metadata = next
 		changed = true
 		return store.Save(ctx, "tmux", latest)
@@ -345,10 +345,10 @@ func (s *MetadataService) saveMetadataDelete(ctx context.Context, lockStore func
 			return err
 		}
 		next := liveMetadata(latest.Metadata, liveNames)
-		if _, ok := next[sessionName]; !ok {
+		delete(next, sessionName)
+		if gitMetadataEqual(latest.Metadata, next) {
 			return nil
 		}
-		delete(next, sessionName)
 		latest.Metadata = next
 		changed = true
 		return store.Save(ctx, "tmux", latest)

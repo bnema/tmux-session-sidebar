@@ -79,19 +79,24 @@ func (m SidebarModel) visibleTreeItems() []TreeItem {
 		return m.treeItems
 	}
 	filter := strings.ToLower(m.filter)
-	matchedSessions := 0
 	filtered := make([]TreeItem, 0, len(m.treeItems))
+	var category TreeItem
+	categoryAdded := false
 	for _, item := range m.treeItems {
-		if item.Kind == TreeRowSession {
-			if filter != "" && !strings.Contains(strings.ToLower(item.Session.Name), filter) {
+		switch item.Kind {
+		case TreeRowCategory:
+			category = item
+			categoryAdded = false
+		case TreeRowSession:
+			if !strings.Contains(strings.ToLower(item.Session.Name), filter) {
 				continue
 			}
-			matchedSessions++
+			if category.ID != "" && !categoryAdded {
+				filtered = append(filtered, category)
+				categoryAdded = true
+			}
+			filtered = append(filtered, item)
 		}
-		filtered = append(filtered, item)
-	}
-	if matchedSessions == 0 {
-		return nil
 	}
 	return filtered
 }
