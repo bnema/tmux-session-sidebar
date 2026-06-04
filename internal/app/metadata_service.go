@@ -166,14 +166,13 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 		changed = true
 		changedMu.Unlock()
 	}
+	notifier := newMetadataChangeNotifier(onChange)
 	refreshIfChanged := func(didChange bool) error {
 		if !didChange {
 			return nil
 		}
 		markChanged()
-		if onChange != nil {
-			return onChange()
-		}
+		notifier.Signal()
 		return nil
 	}
 	for name := range terminalDeletes {
@@ -243,9 +242,68 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 		}
 	}
 	if err := ctx.Err(); err != nil {
+		if closeErr := notifier.CloseAndWait(); closeErr != nil {
+			return changed, errors.Join(err, closeErr)
+		}
+		return changed, err
+	}
+	if err := notifier.CloseAndWait(); err != nil {
 		return changed, err
 	}
 	return changed, nil
+}
+
+func newMetadataChangeNotifier(onChange func() error) *metadataChangeNotifier {
+	notifier := &metadataChangeNotifier{onChange: onChange}
+	if onChange == nil {
+		return notifier
+	}
+	notifier.signals = make(chan struct{}, 1)
+	notifier.done = make(chan struct{})
+	go notifier.run()
+	return notifier
+}
+
+type metadataChangeNotifier struct {
+	onChange func() error
+	signals  chan struct{}
+	done     chan struct{}
+	errMu    sync.Mutex
+	err      error
+}
+
+func (n *metadataChangeNotifier) Signal() {
+	if n == nil || n.onChange == nil {
+		return
+	}
+	select {
+	case n.signals <- struct{}{}:
+	default:
+	}
+}
+
+func (n *metadataChangeNotifier) CloseAndWait() error {
+	if n == nil || n.onChange == nil {
+		return nil
+	}
+	close(n.signals)
+	<-n.done
+	n.errMu.Lock()
+	defer n.errMu.Unlock()
+	return n.err
+}
+
+func (n *metadataChangeNotifier) run() {
+	defer close(n.done)
+	for range n.signals {
+		if err := n.onChange(); err != nil {
+			n.errMu.Lock()
+			if n.err == nil {
+				n.err = err
+			}
+			n.errMu.Unlock()
+		}
+	}
 }
 
 type metadataCaptureJob struct {

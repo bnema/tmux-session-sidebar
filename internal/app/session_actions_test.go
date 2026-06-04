@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/ports"
 	"github.com/bnema/tmux-session-sidebar/ports/mocks"
 )
@@ -775,6 +776,91 @@ esac
 	}
 	if want := []string{"beta"}; !reflect.DeepEqual(state.SessionOrder, want) {
 		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
+	}
+}
+
+func TestConfirmedKillSwitchesTargetClientAwayBeforeKillingCurrentSession(t *testing.T) {
+	ctx := t.Context()
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions)
+    printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n'
+    ;;
+  display-message)
+    printf 'alpha\n'
+    ;;
+esac
+`)
+	if err := switchAwayBeforeKillingCurrentSession(ctx, "/dev/pts/99", "alpha", []sessions.View{{Name: "alpha", Visible: true}, {Name: "beta", Visible: true}}, nil); err != nil {
+		t.Fatalf("switchAwayBeforeKillingCurrentSession returned error: %v", err)
+	}
+	log := readLog(t, logPath)
+	if !strings.Contains(log, "display-message -p -t /dev/pts/99 #{session_name}") {
+		t.Fatalf("expected client-targeted current session lookup, log=%q", log)
+	}
+	if !strings.Contains(log, "switch-client -c /dev/pts/99 -t =beta:") {
+		t.Fatalf("expected client switch to beta, log=%q", log)
+	}
+}
+
+func TestConfirmedKillDoesNotSwitchWhenTargetIsNotCurrent(t *testing.T) {
+	ctx := t.Context()
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions)
+    printf '$1\talpha\t1\t0\n$2\tbeta\t1\t1\n'
+    ;;
+  display-message)
+    printf 'beta\n'
+    ;;
+esac
+`)
+	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar.EXPECT().RefreshSidebar(ctx, "").Return(nil)
+	if err := killSession(ctx, map[string]string{"session": "alpha", "confirmed": "yes"}, sidebar); err != nil {
+		t.Fatalf("killSession returned error: %v", err)
+	}
+	log := readLog(t, logPath)
+	if strings.Contains(log, "switch-client") {
+		t.Fatalf("did not expect switch for non-current target, log=%q", log)
+	}
+	if !strings.Contains(log, "kill-session -t =alpha") {
+		t.Fatalf("expected alpha kill, log=%q", log)
+	}
+}
+
+func TestReplacementSessionForKillPrefersVisibleSessions(t *testing.T) {
+	existing := []sessions.View{
+		{Name: "alpha", Visible: true},
+		{Name: "hidden", Visible: false},
+		{Name: "visible", Visible: true},
+	}
+	if got := replacementSessionForKill(existing, "alpha"); got != "visible" {
+		t.Fatalf("replacementSessionForKill = %q, want visible", got)
+	}
+	if got := replacementSessionForKill(existing[:2], "alpha"); got != "hidden" {
+		t.Fatalf("replacementSessionForKill fallback = %q, want hidden", got)
+	}
+	if got := replacementSessionForKill(existing[:1], "alpha"); got != "" {
+		t.Fatalf("replacementSessionForKill no replacement = %q, want empty", got)
+	}
+}
+
+func TestCurrentSessionForKillFallsBackToExistingCurrent(t *testing.T) {
+	ctx := t.Context()
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  display-message) exit 1 ;;
+esac
+`)
+	got, err := currentSessionForKill(ctx, "", []sessions.View{{Name: "alpha"}, {Name: "beta", Current: true}})
+	if err != nil {
+		t.Fatalf("currentSessionForKill returned error: %v", err)
+	}
+	if got != "beta" {
+		t.Fatalf("currentSessionForKill = %q, want beta", got)
 	}
 }
 

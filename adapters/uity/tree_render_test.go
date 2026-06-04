@@ -286,6 +286,76 @@ func TestTreeSidebarCOpensCreateSessionSheetAndRunsGitChoice(t *testing.T) {
 	}
 }
 
+func TestTreeSidebarCreateMenuUsesSelectedSessionCategory(t *testing.T) {
+	tests := []struct {
+		name string
+		keys []string
+		want string
+	}{
+		{name: "git repo", keys: []string{"j"}, want: "git"},
+		{name: "pwd", keys: []string{"j", "j"}, want: "pwd"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotAction, gotCategoryID string
+			model := NewTreeSidebarModelWithOptions([]TreeItem{
+				{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+				{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Slot: 1, Depth: 1},
+			}, Actions{
+				CreateGitProject: func(categoryID string) bool {
+					gotAction, gotCategoryID = "git", categoryID
+					return true
+				},
+				CreateAdhoc: func(categoryID string) bool {
+					gotAction, gotCategoryID = "pwd", categoryID
+					return true
+				},
+				ReloadTreeItems: func() []TreeItem { return nil },
+			}, SidebarOptions{})
+			updated, _ := model.Update(keyPress("j", 0))
+			model = requireSidebarModel(t, updated)
+			updated, _ = model.Update(keyPress("c", 0))
+			model = requireSidebarModel(t, updated)
+			for _, key := range tt.keys {
+				updated, _ = model.Update(keyPress(key, 0))
+				model = requireSidebarModel(t, updated)
+			}
+			updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+			model = requireSidebarModel(t, updated)
+			if gotAction != tt.want || gotCategoryID != "category:work" {
+				t.Fatalf("action/category = %q/%q, want %q/category:work", gotAction, gotCategoryID, tt.want)
+			}
+		})
+	}
+}
+
+func TestTreeSidebarCreateNamedSessionUsesSelectedSessionCategory(t *testing.T) {
+	var gotName, gotCategoryID string
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Slot: 1, Depth: 1},
+	}, Actions{CreateNamedSession: func(name string, categoryID string) bool {
+		gotName = name
+		gotCategoryID = categoryID
+		return true
+	}, ReloadTreeItems: func() []TreeItem { return nil }}, SidebarOptions{})
+	updated, _ := model.Update(keyPress("j", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("c", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	for _, r := range "scratch" {
+		updated, _ = model.Update(keyPress(string(r), 0))
+		model = requireSidebarModel(t, updated)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	if gotName != "scratch" || gotCategoryID != "category:work" {
+		t.Fatalf("CreateNamedSession = %q/%q, want scratch/category:work", gotName, gotCategoryID)
+	}
+}
+
 func TestTreeSidebarCreateMenuNavigationSkipsGroupHeaders(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{}, SidebarOptions{})
 	updated, _ := model.Update(keyPress("c", 0))

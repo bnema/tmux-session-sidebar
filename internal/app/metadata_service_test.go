@@ -98,6 +98,42 @@ func TestMetadataServiceCaptureAndRefreshPublishesReadyMetadataBeforeSlowRepoFin
 	}
 }
 
+func TestMetadataServiceCaptureAndRefreshDoesNotBlockResultDrainOnSlowRefresh(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}
+	tmux := metadataFakeTmux{
+		sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}},
+		paths:    map[string]string{"alpha": "/alpha", "beta": "/beta", "gamma": "/gamma"},
+	}
+	git := metadataFakeGit{statuses: map[string]ports.GitStatus{
+		"/alpha": {RepoRoot: "/alpha", Branch: "main", Modified: 1},
+		"/beta":  {RepoRoot: "/beta", Branch: "dev", Modified: 2},
+		"/gamma": {RepoRoot: "/gamma", Branch: "feat", Modified: 3},
+	}}
+	refresher := newBlockingMetadataRefresher()
+	svc := MetadataService{Store: store, Tmux: tmux, Git: git, Refresher: refresher, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 3}
+
+	done := make(chan error, 1)
+	go func() { done <- svc.CaptureAndRefresh(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true}) }()
+
+	eventually(t, func() bool {
+		return refresher.callCount() >= 1 && store.metadata("alpha").Modified == 1 && store.metadata("beta").Modified == 2 && store.metadata("gamma").Modified == 3
+	})
+	select {
+	case err := <-done:
+		t.Fatalf("CaptureAndRefresh finished before blocked refresh was released: %v", err)
+	default:
+	}
+	refresher.release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("CaptureAndRefresh error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("CaptureAndRefresh did not finish after refresh release")
+	}
+}
+
 func TestMetadataServiceCaptureAndRefreshRefreshesOnlyWhenMetadataChanges(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}
 	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
@@ -270,6 +306,33 @@ func (r *metadataFakeRefresher) RefreshAllSidebars(ctx context.Context) error {
 
 func (r *metadataFakeRefresher) callCount() int64 {
 	return r.calls.Load()
+}
+
+type blockingMetadataRefresher struct {
+	calls    atomic.Int64
+	releaseC chan struct{}
+}
+
+func newBlockingMetadataRefresher() *blockingMetadataRefresher {
+	return &blockingMetadataRefresher{releaseC: make(chan struct{})}
+}
+
+func (r *blockingMetadataRefresher) RefreshAllSidebars(ctx context.Context) error {
+	r.calls.Add(1)
+	select {
+	case <-r.releaseC:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (r *blockingMetadataRefresher) callCount() int64 {
+	return r.calls.Load()
+}
+
+func (r *blockingMetadataRefresher) release() {
+	close(r.releaseC)
 }
 
 func TestMetadataServiceReconcileBuildsRepoSubscriptions(t *testing.T) {

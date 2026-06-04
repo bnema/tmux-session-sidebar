@@ -201,6 +201,47 @@ func TestSidebarModelKillRequiresConfirmationAndReloadsTree(t *testing.T) {
 	}
 }
 
+func TestSidebarModelConfirmationKeys(t *testing.T) {
+	tests := []struct {
+		name       string
+		startKey   string
+		confirmKey tea.KeyPressMsg
+		wantCalled bool
+		wantMode   Mode
+	}{
+		{name: "kill lowercase yes", startKey: "x", confirmKey: keyPress("y", 0), wantCalled: true, wantMode: ModeBrowse},
+		{name: "kill uppercase yes", startKey: "x", confirmKey: keyPress("Y", 0), wantCalled: true, wantMode: ModeBrowse},
+		{name: "kill lowercase no", startKey: "x", confirmKey: keyPress("n", 0), wantMode: ModeBrowse},
+		{name: "kill uppercase no", startKey: "x", confirmKey: keyPress("N", 0), wantMode: ModeBrowse},
+		{name: "kill enter cancels", startKey: "x", confirmKey: tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}), wantMode: ModeBrowse},
+		{name: "kill escape cancels", startKey: "x", confirmKey: tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}), wantMode: ModeBrowse},
+		{name: "kill unrelated stays pending", startKey: "x", confirmKey: keyPress("q", 0), wantMode: ModeConfirmKill},
+		{name: "delete lowercase yes", startKey: "d", confirmKey: keyPress("y", 0), wantCalled: true, wantMode: ModeBrowse},
+		{name: "delete uppercase yes", startKey: "d", confirmKey: keyPress("Y", 0), wantCalled: true, wantMode: ModeBrowse},
+		{name: "delete lowercase no", startKey: "d", confirmKey: keyPress("n", 0), wantMode: ModeBrowse},
+		{name: "delete uppercase no", startKey: "d", confirmKey: keyPress("N", 0), wantMode: ModeBrowse},
+		{name: "delete enter cancels", startKey: "d", confirmKey: tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}), wantMode: ModeBrowse},
+		{name: "delete escape cancels", startKey: "d", confirmKey: tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}), wantMode: ModeBrowse},
+		{name: "delete unrelated stays pending", startKey: "d", confirmKey: keyPress("q", 0), wantMode: ModeConfirmDelete},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+				KillSession:    func(string) bool { called = true; return true },
+				DeleteTreeItem: func(TreeItem) bool { called = true; return true },
+			})
+			updated, _ := model.Update(keyPress(tt.startKey, 0))
+			model = requireSidebarModel(t, updated)
+			updated, _ = model.Update(tt.confirmKey)
+			model = requireSidebarModel(t, updated)
+			if called != tt.wantCalled || model.mode != tt.wantMode {
+				t.Fatalf("called=%v mode=%s, want called=%v mode=%s", called, model.mode, tt.wantCalled, tt.wantMode)
+			}
+		})
+	}
+}
+
 func TestSidebarModelSlotSwitchesVisibleSession(t *testing.T) {
 	called := ""
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
