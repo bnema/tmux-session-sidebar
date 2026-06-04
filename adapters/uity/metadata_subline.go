@@ -27,6 +27,7 @@ const (
 	MetadataKindGit       MetadataKind = "git"
 	MetadataKindDirectory MetadataKind = "directory"
 	MetadataKindAdhoc     MetadataKind = "adhoc"
+	MetadataKindLoading   MetadataKind = "loading"
 )
 
 type MetadataIconMode string
@@ -74,6 +75,8 @@ func FormatMetadataSubline(meta SessionMetadataSubline, options MetadataSublineO
 		return formatDirectoryMetadataSubline(meta, options.Icons, width)
 	case MetadataKindAdhoc:
 		return formatAdhocMetadataSubline(meta, options.Icons, width)
+	case MetadataKindLoading:
+		return fitMetadataText("…", width, options.Icons)
 	default:
 		return fitMetadataText(strings.TrimSpace(meta.Label), width, options.Icons)
 	}

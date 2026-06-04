@@ -124,6 +124,35 @@ func TestLoadSidebarTreeItemsMigratesDefaultAndContextualMetadata(t *testing.T) 
 	}
 }
 
+func TestLoadSidebarTreeItemsShowsLoadingMetadataLineWhileGitIsPending(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, sidebarTreeFakeTmuxScript("off"))
+	ctx := context.Background()
+	store := sessionOrderStore()
+	state, err := store.Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	state.SidebarLayout = &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+		{ID: "category:default", Kind: string(sidebarlayout.ItemKindCategory), Category: &ports.SidebarLayoutCategory{ID: "category:default", Name: "Default", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}, {Name: "beta"}}}},
+	}}
+	if err := store.Save(ctx, "tmux", state); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	items, err := loadSidebarTreeItemsWithConfig(ctx, loadSidebarConfig(ctx))
+	if err != nil {
+		t.Fatalf("loadSidebarTreeItemsWithConfig error: %v", err)
+	}
+	alpha, found := findSidebarTreeSession(items, "alpha")
+	if !found {
+		t.Fatalf("alpha row not found in %#v", items)
+	}
+	if !alpha.ShowMetadata || alpha.Session.Metadata.Kind != uity.MetadataKindLoading {
+		t.Fatalf("alpha metadata = %#v show=%v, want immediate loading metadata line", alpha.Session.Metadata, alpha.ShowMetadata)
+	}
+}
+
 func TestLoadSidebarTreeItemsCanShowInactiveMetadata(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	installFakeTmux(t, sidebarTreeFakeTmuxScript("on"))

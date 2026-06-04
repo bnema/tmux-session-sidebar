@@ -49,6 +49,9 @@ func loadSidebarTreeItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapsho
 			item.Kind = uity.TreeRowSession
 			item.Session = byName[row.Session]
 			item.ShowMetadata = cfg.MetadataSublineEnabled && (cfg.MetadataInactiveEnabled || row.CategoryID == activeCategoryID)
+			if item.ShowMetadata && item.Session.Metadata.Kind == "" {
+				item.Session.Metadata = uity.SessionMetadataSubline{Kind: uity.MetadataKindLoading, SessionName: row.Session}
+			}
 		}
 		tree = append(tree, item)
 	}

@@ -84,7 +84,7 @@ func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 	session := item.Session
 	branch := treeBranch(item)
 	slot := slotPrefix(item.Slot)
-	marker := treeSessionMarker(session)
+	marker := treeSessionMarker(session, selected)
 	name := sanitizeSessionName(session.Name)
 	bodyText := fmt.Sprintf("%s %s%s %s", branch, slot, marker, name)
 	if selected {
@@ -146,8 +146,8 @@ func treeMetadataPrefix(item TreeItem) string {
 	return "│  "
 }
 
-func treeSessionMarker(item SessionItem) string {
-	if item.Current {
+func treeSessionMarker(item SessionItem, selected bool) string {
+	if selected || item.Current {
 		return currentMarkerSymbol
 	}
 	if item.Pinned {

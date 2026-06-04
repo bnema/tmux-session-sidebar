@@ -1,12 +1,10 @@
 package uity
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
 	lipgloss "charm.land/lipgloss/v2"
-	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 )
 
@@ -80,37 +78,11 @@ func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(heatColor(item.HeatIntensity)))
 }
 
-func sessionMarkerStyle(styles sidebarStyles, item SessionItem, animationStyle config.AgentAttentionAnimation, animationFrame int, background rgbColor) lipgloss.Style {
-	if item.Attention {
-		return animatedAttentionMarkerStyle(styles.active, animationStyle, animationFrame, background)
-	}
-	if item.Current {
-		return styles.active
-	}
-	if item.Pinned {
-		return styles.pinned.Foreground(lipgloss.Color(pinColor(item)))
-	}
-	return sessionRowStyle(styles, item)
-}
-
 func pinColor(item SessionItem) string {
 	if strings.TrimSpace(item.PinColor) == "" {
 		return defaultPinColor
 	}
 	return item.PinColor
-}
-
-func sessionMarker(item SessionItem, animationStyle config.AgentAttentionAnimation, animationFrame int) string {
-	if item.Attention {
-		return animatedAttentionMarkerSymbol(attentionMarkerSymbol, animationStyle, animationFrame)
-	}
-	if item.Current {
-		return currentMarkerSymbol
-	}
-	if item.Pinned {
-		return pinnedMarkerSymbol
-	}
-	return inactiveMarkerSymbol
 }
 
 func (m SidebarModel) statusLine() string {
@@ -131,59 +103,6 @@ func (m SidebarModel) statusLine() string {
 	default:
 		return ""
 	}
-}
-
-func (m SidebarModel) renderSessions(styles sidebarStyles) []string {
-	visible := m.visibleItems()
-	lines := make([]string, 0, len(visible)+1)
-	for i, item := range visible {
-		badge := "    "
-		if item.Slot > 0 {
-			badge = fmt.Sprintf("[%s] ", slotLabel(item.Slot))
-		}
-		lines = append(lines, m.renderSessionRow(styles, item, badge, i == m.cursor))
-		if subline := m.renderSessionMetadataSubline(styles, item, badge, i == m.cursor); subline != "" {
-			lines = append(lines, subline)
-		}
-	}
-	if len(visible) == 0 {
-		lines = append(lines, styles.dim.Render("no sessions"))
-	}
-	return lines
-}
-
-func (m SidebarModel) renderSessionRow(styles sidebarStyles, item SessionItem, badge string, selected bool) string {
-	if selected {
-		if item.Pinned || item.Attention {
-			marker := sessionMarkerStyle(styles, item, m.attentionAnimationStyle, m.attentionAnimationFrame, selectedRowBackgroundRGB).
-				Background(lipgloss.Color(selectedRowBackgroundRGB.Hex())).
-				Render(sessionMarker(item, m.attentionAnimationStyle, m.attentionAnimationFrame))
-			body := styles.selected.Render(fmt.Sprintf(" %s%s", badge, item.Name))
-			return marker + body
-		}
-		return styles.selected.Render(fmt.Sprintf("%s %s%s", sessionMarker(item, m.attentionAnimationStyle, m.attentionAnimationFrame), badge, item.Name))
-	}
-	marker := sessionMarkerStyle(styles, item, m.attentionAnimationStyle, m.attentionAnimationFrame, defaultAttentionBackgroundRGB).
-		Render(sessionMarker(item, m.attentionAnimationStyle, m.attentionAnimationFrame))
-	body := sessionRowStyle(styles, item).Render(fmt.Sprintf("%s%s", badge, item.Name))
-	return marker + " " + body
-}
-
-func (m SidebarModel) renderSessionMetadataSubline(_ sidebarStyles, item SessionItem, badge string, selected bool) string {
-	if item.Metadata.Kind == "" {
-		return ""
-	}
-	// Account for outer padding plus the metadata indent; fallback keeps rendering useful before the first WindowSizeMsg.
-	width := m.width - metadataSublinePaddingWidth
-	if width <= 0 {
-		width = metadataSublineFallbackWidth
-	}
-	subline := RenderMetadataSubline(item.Metadata, MetadataSublineRenderOptions{Icons: m.metadataIconMode, Width: width, Selected: selected, Active: metadataColorActive(item)})
-	if subline == "" {
-		return ""
-	}
-	indent := "  " + strings.Repeat(" ", metadataDisplayWidth(badge))
-	return indent + subline
 }
 
 func metadataColorActive(item SessionItem) bool {

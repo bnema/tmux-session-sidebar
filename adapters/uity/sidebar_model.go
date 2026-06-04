@@ -1,7 +1,6 @@
 package uity
 
 import (
-	"fmt"
 	"strings"
 	"unicode"
 
@@ -10,12 +9,11 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 
 	"github.com/bnema/tmux-session-sidebar/core/config"
-	"github.com/bnema/tmux-session-sidebar/core/sessions"
 )
 
 const attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
 const currentMarkerSymbol = "\uf444"   // Nerd Font dot-fill glyph (U+F444 / nf-oct-dot_fill).
-const inactiveMarkerSymbol = "\uf10c"  // Nerd Font hollow circle glyph (U+F10C / nf-fa-circle_o).
+const inactiveMarkerSymbol = "\uf4a8"  // Nerd Font small hollow dot glyph (nf-oct-dot).
 const pinnedMarkerSymbol = "\uf08d"    // Nerd Font thumb-tack glyph (U+F08D / nf-fa-thumb_tack).
 const spaceKeySymbol = "\U000F1050"    // Nerd Font keyboard-space glyph (U+F1050 / nf-md-keyboard_space).
 const updateAvailableSymbol = "\uf062" // Nerd Font arrow-up glyph (U+F062 / nf-fa-arrow_up).
@@ -72,11 +70,9 @@ type Actions struct {
 	KillSession         func(string) bool
 	TogglePinnedSession func(string) bool
 	PinSessionWithColor func(string, string) bool
-	ReorderSession      func(string, int) bool
 	SetShowNumericItems func(bool) bool
 	SelfUpdate          func() tea.Cmd
 	LoadProjects        func() []ProjectItem
-	ReloadSessions      func() []SessionItem
 	ReloadTreeItems     func() []TreeItem
 	CreateCategory      func(string) bool
 	RenameCategory      func(string, string) bool
@@ -98,9 +94,7 @@ type SidebarOptions struct {
 }
 
 type SidebarModel struct {
-	items                            []SessionItem
 	treeItems                        []TreeItem
-	treeMode                         bool
 	cursor                           int
 	mode                             Mode
 	filter                           string
@@ -139,31 +133,13 @@ type sidebarStyles struct {
 	updateIndicator lipgloss.Style
 }
 
-func NewSidebarModel(items []SessionItem, actions Actions) SidebarModel {
-	return NewSidebarModelWithOptions(items, actions, SidebarOptions{})
-}
-
 func NewTreeSidebarModelWithOptions(treeItems []TreeItem, actions Actions, options SidebarOptions) SidebarModel {
-	items := sessionItemsFromTree(treeItems)
-	model := newSidebarModelBase(items, actions, options)
-	model.treeItems = treeItems
-	model.treeMode = true
-	return model
-}
-
-func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options SidebarOptions) SidebarModel {
-	model := newSidebarModelBase(items, actions, options)
-	model.treeItems = SessionItemsToTree(items)
-	return model
-}
-
-func newSidebarModelBase(items []SessionItem, actions Actions, options SidebarOptions) SidebarModel {
 	iconMode := options.MetadataIconMode
 	if iconMode == "" {
 		iconMode = bestEffortMetadataIconMode()
 	}
 	attentionAnimationStyle := config.ParseAgentAttentionAnimation(string(options.AgentAttentionAnimation))
-	attentionAnimationTickPending := shouldRunAttentionAnimation(attentionAnimationStyle, items)
+	attentionAnimationTickPending := shouldRunAttentionAnimation(attentionAnimationStyle, sessionItemsFromTree(treeItems))
 	attentionAnimationTickGeneration := 0
 	if attentionAnimationTickPending {
 		attentionAnimationTickGeneration = 1
@@ -172,8 +148,7 @@ func newSidebarModelBase(items []SessionItem, actions Actions, options SidebarOp
 	updateSpinner.Spinner = spinner.Meter
 	updateSpinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc"))
 	return SidebarModel{
-		items:                            items,
-		treeItems:                        SessionItemsToTree(items),
+		treeItems:                        treeItems,
 		actions:                          actions,
 		mode:                             ModeBrowse,
 		showNumeric:                      options.ShowNumericItems,
@@ -188,7 +163,7 @@ func newSidebarModelBase(items []SessionItem, actions Actions, options SidebarOp
 }
 
 func (m SidebarModel) Init() tea.Cmd {
-	return batchCommands(m.updateCheck.initCmd(), attentionAnimationTickCmd(m.attentionAnimationStyle, m.items, m.attentionAnimationTickGeneration))
+	return batchCommands(m.updateCheck.initCmd(), attentionAnimationTickCmd(m.attentionAnimationStyle, sessionItemsFromTree(m.treeItems), m.attentionAnimationTickGeneration))
 }
 
 func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -224,7 +199,7 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.attentionAnimationTickPending = false
-		if !shouldRunAttentionAnimation(m.attentionAnimationStyle, m.items) {
+		if !shouldRunAttentionAnimation(m.attentionAnimationStyle, sessionItemsFromTree(m.treeItems)) {
 			m.attentionAnimationFrame = 0
 			return m, nil
 		}
@@ -279,15 +254,13 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.showNumeric = next
-		if m.treeMode {
-			selectedID := ""
-			if item, ok := m.selectedTreeItem(); ok {
-				selectedID = item.ID
-			}
-			m.reloadTreeItems()
-			if selectedID != "" {
-				m.selectTreeItem(selectedID)
-			}
+		selectedID := ""
+		if item, ok := m.selectedTreeItem(); ok {
+			selectedID = item.ID
+		}
+		m.reloadTreeItems()
+		if selectedID != "" {
+			m.selectTreeItem(selectedID)
 		}
 		return m.finishInteractiveUpdate()
 	}
@@ -361,11 +334,7 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "n":
 		if m.mode == ModeBrowse {
-			if m.treeMode {
-				m.openNewItemMenu()
-			} else {
-				m.openProjectMenu()
-			}
+			m.openNewItemMenu()
 		} else {
 			m.appendPrintable(msg)
 		}
@@ -393,17 +362,12 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "r":
 		if m.mode == ModeBrowse {
-			if m.treeMode {
-				if item, ok := m.selectedTreeItem(); ok && item.Kind == TreeRowCategory {
-					m.mode = ModeRenameCategory
-					m.renameCategoryID = item.ID
-					m.renameCategoryInput = item.CategoryName
-				}
-				return m.finishInteractiveUpdate()
+			if item, ok := m.selectedTreeItem(); ok && item.Kind == TreeRowCategory {
+				m.mode = ModeRenameCategory
+				m.renameCategoryID = item.ID
+				m.renameCategoryInput = item.CategoryName
 			}
-			if item, ok := m.selectedSession(); ok && m.actions.RenameSession != nil && m.actions.RenameSession(item.Name) {
-				m.reloadSessions()
-			}
+			return m.finishInteractiveUpdate()
 		} else {
 			m.appendPrintable(msg)
 		}
@@ -461,16 +425,7 @@ func (m *SidebarModel) finishInteractiveUpdate() (tea.Model, tea.Cmd) {
 }
 
 func (m *SidebarModel) move(delta int) {
-	if m.treeMode {
-		visible := m.selectableTreeItems()
-		if len(visible) == 0 {
-			m.cursor = 0
-			return
-		}
-		m.cursor = (m.cursor + delta + len(visible)) % len(visible)
-		return
-	}
-	visible := m.visibleItems()
+	visible := m.selectableTreeItems()
 	if len(visible) == 0 {
 		m.cursor = 0
 		return
@@ -479,18 +434,11 @@ func (m *SidebarModel) move(delta int) {
 }
 
 func (m SidebarModel) selectedSession() (SessionItem, bool) {
-	if m.treeMode {
-		item, ok := m.selectedTreeItem()
-		if !ok || item.Kind != TreeRowSession {
-			return SessionItem{}, false
-		}
-		return item.Session, true
-	}
-	visible := m.visibleItems()
-	if len(visible) == 0 || m.cursor >= len(visible) {
+	item, ok := m.selectedTreeItem()
+	if !ok || item.Kind != TreeRowSession {
 		return SessionItem{}, false
 	}
-	return visible[m.cursor], true
+	return item.Session, true
 }
 
 func (m *SidebarModel) switchSelected() {
@@ -502,18 +450,9 @@ func (m *SidebarModel) switchSelected() {
 }
 
 func (m *SidebarModel) switchSlot(slot int) {
-	if m.treeMode {
-		for _, item := range m.visibleTreeItems() {
-			if item.Kind == TreeRowSession && item.Slot == slot {
-				m.switchItem(item.Session)
-				return
-			}
-		}
-		return
-	}
-	for _, item := range m.visibleItems() {
-		if item.Slot == slot {
-			m.switchItem(item)
+	for _, item := range m.visibleTreeItems() {
+		if item.Kind == TreeRowSession && item.Slot == slot {
+			m.switchItem(item.Session)
 			return
 		}
 	}
@@ -529,7 +468,7 @@ func (m *SidebarModel) switchItem(item SessionItem) {
 }
 
 func (m SidebarModel) currentSessionName() string {
-	for _, item := range m.items {
+	for _, item := range sessionItemsFromTree(m.treeItems) {
 		if item.Current {
 			return item.Name
 		}
@@ -546,47 +485,25 @@ func (m *SidebarModel) reloadSessionsSelectingCurrent() {
 }
 
 func (m *SidebarModel) reloadSessionsWithSelection(preservePreviousCurrent bool) {
-	if m.treeMode {
-		previous := m.currentSessionName()
-		m.reloadTreeItems()
-		current := m.currentSessionName()
-		if preservePreviousCurrent && previous != "" && previous != current {
-			m.selectSession(previous)
-			return
-		}
-		if !preservePreviousCurrent && current != "" {
-			m.selectSession(current)
-		}
-		return
-	}
-	if m.actions.ReloadSessions == nil {
-		return
-	}
-	// Preserve selection on the previously-current session when a refresh observes
-	// a session switch, so the sidebar is ready to toggle back to where the user came from.
 	previous := m.currentSessionName()
-	m.items = m.actions.ReloadSessions()
-	m.treeItems = SessionItemsToTree(m.items)
+	m.reloadTreeItems()
 	current := m.currentSessionName()
-	if current == "" {
-		return
-	}
 	if preservePreviousCurrent && previous != "" && previous != current {
 		m.selectSession(previous)
 		return
 	}
-	if !preservePreviousCurrent {
+	if !preservePreviousCurrent && current != "" {
 		m.selectSession(current)
 	}
 }
 
 func (m *SidebarModel) startAttentionAnimationCmd() tea.Cmd {
-	if m.attentionAnimationTickPending || !shouldRunAttentionAnimation(m.attentionAnimationStyle, m.items) {
+	if m.attentionAnimationTickPending || !shouldRunAttentionAnimation(m.attentionAnimationStyle, sessionItemsFromTree(m.treeItems)) {
 		return nil
 	}
 	m.attentionAnimationTickGeneration++
 	m.attentionAnimationTickPending = true
-	return attentionAnimationTickCmd(m.attentionAnimationStyle, m.items, m.attentionAnimationTickGeneration)
+	return attentionAnimationTickCmd(m.attentionAnimationStyle, sessionItemsFromTree(m.treeItems), m.attentionAnimationTickGeneration)
 }
 
 func (m *SidebarModel) handlePinKey() tea.Cmd {
@@ -649,37 +566,18 @@ func (m *SidebarModel) reorderSelected(delta int) {
 	if m.mode != ModeBrowse && m.mode != ModeSearch {
 		return
 	}
-	if m.treeMode {
-		item, ok := m.selectedTreeItem()
-		if !ok || m.actions.MoveTreeItem == nil || !m.actions.MoveTreeItem(item.ID, delta) {
-			return
-		}
-		m.reloadTreeItems()
-		m.selectTreeItem(item.ID)
+	item, ok := m.selectedTreeItem()
+	if !ok || m.actions.MoveTreeItem == nil || !m.actions.MoveTreeItem(item.ID, delta) {
 		return
 	}
-	item, ok := m.selectedSession()
-	if !ok || m.actions.ReorderSession == nil || !m.actions.ReorderSession(item.Name, delta) {
-		return
-	}
-	m.reloadSessions()
-	m.selectSession(item.Name)
+	m.reloadTreeItems()
+	m.selectTreeItem(item.ID)
 }
 
 func (m *SidebarModel) selectSession(name string) {
-	if m.treeMode {
-		selectable := m.selectableTreeItems()
-		for i, item := range selectable {
-			if item.Kind == TreeRowSession && item.Session.Name == name {
-				m.cursor = i
-				return
-			}
-		}
-		m.cursor = 0
-		return
-	}
-	for i, item := range m.visibleItems() {
-		if item.Name == name {
+	selectable := m.selectableTreeItems()
+	for i, item := range selectable {
+		if item.Kind == TreeRowSession && item.Session.Name == name {
 			m.cursor = i
 			return
 		}
@@ -712,26 +610,6 @@ func (m *SidebarModel) appendPrintable(msg tea.KeyPressMsg) {
 	}
 }
 
-func (m SidebarModel) visibleItems() []SessionItem {
-	views := make([]sessions.View, 0, len(m.items))
-	byName := make(map[string]SessionItem, len(m.items))
-	for _, item := range m.items {
-		views = append(views, sessions.View{Name: item.Name, Visible: true})
-		byName[item.Name] = item
-	}
-	visible := sessions.FilterVisible(views, m.showNumeric)
-	items := make([]SessionItem, 0, len(visible))
-	filter := strings.ToLower(m.filter)
-	for _, view := range visible {
-		item := byName[view.Name]
-		if filter != "" && !strings.Contains(strings.ToLower(item.Name), filter) {
-			continue
-		}
-		items = append(items, item)
-	}
-	return items
-}
-
 func (m SidebarModel) View() tea.View {
 	view := tea.NewView(m.Render())
 	view.MouseMode = tea.MouseModeCellMotion
@@ -741,11 +619,7 @@ func (m SidebarModel) View() tea.View {
 func (m SidebarModel) Render() string {
 	styles := newSidebarStyles()
 	lines := []string{""}
-	if m.treeMode {
-		lines = append(lines, m.renderTree(styles)...)
-	} else {
-		lines = append(lines, m.renderSessions(styles)...)
-	}
+	lines = append(lines, m.renderTree(styles)...)
 	if status := m.statusLine(); status != "" {
 		lines = append(lines, "", styles.accent.Render(status))
 	}
@@ -854,7 +728,4 @@ func trimLastRune(value string) string {
 		return value
 	}
 	return string(r[:len(r)-1])
-}
-func slotLabel(slot int) string {
-	return fmt.Sprintf("%d", slot)
 }

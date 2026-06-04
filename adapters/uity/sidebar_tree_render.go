@@ -22,7 +22,6 @@ func (m *SidebarModel) reloadTreeItems() {
 		return
 	}
 	m.treeItems = next
-	m.items = sessionItemsFromTree(m.treeItems)
 	if m.cursor >= len(m.selectableTreeItems()) {
 		m.cursor = max(len(m.selectableTreeItems())-1, 0)
 	}
@@ -79,16 +78,12 @@ func (m SidebarModel) visibleTreeItems() []TreeItem {
 	if m.filter == "" {
 		return m.treeItems
 	}
-	visibleSessions := m.visibleItems()
-	visibleSet := make(map[string]bool, len(visibleSessions))
-	for _, item := range visibleSessions {
-		visibleSet[item.Name] = true
-	}
+	filter := strings.ToLower(m.filter)
 	matchedSessions := 0
 	filtered := make([]TreeItem, 0, len(m.treeItems))
 	for _, item := range m.treeItems {
 		if item.Kind == TreeRowSession {
-			if !visibleSet[item.Session.Name] {
+			if filter != "" && !strings.Contains(strings.ToLower(item.Session.Name), filter) {
 				continue
 			}
 			matchedSessions++

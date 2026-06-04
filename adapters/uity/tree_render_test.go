@@ -12,13 +12,13 @@ import (
 func TestTreeSidebarRenderUsesCompactSlotsTreeGuidesAndAttentionRight(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
-		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Attention: true}, Slot: 1, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Current: true, Attention: true}, Slot: 1, Depth: 1},
 		{Kind: TreeRowSession, ID: "category:work/session:beta", CategoryID: "category:work", Session: SessionItem{Name: "beta"}, Slot: 2, Depth: 1, LastChild: true},
 	}, Actions{}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationPulse})
 	model.attentionAnimationFrame = 1
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "▾ Work") || !strings.Contains(view, "├─ 1 "+inactiveMarkerSymbol+" alpha "+attentionMarkerSymbol) || !strings.Contains(view, "└─ 2 "+inactiveMarkerSymbol+" beta") {
+	if !strings.Contains(view, "▾ Work") || !strings.Contains(view, "├─ 1 "+currentMarkerSymbol+" alpha "+attentionMarkerSymbol) || !strings.Contains(view, "└─ 2 "+inactiveMarkerSymbol+" beta") {
 		t.Fatalf("tree render missing compact slots, guides, or right attention marker: %q", view)
 	}
 	if strings.Contains(view, "[1]") || strings.Contains(view, "[2]") {
