@@ -125,7 +125,7 @@ Inside the sidebar:
 | `a` | Create or switch to a session for the current pane's directory when not searching/filtering |
 | `r` | Rename the selected session when not searching/filtering |
 | `x` | Kill the selected session after confirmation when not searching/filtering |
-| `J` / `K` or `M-j` / `M-k` or `M-Down` / `M-Up` | Move the selected session in the sidebar order when not searching/filtering |
+| `J` / `K` | Move the selected session in the sidebar order when not searching/filtering |
 | `h` | Show or hide numeric session names when not searching/filtering |
 | `?` | Show or hide key help when not searching/filtering |
 | `Ctrl+c` | Quit the sidebar UI |
@@ -141,19 +141,19 @@ Session names that are all digits, or that start with `__`, are hidden by defaul
 
 ### Project sessions
 
-`M-n` lists one directory level under each configured project root. Selecting a project creates or switches to a tmux session named from the directory basename.
+`n` lists one directory level under each configured project root. Selecting a project creates or switches to a tmux session named from the directory basename.
 
-`M-g` uses `git rev-parse --show-toplevel` from the current pane path and creates or switches to that repository session.
+`g` uses `git rev-parse --show-toplevel` from the current pane path and creates or switches to that repository session.
 
 Generated names are lowercased and normalized to letters, digits, `_`, and `-`. Invalid or empty names fall back to `session`.
 
 ### Ad-hoc sessions
 
-`M-a` creates or switches to a session for the current pane path, using the normalized directory basename as the session name.
+`a` creates or switches to a session for the current pane path, using the normalized directory basename as the session name.
 
 ### Rename, kill, and reorder
 
-`M-r` uses tmux `command-prompt` for the new name. `M-x` asks for inline confirmation before killing, and the runtime refuses to kill the last remaining session. Reordering is saved in the plugin state file.
+`r` uses tmux `command-prompt` for the new name. `x` asks for inline confirmation before killing, and the runtime refuses to kill the last remaining session. Reordering is saved in the plugin state file.
 
 ## Session restore
 

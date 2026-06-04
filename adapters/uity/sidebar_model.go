@@ -257,7 +257,7 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.move(-1)
 		}
-	case "n", "alt+n":
+	case "n":
 		if m.mode == ModeBrowse {
 			if m.actions.LoadProjects != nil {
 				m.projects = m.actions.LoadProjects()
@@ -268,7 +268,7 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.appendPrintable(msg)
 		}
-	case "g", "alt+g":
+	case "g":
 		if m.mode == ModeBrowse {
 			if m.actions.CreateGitProject != nil && m.actions.CreateGitProject() {
 				m.reloadSessionsSelectingCurrent()
@@ -276,7 +276,7 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.appendPrintable(msg)
 		}
-	case "a", "alt+a":
+	case "a":
 		if m.mode == ModeBrowse {
 			if m.actions.CreateAdhoc != nil && m.actions.CreateAdhoc() {
 				m.reloadSessionsSelectingCurrent()
@@ -284,7 +284,7 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.appendPrintable(msg)
 		}
-	case "r", "alt+r":
+	case "r":
 		if m.mode == ModeBrowse {
 			if item, ok := m.selectedSession(); ok && m.actions.RenameSession != nil && m.actions.RenameSession(item.Name) {
 				m.reloadSessions()
@@ -292,7 +292,7 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.appendPrintable(msg)
 		}
-	case "x", "alt+x":
+	case "x":
 		if m.mode == ModeBrowse {
 			if item, ok := m.selectedSession(); ok && m.actions.KillSession != nil {
 				m.mode = ModeConfirmKill
@@ -306,7 +306,7 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.appendPrintable(msg)
 	case "f5":
 		m.reloadSessions()
-	case "?", "alt+?":
+	case "?":
 		if m.mode == ModeBrowse {
 			m.showHelp = !m.showHelp
 		} else {
@@ -825,32 +825,10 @@ func (m *SidebarModel) moveWheel(delta int) {
 }
 
 func reorderKeyDelta(msg tea.KeyPressMsg) (int, bool) {
-	key := msg.Key()
-	if key.Mod == 0 || key.Mod == tea.ModShift {
-		switch key.Text {
-		case "J":
-			return 1, true
-		case "K":
-			return -1, true
-		}
-	}
-	if !key.Mod.Contains(tea.ModAlt) {
-		return 0, false
-	}
-	if key.Code == tea.KeyDown {
+	switch msg.Key().Text {
+	case "J":
 		return 1, true
-	}
-	if key.Code == tea.KeyUp {
-		return -1, true
-	}
-	return deltaForKeyText(key.Text)
-}
-
-func deltaForKeyText(text string) (int, bool) {
-	switch text {
-	case "j", "J":
-		return 1, true
-	case "k", "K":
+	case "K":
 		return -1, true
 	default:
 		return 0, false
@@ -859,10 +837,7 @@ func deltaForKeyText(text string) (int, bool) {
 
 func toggleNumericKey(msg tea.KeyPressMsg) bool {
 	key := msg.Key()
-	if key.Text != "h" && key.Text != "H" && key.Code != 'h' && key.Code != 'H' {
-		return false
-	}
-	return key.Mod == 0 || key.Mod == tea.ModShift || key.Mod.Contains(tea.ModAlt)
+	return key.Mod == 0 && key.Text == "h"
 }
 
 func pinnedToggleKey(msg tea.KeyPressMsg) bool {

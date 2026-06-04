@@ -35,28 +35,6 @@ func InterpretKey(mode Mode, seq []byte) Intent {
 		return IntentNone
 	}
 	if seq[0] == 0x1b {
-		if len(seq) == 1 {
-			if mode == ModeSearch {
-				return IntentCancelSearch
-			}
-			return IntentClose
-		}
-		switch seq[1] {
-		case 'n':
-			return IntentCreateProject
-		case 'g':
-			return IntentCreateGitProject
-		case 'a':
-			return IntentCreateAdhoc
-		case 'r':
-			return IntentRename
-		case 'x':
-			return IntentKill
-		case 'h', 'H':
-			return IntentToggleNumeric
-		case '?':
-			return IntentToggleHelp
-		}
 		if mode == ModeSearch {
 			return IntentCancelSearch
 		}
