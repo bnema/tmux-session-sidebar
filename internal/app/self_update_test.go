@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -59,6 +60,31 @@ func TestSelfUpdateRunsPluginUpdaterBesideRuntimeBinary(t *testing.T) {
 	if !strings.Contains(stderr.String(), "stderr from updater") {
 		t.Fatalf("stderr missing updater output: %q", stderr.String())
 	}
+}
+
+func TestBackgroundSelfUpdateCommandIsDetachedAndReleaseOnly(t *testing.T) {
+	cmd := exec.Command("update-runtime.sh")
+	configureBackgroundSelfUpdateCommand(cmd, "/tmp/plugin")
+
+	if cmd.Dir != "/tmp/plugin" {
+		t.Fatalf("cmd.Dir = %q, want /tmp/plugin", cmd.Dir)
+	}
+	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setsid {
+		t.Fatalf("background self-update should run in a detached session: %#v", cmd.SysProcAttr)
+	}
+	if got := envValue(cmd.Env, "TMUX_SESSION_SIDEBAR_RELEASE_ONLY"); got != "1" {
+		t.Fatalf("release-only env = %q, want 1", got)
+	}
+}
+
+func envValue(environ []string, name string) string {
+	prefix := name + "="
+	for _, entry := range environ {
+		if strings.HasPrefix(entry, prefix) {
+			return strings.TrimPrefix(entry, prefix)
+		}
+	}
+	return ""
 }
 
 func TestSelfUpdateReportsMissingPluginUpdater(t *testing.T) {

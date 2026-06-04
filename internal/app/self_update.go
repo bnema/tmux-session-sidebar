@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 var selfUpdateExecutablePath = os.Executable
@@ -65,13 +66,18 @@ func selfUpdateEnvironment(environ []string) []string {
 	return append(filtered, "TMUX_SESSION_SIDEBAR_RELEASE_ONLY=1")
 }
 
+func configureBackgroundSelfUpdateCommand(cmd *exec.Cmd, pluginDir string) {
+	configureSelfUpdateCommand(cmd, pluginDir)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+}
+
 func startSelfUpdateBackground() error {
 	pluginDir, updaterPath, err := selfUpdatePaths()
 	if err != nil {
 		return err
 	}
 	cmd := exec.Command(updaterPath)
-	configureSelfUpdateCommand(cmd, pluginDir)
+	configureBackgroundSelfUpdateCommand(cmd, pluginDir)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	return cmd.Start()
