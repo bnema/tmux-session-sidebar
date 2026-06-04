@@ -81,6 +81,10 @@ func (p PinColorPicker) MoveDelta(msg tea.KeyPressMsg) (int, bool) {
 }
 
 func (p PinColorPicker) RenderOverlay(content string, width int, height int) string {
+	return p.RenderOverlayAt(content, width, height, pinColorOverlayY(height, lipgloss.Height(p.Render())))
+}
+
+func (p PinColorPicker) RenderOverlayAt(content string, width int, height int, y int) string {
 	pane := p.Render()
 	if width <= 0 {
 		width = max(lipgloss.Width(content), lipgloss.Width(pane))
@@ -88,10 +92,11 @@ func (p PinColorPicker) RenderOverlay(content string, width int, height int) str
 	if height <= 0 {
 		height = max(lipgloss.Height(content), lipgloss.Height(pane))
 	}
+	y = min(max(y, 0), max(height-lipgloss.Height(pane), 0))
 	canvas := lipgloss.NewCanvas(width, height)
 	compositor := lipgloss.NewCompositor(
 		lipgloss.NewLayer(clipBlock(content, height)),
-		lipgloss.NewLayer(pane).X(max((width-lipgloss.Width(pane))/2, 0)).Y(pinColorOverlayY(height, lipgloss.Height(pane))).Z(1),
+		lipgloss.NewLayer(pane).X(max((width-lipgloss.Width(pane))/2, 0)).Y(y).Z(1),
 	)
 	canvas.Compose(compositor)
 	return canvas.Render()
@@ -110,7 +115,7 @@ func (p PinColorPicker) Render() string {
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, cells...))
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left,
-		styles.title.Render("pin color"),
+		styles.title.Render("colorize"),
 		lipgloss.JoinVertical(lipgloss.Left, rows...),
 		styles.hint.Render("↵/sp ok esc"),
 	)

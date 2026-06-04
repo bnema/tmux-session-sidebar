@@ -219,7 +219,7 @@ func TestTreeSidebarFilterIncludesOverflowHiddenSessions(t *testing.T) {
 		model = requireSidebarModel(t, updated)
 	}
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "Work") || !strings.Contains(view, "s11") || strings.Contains(view, "And 1 more") {
+	if !strings.Contains(view, "Work") || !strings.Contains(view, "s11") || strings.Contains(view, "[show 1 more]") {
 		t.Fatalf("filter should reveal hidden matching session without more row: %q", view)
 	}
 }
@@ -262,7 +262,7 @@ func TestTreeSidebarRendersAndTogglesMoreRow(t *testing.T) {
 	model.cursor = 2
 
 	view := model.Render()
-	if !strings.Contains(stripANSI(view), "And 3 more....") || !strings.Contains(view, ";3;") {
+	if !strings.Contains(stripANSI(view), "[show 3 more]") || !strings.Contains(view, ";3;") {
 		t.Fatalf("more row should render italic count, view=%q", view)
 	}
 	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))

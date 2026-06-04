@@ -118,6 +118,22 @@ func ReconcilePinned(pinned []string, live []string) []string {
 	return reconciled
 }
 
+func ReconcileNamedStrings(values map[string]string, live []string) map[string]string {
+	if len(values) == 0 {
+		return values
+	}
+	liveSet := make(map[string]bool, len(live))
+	for _, name := range live {
+		liveSet[name] = true
+	}
+	for name := range values {
+		if !liveSet[name] {
+			delete(values, name)
+		}
+	}
+	return values
+}
+
 func TogglePinned(pinned []string, session string) ([]string, bool) {
 	for i, name := range pinned {
 		if name == session {

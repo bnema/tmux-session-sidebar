@@ -30,6 +30,7 @@ type SidebarLayoutItem struct {
 type SidebarLayoutCategory struct {
 	ID               string                    `json:"id,omitempty"`
 	Name             string                    `json:"name,omitempty"`
+	Color            string                    `json:"color,omitempty"`
 	Collapsed        bool                      `json:"collapsed,omitempty"`
 	SessionsExpanded bool                      `json:"sessionsExpanded,omitempty"`
 	Sessions         []SidebarLayoutSessionRef `json:"sessions,omitempty"`

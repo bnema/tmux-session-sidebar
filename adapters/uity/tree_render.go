@@ -89,7 +89,14 @@ func (r treeRenderer) renderCategory(item TreeItem, selected bool) string {
 	}
 	line := marker + " " + name
 	if selected {
-		return r.styles.selected.Render(line)
+		style := r.styles.selected
+		if strings.TrimSpace(item.Color) != "" {
+			style = style.Foreground(lipgloss.Color(item.Color))
+		}
+		return style.Render(line)
+	}
+	if strings.TrimSpace(item.Color) != "" {
+		return r.styles.accent.Foreground(lipgloss.Color(item.Color)).Render(line)
 	}
 	return r.styles.accent.Render(line)
 }
@@ -102,7 +109,11 @@ func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 	name := sanitizeSessionName(session.Name)
 	bodyText := sessionBodyText(slot, marker, name)
 	if selected {
-		body := r.styles.selected.Render(bodyText)
+		style := r.styles.selected
+		if strings.TrimSpace(session.PinColor) != "" {
+			style = style.Foreground(lipgloss.Color(session.PinColor))
+		}
+		body := style.Render(bodyText)
 		return branch + body + r.renderAttention(session, true)
 	}
 	body := sessionRowStyle(r.styles, session).Render(bodyText)
@@ -113,7 +124,7 @@ func (r treeRenderer) renderMore(item TreeItem, selected bool) string {
 	branch := r.styles.dim.Render(treeBranch(item))
 	label := "Show less...."
 	if !item.MoreExpanded {
-		label = fmt.Sprintf("And %d more....", item.MoreCount)
+		label = fmt.Sprintf("[show %d more]", item.MoreCount)
 	}
 	bodyText := " " + label
 	if selected {
