@@ -55,11 +55,11 @@ func TestFlattenBuildsTreeRowsAndContextualSlots(t *testing.T) {
 		t.Fatalf("rows len = %d, want 6: %#v", len(rows), rows)
 	}
 	assertRow(t, rows[0], TreeRow{Kind: RowKindCategory, ItemID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true})
-	assertRow(t, rows[1], TreeRow{Kind: RowKindSession, ItemID: "category:work/session:alpha", CategoryID: "category:work", Session: "alpha", Slot: 1, Branch: "├─", MetadataPrefix: "│  "})
-	assertRow(t, rows[2], TreeRow{Kind: RowKindSession, ItemID: "category:work/session:beta", CategoryID: "category:work", Session: "beta", Slot: 2, Branch: "└─", MetadataPrefix: "   "})
+	assertRow(t, rows[1], TreeRow{Kind: RowKindSession, ItemID: "category:work/session:alpha", CategoryID: "category:work", Session: "alpha", Slot: 1, Depth: 1})
+	assertRow(t, rows[2], TreeRow{Kind: RowKindSession, ItemID: "category:work/session:beta", CategoryID: "category:work", Session: "beta", Slot: 2, Depth: 1, LastChild: true})
 	assertRow(t, rows[3], TreeRow{Kind: RowKindSeparator, ItemID: "separator:one"})
 	assertRow(t, rows[4], TreeRow{Kind: RowKindCategory, ItemID: "category:personal", CategoryID: "category:personal", CategoryName: "Personal", CategoryOpen: true})
-	assertRow(t, rows[5], TreeRow{Kind: RowKindSession, ItemID: "category:personal/session:notes", CategoryID: "category:personal", Session: "notes", Branch: "└─", MetadataPrefix: "   "})
+	assertRow(t, rows[5], TreeRow{Kind: RowKindSession, ItemID: "category:personal/session:notes", CategoryID: "category:personal", Session: "notes", Depth: 1, LastChild: true})
 }
 
 func TestActiveCategoryIDFallsBackToSessionLookup(t *testing.T) {

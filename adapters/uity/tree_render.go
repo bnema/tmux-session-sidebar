@@ -25,31 +25,40 @@ func (r treeRenderer) Render(items []TreeItem) []string {
 	lines := make([]string, 0, len(items)*2)
 	selectableIndex := 0
 	for _, item := range items {
-		selected := selectableIndex == r.cursor
+		selectable := isSelectableTreeKind(item.Kind)
+		selected := selectable && selectableIndex == r.cursor
 		switch item.Kind {
 		case TreeRowCategory:
 			lines = append(lines, r.renderCategory(item, selected))
-			selectableIndex++
+			if selectable {
+				selectableIndex++
+			}
 		case TreeRowSession:
 			lines = append(lines, r.renderSession(item, selected))
 			if subline := r.renderMetadata(item, selected); subline != "" {
 				lines = append(lines, subline)
 			}
-			selectableIndex++
+			if selectable {
+				selectableIndex++
+			}
 		case TreeRowSeparator:
 			line := r.styles.dim.Render("────────────────────────")
 			if selected {
 				line = r.styles.selected.Render("────────────────────────")
 			}
 			lines = append(lines, line)
-			selectableIndex++
+			if selectable {
+				selectableIndex++
+			}
 		case TreeRowSpacer:
 			line := ""
 			if selected {
 				line = r.styles.selected.Render(" ")
 			}
 			lines = append(lines, line)
-			selectableIndex++
+			if selectable {
+				selectableIndex++
+			}
 		}
 	}
 	return lines
@@ -73,10 +82,7 @@ func (r treeRenderer) renderCategory(item TreeItem, selected bool) string {
 
 func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 	session := item.Session
-	branch := item.Branch
-	if branch == "" {
-		branch = "├─"
-	}
+	branch := treeBranch(item)
 	slot := slotPrefix(item.Slot)
 	marker := treeSessionMarker(session)
 	name := sanitizeSessionName(session.Name)
@@ -108,10 +114,7 @@ func (r treeRenderer) renderMetadata(item TreeItem, selected bool) string {
 	if width <= 0 {
 		width = metadataSublineFallbackWidth
 	}
-	prefix := item.MetadataPrefix
-	if prefix == "" {
-		prefix = "│  "
-	}
+	prefix := treeMetadataPrefix(item)
 	width -= metadataDisplayWidth(prefix)
 	if width <= 0 {
 		return ""
@@ -121,6 +124,26 @@ func (r treeRenderer) renderMetadata(item TreeItem, selected bool) string {
 		return ""
 	}
 	return r.styles.dim.Render(prefix) + subline
+}
+
+func treeBranch(item TreeItem) string {
+	if item.Depth <= 0 {
+		return ""
+	}
+	if item.LastChild {
+		return "└─"
+	}
+	return "├─"
+}
+
+func treeMetadataPrefix(item TreeItem) string {
+	if item.Depth <= 0 {
+		return ""
+	}
+	if item.LastChild {
+		return "   "
+	}
+	return "│  "
 }
 
 func treeSessionMarker(item SessionItem) string {

@@ -50,16 +50,16 @@ const (
 )
 
 type TreeItem struct {
-	Kind           TreeRowKind
-	ID             string
-	CategoryID     string
-	CategoryName   string
-	CategoryOpen   bool
-	Session        SessionItem
-	Slot           int
-	Branch         string
-	MetadataPrefix string
-	ShowMetadata   bool
+	Kind         TreeRowKind
+	ID           string
+	CategoryID   string
+	CategoryName string
+	CategoryOpen bool
+	Session      SessionItem
+	Slot         int
+	Depth        int
+	LastChild    bool
+	ShowMetadata bool
 }
 
 type Actions struct {
@@ -107,9 +107,7 @@ type SidebarModel struct {
 	showNumeric                      bool
 	showHelp                         bool
 	message                          string
-	projects                         []ProjectItem
-	projectCursor                    int
-	projectFilter                    string
+	menu                             menuState
 	pendingKill                      string
 	renameCategoryID                 string
 	renameCategoryInput              string
@@ -308,14 +306,8 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.filter = ""
 			return m.finishInteractiveUpdate()
 		}
-		if m.mode == ModeProject {
-			m.mode = ModeBrowse
-			m.projectFilter = ""
-			return m.finishInteractiveUpdate()
-		}
-		if m.mode == ModeNewItem || m.mode == ModeCreateSession {
-			m.mode = ModeBrowse
-			m.projectCursor = 0
+		if m.menuActive() {
+			m.closeMenu()
 			return m.finishInteractiveUpdate()
 		}
 		if m.mode == ModeCreateNamed {
@@ -340,16 +332,8 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.mode = ModeBrowse
 			return m.finishInteractiveUpdate()
 		}
-		if m.mode == ModeProject {
-			m.createSelectedProject()
-			return m.finishInteractiveUpdate()
-		}
-		if m.mode == ModeNewItem {
-			m.createSelectedNewItem()
-			return m.finishInteractiveUpdate()
-		}
-		if m.mode == ModeCreateSession {
-			m.createSelectedSessionChoice()
+		if m.menuActive() {
+			m.chooseMenuItem()
 			return m.finishInteractiveUpdate()
 		}
 		if m.mode == ModeConfirmKill {
@@ -358,39 +342,30 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		m.switchSelected()
 	case "j", "down":
-		if m.mode == ModeProject || m.mode == ModeNewItem || m.mode == ModeCreateSession {
-			m.moveProject(1)
+		if m.menuActive() {
+			m.moveMenu(1)
 		} else {
 			m.move(1)
 		}
 	case "k", "up":
-		if m.mode == ModeProject || m.mode == ModeNewItem || m.mode == ModeCreateSession {
-			m.moveProject(-1)
+		if m.menuActive() {
+			m.moveMenu(-1)
 		} else {
 			m.move(-1)
 		}
 	case "n":
 		if m.mode == ModeBrowse {
 			if m.treeMode {
-				m.projects = newItemMenuItems()
-				m.mode = ModeNewItem
+				m.openNewItemMenu()
 			} else {
-				if m.actions.LoadProjects != nil {
-					m.projects = m.actions.LoadProjects()
-				}
-				m.mode = ModeProject
+				m.openProjectMenu()
 			}
-			m.projectCursor = 0
-			m.projectFilter = ""
 		} else {
 			m.appendPrintable(msg)
 		}
 	case "c":
 		if m.mode == ModeBrowse {
-			m.projects = createSessionMenuItems()
-			m.mode = ModeCreateSession
-			m.projectCursor = 0
-			m.projectFilter = ""
+			m.openCreateSessionMenu()
 		} else {
 			m.appendPrintable(msg)
 		}
@@ -466,8 +441,8 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.mode == ModeSearch && m.filter != "" {
 			m.filter = trimLastRune(m.filter)
 		}
-		if (m.mode == ModeProject || m.mode == ModeCreateSession) && m.projectFilter != "" {
-			m.projectFilter = trimLastRune(m.projectFilter)
+		if m.menuActive() {
+			m.backspaceMenuFilter()
 		}
 	default:
 		m.appendPrintable(msg)
@@ -495,15 +470,6 @@ func (m *SidebarModel) move(delta int) {
 		return
 	}
 	m.cursor = (m.cursor + delta + len(visible)) % len(visible)
-}
-
-func (m *SidebarModel) moveProject(delta int) {
-	visible := m.visibleProjects()
-	if len(visible) == 0 {
-		m.projectCursor = 0
-		return
-	}
-	m.projectCursor = (m.projectCursor + delta + len(visible)) % len(visible)
 }
 
 func (m SidebarModel) selectedSession() (SessionItem, bool) {
@@ -729,26 +695,13 @@ func (m *SidebarModel) clearKillConfirmation() {
 	m.message = ""
 }
 
-func (m *SidebarModel) createSelectedProject() {
-	visible := m.visibleProjects()
-	if len(visible) == 0 || m.projectCursor >= len(visible) {
-		return
-	}
-	if m.actions.CreateProject != nil && m.actions.CreateProject(visible[m.projectCursor]) {
-		m.mode = ModeBrowse
-		m.projectFilter = ""
-		m.projectCursor = 0
-		m.reloadSessionsSelectingCurrent()
-	}
-}
-
 func (m *SidebarModel) appendPrintable(msg tea.KeyPressMsg) {
 	if key, ok := printableKey(msg); ok {
 		if m.mode == ModeSearch {
 			m.filter += key
 		}
-		if m.mode == ModeProject {
-			m.projectFilter += key
+		if m.menuActive() {
+			m.appendMenuFilter(key)
 		}
 	}
 }
@@ -773,18 +726,6 @@ func (m SidebarModel) visibleItems() []SessionItem {
 	return items
 }
 
-func (m SidebarModel) visibleProjects() []ProjectItem {
-	projects := make([]ProjectItem, 0, len(m.projects))
-	filter := strings.ToLower(m.projectFilter)
-	for _, project := range m.projects {
-		if filter != "" && !strings.Contains(strings.ToLower(project.Name), filter) {
-			continue
-		}
-		projects = append(projects, project)
-	}
-	return projects
-}
-
 func (m SidebarModel) View() tea.View {
 	view := tea.NewView(m.Render())
 	view.MouseMode = tea.MouseModeCellMotion
@@ -794,9 +735,7 @@ func (m SidebarModel) View() tea.View {
 func (m SidebarModel) Render() string {
 	styles := newSidebarStyles()
 	lines := []string{""}
-	if m.mode == ModeProject {
-		lines = append(lines, m.renderProjects(styles)...)
-	} else if m.treeMode {
+	if m.treeMode {
 		lines = append(lines, m.renderTree(styles)...)
 	} else {
 		lines = append(lines, m.renderSessions(styles)...)
@@ -814,11 +753,8 @@ func (m SidebarModel) Render() string {
 	if m.mode == ModePinColor {
 		return m.pinColorPicker.RenderOverlay(content, m.width, m.height)
 	}
-	if m.mode == ModeNewItem {
-		return m.renderBottomSheet(content, BottomSheet{Title: "new layout item", Content: m.renderMenuContent(styles), Footer: "esc cancel  ↵ create", Height: 7})
-	}
-	if m.mode == ModeCreateSession {
-		return m.renderBottomSheet(content, BottomSheet{Title: "create session", Content: m.renderMenuContent(styles), Footer: "esc cancel  ↵ choose", Height: 8})
+	if m.menuActive() {
+		return m.renderBottomSheet(content, BottomSheet{Title: m.menu.Spec.Title, Content: m.renderMenuRows(styles), Footer: m.menu.Spec.Footer, Height: m.menu.Spec.Height})
 	}
 	if m.mode == ModeCreateNamed {
 		return m.renderBottomSheet(content, BottomSheet{Title: "named session", Content: "> " + m.createNamedInput, Footer: "esc cancel  ↵ create", Height: 5})
@@ -843,8 +779,8 @@ func (m *SidebarModel) moveWheel(delta int) {
 	if m.mode == ModeConfirmKill {
 		return
 	}
-	if m.mode == ModeProject || m.mode == ModeNewItem || m.mode == ModeCreateSession {
-		m.moveProject(delta)
+	if m.menuActive() {
+		m.moveMenu(delta)
 		return
 	}
 	m.move(delta)

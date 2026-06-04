@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/bnema/tmux-session-sidebar/adapters/uity"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -74,13 +75,13 @@ func sessionNamesFromRefs(refs []sidebarlayout.SessionRef) []string {
 	return names
 }
 
-func findSidebarTreeSession(items []sidebarTreeItem, name string) (sidebarTreeItem, bool) {
+func findSidebarTreeSession(items []uity.TreeItem, name string) (uity.TreeItem, bool) {
 	for _, item := range items {
-		if item.Kind == sidebarTreeRowSession && item.Session.Name == name {
+		if item.Kind == uity.TreeRowSession && item.Session.Name == name {
 			return item, true
 		}
 	}
-	return sidebarTreeItem{}, false
+	return uity.TreeItem{}, false
 }
 
 func TestLoadSidebarTreeItemsMigratesDefaultAndContextualMetadata(t *testing.T) {
@@ -106,12 +107,12 @@ func TestLoadSidebarTreeItemsMigratesDefaultAndContextualMetadata(t *testing.T) 
 		t.Fatalf("loadSidebarTreeItemsWithConfig error: %v", err)
 	}
 
-	var alpha, beta sidebarTreeItem
+	var alpha, beta uity.TreeItem
 	for _, item := range items {
-		if item.Kind == sidebarTreeRowSession && item.Session.Name == "alpha" {
+		if item.Kind == uity.TreeRowSession && item.Session.Name == "alpha" {
 			alpha = item
 		}
-		if item.Kind == sidebarTreeRowSession && item.Session.Name == "beta" {
+		if item.Kind == uity.TreeRowSession && item.Session.Name == "beta" {
 			beta = item
 		}
 	}

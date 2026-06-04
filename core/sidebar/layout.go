@@ -68,15 +68,15 @@ type Selection struct {
 }
 
 type TreeRow struct {
-	Kind           RowKind
-	ItemID         string
-	CategoryID     string
-	CategoryName   string
-	CategoryOpen   bool
-	Session        string
-	Slot           int
-	Branch         string
-	MetadataPrefix string
+	Kind         RowKind
+	ItemID       string
+	CategoryID   string
+	CategoryName string
+	CategoryOpen bool
+	Session      string
+	Slot         int
+	Depth        int
+	LastChild    bool
 }
 
 func CategoryItem(id string, name string, collapsed bool, sessionNames []string) LayoutItem {
@@ -162,16 +162,7 @@ func Flatten(layout Layout, selection Selection, showNumeric bool) []TreeRow {
 			}
 			visibleSessions := visibleCategorySessions(category.Sessions, showNumeric)
 			for i, ref := range visibleSessions {
-				last := i == len(visibleSessions)-1
-				row := TreeRow{Kind: RowKindSession, ItemID: sessionItemID(category.ID, ref.Name), CategoryID: category.ID, Session: ref.Name, Slot: slotByName[ref.Name]}
-				if last {
-					row.Branch = "└─"
-					row.MetadataPrefix = "   "
-				} else {
-					row.Branch = "├─"
-					row.MetadataPrefix = "│  "
-				}
-				rows = append(rows, row)
+				rows = append(rows, TreeRow{Kind: RowKindSession, ItemID: sessionItemID(category.ID, ref.Name), CategoryID: category.ID, Session: ref.Name, Slot: slotByName[ref.Name], Depth: 1, LastChild: i == len(visibleSessions)-1})
 			}
 		case ItemKindSeparator:
 			rows = append(rows, TreeRow{Kind: RowKindSeparator, ItemID: itemID(item)})
@@ -180,6 +171,23 @@ func Flatten(layout Layout, selection Selection, showNumeric bool) []TreeRow {
 		}
 	}
 	return rows
+}
+
+func SelectionForItemID(itemIDValue string) Selection {
+	if categoryID, sessionName, ok := strings.Cut(itemIDValue, "/session:"); ok {
+		return Selection{Kind: RowKindSession, ItemID: itemIDValue, CategoryID: categoryID, Session: sessionName}
+	}
+	kind, _, _ := strings.Cut(itemIDValue, ":")
+	switch kind {
+	case "category":
+		return Selection{Kind: RowKindCategory, ItemID: itemIDValue, CategoryID: itemIDValue}
+	case "separator":
+		return Selection{Kind: RowKindSeparator, ItemID: itemIDValue}
+	case "spacer":
+		return Selection{Kind: RowKindSpacer, ItemID: itemIDValue}
+	default:
+		return Selection{ItemID: itemIDValue}
+	}
 }
 
 func ActiveCategoryID(layout Layout, selection Selection) string {

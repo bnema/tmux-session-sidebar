@@ -15,7 +15,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-func loadSidebarTreeItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) ([]sidebarTreeItem, error) {
+func loadSidebarTreeItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) ([]uity.TreeItem, error) {
 	current, err := tmux(ctx, "display-message", "-p", "#{session_name}")
 	if err != nil {
 		return nil, fmt.Errorf("getting current tmux session: %w", err)
@@ -35,18 +35,18 @@ func loadSidebarTreeItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapsho
 	selection := sidebarSelectionForCurrent(layout, strings.TrimSpace(current))
 	rows := sidebarlayout.Flatten(layout, selection, persistedShowNumeric(persisted))
 	activeCategoryID := sidebarlayout.ActiveCategoryID(layout, selection)
-	tree := make([]sidebarTreeItem, 0, len(rows))
+	tree := make([]uity.TreeItem, 0, len(rows))
 	for _, row := range rows {
-		item := sidebarTreeItem{ID: row.ItemID, CategoryID: row.CategoryID, CategoryName: row.CategoryName, CategoryOpen: row.CategoryOpen, Slot: row.Slot, Branch: row.Branch, MetadataPrefix: row.MetadataPrefix}
+		item := uity.TreeItem{ID: row.ItemID, CategoryID: row.CategoryID, CategoryName: row.CategoryName, CategoryOpen: row.CategoryOpen, Slot: row.Slot, Depth: row.Depth, LastChild: row.LastChild}
 		switch row.Kind {
 		case sidebarlayout.RowKindCategory:
-			item.Kind = sidebarTreeRowCategory
+			item.Kind = uity.TreeRowCategory
 		case sidebarlayout.RowKindSeparator:
-			item.Kind = sidebarTreeRowSeparator
+			item.Kind = uity.TreeRowSeparator
 		case sidebarlayout.RowKindSpacer:
-			item.Kind = sidebarTreeRowSpacer
+			item.Kind = uity.TreeRowSpacer
 		case sidebarlayout.RowKindSession:
-			item.Kind = sidebarTreeRowSession
+			item.Kind = uity.TreeRowSession
 			item.Session = byName[row.Session]
 			item.ShowMetadata = cfg.MetadataSublineEnabled && (cfg.MetadataInactiveEnabled || row.CategoryID == activeCategoryID)
 		}
@@ -205,20 +205,7 @@ func currentLiveSessionNames(ctx context.Context) ([]string, error) {
 }
 
 func sidebarlayoutSelectionForItem(itemID string) sidebarlayout.Selection {
-	if categoryID, sessionName, ok := strings.Cut(itemID, "/session:"); ok {
-		return sidebarlayout.Selection{Kind: sidebarlayout.RowKindSession, ItemID: itemID, CategoryID: categoryID, Session: sessionName}
-	}
-	kind, _, _ := strings.Cut(itemID, ":")
-	switch kind {
-	case "category":
-		return sidebarlayout.Selection{Kind: sidebarlayout.RowKindCategory, ItemID: itemID, CategoryID: itemID}
-	case "separator":
-		return sidebarlayout.Selection{Kind: sidebarlayout.RowKindSeparator, ItemID: itemID}
-	case "spacer":
-		return sidebarlayout.Selection{Kind: sidebarlayout.RowKindSpacer, ItemID: itemID}
-	default:
-		return sidebarlayout.Selection{ItemID: itemID}
-	}
+	return sidebarlayout.SelectionForItemID(itemID)
 }
 
 func saveMovedSidebarLayoutItem(ctx context.Context, selection sidebarlayout.Selection, delta int, live []string) error {

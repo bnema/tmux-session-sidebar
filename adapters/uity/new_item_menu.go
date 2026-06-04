@@ -6,22 +6,17 @@ const (
 	newItemSeparator = "separator"
 )
 
-func newItemMenuItems() []ProjectItem {
-	return []ProjectItem{
-		{Name: "New category", Path: newItemCategory},
-		{Name: "New spacer", Path: newItemSpacer},
-		{Name: "New separator", Path: newItemSeparator},
-	}
+func (m *SidebarModel) openNewItemMenu() {
+	m.openMenu(ModeNewItem, []menuItem{
+		{Label: "New category", Value: newItemCategory},
+		{Label: "New spacer", Value: newItemSpacer},
+		{Label: "New separator", Value: newItemSeparator},
+	}, menuSpec{Title: "new layout item", Footer: "esc cancel  ↵ create", EmptyLabel: "no items", Height: 7, Choose: chooseNewItem})
 }
 
-func (m *SidebarModel) createSelectedNewItem() {
-	visible := m.visibleProjects()
-	if len(visible) == 0 || m.projectCursor >= len(visible) {
-		return
-	}
-	choice := visible[m.projectCursor]
+func chooseNewItem(m *SidebarModel, choice menuItem) {
 	ok := false
-	switch choice.Path {
+	switch choice.Value {
 	case newItemCategory:
 		if m.actions.CreateCategory != nil {
 			ok = m.actions.CreateCategory("New category")
@@ -36,9 +31,7 @@ func (m *SidebarModel) createSelectedNewItem() {
 		}
 	}
 	if ok {
-		m.mode = ModeBrowse
-		m.projectCursor = 0
-		m.projectFilter = ""
+		m.closeMenu()
 		m.reloadTreeItems()
 	}
 }

@@ -117,12 +117,11 @@ func (m SidebarModel) statusLine() string {
 	switch m.mode {
 	case ModeSearch:
 		return "filter: " + m.filter
-	case ModeProject:
-		return "projects: " + m.projectFilter
-	case ModeNewItem:
-		return "new item"
-	case ModeCreateSession:
-		return "create session"
+	case ModeProject, ModeNewItem, ModeCreateSession:
+		if m.menu.Spec.Filterable && m.menu.Filter != "" {
+			return m.menu.Spec.Title + ": " + m.menu.Filter
+		}
+		return m.menu.Spec.Title
 	case ModeCreateNamed:
 		return "named session: " + m.createNamedInput
 	case ModeRenameCategory:
@@ -204,20 +203,4 @@ func bestEffortMetadataIconMode() MetadataIconMode {
 		return MetadataIconsASCII
 	}
 	return MetadataIconsNerd
-}
-
-func (m SidebarModel) renderProjects(styles sidebarStyles) []string {
-	visible := m.visibleProjects()
-	lines := make([]string, 0, len(visible)+1)
-	for i, project := range visible {
-		row := fmt.Sprintf("  %-18s", project.Name)
-		if i == m.projectCursor {
-			row = styles.selected.Render(row)
-		}
-		lines = append(lines, row)
-	}
-	if len(visible) == 0 {
-		lines = append(lines, styles.dim.Render("no projects"))
-	}
-	return lines
 }

@@ -13,23 +13,18 @@ const (
 	createSessionProject = "project"
 )
 
-func createSessionMenuItems() []ProjectItem {
-	return []ProjectItem{
-		{Name: "Git repo", Path: createSessionGit},
-		{Name: "Current dir", Path: createSessionCurrent},
-		{Name: "Named…", Path: createSessionNamed},
-		{Name: "Project…", Path: createSessionProject},
-	}
+func (m *SidebarModel) openCreateSessionMenu() {
+	m.openMenu(ModeCreateSession, []menuItem{
+		{Label: "Git repo", Value: createSessionGit},
+		{Label: "Current dir", Value: createSessionCurrent},
+		{Label: "Named…", Value: createSessionNamed},
+		{Label: "Project…", Value: createSessionProject},
+	}, menuSpec{Title: "create session", Footer: "esc cancel  ↵ choose", EmptyLabel: "no items", Height: 8, Choose: chooseCreateSession})
 }
 
-func (m *SidebarModel) createSelectedSessionChoice() {
-	visible := m.visibleProjects()
-	if len(visible) == 0 || m.projectCursor >= len(visible) {
-		return
-	}
-	choice := visible[m.projectCursor]
+func chooseCreateSession(m *SidebarModel, choice menuItem) {
 	success := false
-	switch choice.Path {
+	switch choice.Value {
 	case createSessionGit:
 		if m.actions.CreateGitProject != nil {
 			success = m.actions.CreateGitProject()
@@ -39,22 +34,16 @@ func (m *SidebarModel) createSelectedSessionChoice() {
 			success = m.actions.CreateAdhoc()
 		}
 	case createSessionNamed:
+		m.menu = menuState{}
 		m.mode = ModeCreateNamed
 		m.createNamedInput = ""
 		return
 	case createSessionProject:
-		if m.actions.LoadProjects != nil {
-			m.projects = m.actions.LoadProjects()
-			m.mode = ModeProject
-			m.projectCursor = 0
-			m.projectFilter = ""
-		}
+		m.openProjectMenu()
 		return
 	}
 	if success {
-		m.mode = ModeBrowse
-		m.projectCursor = 0
-		m.projectFilter = ""
+		m.closeMenu()
 		m.reloadSessionsSelectingCurrent()
 	}
 }

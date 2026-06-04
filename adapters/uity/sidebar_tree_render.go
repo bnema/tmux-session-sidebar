@@ -56,14 +56,16 @@ func (m *SidebarModel) selectTreeItem(id string) {
 }
 
 func (m SidebarModel) selectableTreeItems() []TreeItem {
-	items := m.visibleTreeItems()
-	selectable := make([]TreeItem, 0, len(items))
-	for _, item := range items {
-		if item.Kind == TreeRowSession || item.Kind == TreeRowCategory || item.Kind == TreeRowSeparator || item.Kind == TreeRowSpacer {
-			selectable = append(selectable, item)
-		}
+	return m.visibleTreeItems()
+}
+
+func isSelectableTreeKind(kind TreeRowKind) bool {
+	switch kind {
+	case TreeRowSession, TreeRowCategory, TreeRowSeparator, TreeRowSpacer:
+		return true
+	default:
+		return false
 	}
-	return selectable
 }
 
 func (m SidebarModel) visibleTreeItems() []TreeItem {

@@ -424,7 +424,7 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}
-	program := tea.NewProgram(uity.NewTreeSidebarModelWithOptions(toUITreeItems(items), actions, options), tea.WithOutput(stdout))
+	program := tea.NewProgram(uity.NewTreeSidebarModelWithOptions(items, actions, options), tea.WithOutput(stdout))
 	_, err = program.Run()
 	return err
 }
@@ -517,7 +517,7 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 				handleActionError(ctx, "reload sidebar tree", err)
 				return nil
 			}
-			return toUITreeItems(items)
+			return items
 		},
 		CreateCategory: func(name string) bool {
 			live, err := currentLiveSessionNames(ctx)

@@ -1065,14 +1065,14 @@ func TestSidebarModelChoosingProjectReturnsToBrowseMode(t *testing.T) {
 		updated, _ = model.Update(key)
 		model = requireSidebarModel(t, updated)
 	}
-	if model.mode != ModeProject || model.projectFilter != "stac" {
-		t.Fatalf("setup failed: mode=%q projectFilter=%q", model.mode, model.projectFilter)
+	if model.mode != ModeProject || model.menu.Filter != "stac" {
+		t.Fatalf("setup failed: mode=%q menuFilter=%q", model.mode, model.menu.Filter)
 	}
 
 	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = requireSidebarModel(t, updated)
 
-	if model.mode != ModeBrowse || model.projectFilter != "" || model.projectCursor != 0 {
+	if model.mode != ModeBrowse || model.menu.Filter != "" || model.menu.Cursor != 0 {
 		t.Fatalf("project picker state not cleared after choose: %#v", model)
 	}
 	if len(model.items) != 2 || !model.items[1].Current {
