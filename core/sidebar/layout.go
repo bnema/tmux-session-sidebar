@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	DefaultCategoryID   = "category:default"
-	DefaultCategoryName = "Default"
+	DefaultCategoryID           = "category:default"
+	DefaultCategoryName         = "Default"
+	CategorySessionPreviewLimit = 10
 )
 
 type Layout struct {
@@ -33,10 +34,11 @@ type LayoutItem struct {
 }
 
 type Category struct {
-	ID        string
-	Name      string
-	Collapsed bool
-	Sessions  []SessionRef
+	ID               string
+	Name             string
+	Collapsed        bool
+	SessionsExpanded bool
+	Sessions         []SessionRef
 }
 
 type SessionRef struct {
@@ -58,6 +60,7 @@ const (
 	RowKindSession   RowKind = "session"
 	RowKindSeparator RowKind = "separator"
 	RowKindSpacer    RowKind = "spacer"
+	RowKindMore      RowKind = "more"
 )
 
 type Selection struct {
@@ -68,15 +71,18 @@ type Selection struct {
 }
 
 type TreeRow struct {
-	Kind         RowKind
-	ItemID       string
-	CategoryID   string
-	CategoryName string
-	CategoryOpen bool
-	Session      string
-	Slot         int
-	Depth        int
-	LastChild    bool
+	Kind           RowKind
+	ItemID         string
+	CategoryID     string
+	CategoryName   string
+	CategoryOpen   bool
+	Session        string
+	Slot           int
+	Depth          int
+	LastChild      bool
+	MoreCount      int
+	MoreExpanded   bool
+	OverflowHidden bool
 }
 
 func CategoryItem(id string, name string, collapsed bool, sessionNames []string) LayoutItem {
@@ -88,6 +94,12 @@ func CategoryItem(id string, name string, collapsed bool, sessionNames []string)
 		}
 	}
 	return LayoutItem{ID: id, Kind: ItemKindCategory, Category: Category{ID: id, Name: name, Collapsed: collapsed, Sessions: refs}}
+}
+
+func CategoryItemWithSessionExpansion(id string, name string, collapsed bool, sessionsExpanded bool, sessionNames []string) LayoutItem {
+	item := CategoryItem(id, name, collapsed, sessionNames)
+	item.Category.SessionsExpanded = sessionsExpanded
+	return item
 }
 
 func SeparatorItem(id string) LayoutItem {
@@ -161,8 +173,15 @@ func Flatten(layout Layout, selection Selection, showNumeric bool) []TreeRow {
 				slotByName = SlotMap(category.Sessions, showNumeric)
 			}
 			visibleSessions := visibleCategorySessions(category.Sessions, showNumeric)
+			hiddenCount := categoryHiddenSessionCount(visibleSessions, category.SessionsExpanded)
+			showMoreRow := hiddenCount > 0 || category.SessionsExpanded && len(visibleSessions) > CategorySessionPreviewLimit
 			for i, ref := range visibleSessions {
-				rows = append(rows, TreeRow{Kind: RowKindSession, ItemID: sessionItemID(category.ID, ref.Name), CategoryID: category.ID, Session: ref.Name, Slot: slotByName[ref.Name], Depth: 1, LastChild: i == len(visibleSessions)-1})
+				overflowHidden := !category.SessionsExpanded && i >= CategorySessionPreviewLimit
+				lastChild := !showMoreRow && i == len(visibleSessions)-1
+				rows = append(rows, TreeRow{Kind: RowKindSession, ItemID: sessionItemID(category.ID, ref.Name), CategoryID: category.ID, Session: ref.Name, Slot: slotByName[ref.Name], Depth: 1, LastChild: lastChild, OverflowHidden: overflowHidden})
+			}
+			if showMoreRow {
+				rows = append(rows, TreeRow{Kind: RowKindMore, ItemID: categoryMoreItemID(category.ID), CategoryID: category.ID, Depth: 1, LastChild: true, MoreCount: hiddenCount, MoreExpanded: category.SessionsExpanded})
 			}
 		case ItemKindSeparator:
 			rows = append(rows, TreeRow{Kind: RowKindSeparator, ItemID: itemID(item)})
@@ -176,6 +195,9 @@ func Flatten(layout Layout, selection Selection, showNumeric bool) []TreeRow {
 func SelectionForItemID(itemIDValue string) Selection {
 	if categoryID, sessionName, ok := strings.Cut(itemIDValue, "/session:"); ok {
 		return Selection{Kind: RowKindSession, ItemID: itemIDValue, CategoryID: categoryID, Session: sessionName}
+	}
+	if categoryID, ok := strings.CutSuffix(itemIDValue, "/more"); ok {
+		return Selection{Kind: RowKindMore, ItemID: itemIDValue, CategoryID: categoryID}
 	}
 	kind, _, _ := strings.Cut(itemIDValue, ":")
 	switch kind {
@@ -197,6 +219,9 @@ func ActiveCategoryID(layout Layout, selection Selection) string {
 	if selection.Kind == RowKindSession && selection.CategoryID != "" {
 		return selection.CategoryID
 	}
+	if selection.Kind == RowKindMore && selection.CategoryID != "" {
+		return selection.CategoryID
+	}
 	if selection.Kind == RowKindSession && selection.Session != "" {
 		if categoryID, ok := findSessionCategory(layout, selection.Session); ok {
 			return categoryID
@@ -215,6 +240,17 @@ func visibleCategorySessions(refs []SessionRef, showNumeric bool) []SessionRef {
 		visible = append(visible, ref)
 	}
 	return visible
+}
+
+func categoryHiddenSessionCount(refs []SessionRef, expanded bool) int {
+	if expanded || len(refs) <= CategorySessionPreviewLimit {
+		return 0
+	}
+	return len(refs) - CategorySessionPreviewLimit
+}
+
+func categoryMoreItemID(categoryID string) string {
+	return categoryID + "/more"
 }
 
 func SlotMap(refs []SessionRef, showNumeric bool) map[string]int {

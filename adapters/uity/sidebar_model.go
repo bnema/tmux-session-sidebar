@@ -49,41 +49,46 @@ const (
 	TreeRowSession   TreeRowKind = "session"
 	TreeRowSeparator TreeRowKind = "separator"
 	TreeRowSpacer    TreeRowKind = "spacer"
+	TreeRowMore      TreeRowKind = "more"
 )
 
 type TreeItem struct {
-	Kind         TreeRowKind
-	ID           string
-	CategoryID   string
-	CategoryName string
-	CategoryOpen bool
-	Session      SessionItem
-	Slot         int
-	Depth        int
-	LastChild    bool
-	ShowMetadata bool
+	Kind           TreeRowKind
+	ID             string
+	CategoryID     string
+	CategoryName   string
+	CategoryOpen   bool
+	Session        SessionItem
+	Slot           int
+	Depth          int
+	LastChild      bool
+	ShowMetadata   bool
+	MoreCount      int
+	MoreExpanded   bool
+	OverflowHidden bool
 }
 
 type Actions struct {
-	SwitchSession        func(string) bool
-	CreateProject        func(ProjectItem, string) bool
-	CreateGitProject     func(string) bool
-	CreateAdhoc          func(string) bool
-	CreateNamedSession   func(string, string) bool
-	KillSession          func(string) bool
-	TogglePinnedSession  func(string) bool
-	PinSessionWithColor  func(string, string) bool
-	SetShowNumericItems  func(bool) bool
-	SelfUpdate           func() tea.Cmd
-	LoadProjects         func() []ProjectItem
-	ReloadTreeItems      func() []TreeItem
-	CreateCategory       func(string) bool
-	RenameCategory       func(string, string) bool
-	CreateSpacer         func() bool
-	CreateSeparator      func() bool
-	MoveTreeItem         func(string, int) bool
-	DeleteTreeItem       func(TreeItem) bool
-	SetCategoryCollapsed func(string, bool) bool
+	SwitchSession               func(string) bool
+	CreateProject               func(ProjectItem, string) bool
+	CreateGitProject            func(string) bool
+	CreateAdhoc                 func(string) bool
+	CreateNamedSession          func(string, string) bool
+	KillSession                 func(string) bool
+	TogglePinnedSession         func(string) bool
+	PinSessionWithColor         func(string, string) bool
+	SetShowNumericItems         func(bool) bool
+	SelfUpdate                  func() tea.Cmd
+	LoadProjects                func() []ProjectItem
+	ReloadTreeItems             func() []TreeItem
+	CreateCategory              func(string) bool
+	RenameCategory              func(string, string) bool
+	CreateSpacer                func() bool
+	CreateSeparator             func() bool
+	MoveTreeItem                func(string, int) bool
+	DeleteTreeItem              func(TreeItem) bool
+	SetCategoryCollapsed        func(string, bool) bool
+	SetCategorySessionsExpanded func(string, bool) bool
 }
 
 type SelfUpdateFinishedMsg struct {
@@ -297,10 +302,6 @@ func (m SidebarModel) updateSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m.move(1)
 	case "k", "up":
 		m.move(-1)
-	case "pagedown":
-		m.movePage(1)
-	case "pageup":
-		m.movePage(-1)
 	case "backspace":
 		if m.filter != "" {
 			m.filter = trimLastRune(m.filter)
@@ -371,15 +372,11 @@ func (m SidebarModel) updateBrowseKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	case "/":
 		m.mode = ModeSearch
 	case "enter":
-		m.switchSelected()
+		m.activateSelected()
 	case "j", "down":
 		m.move(1)
 	case "k", "up":
 		m.move(-1)
-	case "pagedown":
-		m.movePage(1)
-	case "pageup":
-		m.movePage(-1)
 	case "n":
 		m.startCreateNamed()
 	case "c":
@@ -500,12 +497,30 @@ func (m SidebarModel) selectedSession() (SessionItem, bool) {
 	return item.Session, true
 }
 
-func (m *SidebarModel) switchSelected() {
-	item, ok := m.selectedSession()
+func (m *SidebarModel) activateSelected() {
+	item, ok := m.selectedTreeItem()
 	if !ok {
 		return
 	}
-	m.switchItem(item)
+	if item.Kind == TreeRowMore {
+		m.toggleSelectedMore(item)
+		return
+	}
+	if item.Kind == TreeRowSession {
+		m.switchItem(item.Session)
+	}
+}
+
+func (m *SidebarModel) toggleSelectedMore(item TreeItem) {
+	if m.actions.SetCategorySessionsExpanded == nil || item.CategoryID == "" {
+		return
+	}
+	next := !item.MoreExpanded
+	if !m.actions.SetCategorySessionsExpanded(item.CategoryID, next) {
+		return
+	}
+	m.reloadTreeItems()
+	m.selectTreeItem(item.ID)
 }
 
 func (m *SidebarModel) switchSlot(slot int) {
@@ -653,6 +668,8 @@ func (m SidebarModel) selectedCategoryID() string {
 			return item.CategoryID
 		case TreeRowSession:
 			return item.CategoryID
+		case TreeRowMore:
+			return item.CategoryID
 		case TreeRowSeparator, TreeRowSpacer:
 			return m.nearestVisibleCategoryID(item.ID)
 		}
@@ -712,7 +729,7 @@ func (m *SidebarModel) clearKillConfirmation() {
 
 func (m *SidebarModel) openDeleteConfirmation() {
 	item, ok := m.selectedTreeItem()
-	if !ok || m.actions.DeleteTreeItem == nil {
+	if !ok || item.Kind == TreeRowMore || m.actions.DeleteTreeItem == nil {
 		return
 	}
 	m.mode = ModeConfirmDelete

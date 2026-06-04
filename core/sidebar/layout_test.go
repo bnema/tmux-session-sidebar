@@ -62,14 +62,32 @@ func TestFlattenBuildsTreeRowsAndContextualSlots(t *testing.T) {
 	assertRow(t, rows[5], TreeRow{Kind: RowKindSession, ItemID: "category:personal/session:notes", CategoryID: "category:personal", Session: "notes", Depth: 1, LastChild: true})
 }
 
-func TestFlattenAssignsContinuousContextualSlotsBeyondTen(t *testing.T) {
+func TestFlattenCollapsesCategorySessionsAfterPreviewLimit(t *testing.T) {
 	layout := Layout{Items: []LayoutItem{
 		CategoryItem("category:work", "Work", false, []string{"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"}),
 	}}
 	rows := Flatten(layout, Selection{Kind: RowKindCategory, CategoryID: "category:work"}, false)
-	if rows[10].Slot != 10 || rows[11].Slot != 11 || rows[12].Slot != 12 {
-		t.Fatalf("slots 10+ = %d/%d/%d, want 10/11/12", rows[10].Slot, rows[11].Slot, rows[12].Slot)
+	if len(rows) != 14 {
+		t.Fatalf("rows len = %d, want category + all sessions + more: %#v", len(rows), rows)
 	}
+	if rows[10].Slot != 10 || rows[11].Slot != 11 || !rows[11].OverflowHidden || !rows[12].OverflowHidden {
+		t.Fatalf("overflow rows = %#v/%#v/%#v, want slot 10 visible then hidden 11/12", rows[10], rows[11], rows[12])
+	}
+	assertRow(t, rows[13], TreeRow{Kind: RowKindMore, ItemID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 2})
+}
+
+func TestFlattenExpandedCategoryShowsAllSessionsAndShowLessRow(t *testing.T) {
+	layout := Layout{Items: []LayoutItem{
+		CategoryItemWithSessionExpansion("category:work", "Work", false, true, []string{"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12"}),
+	}}
+	rows := Flatten(layout, Selection{Kind: RowKindCategory, CategoryID: "category:work"}, false)
+	if len(rows) != 14 {
+		t.Fatalf("rows len = %d, want category + 12 sessions + less: %#v", len(rows), rows)
+	}
+	if rows[12].Slot != 12 {
+		t.Fatalf("slot 12 = %d, want 12", rows[12].Slot)
+	}
+	assertRow(t, rows[13], TreeRow{Kind: RowKindMore, ItemID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreExpanded: true})
 }
 
 func TestActiveCategoryIDFallsBackToSessionLookup(t *testing.T) {

@@ -156,6 +156,77 @@ func TestTreeSidebarReloadsTreeAfterCreateSpacer(t *testing.T) {
 	}
 }
 
+func TestTreeSidebarFilterIncludesOverflowHiddenSessions(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:s10", CategoryID: "category:work", Session: SessionItem{Name: "s10"}, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:work/session:s11", CategoryID: "category:work", Session: SessionItem{Name: "s11"}, Depth: 1, OverflowHidden: true},
+		{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 1},
+	}, Actions{}, SidebarOptions{})
+
+	if view := stripANSI(model.Render()); strings.Contains(view, "s11") {
+		t.Fatalf("collapsed render should hide overflow session: %q", view)
+	}
+	updated, _ := model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+	for _, key := range []string{"s", "1", "1"} {
+		updated, _ = model.Update(keyPress(key, 0))
+		model = requireSidebarModel(t, updated)
+	}
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "Work") || !strings.Contains(view, "s11") || strings.Contains(view, "And 1 more") {
+		t.Fatalf("filter should reveal hidden matching session without more row: %q", view)
+	}
+}
+
+func TestTreeSidebarMoreRowKeepsSelectedCategoryContext(t *testing.T) {
+	gotCategoryID := ""
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 3},
+	}, Actions{CreateGitProject: func(categoryID string) bool {
+		gotCategoryID = categoryID
+		return true
+	}}, SidebarOptions{})
+	model.cursor = 1
+
+	updated, _ := model.Update(keyPress("g", 0))
+	requireSidebarModel(t, updated)
+	if gotCategoryID != "category:work" {
+		t.Fatalf("CreateGitProject category = %q, want category:work", gotCategoryID)
+	}
+}
+
+func TestTreeSidebarRendersAndTogglesMoreRow(t *testing.T) {
+	expanded := false
+	items := []TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:one", CategoryID: "category:work", Session: SessionItem{Name: "one"}, Depth: 1},
+		{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 3},
+	}
+	model := NewTreeSidebarModelWithOptions(items, Actions{SetCategorySessionsExpanded: func(categoryID string, next bool) bool {
+		expanded = next
+		return categoryID == "category:work"
+	}, ReloadTreeItems: func() []TreeItem {
+		return []TreeItem{
+			{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+			{Kind: TreeRowSession, ID: "category:work/session:one", CategoryID: "category:work", Session: SessionItem{Name: "one"}, Depth: 1},
+			{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreExpanded: expanded},
+		}
+	}}, SidebarOptions{})
+	model.cursor = 2
+
+	view := model.Render()
+	if !strings.Contains(stripANSI(view), "And 3 more....") || !strings.Contains(view, ";3;") {
+		t.Fatalf("more row should render italic count, view=%q", view)
+	}
+	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	if !expanded || model.cursor != 2 || !strings.Contains(stripANSI(model.Render()), "Show less....") {
+		t.Fatalf("more toggle expanded=%v cursor=%d view=%q", expanded, model.cursor, stripANSI(model.Render()))
+	}
+}
+
 func TestTreeSidebarCanSelectAndRenderCategorySelection(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
