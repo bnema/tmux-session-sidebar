@@ -130,9 +130,9 @@ func (m SidebarModel) renderMenuRows(styles sidebarStyles) string {
 			continue
 		}
 		selected := i == m.menu.Cursor
-		prefix := "  "
+		prefix := "   "
 		if selected {
-			prefix = "> "
+			prefix = " > "
 		}
 		line := prefix + item.Label
 		if selected {
@@ -140,7 +140,7 @@ func (m SidebarModel) renderMenuRows(styles sidebarStyles) string {
 		}
 		lines = append(lines, line)
 		if selected && strings.TrimSpace(item.Description) != "" {
-			lines = append(lines, styles.dim.Render("  "+item.Description))
+			lines = append(lines, styles.dim.Render("   "+item.Description))
 		}
 	}
 	return strings.Join(lines, "\n")
