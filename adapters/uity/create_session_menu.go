@@ -34,6 +34,13 @@ func (m *SidebarModel) startCreateNamed() {
 	m.menu = menuState{}
 	m.mode = ModeCreateNamed
 	m.createNamedInput = ""
+	m.createTargetCategoryID = m.selectedCategoryID()
+}
+
+func (m *SidebarModel) startCreateCategory() {
+	m.menu = menuState{}
+	m.mode = ModeCreateCategory
+	m.createCategoryInput = ""
 }
 
 func chooseCreate(m *SidebarModel, choice menuItem) {
@@ -42,22 +49,22 @@ func chooseCreate(m *SidebarModel, choice menuItem) {
 	switch choice.Value {
 	case createSessionGit:
 		if m.actions.CreateGitProject != nil {
-			sessionCreated = m.actions.CreateGitProject()
+			sessionCreated = m.actions.CreateGitProject(m.selectedCategoryID())
 		}
 	case createSessionCurrent:
 		if m.actions.CreateAdhoc != nil {
-			sessionCreated = m.actions.CreateAdhoc()
+			sessionCreated = m.actions.CreateAdhoc(m.selectedCategoryID())
 		}
 	case createSessionNamed:
 		m.startCreateNamed()
 		return
 	case createSessionProject:
+		m.createTargetCategoryID = m.selectedCategoryID()
 		m.openProjectMenu()
 		return
 	case createCategory:
-		if m.actions.CreateCategory != nil {
-			layoutChanged = m.actions.CreateCategory("New category")
-		}
+		m.startCreateCategory()
+		return
 	case createSeparator:
 		if m.actions.CreateSeparator != nil {
 			layoutChanged = m.actions.CreateSeparator()
@@ -96,7 +103,7 @@ func (m *SidebarModel) handleCreateNamedKey(msg tea.KeyPressMsg) {
 
 func (m *SidebarModel) confirmCreateNamed() {
 	name := strings.TrimSpace(m.createNamedInput)
-	if name == "" || m.actions.CreateNamedSession == nil || !m.actions.CreateNamedSession(name) {
+	if name == "" || m.actions.CreateNamedSession == nil || !m.actions.CreateNamedSession(name, m.createTargetCategoryID) {
 		return
 	}
 	m.clearCreateNamed()
@@ -106,4 +113,36 @@ func (m *SidebarModel) confirmCreateNamed() {
 func (m *SidebarModel) clearCreateNamed() {
 	m.mode = ModeBrowse
 	m.createNamedInput = ""
+	m.createTargetCategoryID = ""
+}
+
+func (m *SidebarModel) handleCreateCategoryKey(msg tea.KeyPressMsg) {
+	switch msg.Keystroke() {
+	case "enter":
+		m.confirmCreateCategory()
+	case "esc":
+		m.clearCreateCategory()
+	case "backspace":
+		if m.createCategoryInput != "" {
+			m.createCategoryInput = trimLastRune(m.createCategoryInput)
+		}
+	default:
+		if key, ok := printableKey(msg); ok {
+			m.createCategoryInput += key
+		}
+	}
+}
+
+func (m *SidebarModel) confirmCreateCategory() {
+	name := strings.TrimSpace(m.createCategoryInput)
+	if name == "" || m.actions.CreateCategory == nil || !m.actions.CreateCategory(name) {
+		return
+	}
+	m.clearCreateCategory()
+	m.reloadTreeItems()
+}
+
+func (m *SidebarModel) clearCreateCategory() {
+	m.mode = ModeBrowse
+	m.createCategoryInput = ""
 }

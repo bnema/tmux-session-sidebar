@@ -82,17 +82,17 @@ func (r treeRenderer) renderCategory(item TreeItem, selected bool) string {
 
 func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 	session := item.Session
-	branch := treeBranch(item)
+	branch := r.styles.dim.Render(treeBranch(item))
 	slot := slotPrefix(item.Slot)
 	marker := treeSessionMarker(session, selected)
 	name := sanitizeSessionName(session.Name)
-	bodyText := fmt.Sprintf("%s %s%s %s", branch, slot, marker, name)
+	bodyText := fmt.Sprintf(" %s%s %s", slot, marker, name)
 	if selected {
 		body := r.styles.selected.Render(bodyText)
-		return body + r.renderAttention(session, true)
+		return branch + body + r.renderAttention(session, true)
 	}
 	body := sessionRowStyle(r.styles, session).Render(bodyText)
-	return body + r.renderAttention(session, false)
+	return branch + body + r.renderAttention(session, false)
 }
 
 func (r treeRenderer) renderAttention(session SessionItem, selected bool) string {

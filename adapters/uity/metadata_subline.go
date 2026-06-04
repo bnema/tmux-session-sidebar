@@ -153,12 +153,23 @@ func gitBranchPart(meta SessionMetadataSubline, icons MetadataIconMode, width in
 	}
 	prefix := "git "
 	if icons == MetadataIconsNerd {
-		prefix = MetadataNerdGit + " "
+		prefix = "  "
 	}
 	if width < metadataDisplayWidth(prefix)+2 {
 		return metadataPart{}
 	}
-	return metadataPart{Text: fitMetadataText(prefix+branch, width, icons), Role: metadataPartBase}
+	return metadataPart{Text: fitMetadataTextPreserveSpace(prefix+branch, width, icons), Role: metadataPartBase}
+}
+
+func fitMetadataTextPreserveSpace(value string, width int, icons MetadataIconMode) string {
+	if width <= 0 || metadataDisplayWidth(value) <= width {
+		return value
+	}
+	ellipsis := "…"
+	if icons == MetadataIconsASCII {
+		ellipsis = "..."
+	}
+	return trimDisplayRight(value, max(width-metadataDisplayWidth(ellipsis), 0)) + ellipsis
 }
 
 func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level gitDetailLevel) []metadataPart {

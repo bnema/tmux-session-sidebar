@@ -1,5 +1,11 @@
 package uity
 
+// Keep this file intentionally small.
+// SidebarModel should stay a thin Bubble Tea coordinator: state, key routing,
+// and calls into focused helpers/actions only. Move rendering, prompts, menu
+// components, layout helpers, and business/persistence logic into separate
+// files or packages instead of growing this file.
+
 import (
 	"strings"
 	"unicode"
@@ -61,25 +67,26 @@ type TreeItem struct {
 }
 
 type Actions struct {
-	SwitchSession       func(string) bool
-	CreateProject       func(ProjectItem) bool
-	CreateGitProject    func() bool
-	CreateAdhoc         func() bool
-	CreateNamedSession  func(string) bool
-	RenameSession       func(string) bool
-	KillSession         func(string) bool
-	TogglePinnedSession func(string) bool
-	PinSessionWithColor func(string, string) bool
-	SetShowNumericItems func(bool) bool
-	SelfUpdate          func() tea.Cmd
-	LoadProjects        func() []ProjectItem
-	ReloadTreeItems     func() []TreeItem
-	CreateCategory      func(string) bool
-	RenameCategory      func(string, string) bool
-	CreateSpacer        func() bool
-	CreateSeparator     func() bool
-	MoveTreeItem        func(string, int) bool
-	DeleteTreeItem      func(TreeItem) bool
+	SwitchSession        func(string) bool
+	CreateProject        func(ProjectItem, string) bool
+	CreateGitProject     func(string) bool
+	CreateAdhoc          func(string) bool
+	CreateNamedSession   func(string, string) bool
+	RenameSession        func(string) bool
+	KillSession          func(string) bool
+	TogglePinnedSession  func(string) bool
+	PinSessionWithColor  func(string, string) bool
+	SetShowNumericItems  func(bool) bool
+	SelfUpdate           func() tea.Cmd
+	LoadProjects         func() []ProjectItem
+	ReloadTreeItems      func() []TreeItem
+	CreateCategory       func(string) bool
+	RenameCategory       func(string, string) bool
+	CreateSpacer         func() bool
+	CreateSeparator      func() bool
+	MoveTreeItem         func(string, int) bool
+	DeleteTreeItem       func(TreeItem) bool
+	SetCategoryCollapsed func(string, bool) bool
 }
 
 type SelfUpdateFinishedMsg struct {
@@ -108,6 +115,8 @@ type SidebarModel struct {
 	renameCategoryID                 string
 	renameCategoryInput              string
 	createNamedInput                 string
+	createCategoryInput              string
+	createTargetCategoryID           string
 	actions                          Actions
 	version                          string
 	updateCheck                      updateCheckState
@@ -235,6 +244,10 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.handleCreateNamedKey(msg)
 		return m.finishInteractiveUpdate()
 	}
+	if m.mode == ModeCreateCategory {
+		m.handleCreateCategoryKey(msg)
+		return m.finishInteractiveUpdate()
+	}
 	if m.mode == ModeBrowse {
 		if delta, ok := reorderKeyDelta(msg); ok {
 			m.reorderSelected(delta)
@@ -262,6 +275,11 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m.finishInteractiveUpdate()
 		}
 		return m, nil
+	}
+	if m.mode == ModeBrowse {
+		if collapsed, ok := categoryCollapseKey(msg); ok && m.setSelectedCategoryCollapsed(collapsed) {
+			return m.finishInteractiveUpdate()
+		}
 	}
 	if m.mode == ModeBrowse && toggleNumericKey(msg) {
 		next := !m.showNumeric
@@ -306,6 +324,10 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.mode == ModeCreateNamed {
 			m.clearCreateNamed()
+			return m.finishInteractiveUpdate()
+		}
+		if m.mode == ModeCreateCategory {
+			m.clearCreateCategory()
 			return m.finishInteractiveUpdate()
 		}
 		if m.mode == ModeRenameCategory {
@@ -361,7 +383,7 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "g":
 		if m.mode == ModeBrowse {
-			if m.actions.CreateGitProject != nil && m.actions.CreateGitProject() {
+			if m.actions.CreateGitProject != nil && m.actions.CreateGitProject(m.selectedCategoryID()) {
 				m.reloadSessionsSelectingCurrent()
 			}
 		} else {
@@ -369,7 +391,7 @@ func (m SidebarModel) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "a":
 		if m.mode == ModeBrowse {
-			if m.actions.CreateAdhoc != nil && m.actions.CreateAdhoc() {
+			if m.actions.CreateAdhoc != nil && m.actions.CreateAdhoc(m.selectedCategoryID()) {
 				m.reloadSessionsSelectingCurrent()
 			}
 		} else {
@@ -583,6 +605,19 @@ func (m *SidebarModel) togglePinnedSelected() {
 	m.selectSession(item.Name)
 }
 
+func (m *SidebarModel) setSelectedCategoryCollapsed(collapsed bool) bool {
+	item, ok := m.selectedTreeItem()
+	if !ok || item.Kind != TreeRowCategory || m.actions.SetCategoryCollapsed == nil {
+		return false
+	}
+	if !m.actions.SetCategoryCollapsed(item.CategoryID, collapsed) {
+		return false
+	}
+	m.reloadTreeItems()
+	m.selectTreeItem(item.ID)
+	return true
+}
+
 func (m *SidebarModel) reorderSelected(delta int) {
 	if m.mode != ModeBrowse && m.mode != ModeSearch {
 		return
@@ -593,6 +628,18 @@ func (m *SidebarModel) reorderSelected(delta int) {
 	}
 	m.reloadTreeItems()
 	m.selectTreeItem(item.ID)
+}
+
+func (m SidebarModel) selectedCategoryID() string {
+	if item, ok := m.selectedTreeItem(); ok {
+		switch item.Kind {
+		case TreeRowCategory:
+			return item.CategoryID
+		case TreeRowSession:
+			return item.CategoryID
+		}
+	}
+	return ""
 }
 
 func (m *SidebarModel) selectSession(name string) {
@@ -699,6 +746,9 @@ func (m SidebarModel) Render() string {
 	if m.mode == ModeCreateNamed {
 		return m.renderBottomSheet(content, bottomSheet{Title: "new session", Content: "> " + m.createNamedInput, Footer: "esc cancel  ↵ create", Height: 5})
 	}
+	if m.mode == ModeCreateCategory {
+		return m.renderBottomSheet(content, bottomSheet{Title: "new category", Content: "> " + m.createCategoryInput, Footer: "esc cancel  ↵ create", Height: 5})
+	}
 	if m.showHelp {
 		return m.renderBottomSheet(content, bottomSheet{Title: "keys", Content: m.helpSheetContent(styles), Footer: "esc close", Height: 14})
 	}
@@ -739,7 +789,18 @@ func reorderKeyDelta(msg tea.KeyPressMsg) (int, bool) {
 
 func toggleNumericKey(msg tea.KeyPressMsg) bool {
 	key := msg.Key()
-	return key.Mod == 0 && key.Text == "h"
+	return key.Mod.Contains(tea.ModAlt) && key.Text == "h"
+}
+
+func categoryCollapseKey(msg tea.KeyPressMsg) (bool, bool) {
+	switch msg.Keystroke() {
+	case "h", "left":
+		return true, true
+	case "l", "right":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func pinnedToggleKey(msg tea.KeyPressMsg) bool {

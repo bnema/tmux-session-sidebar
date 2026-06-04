@@ -30,7 +30,7 @@ func createCurrentGitProject(ctx context.Context, flags map[string]string, sideb
 		}
 		return errors.New("no git repository found")
 	}
-	return createOrSwitchProject(ctx, flags["client"], projects.CandidateFromPath(root), sidebar)
+	return createOrSwitchProject(ctx, flags["client"], projects.CandidateFromPath(root), flags["category-id"], sidebar)
 }
 
 func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
@@ -51,11 +51,25 @@ func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 		return err
 	}
 	metadata := ports.SessionMetadata{Kind: "adhoc", LastPath: path}
-	return withSidebarFollow(ctx, flags["client"], sidebar, func() error {
+	if err := withSidebarFollow(ctx, flags["client"], sidebar, func() error {
 		return withPersistedSessionDuringTmuxAction(ctx, name, metadata, func() error {
 			return runtimeService().CreateAdhocSession(ctx, flags["client"], existing, name, path)
 		})
-	})
+	}); err != nil {
+		return err
+	}
+	return saveCreatedSessionCategory(ctx, name, flags["category-id"])
+}
+
+func saveCreatedSessionCategory(ctx context.Context, name string, categoryID string) error {
+	if strings.TrimSpace(categoryID) == "" {
+		return nil
+	}
+	live, err := currentLiveSessionNames(ctx)
+	if err != nil {
+		return err
+	}
+	return saveSidebarSessionCategory(ctx, name, categoryID, live)
 }
 
 func currentPanePathForAction(ctx context.Context, client string) (string, error) {

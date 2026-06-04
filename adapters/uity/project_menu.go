@@ -9,7 +9,12 @@ func (m *SidebarModel) openProjectMenu() {
 }
 
 func chooseProject(m *SidebarModel, item menuItem) {
-	if m.actions.CreateProject != nil && m.actions.CreateProject(item.Project) {
+	categoryID := m.createTargetCategoryID
+	if categoryID == "" {
+		categoryID = m.selectedCategoryID()
+	}
+	if m.actions.CreateProject != nil && m.actions.CreateProject(item.Project, categoryID) {
+		m.createTargetCategoryID = ""
 		m.closeMenu()
 		m.reloadSessionsSelectingCurrent()
 	}

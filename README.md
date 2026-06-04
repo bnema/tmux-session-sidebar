@@ -128,8 +128,9 @@ Inside the sidebar:
 | `d` | Delete the selected session, category, separator, or empty space after confirmation |
 | `x` | Kill the selected session after confirmation when not searching/filtering |
 | `u` | Start a runtime self-update in the background when not searching/filtering |
+| `h` / `l`, left/right | Collapse or expand the selected category |
 | `J` / `K` | Move the selected category, session, separator, or spacer when not searching/filtering |
-| `h` | Show or hide numeric session names when not searching/filtering |
+| `Alt+h` | Show or hide numeric session names when not searching/filtering |
 | `?` | Show or hide key help when not searching/filtering |
 | `Ctrl+c` | Quit the sidebar UI |
 

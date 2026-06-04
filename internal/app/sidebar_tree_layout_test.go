@@ -345,6 +345,78 @@ esac
 	}
 }
 
+func TestSaveNewSidebarCategoryUsesUniqueIDsForDuplicateNames(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	live := []string{"alpha"}
+	if err := saveReconciledSidebarLayout(ctx, live); err != nil {
+		t.Fatalf("saveReconciledSidebarLayout error: %v", err)
+	}
+	if err := saveNewSidebarCategory(ctx, "Toto", live); err != nil {
+		t.Fatalf("first saveNewSidebarCategory error: %v", err)
+	}
+	if err := saveNewSidebarCategory(ctx, "Toto", live); err != nil {
+		t.Fatalf("second saveNewSidebarCategory error: %v", err)
+	}
+	state, err := sessionOrderStore().Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	layout := coreLayoutFromPersisted(state.SidebarLayout)
+	if len(layout.Items) != 3 || layout.Items[1].Category.ID == layout.Items[2].Category.ID || layout.Items[1].Category.Name != "Toto" || layout.Items[2].Category.Name != "Toto" {
+		t.Fatalf("duplicate category layout = %#v, want duplicate names with unique ids", layout.Items)
+	}
+}
+
+func TestSaveSidebarSessionCategoryMovesSessionIntoTargetCategory(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	live := []string{"alpha", "beta"}
+	store := sessionOrderStore()
+	state, err := store.Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	state.SidebarLayout = &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+		{ID: "category:work", Kind: string(sidebarlayout.ItemKindCategory), Category: &ports.SidebarLayoutCategory{ID: "category:work", Name: "Work", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}}}},
+		{ID: "category:db", Kind: string(sidebarlayout.ItemKindCategory), Category: &ports.SidebarLayoutCategory{ID: "category:db", Name: "Databases", Sessions: []ports.SidebarLayoutSessionRef{{Name: "beta"}}}},
+	}}
+	if err := store.Save(ctx, "tmux", state); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+	if err := saveSidebarSessionCategory(ctx, "alpha", "category:db", live); err != nil {
+		t.Fatalf("saveSidebarSessionCategory error: %v", err)
+	}
+	state, err = store.Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("reload state: %v", err)
+	}
+	layout := coreLayoutFromPersisted(state.SidebarLayout)
+	if len(layout.Items[0].Category.Sessions) != 0 || sessionNamesFromRefs(layout.Items[1].Category.Sessions)[1] != "alpha" {
+		t.Fatalf("layout after session move = %#v", layout.Items)
+	}
+}
+
+func TestSaveSidebarCategoryCollapsedPersistsState(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	live := []string{"alpha"}
+	if err := saveReconciledSidebarLayout(ctx, live); err != nil {
+		t.Fatalf("saveReconciledSidebarLayout error: %v", err)
+	}
+	if err := saveSidebarCategoryCollapsed(ctx, sidebarlayout.DefaultCategoryID, true, live); err != nil {
+		t.Fatalf("saveSidebarCategoryCollapsed error: %v", err)
+	}
+	state, err := sessionOrderStore().Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	layout := coreLayoutFromPersisted(state.SidebarLayout)
+	if len(layout.Items) != 1 || !layout.Items[0].Category.Collapsed {
+		t.Fatalf("layout collapsed = %#v, want default collapsed", layout.Items)
+	}
+}
+
 func TestSaveDeletedSidebarLayoutItemRemovesSeparatorAndSpacerAndPreservesSessions(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := context.Background()

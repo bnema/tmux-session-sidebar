@@ -435,17 +435,17 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 		SwitchSession: func(name string) bool {
 			return handleActionError(ctx, "switch session", switchClient(ctx, currentClient(), name, sidebar))
 		},
-		CreateProject: func(project uity.ProjectItem) bool {
-			return handleMetadataAction(ctx, ipcClient, "create project session", createProject(ctx, map[string]string{"client": currentClient(), "project-path": project.Path}, stdout, sidebar))
+		CreateProject: func(project uity.ProjectItem, categoryID string) bool {
+			return handleMetadataAction(ctx, ipcClient, "create project session", createProject(ctx, map[string]string{"client": currentClient(), "project-path": project.Path, "category-id": categoryID}, stdout, sidebar))
 		},
-		CreateGitProject: func() bool {
-			return handleMetadataAction(ctx, ipcClient, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": currentClient()}, sidebar))
+		CreateGitProject: func(categoryID string) bool {
+			return handleMetadataAction(ctx, ipcClient, "create git project session", createCurrentGitProject(ctx, map[string]string{"client": currentClient(), "category-id": categoryID}, sidebar))
 		},
-		CreateAdhoc: func() bool {
-			return handleMetadataAction(ctx, ipcClient, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": currentClient()}, sidebar))
+		CreateAdhoc: func(categoryID string) bool {
+			return handleMetadataAction(ctx, ipcClient, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": currentClient(), "category-id": categoryID}, sidebar))
 		},
-		CreateNamedSession: func(name string) bool {
-			return handleMetadataAction(ctx, ipcClient, "create named session", createAdhoc(ctx, map[string]string{"client": currentClient(), "name": name}, sidebar))
+		CreateNamedSession: func(name string, categoryID string) bool {
+			return handleMetadataAction(ctx, ipcClient, "create named session", createAdhoc(ctx, map[string]string{"client": currentClient(), "name": name, "category-id": categoryID}, sidebar))
 		},
 		RenameSession: func(name string) bool {
 			return handleMetadataAction(ctx, ipcClient, "rename session", renameSession(ctx, map[string]string{"client": currentClient(), "session": name}, sidebar))
@@ -530,6 +530,13 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 			}
 			selection := sidebarlayoutSelectionForItem(item.ID)
 			return handleActionError(ctx, "delete sidebar item", saveDeletedSidebarLayoutItem(ctx, selection, live))
+		},
+		SetCategoryCollapsed: func(categoryID string, collapsed bool) bool {
+			live, err := currentLiveSessionNames(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for category collapse", err)
+			}
+			return handleActionError(ctx, "set category collapse", saveSidebarCategoryCollapsed(ctx, categoryID, collapsed, live))
 		},
 	}
 }

@@ -24,7 +24,8 @@ func (m SidebarModel) helpSheetContent(styles sidebarStyles) string {
 	lines := []string{
 		styles.accent.Render("navigation"),
 		"↵ switch    / filter    esc close",
-		"j/k move    " + spaceKeySymbol + " pin       h nums",
+		"j/k move    alt+h nums",
+		spaceKeySymbol + " pin",
 		"",
 		styles.accent.Render("sessions"),
 		"c create    r rename    d del",
@@ -109,6 +110,8 @@ func (m SidebarModel) statusLine() string {
 		return m.menu.Spec.Title
 	case ModeCreateNamed:
 		return "new session: " + m.createNamedInput
+	case ModeCreateCategory:
+		return "new category: " + m.createCategoryInput
 	case ModeRenameCategory:
 		return "rename category: " + m.renameCategoryInput
 	case ModeConfirmKill:

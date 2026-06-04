@@ -16,7 +16,7 @@ func TestFormatMetadataSublineNerdGitStates(t *testing.T) {
 		Untracked: 1,
 	}, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 80})
 
-	want := " feat/ui  2 -1  1  4"
+	want := "  feat/ui  2 -1  1  4"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}
@@ -59,7 +59,7 @@ func TestFormatMetadataSublineShowsCleanGitBranch(t *testing.T) {
 
 func TestFormatMetadataSublineShowsCleanGitWithoutUpstream(t *testing.T) {
 	got := FormatMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Branch: "work", Clean: true, UpstreamMissing: true}, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 80})
-	if got != " work" {
+	if got != "  work" {
 		t.Fatalf("FormatMetadataSubline() = %q, want branch with clean state", got)
 	}
 }
@@ -73,7 +73,7 @@ func TestFormatMetadataSublineEllipsizesLongBranch(t *testing.T) {
 	}
 
 	got := FormatMetadataSubline(meta, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 24})
-	for _, want := range []string{" feature", "…", " 2", " 3"} {
+	for _, want := range []string{"  feature", "…", " 2", " 3"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("FormatMetadataSubline() = %q, want to contain %q", got, want)
 		}

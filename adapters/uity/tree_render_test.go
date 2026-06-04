@@ -142,7 +142,7 @@ func TestTreeSidebarToggleNumericReloadsTree(t *testing.T) {
 		},
 	}, SidebarOptions{})
 
-	updated, _ := model.Update(keyPress("h", 0))
+	updated, _ := model.Update(keyPress("h", tea.ModAlt))
 	model = requireSidebarModel(t, updated)
 	if !reloaded || len(model.treeItems) != 1 || model.treeItems[0].Session.Name != "1" {
 		t.Fatalf("toggle numeric reload: reloaded=%v tree=%#v", reloaded, model.treeItems)
@@ -219,7 +219,7 @@ func TestTreeSidebarNOpensQuickNamedSessionPrompt(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
 		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Depth: 1, LastChild: true},
-	}, Actions{CreateNamedSession: func(name string) bool {
+	}, Actions{CreateNamedSession: func(name string, categoryID string) bool {
 		created = name
 		return true
 	}, ReloadTreeItems: func() []TreeItem {
@@ -245,7 +245,7 @@ func TestTreeSidebarNOpensQuickNamedSessionPrompt(t *testing.T) {
 
 func TestTreeSidebarCOpensCreateSessionSheetAndRunsGitChoice(t *testing.T) {
 	called := false
-	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{CreateGitProject: func() bool {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{CreateGitProject: func(categoryID string) bool {
 		called = true
 		return true
 	}, ReloadTreeItems: func() []TreeItem {
@@ -290,10 +290,87 @@ func TestTreeSidebarCreateMenuNavigationSkipsGroupHeaders(t *testing.T) {
 	}
 }
 
+func TestTreeSidebarCreateNamedSessionUsesSelectedCategory(t *testing.T) {
+	var gotName, gotCategoryID string
+	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{CreateNamedSession: func(name string, categoryID string) bool {
+		gotName = name
+		gotCategoryID = categoryID
+		return true
+	}, ReloadTreeItems: func() []TreeItem {
+		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}
+	}}, SidebarOptions{})
+	updated, _ := model.Update(keyPress("c", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	for _, r := range "scratch" {
+		updated, _ = model.Update(keyPress(string(r), 0))
+		model = requireSidebarModel(t, updated)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	if gotName != "scratch" || gotCategoryID != "category:work" {
+		t.Fatalf("CreateNamedSession = %q/%q, want scratch/category:work", gotName, gotCategoryID)
+	}
+}
+
+func TestTreeSidebarCategoryCollapseShortcuts(t *testing.T) {
+	var calls []struct {
+		categoryID string
+		collapsed  bool
+	}
+	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{SetCategoryCollapsed: func(categoryID string, collapsed bool) bool {
+		calls = append(calls, struct {
+			categoryID string
+			collapsed  bool
+		}{categoryID: categoryID, collapsed: collapsed})
+		return true
+	}, ReloadTreeItems: func() []TreeItem {
+		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: false}}
+	}}, SidebarOptions{})
+	updated, _ := model.Update(keyPress("h", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("l", 0))
+	model = requireSidebarModel(t, updated)
+	if len(calls) != 2 || calls[0].categoryID != "category:work" || !calls[0].collapsed || calls[1].categoryID != "category:work" || calls[1].collapsed {
+		t.Fatalf("collapse calls = %#v, want category collapse then expand", calls)
+	}
+}
+
+func TestTreeSidebarCreateCategoryPromptsForName(t *testing.T) {
+	created := ""
+	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{CreateCategory: func(name string) bool {
+		created = name
+		return true
+	}, ReloadTreeItems: func() []TreeItem {
+		return []TreeItem{{Kind: TreeRowCategory, ID: "category:new", CategoryID: "category:new", CategoryName: "Databases", CategoryOpen: true}}
+	}}, SidebarOptions{})
+	updated, _ := model.Update(keyPress("c", 0))
+	model = requireSidebarModel(t, updated)
+	for range 4 {
+		updated, _ = model.Update(keyPress("j", 0))
+		model = requireSidebarModel(t, updated)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	if model.mode != ModeCreateCategory {
+		t.Fatalf("mode=%s, want create category prompt", model.mode)
+	}
+	for _, r := range "Databases" {
+		updated, _ = model.Update(keyPress(string(r), 0))
+		model = requireSidebarModel(t, updated)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	if created != "Databases" || model.mode != ModeBrowse {
+		t.Fatalf("created=%q mode=%s, want Databases browse", created, model.mode)
+	}
+}
+
 func TestTreeSidebarCreateSessionNamedPrompt(t *testing.T) {
 	created := ""
 	reloaded := false
-	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{CreateNamedSession: func(name string) bool {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{CreateNamedSession: func(name string, categoryID string) bool {
 		created = name
 		return true
 	}, ReloadTreeItems: func() []TreeItem {
@@ -333,7 +410,7 @@ func TestTreeSidebarRenderShowsMetadataAsTreeChild(t *testing.T) {
 	}, Actions{}, SidebarOptions{})
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "└─ 1 "+inactiveMarkerSymbol+" alpha") || !strings.Contains(view, "    feature/category-tree  2") {
+	if !strings.Contains(view, "└─ 1 "+inactiveMarkerSymbol+" alpha") || !strings.Contains(view, "     feature/category-tree  2") {
 		t.Fatalf("tree render missing session metadata child: %q", view)
 	}
 }
