@@ -257,7 +257,7 @@ func TestTreeSidebarCOpensCreateSessionSheetAndRunsGitChoice(t *testing.T) {
 	updated, _ = model.Update(keyPress("c", 0))
 	model = requireSidebarModel(t, updated)
 	view := stripANSI(model.Render())
-	for _, want := range []string{"create", "sessions", "repo session", "from current git repo", "current directory", "named session", "project picker", "layout", "category", "separator", "empty space"} {
+	for _, want := range []string{"CREATE MENU", "SESSIONS", "repo session", "current directory", "named session", "project picker", "LAYOUT", "category", "separator", "empty space"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("create sheet missing %q: %q", want, view)
 		}

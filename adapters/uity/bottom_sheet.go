@@ -26,7 +26,8 @@ func (s bottomSheet) render(width int, maxHeight int) string {
 	innerWidth := max(width, 1)
 	titleLines := []string{}
 	if strings.TrimSpace(s.Title) != "" {
-		titleLines = append(titleLines, bottomSheetTitleStyle().Render(fitMetadataText(s.Title, innerWidth, MetadataIconsASCII)))
+		title := fitMetadataText(strings.TrimSpace(s.Title), innerWidth, MetadataIconsASCII)
+		titleLines = append(titleLines, bottomSheetTitleStyle().Width(innerWidth).Align(lipgloss.Center).Render(title))
 	}
 	contentLines := []string{}
 	if s.Content != "" {
@@ -105,7 +106,15 @@ func bottomSheetFooterStyle() lipgloss.Style {
 func fitBlockWidth(value string, width int) []string {
 	lines := strings.Split(value, "\n")
 	for i, line := range lines {
-		lines[i] = fitMetadataText(line, width, MetadataIconsASCII)
+		lines[i] = fitBottomSheetContentLine(line, width)
 	}
 	return lines
+}
+
+func fitBottomSheetContentLine(line string, width int) string {
+	if width <= 0 || metadataDisplayWidth(line) <= width {
+		return line
+	}
+	ellipsis := "..."
+	return trimDisplayRight(line, max(width-metadataDisplayWidth(ellipsis), 0)) + ellipsis
 }

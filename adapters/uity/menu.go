@@ -3,11 +3,10 @@ package uity
 import "strings"
 
 type menuItem struct {
-	Label       string
-	Description string
-	Value       string
-	Project     ProjectItem
-	Header      bool
+	Label   string
+	Value   string
+	Project ProjectItem
+	Header  bool
 }
 
 type menuSpec struct {
@@ -126,22 +125,19 @@ func (m SidebarModel) renderMenuRows(styles sidebarStyles) string {
 	lines := make([]string, 0, len(visible)+1)
 	for i, item := range visible {
 		if item.Header {
-			lines = append(lines, styles.accent.Render(strings.ToLower(item.Label)))
+			lines = append(lines, styles.accent.Render(strings.ToUpper(item.Label)))
 			continue
 		}
 		selected := i == m.menu.Cursor
-		prefix := "   "
+		prefix := "  "
 		if selected {
-			prefix = " > "
+			prefix = "> "
 		}
 		line := prefix + item.Label
 		if selected {
 			line = styles.selected.Render(line)
 		}
 		lines = append(lines, line)
-		if selected && strings.TrimSpace(item.Description) != "" {
-			lines = append(lines, styles.dim.Render("   "+item.Description))
-		}
 	}
 	return strings.Join(lines, "\n")
 }

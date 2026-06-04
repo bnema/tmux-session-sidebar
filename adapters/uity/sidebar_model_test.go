@@ -85,7 +85,7 @@ func TestSidebarModelBrowseShortcuts(t *testing.T) {
 		updated, _ = model.Update(keyPress("c", 0))
 		model = requireSidebarModel(t, updated)
 		view := stripANSI(model.Render())
-		for _, want := range []string{"create", "sessions", "repo session", "from current git repo", "current directory", "named session", "project picker", "layout", "category", "separator", "empty space"} {
+		for _, want := range []string{"CREATE MENU", "SESSIONS", "repo session", "current directory", "named session", "project picker", "LAYOUT", "category", "separator", "empty space"} {
 			if model.mode != ModeCreate || !strings.Contains(view, want) {
 				t.Fatalf("create menu missing %q: mode=%s view=%q", want, model.mode, view)
 			}
