@@ -120,7 +120,7 @@ func NewSidebarModelWithOptions(items []SessionItem, actions Actions, options Si
 		attentionAnimationTickGeneration = 1
 	}
 	updateSpinner := spinner.New()
-	updateSpinner.Spinner = spinner.Dot
+	updateSpinner.Spinner = spinner.Meter
 	updateSpinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#7dd3fc"))
 	return SidebarModel{
 		items:                            items,
