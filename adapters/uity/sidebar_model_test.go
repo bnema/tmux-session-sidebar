@@ -136,8 +136,11 @@ func TestSidebarModelDeleteSelectedTreeItemRequiresConfirmationAndReloadsTree(t 
 	})
 	updated, _ := model.Update(keyPress("d", 0))
 	model = requireSidebarModel(t, updated)
-	if model.mode != ModeConfirmDelete || !strings.Contains(model.message, "Delete session alpha") {
+	if model.mode != ModeConfirmDelete || model.message != "Delete alpha? y/N" {
 		t.Fatalf("delete confirmation state = mode=%s message=%q", model.mode, model.message)
+	}
+	if view := model.Render(); !strings.Contains(view, "38;2;248;113;113") {
+		t.Fatalf("delete confirmation should render destructive red, view=%q", view)
 	}
 	updated, _ = model.Update(keyPress("y", 0))
 	model = requireSidebarModel(t, updated)
@@ -157,7 +160,7 @@ func TestSidebarModelDeleteSelectedCategory(t *testing.T) {
 	}}, SidebarOptions{})
 	updated, _ := model.Update(keyPress("d", 0))
 	model = requireSidebarModel(t, updated)
-	if model.mode != ModeConfirmDelete || !strings.Contains(model.message, "Delete category Work") {
+	if model.mode != ModeConfirmDelete || model.message != "Delete Work? y/N" {
 		t.Fatalf("delete category confirmation = mode=%s message=%q", model.mode, model.message)
 	}
 	updated, _ = model.Update(keyPress("y", 0))

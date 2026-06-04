@@ -131,6 +131,8 @@ type sidebarStyles struct {
 	stale           lipgloss.Style
 	selected        lipgloss.Style
 	pinned          lipgloss.Style
+	warning         lipgloss.Style
+	destructive     lipgloss.Style
 	versionBadge    lipgloss.Style
 	updateIndicator lipgloss.Style
 }
@@ -645,13 +647,13 @@ func (m *SidebarModel) clearDeleteConfirmation() {
 func deleteLabel(item TreeItem) string {
 	switch item.Kind {
 	case TreeRowSession:
-		return "session " + item.Session.Name
+		return item.Session.Name
 	case TreeRowCategory:
-		return "category " + item.CategoryName
+		return item.CategoryName
 	case TreeRowSeparator:
-		return "separator"
+		return "[separator]"
 	case TreeRowSpacer:
-		return "empty space"
+		return "[spacer]"
 	default:
 		return "item"
 	}
@@ -684,7 +686,7 @@ func (m SidebarModel) Render() string {
 	if m.updateInProgress {
 		lines = append(lines, "", styles.accent.Render("Updating runtime "+m.updateSpinner.View()))
 	} else if m.message != "" {
-		lines = append(lines, "", styles.accent.Render(m.message))
+		lines = append(lines, "", m.messageStyle(styles).Render(m.message))
 	}
 	lines = StatusBar{Lines: m.statusBarLines(styles), Height: m.height}.RenderBelow(padSidebarContentLines(lines))
 	content := strings.Join(lines, "\n")

@@ -60,6 +60,8 @@ func newSidebarStyles() sidebarStyles {
 		stale:           lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
 		selected:        lipgloss.NewStyle().Background(lipgloss.Color(selectedRowBackgroundRGB.Hex())).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
 		pinned:          lipgloss.NewStyle().Foreground(lipgloss.Color(defaultPinColor)).Bold(true),
+		warning:         lipgloss.NewStyle().Foreground(lipgloss.Color("#fbbf24")).Bold(true),
+		destructive:     lipgloss.NewStyle().Foreground(lipgloss.Color("#f87171")).Bold(true),
 		versionBadge:    lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#e0f2fe")).Bold(true),
 		updateIndicator: lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#22c55e")).Bold(true),
 	}
@@ -85,6 +87,17 @@ func pinColor(item SessionItem) string {
 	return item.PinColor
 }
 
+func (m SidebarModel) messageStyle(styles sidebarStyles) lipgloss.Style {
+	switch m.mode {
+	case ModeConfirmDelete:
+		return styles.destructive
+	case ModeConfirmKill:
+		return styles.warning
+	default:
+		return styles.accent
+	}
+}
+
 func (m SidebarModel) statusLine() string {
 	switch m.mode {
 	case ModeSearch:
@@ -101,7 +114,7 @@ func (m SidebarModel) statusLine() string {
 	case ModeConfirmKill:
 		return "confirm kill"
 	case ModeConfirmDelete:
-		return "confirm delete"
+		return ""
 	default:
 		return ""
 	}
