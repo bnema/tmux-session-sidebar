@@ -53,10 +53,25 @@ func displayVersion(version string) string {
 	return "v" + version
 }
 
+type sidebarStyles struct {
+	accent          lipgloss.Style
+	dim             lipgloss.Style
+	treeGuide       lipgloss.Style
+	active          lipgloss.Style
+	stale           lipgloss.Style
+	selected        lipgloss.Style
+	pinned          lipgloss.Style
+	warning         lipgloss.Style
+	destructive     lipgloss.Style
+	versionBadge    lipgloss.Style
+	updateIndicator lipgloss.Style
+}
+
 func newSidebarStyles() sidebarStyles {
 	return sidebarStyles{
 		accent:          lipgloss.NewStyle().Foreground(lipgloss.Color("#86efac")),
 		dim:             lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
+		treeGuide:       lipgloss.NewStyle().Foreground(lipgloss.Color("#333333")),
 		active:          lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
 		stale:           lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
 		selected:        lipgloss.NewStyle().Background(lipgloss.Color(selectedRowBackgroundRGB.Hex())).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),

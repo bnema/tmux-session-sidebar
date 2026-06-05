@@ -73,6 +73,10 @@ func metadataPartStyle(role metadataPartRole, selected bool) lipgloss.Style {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.behind))
 	case metadataPartStaged:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.staged))
+	case metadataPartUnstagedIcon:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.unstagedIcon))
+	case metadataPartUnstagedCount:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.unstagedCount))
 	case metadataPartUnstaged:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.unstaged))
 	default:
@@ -81,16 +85,18 @@ func metadataPartStyle(role metadataPartRole, selected bool) lipgloss.Style {
 }
 
 type metadataColors struct {
-	compare  string
-	ahead    string
-	behind   string
-	staged   string
-	unstaged string
+	compare       string
+	ahead         string
+	behind        string
+	staged        string
+	unstaged      string
+	unstagedIcon  string
+	unstagedCount string
 }
 
 func metadataActivePartColors(selected bool) metadataColors {
 	if selected {
-		return metadataColors{compare: "#7dd3fc", ahead: "#86efac", behind: "#f87171", staged: "#93c5fd", unstaged: "#fde047"}
+		return metadataColors{compare: "#7dd3fc", ahead: "#86efac", behind: "#f87171", staged: "#93c5fd", unstaged: "#fde047", unstagedIcon: "#93c5fd", unstagedCount: "#86efac"}
 	}
-	return metadataColors{compare: "#38bdf8", ahead: "#4ade80", behind: "#f87171", staged: "#60a5fa", unstaged: "#eab308"}
+	return metadataColors{compare: "#38bdf8", ahead: "#4ade80", behind: "#f87171", staged: "#60a5fa", unstaged: "#eab308", unstagedIcon: "#60a5fa", unstagedCount: "#4ade80"}
 }
