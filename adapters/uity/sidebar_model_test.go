@@ -174,6 +174,52 @@ func TestSidebarModelSwitchSelectedReloadsAndKeepsSwitchedSessionSelected(t *tes
 	}
 }
 
+func TestSidebarModelReloadKeepsPreviousCurrentSelectedWhenCurrentChanges(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
+		ReloadTreeItems: reloadTestSessions(func() []SessionItem {
+			return []SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Current: true, Slot: 2}}
+		}),
+	})
+	model.cursor = 1
+
+	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyF5}))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
+		t.Fatalf("selected after current change reload = %#v ok=%v, want previous current alpha selected", item, ok)
+	}
+}
+
+func TestSidebarModelReloadPreservesSelectionWhenPreviousCurrentWasEmpty(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
+		ReloadTreeItems: reloadTestSessions(func() []SessionItem {
+			return []SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Current: true, Slot: 2}}
+		}),
+	})
+	model.cursor = 1
+
+	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyF5}))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+		t.Fatalf("selected after empty-current reload = %#v ok=%v, want preserved alpha", item, ok)
+	}
+}
+
+func TestSidebarModelReloadPreservesSelectionWhenPreviousCurrentIsFilteredOut(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
+		ReloadTreeItems: reloadTestSessions(func() []SessionItem {
+			return []SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Current: true, Slot: 2}}
+		}),
+	})
+	model.filter = "bet"
+	model.cursor = 1
+
+	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyF5}))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
+		t.Fatalf("selected after filtered previous current reload = %#v ok=%v, want preserved visible beta", item, ok)
+	}
+}
+
 func TestSidebarModelDeleteSelectedTreeItemRequiresConfirmationAndReloadsTree(t *testing.T) {
 	deleted := TreeItem{}
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
@@ -319,6 +365,47 @@ func TestSidebarModelSlotSwitchesVisibleSession(t *testing.T) {
 	}
 	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
 		t.Fatalf("selected after slot switch = %#v ok=%v, want switched beta", item, ok)
+	}
+}
+
+func TestSidebarModelSlotSwitchIgnoresHiddenNumberedSession(t *testing.T) {
+	called := ""
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Current: true, Slot: 1}, Slot: 1, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:work/session:hidden", CategoryID: "category:work", Session: SessionItem{Name: "hidden", Slot: 2}, Slot: 2, Depth: 1, OverflowHidden: true},
+	}, Actions{SwitchSession: func(name string) bool {
+		called = name
+		return true
+	}}, SidebarOptions{})
+	model.cursor = 1
+
+	updated, _ := model.Update(keyPress("2", 0))
+	model = requireSidebarModel(t, updated)
+	if called != "" {
+		t.Fatalf("SwitchSession called with hidden slot %q, want no switch", called)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+		t.Fatalf("selected after hidden slot = %#v ok=%v, want alpha", item, ok)
+	}
+}
+
+func TestSidebarModelSlotSwitchAllowsNumberedSessionVisibleInFilter(t *testing.T) {
+	called := ""
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Current: true, Slot: 1}, Slot: 1, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:work/session:hidden", CategoryID: "category:work", Session: SessionItem{Name: "hidden", Slot: 2}, Slot: 2, Depth: 1, OverflowHidden: true},
+	}, Actions{SwitchSession: func(name string) bool {
+		called = name
+		return true
+	}}, SidebarOptions{})
+	model.filter = "hid"
+
+	updated, _ := model.Update(keyPress("2", 0))
+	requireSidebarModel(t, updated)
+	if called != "hidden" {
+		t.Fatalf("SwitchSession called with %q, want visible filtered session hidden", called)
 	}
 }
 

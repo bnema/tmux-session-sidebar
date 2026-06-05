@@ -22,22 +22,28 @@ func (m SidebarModel) selectedTreeItem() (TreeItem, bool) {
 }
 
 func (m *SidebarModel) selectTreeItem(id string) {
+	if !m.selectTreeItemIfExists(id) {
+		m.cursor = 0
+	}
+}
+
+func (m *SidebarModel) selectTreeItemIfExists(id string) bool {
 	selectable := m.selectableTreeItems()
 	for i, item := range selectable {
 		if item.ID == id {
 			m.cursor = i
-			return
+			return true
 		}
 	}
 	if _, sessionName, ok := strings.Cut(id, "/session:"); ok {
 		for i, item := range selectable {
 			if item.Kind == TreeRowSession && item.Session.Name == sessionName {
 				m.cursor = i
-				return
+				return true
 			}
 		}
 	}
-	m.cursor = 0
+	return false
 }
 
 func (m SidebarModel) selectableTreeItems() []TreeItem {

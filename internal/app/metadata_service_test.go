@@ -44,6 +44,30 @@ func TestMetadataServiceCaptureAcceptsFreshLiveResultWithoutPersistedSession(t *
 	}
 }
 
+func TestMetadataServiceCaptureUsesProjectPathWhenLivePathTemporarilyLeavesRepo(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{
+		Sessions: map[string]ports.SessionMetadata{"alpha": {Kind: "project", ProjectPath: "/repo", LastPath: "/home/user/Downloads"}},
+		Metadata: map[string]ports.GitStatus{"alpha": {RepoRoot: "/repo", Branch: "old", Clean: true}},
+	}}
+	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/home/user/Downloads"}}
+	git := metadataFakeGit{
+		statuses:   map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "main", Clean: true}},
+		statusErrs: map[string]error{"/home/user/Downloads": ports.ErrNotGitRepository},
+	}
+	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
+
+	changed, err := svc.Capture(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	if err != nil {
+		t.Fatalf("Capture error: %v", err)
+	}
+	if !changed {
+		t.Fatal("Capture changed = false, want project git status refresh")
+	}
+	if got := store.state.Metadata["alpha"]; got.Branch != "main" || got.RepoRoot != "/repo" {
+		t.Fatalf("Metadata[alpha] = %#v, want project git status from /repo", got)
+	}
+}
+
 func TestMetadataServiceDefaultGitStatusTimeoutAllowsModeratelySlowRepositories(t *testing.T) {
 	svc := MetadataService{}
 	if got := svc.gitStatusTimeout(); got < time.Second {
@@ -314,6 +338,7 @@ type metadataFakeGit struct {
 	targets     map[string]ports.GitWatchTargets
 	infoErrs    map[string]error
 	targetErrs  map[string]error
+	statusErrs  map[string]error
 	statusCalls *atomic.Int64
 	statusErr   error
 }
@@ -327,6 +352,9 @@ func (g metadataFakeGit) RepoRoot(ctx context.Context, path string) (string, err
 func (g metadataFakeGit) Status(ctx context.Context, path string) (ports.GitStatus, error) {
 	if g.statusCalls != nil {
 		g.statusCalls.Add(1)
+	}
+	if err, ok := g.statusErrs[path]; ok {
+		return ports.GitStatus{}, err
 	}
 	if g.statusErr != nil {
 		return ports.GitStatus{}, g.statusErr
@@ -413,6 +441,27 @@ func TestMetadataServiceReconcileBuildsRepoSubscriptions(t *testing.T) {
 	}
 	if got := subs["/repo"].SessionNames; len(got) != 2 || got[0] != "alpha" || got[1] != "beta" {
 		t.Fatalf("subscription sessions = %#v, want alpha beta", got)
+	}
+}
+
+func TestMetadataServiceReconcileUsesProjectPathWhenLivePathTemporarilyLeavesRepo(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{
+		"alpha": {Kind: "project", ProjectPath: "/repo", LastPath: "/home/user/Downloads"},
+	}}}
+	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/home/user/Downloads"}}
+	git := metadataFakeGit{
+		infoErrs: map[string]error{"/home/user/Downloads": ports.ErrNotGitRepository},
+		infos:    map[string]ports.GitRepoInfo{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"}},
+		targets:  map[string]ports.GitWatchTargets{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", Dirs: []string{"/repo"}}},
+	}
+	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store)}
+
+	subs, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	if err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if got := subs["/repo"].SessionNames; len(got) != 1 || got[0] != "alpha" {
+		t.Fatalf("subscription sessions = %#v, want alpha from project path", got)
 	}
 }
 

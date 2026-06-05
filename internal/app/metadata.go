@@ -9,8 +9,14 @@ import (
 var metadataGitStatusTimeout = time.Second
 
 func sessionMetadataCapturePath(sessionName string, metadata ports.SessionMetadata, livePaths map[string]string) (string, bool) {
+	if metadata.Kind == "project" && metadata.ProjectPath != "" {
+		return metadata.ProjectPath, true
+	}
 	if path := livePaths[sessionName]; path != "" {
 		return path, true
+	}
+	if metadata.Kind != "project" && metadata.LastPath != "" {
+		return metadata.LastPath, true
 	}
 	return sessionMetadataPath(metadata)
 }
