@@ -308,6 +308,34 @@ func TestApplyRecentSessionOrderReordersSidebarLayoutCategories(t *testing.T) {
 	}
 }
 
+func TestApplyRecentSessionOrderKeepsPinnedSessionsAtCategoryPositions(t *testing.T) {
+	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
+	state := ports.PersistedState{
+		SessionOrder:   []string{"alpha", "beta", "gamma", "delta"},
+		PinnedSessions: []string{"beta"},
+		SidebarLayout: &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+			{ID: "category:work", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:work", Name: "Work", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}, {Name: "beta"}}}},
+			{ID: "category:personal", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:personal", Name: "Personal", Sessions: []ports.SidebarLayoutSessionRef{{Name: "gamma"}, {Name: "delta"}}}},
+		}},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-30 * time.Minute)},
+			"beta":  {LastActiveAt: now.Add(-4 * time.Hour)},
+			"gamma": {LastActiveAt: now.Add(-40 * time.Minute)},
+			"delta": {LastActiveAt: now.Add(-10 * time.Minute)},
+		}),
+	}
+	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"}}
+
+	applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now)
+
+	if got, want := sidebarLayoutSessionNames(state.SidebarLayout.Items[0].Category.Sessions), []string{"alpha", "beta"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("work category sessions = %#v, want pinned beta preserved at category index 1: %#v", got, want)
+	}
+	if got, want := sidebarLayoutSessionNames(state.SidebarLayout.Items[1].Category.Sessions), []string{"delta", "gamma"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("personal category sessions = %#v, want %#v", got, want)
+	}
+}
+
 func TestApplyRecentSessionOrderKeepsPinnedSessionsAtTheirPositions(t *testing.T) {
 	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
 	state := ports.PersistedState{

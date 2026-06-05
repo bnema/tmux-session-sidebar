@@ -53,6 +53,20 @@ func displayVersion(version string) string {
 	return "v" + version
 }
 
+type sidebarStyles struct {
+	accent          lipgloss.Style
+	dim             lipgloss.Style
+	treeGuide       lipgloss.Style
+	active          lipgloss.Style
+	stale           lipgloss.Style
+	selected        lipgloss.Style
+	pinned          lipgloss.Style
+	warning         lipgloss.Style
+	destructive     lipgloss.Style
+	versionBadge    lipgloss.Style
+	updateIndicator lipgloss.Style
+}
+
 func newSidebarStyles() sidebarStyles {
 	return sidebarStyles{
 		accent:          lipgloss.NewStyle().Foreground(lipgloss.Color("#86efac")),

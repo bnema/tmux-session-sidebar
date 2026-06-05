@@ -402,6 +402,27 @@ func TestTreeSidebarKeepsExpandedMoreRowAfterSessionSwitchReload(t *testing.T) {
 	}
 }
 
+func TestTreeSidebarCollapseMoreRowHidesOverflowWhenReloadFails(t *testing.T) {
+	items := []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}
+	for i := 1; i <= 12; i++ {
+		name := fmt.Sprintf("s%d", i)
+		items = append(items, TreeItem{Kind: TreeRowSession, ID: "category:work/session:" + name, CategoryID: "category:work", Session: SessionItem{Name: name}, Depth: 1})
+	}
+	items = append(items, TreeItem{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 2, MoreExpanded: true})
+	model := NewTreeSidebarModelWithOptions(items, Actions{
+		SetCategorySessionsExpanded: func(categoryID string, next bool) bool { return categoryID == "category:work" && !next },
+		ReloadTreeItems:             func() []TreeItem { return nil },
+	}, SidebarOptions{})
+	model.cursor = 13
+
+	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "s11") || strings.Contains(view, "s12") || !strings.Contains(view, "[show 2 more]") {
+		t.Fatalf("collapsed stale reload view=%q, want overflow hidden and show-more row", view)
+	}
+}
+
 func TestTreeSidebarCanSelectAndRenderCategorySelection(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},

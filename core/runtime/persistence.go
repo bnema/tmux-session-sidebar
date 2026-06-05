@@ -278,12 +278,12 @@ func applyRecentSessionOrder(state *ports.PersistedState, live []ports.TmuxSessi
 		return
 	}
 	state.SessionOrder = orderSessionsByRecentActivityPinned(state.SessionOrder, live, decodeHeatStateMap(state.Heat), state.PinnedSessions)
-	reorderSidebarLayoutCategories(state.SidebarLayout, state.SessionOrder)
+	reorderSidebarLayoutCategories(state.SidebarLayout, state.SessionOrder, state.PinnedSessions)
 	state.Sidebar.AutoSortRecentRunAt = now.Format(time.RFC3339Nano)
 	state.Sidebar.AutoSortRecentRunDate = ""
 }
 
-func reorderSidebarLayoutCategories(layout *ports.SidebarLayout, order []string) {
+func reorderSidebarLayoutCategories(layout *ports.SidebarLayout, order []string, pinned []string) {
 	if layout == nil {
 		return
 	}
@@ -296,21 +296,45 @@ func reorderSidebarLayoutCategories(layout *ports.SidebarLayout, order []string)
 		if category == nil {
 			continue
 		}
-		sort.SliceStable(category.Sessions, func(i, j int) bool {
-			left, leftOK := orderIndex[category.Sessions[i].Name]
-			right, rightOK := orderIndex[category.Sessions[j].Name]
-			switch {
-			case leftOK && rightOK:
-				return left < right
-			case leftOK:
-				return true
-			case rightOK:
-				return false
-			default:
-				return false
-			}
-		})
+		category.Sessions = reorderSidebarLayoutCategorySessions(category.Sessions, orderIndex, pinned)
 	}
+}
+
+func reorderSidebarLayoutCategorySessions(refs []ports.SidebarLayoutSessionRef, orderIndex map[string]int, pinned []string) []ports.SidebarLayoutSessionRef {
+	if len(refs) == 0 {
+		return refs
+	}
+	byName := make(map[string]ports.SidebarLayoutSessionRef, len(refs))
+	anchor := make([]string, 0, len(refs))
+	ordered := append([]ports.SidebarLayoutSessionRef(nil), refs...)
+	for _, ref := range refs {
+		byName[ref.Name] = ref
+		anchor = append(anchor, ref.Name)
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left, leftOK := orderIndex[ordered[i].Name]
+		right, rightOK := orderIndex[ordered[j].Name]
+		switch {
+		case leftOK && rightOK:
+			return left < right
+		case leftOK:
+			return true
+		case rightOK:
+			return false
+		default:
+			return false
+		}
+	})
+	orderedNames := make([]string, 0, len(ordered))
+	for _, ref := range ordered {
+		orderedNames = append(orderedNames, ref.Name)
+	}
+	pinnedNames := sessions.ApplyPinnedPositions(anchor, orderedNames, pinned)
+	result := make([]ports.SidebarLayoutSessionRef, 0, len(refs))
+	for _, name := range pinnedNames {
+		result = append(result, byName[name])
+	}
+	return result
 }
 
 func autoSortRecentLastRunAt(sidebar ports.SidebarState) (time.Time, bool) {

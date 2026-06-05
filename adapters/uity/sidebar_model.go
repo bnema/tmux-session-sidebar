@@ -145,20 +145,6 @@ type colorTarget struct {
 	ItemID      string
 }
 
-type sidebarStyles struct {
-	accent          lipgloss.Style
-	dim             lipgloss.Style
-	treeGuide       lipgloss.Style
-	active          lipgloss.Style
-	stale           lipgloss.Style
-	selected        lipgloss.Style
-	pinned          lipgloss.Style
-	warning         lipgloss.Style
-	destructive     lipgloss.Style
-	versionBadge    lipgloss.Style
-	updateIndicator lipgloss.Style
-}
-
 func NewTreeSidebarModelWithOptions(treeItems []TreeItem, actions Actions, options SidebarOptions) SidebarModel {
 	iconMode := options.MetadataIconMode
 	if iconMode == "" {

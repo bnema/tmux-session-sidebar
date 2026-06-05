@@ -13,64 +13,6 @@ func (m SidebarModel) renderTree(styles sidebarStyles) []string {
 	}.Render(m.visibleTreeItems())
 }
 
-func (m *SidebarModel) reloadTreeItems() bool {
-	if m.actions.ReloadTreeItems == nil {
-		return false
-	}
-	expanded := expandedCategorySet(m.treeItems)
-	next := m.actions.ReloadTreeItems()
-	if next == nil {
-		return false
-	}
-	preserveExpandedCategories(next, expanded)
-	m.treeItems = next
-	if m.cursor >= len(m.selectableTreeItems()) {
-		m.cursor = max(len(m.selectableTreeItems())-1, 0)
-	}
-	return true
-}
-
-func (m *SidebarModel) setLocalCategorySessionsExpanded(categoryID string, expanded bool) {
-	for i := range m.treeItems {
-		if m.treeItems[i].CategoryID != categoryID {
-			continue
-		}
-		if m.treeItems[i].Kind == TreeRowMore {
-			m.treeItems[i].MoreExpanded = expanded
-		}
-		if expanded && m.treeItems[i].Kind == TreeRowSession {
-			m.treeItems[i].OverflowHidden = false
-		}
-	}
-}
-
-func expandedCategorySet(items []TreeItem) map[string]bool {
-	expanded := map[string]bool{}
-	for _, item := range items {
-		if item.Kind == TreeRowMore && item.MoreExpanded && item.CategoryID != "" {
-			expanded[item.CategoryID] = true
-		}
-	}
-	return expanded
-}
-
-func preserveExpandedCategories(items []TreeItem, expanded map[string]bool) {
-	if len(expanded) == 0 {
-		return
-	}
-	for i := range items {
-		if !expanded[items[i].CategoryID] {
-			continue
-		}
-		if items[i].Kind == TreeRowMore {
-			items[i].MoreExpanded = true
-		}
-		if items[i].Kind == TreeRowSession {
-			items[i].OverflowHidden = false
-		}
-	}
-}
-
 func (m SidebarModel) selectedTreeItem() (TreeItem, bool) {
 	selectable := m.selectableTreeItems()
 	if len(selectable) == 0 || m.cursor >= len(selectable) {
