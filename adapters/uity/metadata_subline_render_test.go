@@ -42,6 +42,18 @@ func TestRenderMetadataSublineKeepsASCIIUnstagedCountSinglePart(t *testing.T) {
 	}
 }
 
+func TestRenderMetadataSublineEllipsizesLongBranchBeforeStyling(t *testing.T) {
+	branch := "feature/very-long-branch-name-that-would-overflow-during-switch"
+	got := RenderMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Branch: branch, Modified: 3}, MetadataSublineRenderOptions{Icons: MetadataIconsNerd, Width: 24, Selected: true, Active: true})
+	plain := stripANSI(got)
+	if strings.Contains(plain, branch) || !strings.Contains(plain, "…") {
+		t.Fatalf("RenderMetadataSubline() = %q plain=%q, want pre-styled ellipsized branch", got, plain)
+	}
+	if width := metadataDisplayWidth(plain); width > 24 {
+		t.Fatalf("RenderMetadataSubline() visible width = %d, want <= 24 (%q)", width, plain)
+	}
+}
+
 func TestRenderMetadataSublineDesaturatesInactiveGitParts(t *testing.T) {
 	got := RenderMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Ahead: 12, Behind: 2, Staged: 3, Modified: 8}, MetadataSublineRenderOptions{Icons: MetadataIconsNerd, Width: 80, Selected: true, Active: false})
 

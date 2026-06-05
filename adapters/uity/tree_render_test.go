@@ -149,6 +149,41 @@ func TestTreeSidebarMetadataUsesSidebarFallbackWidthDuringStaleResizeFrame(t *te
 	}
 }
 
+func TestTreeSidebarIgnoresOneWideResizeSpikeAfterSwitch(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:default/session:alpha", CategoryID: "category:default", Session: SessionItem{Name: "alpha", Current: true}, Slot: 1, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:default/session:beta", CategoryID: "category:default", Session: SessionItem{Name: "beta", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "feature/very-long-branch-name-that-would-overflow-during-switch", Modified: 3}}, Slot: 2, Depth: 1, LastChild: true, ShowMetadata: true},
+	}, Actions{
+		SwitchSession: func(string) bool { return true },
+		ReloadTreeItems: func() []TreeItem {
+			return []TreeItem{
+				{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true},
+				{Kind: TreeRowSession, ID: "category:default/session:alpha", CategoryID: "category:default", Session: SessionItem{Name: "alpha"}, Slot: 1, Depth: 1},
+				{Kind: TreeRowSession, ID: "category:default/session:beta", CategoryID: "category:default", Session: SessionItem{Name: "beta", Current: true, Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "feature/very-long-branch-name-that-would-overflow-during-switch", Modified: 3}}, Slot: 2, Depth: 1, LastChild: true, ShowMetadata: true},
+			}
+		},
+	}, SidebarOptions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 8})
+	model = requireSidebarModel(t, updated)
+	model.cursor = 2
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 200, Height: 8})
+	model = requireSidebarModel(t, updated)
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "feature/very-long-branch-name-that-would-overflow-during-switch") || !strings.Contains(view, "…") {
+		t.Fatalf("post-switch wide resize spike should keep stable ellipsized metadata, view=%q", view)
+	}
+
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 180, Height: 8})
+	model = requireSidebarModel(t, updated)
+	if view := stripANSI(model.Render()); !strings.Contains(view, "feature/very-long-branch-name-that-would-overflow-during-switch") {
+		t.Fatalf("following wide resize should be accepted, view=%q", view)
+	}
+}
+
 func TestTreeSidebarSuppressesMetadataWhenRealWidthIsTooSmall(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true},

@@ -25,6 +25,7 @@ const updateAvailableSymbol = "\uf062" // Nerd Font arrow-up glyph (U+F062 / nf-
 const metadataSublinePaddingWidth = 6
 const metadataSublineFallbackWidth = 80
 const metadataSublineSidebarFallbackWidth = 30
+const wideWidthSpikeMultiplier = 2
 
 type SessionItem struct {
 	Name          string
@@ -130,6 +131,7 @@ type SidebarModel struct {
 	metadataIconMode                 MetadataIconMode
 	width                            int
 	height                           int
+	ignoreNextWideWidthSpike         bool
 	treeScroll                       int
 	pinColorPicker                   PinColorPicker
 	colorTarget                      colorTarget
@@ -184,6 +186,12 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Width <= 0 || msg.Height <= 0 {
 			return m, nil
 		}
+		if m.ignoreNextWideWidthSpike && m.width > 0 && msg.Width > m.width*wideWidthSpikeMultiplier {
+			m.ignoreNextWideWidthSpike = false
+			m.ensureTreeCursorVisible()
+			return m, nil
+		}
+		m.ignoreNextWideWidthSpike = false
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ensureTreeCursorVisible()
@@ -562,6 +570,7 @@ func (m *SidebarModel) switchItem(item SessionItem) {
 		return
 	}
 	if m.actions.SwitchSession(item.Name) && m.reloadTreeItems() {
+		m.ignoreNextWideWidthSpike = true
 		if !m.selectSessionIfExists(item.Name) {
 			m.selectSession(m.currentSessionName())
 		}
@@ -586,15 +595,28 @@ func (m *SidebarModel) reloadSessionsSelectingCurrent() {
 }
 
 func (m *SidebarModel) reloadSessionsWithSelection(preservePreviousCurrent bool) {
+	selectedID := ""
+	if item, ok := m.selectedTreeItem(); ok {
+		selectedID = item.ID
+	}
 	previous := m.currentSessionName()
 	m.reloadTreeItems()
 	current := m.currentSessionName()
 	if preservePreviousCurrent && previous != "" && previous != current {
-		m.selectSession(previous)
+		if m.selectSessionIfExists(previous) {
+			return
+		}
+		if selectedID != "" {
+			m.selectTreeItemIfExists(selectedID)
+		}
 		return
 	}
 	if !preservePreviousCurrent && current != "" {
 		m.selectSession(current)
+		return
+	}
+	if selectedID != "" {
+		m.selectTreeItemIfExists(selectedID)
 	}
 }
 

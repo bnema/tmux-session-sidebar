@@ -177,7 +177,11 @@ func fitMetadataTextPreserveSpace(value string, width int, icons MetadataIconMod
 	if icons == MetadataIconsASCII {
 		ellipsis = "..."
 	}
-	return trimDisplayRight(value, max(width-metadataDisplayWidth(ellipsis), 0)) + ellipsis
+	trimmed := trimDisplayRight(value, max(width-metadataDisplayWidth(ellipsis), 0))
+	if strings.HasSuffix(trimmed, ellipsis) {
+		return trimmed
+	}
+	return trimmed + ellipsis
 }
 
 func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level gitDetailLevel) []metadataPart {

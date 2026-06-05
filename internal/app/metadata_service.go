@@ -516,15 +516,17 @@ func (s *MetadataService) Reconcile(ctx context.Context, cfg ports.ConfigSnapsho
 	if err != nil {
 		return nil, err
 	}
+	livePaths := make(map[string]string, len(live))
+	for _, session := range live {
+		if path, pathErr := s.Tmux.SessionPath(ctx, session.Name); pathErr == nil {
+			livePaths[session.Name] = path
+		}
+	}
 	subs := map[string]MetadataRepoSubscription{}
 	for _, session := range live {
-		path, pathErr := s.Tmux.SessionPath(ctx, session.Name)
-		if pathErr != nil || path == "" {
-			var ok bool
-			path, ok = sessionMetadataPath(state.Sessions[session.Name])
-			if !ok {
-				continue
-			}
+		path, ok := sessionMetadataCapturePath(session.Name, state.Sessions[session.Name], livePaths)
+		if !ok {
+			continue
 		}
 		info, err := s.Git.RepoInfo(ctx, path)
 		if err != nil {
