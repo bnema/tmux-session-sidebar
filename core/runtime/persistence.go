@@ -278,8 +278,39 @@ func applyRecentSessionOrder(state *ports.PersistedState, live []ports.TmuxSessi
 		return
 	}
 	state.SessionOrder = orderSessionsByRecentActivityPinned(state.SessionOrder, live, decodeHeatStateMap(state.Heat), state.PinnedSessions)
+	reorderSidebarLayoutCategories(state.SidebarLayout, state.SessionOrder)
 	state.Sidebar.AutoSortRecentRunAt = now.Format(time.RFC3339Nano)
 	state.Sidebar.AutoSortRecentRunDate = ""
+}
+
+func reorderSidebarLayoutCategories(layout *ports.SidebarLayout, order []string) {
+	if layout == nil {
+		return
+	}
+	orderIndex := make(map[string]int, len(order))
+	for i, name := range order {
+		orderIndex[name] = i
+	}
+	for itemIndex := range layout.Items {
+		category := layout.Items[itemIndex].Category
+		if category == nil {
+			continue
+		}
+		sort.SliceStable(category.Sessions, func(i, j int) bool {
+			left, leftOK := orderIndex[category.Sessions[i].Name]
+			right, rightOK := orderIndex[category.Sessions[j].Name]
+			switch {
+			case leftOK && rightOK:
+				return left < right
+			case leftOK:
+				return true
+			case rightOK:
+				return false
+			default:
+				return false
+			}
+		})
+	}
 }
 
 func autoSortRecentLastRunAt(sidebar ports.SidebarState) (time.Time, bool) {

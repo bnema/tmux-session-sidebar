@@ -34,6 +34,14 @@ func TestRenderMetadataSublineColorsUnstagedIconBlueAndCountGreen(t *testing.T) 
 	}
 }
 
+func TestRenderMetadataSublineKeepsASCIIUnstagedCountSinglePart(t *testing.T) {
+	got := RenderMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Modified: 2}, MetadataSublineRenderOptions{Icons: MetadataIconsASCII, Width: 80, Active: true})
+
+	if stripANSI(got) != "U2" {
+		t.Fatalf("RenderMetadataSubline() = %q, want ASCII unstaged count U2", got)
+	}
+}
+
 func TestRenderMetadataSublineDesaturatesInactiveGitParts(t *testing.T) {
 	got := RenderMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Ahead: 12, Behind: 2, Staged: 3, Modified: 8}, MetadataSublineRenderOptions{Icons: MetadataIconsNerd, Width: 80, Selected: true, Active: false})
 
