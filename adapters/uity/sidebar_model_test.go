@@ -156,7 +156,7 @@ func TestSidebarModelBrowseShortcuts(t *testing.T) {
 	}
 }
 
-func TestSidebarModelSwitchSelectedReloadsAndKeepsPreviousCurrentSelected(t *testing.T) {
+func TestSidebarModelSwitchSelectedReloadsAndKeepsSwitchedSessionSelected(t *testing.T) {
 	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
 		SwitchSession: func(name string) bool { return name == "beta" },
 		ReloadTreeItems: reloadTestSessions(func() []SessionItem {
@@ -169,8 +169,8 @@ func TestSidebarModelSwitchSelectedReloadsAndKeepsPreviousCurrentSelected(t *tes
 	if cmd == nil {
 		t.Fatal("switch reload did not schedule attention animation tick")
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" || item.Current {
-		t.Fatalf("selected after switch reload = %#v ok=%v, want previous alpha", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
+		t.Fatalf("selected after switch reload = %#v ok=%v, want switched beta", item, ok)
 	}
 }
 
@@ -288,6 +288,22 @@ func TestSidebarModelConfirmationKeys(t *testing.T) {
 	}
 }
 
+func TestSidebarModelSlotSwitchPreservesSelectionWhenReloadFails(t *testing.T) {
+	called := ""
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
+		SwitchSession:   func(name string) bool { called = name; return true },
+		ReloadTreeItems: func() []TreeItem { return nil },
+	})
+	updated, _ := model.Update(keyPress("2", 0))
+	model = requireSidebarModel(t, updated)
+	if called != "beta" {
+		t.Fatalf("SwitchSession called with %q, want beta", called)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+		t.Fatalf("selected after failed reload = %#v ok=%v, want preserved alpha", item, ok)
+	}
+}
+
 func TestSidebarModelSlotSwitchesVisibleSession(t *testing.T) {
 	called := ""
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
@@ -301,8 +317,8 @@ func TestSidebarModelSlotSwitchesVisibleSession(t *testing.T) {
 	if called != "beta" {
 		t.Fatalf("SwitchSession called with %q, want beta", called)
 	}
-	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
-		t.Fatalf("selected after slot switch = %#v ok=%v, want previous alpha", item, ok)
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" || !item.Current {
+		t.Fatalf("selected after slot switch = %#v ok=%v, want switched beta", item, ok)
 	}
 }
 

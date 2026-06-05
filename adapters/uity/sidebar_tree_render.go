@@ -13,18 +13,19 @@ func (m SidebarModel) renderTree(styles sidebarStyles) []string {
 	}.Render(m.visibleTreeItems())
 }
 
-func (m *SidebarModel) reloadTreeItems() {
+func (m *SidebarModel) reloadTreeItems() bool {
 	if m.actions.ReloadTreeItems == nil {
-		return
+		return false
 	}
 	next := m.actions.ReloadTreeItems()
 	if next == nil {
-		return
+		return false
 	}
 	m.treeItems = next
 	if m.cursor >= len(m.selectableTreeItems()) {
 		m.cursor = max(len(m.selectableTreeItems())-1, 0)
 	}
+	return true
 }
 
 func (m SidebarModel) selectedTreeItem() (TreeItem, bool) {

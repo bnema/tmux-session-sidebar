@@ -103,25 +103,29 @@ func (r treeRenderer) renderCategory(item TreeItem, selected bool) string {
 
 func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 	session := item.Session
-	branch := r.styles.dim.Render(treeBranch(item))
+	branch := r.styles.treeGuide.Render(treeBranch(item))
+	currentMarker := currentSessionMarker(session)
 	slot := slotPrefix(item.Slot)
 	marker := treeSessionMarker(session)
 	name := sanitizeSessionName(session.Name)
 	bodyText := sessionBodyText(slot, marker, name)
+	if currentMarker != "" {
+		bodyText = strings.TrimPrefix(bodyText, " ")
+	}
 	if selected {
 		style := r.styles.selected
 		if strings.TrimSpace(session.PinColor) != "" {
 			style = style.Foreground(lipgloss.Color(session.PinColor))
 		}
 		body := style.Render(bodyText)
-		return branch + body + r.renderAttention(session, true)
+		return branch + currentMarker + body + r.renderAttention(session, true)
 	}
 	body := sessionRowStyle(r.styles, session).Render(bodyText)
-	return branch + body + r.renderAttention(session, false)
+	return branch + currentMarker + body + r.renderAttention(session, false)
 }
 
 func (r treeRenderer) renderMore(item TreeItem, selected bool) string {
-	branch := r.styles.dim.Render(treeBranch(item))
+	branch := r.styles.treeGuide.Render(treeBranch(item))
 	label := "Show less...."
 	if !item.MoreExpanded {
 		label = fmt.Sprintf("[show %d more]", item.MoreCount)
@@ -148,9 +152,13 @@ func (r treeRenderer) renderMetadata(item TreeItem, selected bool) string {
 	if !item.ShowMetadata || item.Session.Metadata.Kind == "" {
 		return ""
 	}
-	width := r.width - metadataSublinePaddingWidth
+	width := r.width
 	if width <= 0 {
-		width = metadataSublineFallbackWidth
+		width = metadataSublineSidebarFallbackWidth
+	}
+	width -= metadataSublinePaddingWidth
+	if width <= 0 {
+		return ""
 	}
 	prefix := treeMetadataPrefix(item)
 	width -= metadataDisplayWidth(prefix)
@@ -161,7 +169,7 @@ func (r treeRenderer) renderMetadata(item TreeItem, selected bool) string {
 	if subline == "" {
 		return ""
 	}
-	return r.styles.dim.Render(prefix) + subline
+	return r.styles.treeGuide.Render(prefix) + subline
 }
 
 func treeBranch(item TreeItem) string {
@@ -182,6 +190,13 @@ func treeMetadataPrefix(item TreeItem) string {
 		return "   "
 	}
 	return "│  "
+}
+
+func currentSessionMarker(item SessionItem) string {
+	if !item.Current {
+		return ""
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(selectedRowBackgroundRGB.Hex())).Render("┃")
 }
 
 func treeSessionMarker(item SessionItem) string {

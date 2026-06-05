@@ -93,13 +93,15 @@ func formatGitMetadataSubline(meta SessionMetadataSubline, icons MetadataIconMod
 type metadataPartRole string
 
 const (
-	metadataPartBase     metadataPartRole = "base"
-	metadataPartCompare  metadataPartRole = "compare"
-	metadataPartAhead    metadataPartRole = "ahead"
-	metadataPartBehind   metadataPartRole = "behind"
-	metadataPartStaged   metadataPartRole = "staged"
-	metadataPartUnstaged metadataPartRole = "unstaged"
-	metadataPartConflict metadataPartRole = "conflict"
+	metadataPartBase          metadataPartRole = "base"
+	metadataPartCompare       metadataPartRole = "compare"
+	metadataPartAhead         metadataPartRole = "ahead"
+	metadataPartBehind        metadataPartRole = "behind"
+	metadataPartStaged        metadataPartRole = "staged"
+	metadataPartUnstaged      metadataPartRole = "unstaged"
+	metadataPartUnstagedIcon  metadataPartRole = "unstaged-icon"
+	metadataPartUnstagedCount metadataPartRole = "unstaged-count"
+	metadataPartConflict      metadataPartRole = "conflict"
 )
 
 type metadataPart struct {
@@ -197,7 +199,7 @@ func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level g
 	}
 	if level == gitDetailsSummary {
 		if unstaged := meta.unstagedCount(); unstaged > 0 {
-			parts = append(parts, countPart(icons, MetadataNerdWorktree, "U", unstaged, metadataPartUnstaged))
+			parts = append(parts, unstagedCountParts(icons, unstaged)...)
 		} else if staged := meta.stagedCount(); staged > 0 {
 			parts = append(parts, countPart(icons, MetadataNerdStaged, "S", staged, metadataPartStaged))
 		}
@@ -207,7 +209,7 @@ func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level g
 		parts = append(parts, countPart(icons, MetadataNerdStaged, "S", staged, metadataPartStaged))
 	}
 	if unstaged := meta.unstagedCount(); unstaged > 0 {
-		parts = append(parts, countPart(icons, MetadataNerdWorktree, "U", unstaged, metadataPartUnstaged))
+		parts = append(parts, unstagedCountParts(icons, unstaged)...)
 	}
 	return parts
 }
@@ -231,6 +233,16 @@ func countPart(icons MetadataIconMode, nerdIcon string, asciiPrefix string, coun
 		return metadataPart{Text: nerdIcon + " " + strconv.Itoa(count), Role: role}
 	}
 	return metadataPart{Text: asciiPrefix + strconv.Itoa(count), Role: role}
+}
+
+func unstagedCountParts(icons MetadataIconMode, count int) []metadataPart {
+	if icons != MetadataIconsNerd {
+		return []metadataPart{countPart(icons, MetadataNerdWorktree, "U", count, metadataPartUnstaged)}
+	}
+	return []metadataPart{
+		{Text: MetadataNerdWorktree, Role: metadataPartUnstagedIcon},
+		{Text: strconv.Itoa(count), Role: metadataPartUnstagedCount},
+	}
 }
 
 func metadataPartText(parts []metadataPart) string {

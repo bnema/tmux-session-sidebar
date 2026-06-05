@@ -57,6 +57,7 @@ func newSidebarStyles() sidebarStyles {
 	return sidebarStyles{
 		accent:          lipgloss.NewStyle().Foreground(lipgloss.Color("#86efac")),
 		dim:             lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
+		treeGuide:       lipgloss.NewStyle().Foreground(lipgloss.Color("#333333")),
 		active:          lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
 		stale:           lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
 		selected:        lipgloss.NewStyle().Background(lipgloss.Color(selectedRowBackgroundRGB.Hex())).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),

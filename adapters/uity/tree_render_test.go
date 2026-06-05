@@ -19,11 +19,41 @@ func TestTreeSidebarRenderUsesCompactSlotsTreeGuidesAndAttentionRight(t *testing
 	model.attentionAnimationFrame = 1
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "▾ Work") || !strings.Contains(view, "├─ 1 alpha "+attentionMarkerSymbol) || !strings.Contains(view, "└─ 2 beta") {
+	if !strings.Contains(view, "▾ Work") || !strings.Contains(view, "├─┃1 alpha "+attentionMarkerSymbol) || !strings.Contains(view, "└─ 2 beta") {
 		t.Fatalf("tree render missing compact slots, guides, or right attention marker: %q", view)
 	}
 	if strings.Contains(view, "[1]") || strings.Contains(view, "[2]") {
 		t.Fatalf("tree render should not use bracketed slots: %q", view)
+	}
+}
+
+func TestTreeSidebarRenderUsesDarkTreeGuide(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Slot: 1, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+
+	view := model.Render()
+	if !strings.Contains(view, "38;2;51;51;51") {
+		t.Fatalf("tree guide should use dark #333333 gray, view=%q", view)
+	}
+	if strings.Contains(view, "38;2;75;85;99m└─") {
+		t.Fatalf("tree guide should not use inactive session gray, view=%q", view)
+	}
+}
+
+func TestTreeSidebarRenderMarksCurrentSessionWithGreenBar(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Current: true}, Slot: 1, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+
+	view := model.Render()
+	if !strings.Contains(stripANSI(view), "└─┃1 alpha") {
+		t.Fatalf("current session should have a bar marker, view=%q", stripANSI(view))
+	}
+	if !strings.Contains(view, "38;2;6;95;70") {
+		t.Fatalf("current session marker should use selected green, view=%q", view)
 	}
 }
 
@@ -74,6 +104,62 @@ func TestTreeSidebarScrollsOverflowToKeepSelectionVisible(t *testing.T) {
 	}
 	if got := len(strings.Split(view, "\n")); got != 6 {
 		t.Fatalf("rendered height = %d, want 6: %q", got, view)
+	}
+}
+
+func TestTreeSidebarIgnoresTransientZeroSizeDuringPaneMove(t *testing.T) {
+	items := make([]SessionItem, 0, 12)
+	for i := 1; i <= 12; i++ {
+		items = append(items, SessionItem{Name: fmt.Sprintf("session-%02d", i), Slot: i})
+	}
+	model := newTestSidebarModel(items, Actions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 6})
+	model = requireSidebarModel(t, updated)
+	for range 8 {
+		updated, _ = model.Update(keyPress("j", 0))
+		model = requireSidebarModel(t, updated)
+	}
+	before := stripANSI(model.Render())
+	if strings.Contains(before, "session-01") || !strings.Contains(before, "session-09") {
+		t.Fatalf("precondition scrolled view = %q, want session-09 visible without top sessions", before)
+	}
+
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 0, Height: 0})
+	model = requireSidebarModel(t, updated)
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "session-01") || !strings.Contains(view, "session-09") {
+		t.Fatalf("transient zero size should preserve previous viewport, view=%q", view)
+	}
+}
+
+func TestTreeSidebarMetadataUsesSidebarFallbackWidthDuringStaleResizeFrame(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:default/session:alpha", CategoryID: "category:default", Session: SessionItem{Name: "alpha", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "refactor/upstream-arch-overlay", Modified: 3}}, Slot: 1, Depth: 1, LastChild: true, ShowMetadata: true},
+	}, Actions{}, SidebarOptions{})
+	model.height = 8
+	model.width = 0
+
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "refactor/upstream-arch-overlay") {
+		t.Fatalf("metadata should not render at wide fallback width, view=%q", view)
+	}
+	if !strings.Contains(view, "…") {
+		t.Fatalf("metadata should be ellipsized to sidebar fallback width, view=%q", view)
+	}
+}
+
+func TestTreeSidebarSuppressesMetadataWhenRealWidthIsTooSmall(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:default/session:alpha", CategoryID: "category:default", Session: SessionItem{Name: "alpha", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "refactor/upstream-arch-overlay", Modified: 3}}, Slot: 1, Depth: 1, LastChild: true, ShowMetadata: true},
+	}, Actions{}, SidebarOptions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 5, Height: 8})
+	model = requireSidebarModel(t, updated)
+
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "refactor/") || strings.Contains(view, "…") {
+		t.Fatalf("metadata should be suppressed when real sidebar width is too small, view=%q", view)
 	}
 }
 
@@ -700,6 +786,8 @@ func TestTreeSidebarRenderShowsMetadataAsTreeChild(t *testing.T) {
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
 		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "feature/category-tree", Modified: 2}}, Slot: 1, Depth: 1, LastChild: true, ShowMetadata: true},
 	}, Actions{}, SidebarOptions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 8})
+	model = requireSidebarModel(t, updated)
 
 	view := stripANSI(model.Render())
 	if !strings.Contains(view, "└─ 1 alpha") || !strings.Contains(view, "     feature/category-tree  2") {

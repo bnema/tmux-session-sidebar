@@ -24,6 +24,7 @@ const updateAvailableSymbol = "\uf062" // Nerd Font arrow-up glyph (U+F062 / nf-
 
 const metadataSublinePaddingWidth = 6
 const metadataSublineFallbackWidth = 80
+const metadataSublineSidebarFallbackWidth = 30
 
 type SessionItem struct {
 	Name          string
@@ -147,6 +148,7 @@ type colorTarget struct {
 type sidebarStyles struct {
 	accent          lipgloss.Style
 	dim             lipgloss.Style
+	treeGuide       lipgloss.Style
 	active          lipgloss.Style
 	stale           lipgloss.Style
 	selected        lipgloss.Style
@@ -193,6 +195,9 @@ func (m SidebarModel) Init() tea.Cmd {
 func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		if msg.Width <= 0 || msg.Height <= 0 {
+			return m, nil
+		}
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ensureTreeCursorVisible()
@@ -569,8 +574,10 @@ func (m *SidebarModel) switchItem(item SessionItem) {
 	if item.Current || m.actions.SwitchSession == nil {
 		return
 	}
-	if m.actions.SwitchSession(item.Name) {
-		m.reloadSessions()
+	if m.actions.SwitchSession(item.Name) && m.reloadTreeItems() {
+		if !m.selectSessionIfExists(item.Name) {
+			m.selectSession(m.currentSessionName())
+		}
 	}
 }
 
@@ -754,14 +761,20 @@ func (m SidebarModel) nearestVisibleCategoryID(itemID string) string {
 }
 
 func (m *SidebarModel) selectSession(name string) {
+	if !m.selectSessionIfExists(name) {
+		m.cursor = 0
+	}
+}
+
+func (m *SidebarModel) selectSessionIfExists(name string) bool {
 	selectable := m.selectableTreeItems()
 	for i, item := range selectable {
 		if item.Kind == TreeRowSession && item.Session.Name == name {
 			m.cursor = i
-			return
+			return true
 		}
 	}
-	m.cursor = 0
+	return false
 }
 
 func (m *SidebarModel) confirmKill() {
