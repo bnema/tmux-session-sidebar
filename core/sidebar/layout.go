@@ -36,6 +36,7 @@ type LayoutItem struct {
 type Category struct {
 	ID               string
 	Name             string
+	Color            string
 	Collapsed        bool
 	SessionsExpanded bool
 	Sessions         []SessionRef
@@ -76,6 +77,7 @@ type TreeRow struct {
 	CategoryID     string
 	CategoryName   string
 	CategoryOpen   bool
+	Color          string
 	Session        string
 	Slot           int
 	Depth          int
@@ -99,6 +101,12 @@ func CategoryItem(id string, name string, collapsed bool, sessionNames []string)
 func CategoryItemWithSessionExpansion(id string, name string, collapsed bool, sessionsExpanded bool, sessionNames []string) LayoutItem {
 	item := CategoryItem(id, name, collapsed, sessionNames)
 	item.Category.SessionsExpanded = sessionsExpanded
+	return item
+}
+
+func CategoryItemWithOptions(id string, name string, color string, collapsed bool, sessionsExpanded bool, sessionNames []string) LayoutItem {
+	item := CategoryItemWithSessionExpansion(id, name, collapsed, sessionsExpanded, sessionNames)
+	item.Category.Color = strings.TrimSpace(color)
 	return item
 }
 
@@ -164,7 +172,7 @@ func Flatten(layout Layout, selection Selection, showNumeric bool) []TreeRow {
 		switch item.Kind {
 		case ItemKindCategory:
 			category := normalizedCategory(item.Category)
-			rows = append(rows, TreeRow{Kind: RowKindCategory, ItemID: category.ID, CategoryID: category.ID, CategoryName: category.Name, CategoryOpen: !category.Collapsed})
+			rows = append(rows, TreeRow{Kind: RowKindCategory, ItemID: category.ID, CategoryID: category.ID, CategoryName: category.Name, CategoryOpen: !category.Collapsed, Color: category.Color})
 			if category.Collapsed {
 				continue
 			}

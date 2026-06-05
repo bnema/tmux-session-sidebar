@@ -58,6 +58,7 @@ type TreeItem struct {
 	CategoryID     string
 	CategoryName   string
 	CategoryOpen   bool
+	Color          string
 	Session        SessionItem
 	Slot           int
 	Depth          int
@@ -76,7 +77,8 @@ type Actions struct {
 	CreateNamedSession          func(string, string) bool
 	KillSession                 func(string) bool
 	TogglePinnedSession         func(string) bool
-	PinSessionWithColor         func(string, string) bool
+	ColorSession                func(string, string) bool
+	ColorCategory               func(string, string) bool
 	SetShowNumericItems         func(bool) bool
 	SelfUpdate                  func() tea.Cmd
 	LoadProjects                func() []ProjectItem
@@ -129,11 +131,17 @@ type SidebarModel struct {
 	height                           int
 	treeScroll                       int
 	pinColorPicker                   PinColorPicker
-	pinColorSession                  string
+	colorTarget                      colorTarget
 	attentionAnimationStyle          config.AgentAttentionAnimation
 	attentionAnimationFrame          int
 	attentionAnimationTickPending    bool
 	attentionAnimationTickGeneration int
+}
+
+type colorTarget struct {
+	SessionName string
+	CategoryID  string
+	ItemID      string
 }
 
 type sidebarStyles struct {
@@ -355,6 +363,10 @@ func (m SidebarModel) updateBrowseKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	}
 	if pinnedToggleKey(msg) {
 		m.handlePinKey()
+		return m.finishInteractiveUpdate()
+	}
+	if colorizeKey(msg) {
+		m.startColorPicker()
 		return m.finishInteractiveUpdate()
 	}
 	if slot, ok := numericSlotKey(msg); ok {
@@ -602,18 +614,25 @@ func (m *SidebarModel) startAttentionAnimationCmd() tea.Cmd {
 }
 
 func (m *SidebarModel) handlePinKey() tea.Cmd {
-	item, ok := m.selectedSession()
-	if !ok {
-		return nil
-	}
-	if item.Pinned {
-		m.togglePinnedSelected()
-		return nil
-	}
-	m.mode = ModePinColor
-	m.pinColorSession = item.Name
-	m.pinColorPicker = PinColorPicker{}
+	m.togglePinnedSelected()
 	return nil
+}
+
+func (m *SidebarModel) startColorPicker() {
+	item, ok := m.selectedTreeItem()
+	if !ok {
+		return
+	}
+	switch item.Kind {
+	case TreeRowSession:
+		m.mode = ModePinColor
+		m.colorTarget = colorTarget{SessionName: item.Session.Name, ItemID: item.ID}
+		m.pinColorPicker = PinColorPicker{}
+	case TreeRowCategory:
+		m.mode = ModePinColor
+		m.colorTarget = colorTarget{CategoryID: item.CategoryID, ItemID: item.ID}
+		m.pinColorPicker = PinColorPicker{}
+	}
 }
 
 func (m *SidebarModel) handlePinColorKey(msg tea.KeyPressMsg) tea.Cmd {
@@ -632,19 +651,30 @@ func (m *SidebarModel) handlePinColorKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *SidebarModel) confirmPinColor() {
-	name := m.pinColorSession
+	target := m.colorTarget
 	color := m.pinColorPicker.SelectedColor()
-	if name == "" || m.actions.PinSessionWithColor == nil || !m.actions.PinSessionWithColor(name, color) {
+	if target.SessionName != "" {
+		if m.actions.ColorSession == nil || !m.actions.ColorSession(target.SessionName, color) {
+			return
+		}
+		m.clearPinColorPicker()
+		m.reloadSessions()
+		m.selectSession(target.SessionName)
 		return
 	}
-	m.clearPinColorPicker()
-	m.reloadSessions()
-	m.selectSession(name)
+	if target.CategoryID != "" {
+		if m.actions.ColorCategory == nil || !m.actions.ColorCategory(target.CategoryID, color) {
+			return
+		}
+		m.clearPinColorPicker()
+		m.reloadTreeItems()
+		m.selectTreeItem(target.ItemID)
+	}
 }
 
 func (m *SidebarModel) clearPinColorPicker() {
 	m.mode = ModeBrowse
-	m.pinColorSession = ""
+	m.colorTarget = colorTarget{}
 	m.pinColorPicker = PinColorPicker{}
 }
 
@@ -819,7 +849,7 @@ func (m SidebarModel) Render() string {
 	lines = StatusBar{Lines: m.statusBarLines(styles), Height: m.height}.RenderBelow(padSidebarContentLines(lines))
 	content := strings.Join(lines, "\n")
 	if m.mode == ModePinColor {
-		return m.pinColorPicker.RenderOverlay(content, m.width, m.height)
+		return m.pinColorPicker.RenderOverlayAt(content, m.width, m.height, m.colorPickerOverlayY())
 	}
 	if m.menuActive() {
 		return m.renderBottomSheet(content, bottomSheet{Title: m.menu.Spec.Title, Content: m.renderMenuRows(styles), Footer: m.menu.Spec.Footer, Height: m.menu.Spec.Height})
@@ -898,6 +928,10 @@ func categoryCollapseKey(msg tea.KeyPressMsg) (bool, bool) {
 func pinnedToggleKey(msg tea.KeyPressMsg) bool {
 	key := msg.Key()
 	return key.Mod == 0 && (key.Text == " " || key.Code == tea.KeySpace)
+}
+
+func colorizeKey(msg tea.KeyPressMsg) bool {
+	return msg.Key().Text == "C"
 }
 
 func numericSlotKey(msg tea.KeyPressMsg) (int, bool) {

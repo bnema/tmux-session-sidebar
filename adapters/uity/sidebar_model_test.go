@@ -323,21 +323,93 @@ func TestSidebarModelReordersSelectedTreeItem(t *testing.T) {
 	}
 }
 
-func TestSidebarModelPinColorFlow(t *testing.T) {
-	var pinnedName, pinnedColor string
-	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{PinSessionWithColor: func(name string, color string) bool {
-		pinnedName, pinnedColor = name, color
+func TestSidebarModelSpaceTogglesPinWithoutOpeningColorPicker(t *testing.T) {
+	var pinnedName string
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{TogglePinnedSession: func(name string) bool {
+		pinnedName = name
 		return true
 	}, ReloadTreeItems: reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "alpha", Pinned: true}} })})
+
 	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Text: " ", Code: ' '}))
 	model = requireSidebarModel(t, updated)
-	if model.mode != ModePinColor || model.pinColorSession != "alpha" {
-		t.Fatalf("pin color state = mode=%s session=%q", model.mode, model.pinColorSession)
+
+	if pinnedName != "alpha" || model.mode != ModeBrowse {
+		t.Fatalf("space pin result name=%q mode=%s, want alpha browse", pinnedName, model.mode)
+	}
+}
+
+func TestSidebarModelColorizesSelectedSessionWithC(t *testing.T) {
+	var coloredName, coloredColor string
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{ColorSession: func(name string, color string) bool {
+		coloredName, coloredColor = name, color
+		return true
+	}, ReloadTreeItems: reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "alpha", PinColor: "#38bdf8"}} })})
+
+	updated, _ := model.Update(keyPress("C", tea.ModShift))
+	model = requireSidebarModel(t, updated)
+	if model.mode != ModePinColor || model.colorTarget.SessionName != "alpha" {
+		t.Fatalf("color picker state = mode=%s target=%#v", model.mode, model.colorTarget)
 	}
 	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = requireSidebarModel(t, updated)
-	if pinnedName != "alpha" || pinnedColor == "" || model.mode != ModeBrowse {
-		t.Fatalf("pin result name=%q color=%q mode=%s", pinnedName, pinnedColor, model.mode)
+	if coloredName != "alpha" || coloredColor == "" || model.mode != ModeBrowse {
+		t.Fatalf("color result name=%q color=%q mode=%s", coloredName, coloredColor, model.mode)
+	}
+}
+
+func TestSidebarModelColorizesSelectedCategoryWithC(t *testing.T) {
+	var categoryID, categoryColor string
+	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{ColorCategory: func(id string, color string) bool {
+		categoryID, categoryColor = id, color
+		return true
+	}, ReloadTreeItems: func() []TreeItem {
+		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true, Color: "#38bdf8"}}
+	}}, SidebarOptions{})
+
+	updated, _ := model.Update(keyPress("C", tea.ModShift))
+	model = requireSidebarModel(t, updated)
+	if model.mode != ModePinColor || model.colorTarget.CategoryID != "category:work" {
+		t.Fatalf("category color picker state = mode=%s target=%#v", model.mode, model.colorTarget)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	if categoryID != "category:work" || categoryColor == "" || model.mode != ModeBrowse {
+		t.Fatalf("category color result id=%q color=%q mode=%s", categoryID, categoryColor, model.mode)
+	}
+	if view := model.Render(); !strings.Contains(view, "38;2;56;189;248") {
+		t.Fatalf("category color did not render in view=%q", view)
+	}
+}
+
+func TestSidebarModelColorPickerPositionsBelowSelectedItem(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"}}, Actions{ColorSession: func(string, string) bool { return true }})
+	model.width = 50
+	model.height = 20
+	model.cursor = 3
+
+	updated, _ := model.Update(keyPress("C", tea.ModShift))
+	model = requireSidebarModel(t, updated)
+	lines := strings.Split(stripANSI(model.Render()), "\n")
+	selectedLine := -1
+	pickerLine := -1
+	for i, line := range lines {
+		if strings.Contains(line, "gamma") {
+			selectedLine = i
+		}
+		if strings.Contains(line, "color") {
+			pickerLine = i
+			break
+		}
+	}
+	if selectedLine < 0 || pickerLine <= selectedLine {
+		t.Fatalf("picker line=%d selected line=%d lines=%q, want picker below selected", pickerLine, selectedLine, lines)
+	}
+}
+
+func TestSessionRowColorPreservesCurrentEmphasis(t *testing.T) {
+	style := sessionRowStyle(newSidebarStyles(), SessionItem{Name: "alpha", Current: true, PinColor: "#38bdf8"})
+	if !style.GetBold() {
+		t.Fatal("colored current session style should preserve active bold emphasis")
 	}
 }
 
@@ -348,7 +420,7 @@ func TestSidebarModelHelpToggleOpensBottomSheetCheatSheet(t *testing.T) {
 	updated, _ = model.Update(keyPress("?", 0))
 	model = requireSidebarModel(t, updated)
 	view := stripANSI(model.Render())
-	for _, want := range []string{"keys", "navigation", "↵ switch", "c create", "n new", spaceKeySymbol + " pin", "alt+h nums", "J/K", "r rename", "d del", "esc close"} {
+	for _, want := range []string{"keys", "navigation", "↵ switch", "c create", "n new", spaceKeySymbol + " pin", "C color", "alt+h nums", "J/K", "r rename", "d del", "esc close"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("help sheet missing %q in %q", want, view)
 		}

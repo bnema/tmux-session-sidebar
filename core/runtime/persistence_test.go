@@ -161,12 +161,12 @@ func TestCaptureLiveSessions(t *testing.T) {
 }
 
 func TestReconcilePinColorsKeepsNilMapNil(t *testing.T) {
-	if got := reconcilePinColors(nil, []string{"alpha"}); got != nil {
+	if got := reconcilePinColors(nil, []ports.TmuxSessionSnapshot{{Name: "alpha"}}); got != nil {
 		t.Fatalf("reconcilePinColors(nil) = %#v, want nil", got)
 	}
 }
 
-func TestCaptureLiveSessionsPrunesOrphanPinColors(t *testing.T) {
+func TestCaptureLiveSessionsPrunesOrphanSessionColors(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
@@ -174,7 +174,7 @@ func TestCaptureLiveSessionsPrunesOrphanPinColors(t *testing.T) {
 
 	initial := ports.PersistedState{
 		Sessions:       map[string]ports.SessionMetadata{},
-		PinnedSessions: []string{"alpha", "missing"},
+		PinnedSessions: []string{"missing"},
 		PinColors:      map[string]string{"alpha": "#38bdf8", "missing": "#f87171"},
 	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
@@ -182,7 +182,7 @@ func TestCaptureLiveSessionsPrunesOrphanPinColors(t *testing.T) {
 	query.EXPECT().SessionPath(ctx, "alpha").Return(t.TempDir(), nil)
 	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
-		return reflect.DeepEqual(state.PinnedSessions, []string{"alpha"}) && reflect.DeepEqual(state.PinColors, map[string]string{"alpha": "#38bdf8"})
+		return len(state.PinnedSessions) == 0 && reflect.DeepEqual(state.PinColors, map[string]string{"alpha": "#38bdf8"})
 	})).Return(nil)
 
 	if err := NewService(nil, query, nil, store).CaptureLiveSessions(ctx, serverID); err != nil {

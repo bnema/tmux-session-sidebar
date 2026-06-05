@@ -37,7 +37,7 @@ func loadSidebarTreeItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapsho
 	activeCategoryID := sidebarlayout.ActiveCategoryID(layout, selection)
 	tree := make([]uity.TreeItem, 0, len(rows))
 	for _, row := range rows {
-		item := uity.TreeItem{ID: row.ItemID, CategoryID: row.CategoryID, CategoryName: row.CategoryName, CategoryOpen: row.CategoryOpen, Slot: row.Slot, Depth: row.Depth, LastChild: row.LastChild, OverflowHidden: row.OverflowHidden}
+		item := uity.TreeItem{ID: row.ItemID, CategoryID: row.CategoryID, CategoryName: row.CategoryName, CategoryOpen: row.CategoryOpen, Color: row.Color, Slot: row.Slot, Depth: row.Depth, LastChild: row.LastChild, OverflowHidden: row.OverflowHidden}
 		switch row.Kind {
 		case sidebarlayout.RowKindCategory:
 			item.Kind = uity.TreeRowCategory
@@ -115,7 +115,7 @@ func coreLayoutFromPersisted(persisted *ports.SidebarLayout) sidebarlayout.Layou
 			for _, ref := range item.Category.Sessions {
 				sessions = append(sessions, ref.Name)
 			}
-			items = append(items, sidebarlayout.CategoryItemWithSessionExpansion(firstNonEmpty(item.Category.ID, item.ID), item.Category.Name, item.Category.Collapsed, item.Category.SessionsExpanded, sessions))
+			items = append(items, sidebarlayout.CategoryItemWithOptions(firstNonEmpty(item.Category.ID, item.ID), item.Category.Name, item.Category.Color, item.Category.Collapsed, item.Category.SessionsExpanded, sessions))
 		case string(sidebarlayout.ItemKindSeparator):
 			items = append(items, sidebarlayout.SeparatorItem(firstNonEmpty(item.ID, persistedSpacerID(item.Separator))))
 		case string(sidebarlayout.ItemKindSpacer):
@@ -134,7 +134,7 @@ func persistedLayoutFromCore(layout sidebarlayout.Layout) *ports.SidebarLayout {
 			for _, ref := range item.Category.Sessions {
 				refs = append(refs, ports.SidebarLayoutSessionRef{Name: ref.Name})
 			}
-			items = append(items, ports.SidebarLayoutItem{ID: item.ID, Kind: string(item.Kind), Category: &ports.SidebarLayoutCategory{ID: item.Category.ID, Name: item.Category.Name, Collapsed: item.Category.Collapsed, SessionsExpanded: item.Category.SessionsExpanded, Sessions: refs}})
+			items = append(items, ports.SidebarLayoutItem{ID: item.ID, Kind: string(item.Kind), Category: &ports.SidebarLayoutCategory{ID: item.Category.ID, Name: item.Category.Name, Color: item.Category.Color, Collapsed: item.Category.Collapsed, SessionsExpanded: item.Category.SessionsExpanded, Sessions: refs}})
 		case sidebarlayout.ItemKindSeparator:
 			items = append(items, ports.SidebarLayoutItem{ID: item.ID, Kind: string(item.Kind), Separator: &ports.SidebarLayoutSpacer{ID: item.ID}})
 		case sidebarlayout.ItemKindSpacer:
@@ -194,6 +194,30 @@ func saveSidebarSessionCategory(ctx context.Context, sessionName string, categor
 		if foundTarget {
 			state.SidebarLayout = persistedLayoutFromCore(layout)
 		}
+	})
+}
+
+func saveSidebarCategoryColor(ctx context.Context, categoryID string, color string, live []string) error {
+	categoryID = strings.TrimSpace(categoryID)
+	color = strings.TrimSpace(color)
+	if categoryID == "" || color == "" {
+		return nil
+	}
+	return withLoadedSidebarState(ctx, func(store storefs.Store, state *ports.PersistedState) error {
+		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
+		found := false
+		for i := range layout.Items {
+			if layout.Items[i].Kind == sidebarlayout.ItemKindCategory && layout.Items[i].Category.ID == categoryID {
+				layout.Items[i].Category.Color = color
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("color sidebar category: category %q not found", categoryID)
+		}
+		state.SidebarLayout = persistedLayoutFromCore(layout)
+		return saveLoadedSidebarState(ctx, store, *state)
 	})
 }
 

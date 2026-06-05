@@ -117,7 +117,7 @@ func (s *Service) CaptureLiveSessions(ctx context.Context, serverID string) erro
 	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
 	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
 	state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
-	state.PinColors = reconcilePinColors(state.PinColors, state.PinnedSessions)
+	state.PinColors = reconcilePinColors(state.PinColors, live)
 	s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
 	return s.store.Save(ctx, serverID, state)
 }
@@ -161,7 +161,7 @@ func (s *Service) CaptureLiveSessionsWithConfig(ctx context.Context, serverID st
 	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
 	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
 	state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
-	state.PinColors = reconcilePinColors(state.PinColors, state.PinnedSessions)
+	state.PinColors = reconcilePinColors(state.PinColors, live)
 	if s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot)) {
 		applyRecentSessionOrder(&state, live, snapshot, time.Now())
 	}
@@ -249,20 +249,12 @@ func reconcilePinnedSessions(pinned []string, live []ports.TmuxSessionSnapshot) 
 	return sessions.ReconcilePinned(pinned, liveNames)
 }
 
-func reconcilePinColors(colors map[string]string, pinned []string) map[string]string {
-	if len(colors) == 0 {
-		return colors
+func reconcilePinColors(colors map[string]string, live []ports.TmuxSessionSnapshot) map[string]string {
+	liveNames := make([]string, 0, len(live))
+	for _, session := range live {
+		liveNames = append(liveNames, session.Name)
 	}
-	pinnedSet := make(map[string]struct{}, len(pinned))
-	for _, name := range pinned {
-		pinnedSet[name] = struct{}{}
-	}
-	for name := range colors {
-		if _, ok := pinnedSet[name]; !ok {
-			delete(colors, name)
-		}
-	}
-	return colors
+	return sessions.ReconcileNamedStrings(colors, liveNames)
 }
 
 func orderedPersistedSessionNames(state ports.PersistedState) []string {

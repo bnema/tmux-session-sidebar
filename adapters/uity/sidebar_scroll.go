@@ -1,5 +1,7 @@
 package uity
 
+import lipgloss "charm.land/lipgloss/v2"
+
 func (m SidebarModel) availableTreeHeight() int {
 	if m.height <= 0 {
 		return 0
@@ -108,6 +110,13 @@ func (m SidebarModel) selectedRenderedTreeLine(styles sidebarStyles) int {
 		line += renderer.renderedTreeItemLineCount(item)
 	}
 	return 0
+}
+
+func (m SidebarModel) colorPickerOverlayY() int {
+	styles := newSidebarStyles()
+	paneHeight := lipgloss.Height(m.pinColorPicker.Render())
+	selectedLine := m.selectedRenderedTreeLine(styles) - m.normalizedTreeScroll(m.renderedTreeLineCount(styles), m.availableTreeHeight(), styles)
+	return min(selectedLine+2, max(m.height-paneHeight, 0))
 }
 
 func (m SidebarModel) treeLineCounter(styles sidebarStyles) treeRenderer {

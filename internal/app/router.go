@@ -457,12 +457,19 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 			}
 			return handleActionError(ctx, "toggle pinned session", saveToggledPinnedSession(ctx, names, name))
 		},
-		PinSessionWithColor: func(name string, color string) bool {
+		ColorSession: func(name string, color string) bool {
 			names, err := currentLiveSessionNames(ctx)
 			if err != nil {
-				return handleActionError(ctx, "load sessions for pin color", err)
+				return handleActionError(ctx, "load sessions for session color", err)
 			}
-			return handleActionError(ctx, "pin session color", savePinnedSessionColor(ctx, names, name, color))
+			return handleActionError(ctx, "color session", saveSessionColor(ctx, names, name, color))
+		},
+		ColorCategory: func(categoryID string, color string) bool {
+			live, err := currentLiveSessionNames(ctx)
+			if err != nil {
+				return handleActionError(ctx, "load sessions for category color", err)
+			}
+			return handleActionError(ctx, "color category", saveSidebarCategoryColor(ctx, categoryID, color, live))
 		},
 		SetShowNumericItems: func(show bool) bool {
 			return handleActionError(ctx, "save sidebar state", saveShowNumericSessions(ctx, show))

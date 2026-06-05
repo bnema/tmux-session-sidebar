@@ -82,78 +82,59 @@ func TestSaveToggledPinnedSession(t *testing.T) {
 	if len(state.PinnedSessions) != 0 {
 		t.Fatalf("PinnedSessions after unpin = %#v, want empty", state.PinnedSessions)
 	}
-	if _, ok := state.PinColors["beta"]; ok {
-		t.Fatalf("PinColors[beta] kept after unpin: %#v", state.PinColors)
-	}
-
-	if err := savePinnedSessionColor(ctx, []string{"alpha", "beta"}, "beta", "#38bdf8"); err != nil {
-		t.Fatalf("savePinnedSessionColor() add error = %v", err)
-	}
-	state, err = loadSidebarState(ctx)
-	if err != nil {
-		t.Fatalf("loadSidebarState() after add error = %v", err)
-	}
-	if want := []string{"beta"}; !reflect.DeepEqual(state.PinnedSessions, want) {
-		t.Fatalf("PinnedSessions after add = %#v, want %#v", state.PinnedSessions, want)
-	}
 	if got := state.PinColors["beta"]; got != "#38bdf8" {
-		t.Fatalf("PinColors[beta] after add = %q, want #38bdf8", got)
-	}
-	if want := []string{"alpha", "beta"}; !reflect.DeepEqual(state.SessionOrder, want) {
-		t.Fatalf("SessionOrder after add = %#v, want %#v", state.SessionOrder, want)
+		t.Fatalf("PinColors[beta] after unpin = %q, want preserved #38bdf8", got)
 	}
 
-	if err := savePinnedSessionColor(ctx, []string{"alpha", "beta"}, "beta", "#f87171"); err != nil {
-		t.Fatalf("savePinnedSessionColor() recolor error = %v", err)
-	}
-	state, err = loadSidebarState(ctx)
-	if err != nil {
-		t.Fatalf("loadSidebarState() after recolor error = %v", err)
-	}
-	if want := []string{"beta"}; !reflect.DeepEqual(state.PinnedSessions, want) {
-		t.Fatalf("PinnedSessions after recolor = %#v, want %#v", state.PinnedSessions, want)
-	}
-	if got := state.PinColors["beta"]; got != "#f87171" {
-		t.Fatalf("PinColors[beta] after recolor = %q, want #f87171", got)
-	}
+}
 
-	if err := saveToggledPinnedSession(ctx, []string{"alpha", "beta"}, "beta"); err != nil {
-		t.Fatalf("saveToggledPinnedSession() remove error = %v", err)
+func TestSaveSessionColorDoesNotPinSession(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	if err := saveSessionColor(ctx, []string{"alpha", "beta"}, "beta", "#38bdf8"); err != nil {
+		t.Fatalf("saveSessionColor() error = %v", err)
 	}
-	state, err = loadSidebarState(ctx)
+	state, err := loadSidebarState(ctx)
 	if err != nil {
-		t.Fatalf("loadSidebarState() after remove error = %v", err)
+		t.Fatalf("loadSidebarState() error = %v", err)
 	}
 	if len(state.PinnedSessions) != 0 {
-		t.Fatalf("PinnedSessions after remove = %#v, want empty", state.PinnedSessions)
+		t.Fatalf("PinnedSessions after color = %#v, want no pin", state.PinnedSessions)
 	}
-	if _, ok := state.PinColors["beta"]; ok {
-		t.Fatalf("PinColors[beta] kept after remove: %#v", state.PinColors)
+	if got := state.PinColors["beta"]; got != "#38bdf8" {
+		t.Fatalf("PinColors[beta] after color = %q, want #38bdf8", got)
+	}
+	if want := []string{"alpha", "beta"}; !reflect.DeepEqual(state.SessionOrder, want) {
+		t.Fatalf("SessionOrder after color = %#v, want %#v", state.SessionOrder, want)
 	}
 }
 
-func TestSavePinnedSessionColorIgnoresNonLiveSession(t *testing.T) {
+func TestSaveSessionColorIgnoresNonLiveSession(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
 	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
 		state.PinnedSessions = []string{"missing"}
-		state.PinColors = map[string]string{"alpha": "#38bdf8"}
+		state.PinColors = map[string]string{"alpha": "#38bdf8", "stale": "#f87171"}
 	}); err != nil {
 		t.Fatalf("seed sidebar state error = %v", err)
 	}
-	if err := savePinnedSessionColor(ctx, []string{"alpha", "beta"}, "missing", "#f87171"); err != nil {
-		t.Fatalf("savePinnedSessionColor() non-live error = %v", err)
+	if err := saveSessionColor(ctx, []string{"alpha", "beta"}, "missing", "#f87171"); err != nil {
+		t.Fatalf("saveSessionColor() non-live error = %v", err)
 	}
 	state, err := loadSidebarState(ctx)
 	if err != nil {
-		t.Fatalf("loadSidebarState() after non-live pin color error = %v", err)
+		t.Fatalf("loadSidebarState() after non-live session color error = %v", err)
 	}
 	if len(state.PinnedSessions) != 0 {
 		t.Fatalf("PinnedSessions after non-live color = %#v, want empty after reconciliation", state.PinnedSessions)
 	}
 	if _, ok := state.PinColors["missing"]; ok {
 		t.Fatalf("PinColors[missing] was added for non-live session: %#v", state.PinColors)
+	}
+	if _, ok := state.PinColors["stale"]; ok {
+		t.Fatalf("PinColors[stale] survived live reconciliation: %#v", state.PinColors)
 	}
 	if got := state.PinColors["alpha"]; got != "#38bdf8" {
 		t.Fatalf("PinColors[alpha] = %q, want untouched #38bdf8", got)

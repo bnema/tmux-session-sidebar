@@ -25,7 +25,7 @@ func (m SidebarModel) helpSheetContent(styles sidebarStyles) string {
 		styles.accent.Render("navigation"),
 		"↵ switch    / filter    esc close",
 		"j/k move    alt+h nums",
-		spaceKeySymbol + " pin",
+		spaceKeySymbol + " pin      C color",
 		"",
 		styles.accent.Render("sessions"),
 		"c create    r rename    d del",
@@ -69,6 +69,14 @@ func newSidebarStyles() sidebarStyles {
 }
 
 func sessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
+	style := baseSessionRowStyle(styles, item)
+	if strings.TrimSpace(item.PinColor) != "" {
+		return style.Foreground(lipgloss.Color(item.PinColor))
+	}
+	return style
+}
+
+func baseSessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style {
 	if item.Pinned {
 		return styles.pinned.Foreground(lipgloss.Color(pinColor(item)))
 	}

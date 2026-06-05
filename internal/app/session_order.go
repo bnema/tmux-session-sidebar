@@ -41,35 +41,26 @@ func saveShowNumericSessions(ctx context.Context, show bool) error {
 	})
 }
 
-// saveToggledPinnedSession preserves an existing pin color when toggling a
-// session on. New pin colors are assigned through savePinnedSessionColor; the
-// color is removed only when this toggle unpins the session.
 func saveToggledPinnedSession(ctx context.Context, live []string, session string) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		var pinned bool
-		state.PinnedSessions, pinned = sessions.TogglePinned(sessions.ReconcilePinned(state.PinnedSessions, live), session)
-		if !pinned {
-			delete(state.PinColors, session)
-		}
+		state.PinColors = sessions.ReconcileNamedStrings(state.PinColors, live)
+		state.PinnedSessions, _ = sessions.TogglePinned(sessions.ReconcilePinned(state.PinnedSessions, live), session)
 		state.SessionOrder = sessions.ApplyOrder(live, state.SessionOrder)
 	})
 }
 
-func savePinnedSessionColor(ctx context.Context, live []string, session string, color string) error {
+func saveSessionColor(ctx context.Context, live []string, session string, color string) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.PinColors = sessions.ReconcileNamedStrings(state.PinColors, live)
 		state.PinnedSessions = sessions.ReconcilePinned(state.PinnedSessions, live)
-		if !slices.Contains(state.PinnedSessions, session) {
-			if !slices.Contains(live, session) {
-				state.SessionOrder = sessions.ApplyOrder(live, state.SessionOrder)
-				return
-			}
-			state.PinnedSessions = append(state.PinnedSessions, session)
+		state.SessionOrder = sessions.ApplyOrder(live, state.SessionOrder)
+		if !slices.Contains(live, session) {
+			return
 		}
 		if state.PinColors == nil {
 			state.PinColors = map[string]string{}
 		}
 		state.PinColors[session] = color
-		state.SessionOrder = sessions.ApplyOrder(live, state.SessionOrder)
 	})
 }
 
