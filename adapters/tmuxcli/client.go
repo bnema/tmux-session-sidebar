@@ -247,7 +247,7 @@ func (c Client) CurrentPanePath(ctx context.Context, clientID string) (string, e
 }
 
 func (c Client) SessionPath(ctx context.Context, sessionName string) (string, error) {
-	return c.displayTarget(ctx, "="+sessionName, formatPaneCurrentPath)
+	return c.displayTarget(ctx, exactSessionWindowTarget(sessionName), formatPaneCurrentPath)
 }
 
 func (c Client) WindowID(ctx context.Context, target string) (string, error) {

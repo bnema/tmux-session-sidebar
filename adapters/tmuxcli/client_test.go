@@ -230,11 +230,11 @@ func TestCurrentPanePathUsesDisplayWhenTargetIsEmpty(t *testing.T) {
 	}
 }
 
-func TestSessionPathUsesExactSessionTarget(t *testing.T) {
+func TestSessionPathUsesExactSessionWindowTarget(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
 	allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
-	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "=alpha", "#{pane_current_path}"}).Return(ports.Result{Stdout: "/tmp/project\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "=alpha:", "#{pane_current_path}"}).Return(ports.Result{Stdout: "/tmp/project\n"}, nil)
 
 	got, err := (Client{Process: process}).SessionPath(ctx, "alpha")
 	if err != nil {
