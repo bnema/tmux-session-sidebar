@@ -557,6 +557,7 @@ func (m *SidebarModel) toggleSelectedMore(item TreeItem) {
 	if !m.actions.SetCategorySessionsExpanded(item.CategoryID, next) {
 		return
 	}
+	m.setLocalCategorySessionsExpanded(item.CategoryID, next)
 	m.reloadTreeItems()
 	m.selectTreeItem(item.ID)
 }

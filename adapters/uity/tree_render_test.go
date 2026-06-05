@@ -353,8 +353,52 @@ func TestTreeSidebarRendersAndTogglesMoreRow(t *testing.T) {
 	}
 	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = requireSidebarModel(t, updated)
-	if !expanded || model.cursor != 2 || !strings.Contains(stripANSI(model.Render()), "Show less....") {
+	if !expanded || model.cursor != 2 || !strings.Contains(stripANSI(model.Render()), "[show less]") {
 		t.Fatalf("more toggle expanded=%v cursor=%d view=%q", expanded, model.cursor, stripANSI(model.Render()))
+	}
+}
+
+func TestTreeSidebarKeepsExpandedMoreRowAfterSessionSwitchReload(t *testing.T) {
+	items := []TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+	}
+	for i := 1; i <= 12; i++ {
+		items = append(items, TreeItem{Kind: TreeRowSession, ID: fmt.Sprintf("category:work/session:s%d", i), CategoryID: "category:work", Session: SessionItem{Name: fmt.Sprintf("s%d", i), Current: i == 1}, Depth: 1, OverflowHidden: i > 10})
+	}
+	items = append(items, TreeItem{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 2})
+	expanded := false
+	switched := false
+	model := NewTreeSidebarModelWithOptions(items, Actions{
+		SetCategorySessionsExpanded: func(categoryID string, next bool) bool {
+			expanded = next
+			return categoryID == "category:work"
+		},
+		SwitchSession: func(name string) bool {
+			switched = name == "s2"
+			return switched
+		},
+		ReloadTreeItems: func() []TreeItem {
+			next := []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}
+			for i := 1; i <= 12; i++ {
+				name := fmt.Sprintf("s%d", i)
+				next = append(next, TreeItem{Kind: TreeRowSession, ID: "category:work/session:" + name, CategoryID: "category:work", Session: SessionItem{Name: name, Current: (switched && name == "s2") || (!switched && name == "s1")}, Depth: 1, OverflowHidden: i > 10})
+			}
+			next = append(next, TreeItem{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 2})
+			return next
+		},
+	}, SidebarOptions{})
+	model.cursor = 11
+	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	if !expanded || !strings.Contains(stripANSI(model.Render()), "[show less]") {
+		t.Fatalf("precondition expanded=%v view=%q", expanded, stripANSI(model.Render()))
+	}
+	model.selectSession("s2")
+
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	if !expanded || !strings.Contains(stripANSI(model.Render()), "[show less]") || !strings.Contains(stripANSI(model.Render()), "s12") {
+		t.Fatalf("expanded more row collapsed after switch: expanded=%v view=%q", expanded, stripANSI(model.Render()))
 	}
 }
 

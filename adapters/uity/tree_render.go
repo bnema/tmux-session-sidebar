@@ -126,7 +126,7 @@ func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 
 func (r treeRenderer) renderMore(item TreeItem, selected bool) string {
 	branch := r.styles.treeGuide.Render(treeBranch(item))
-	label := "Show less...."
+	label := "[show less]"
 	if !item.MoreExpanded {
 		label = fmt.Sprintf("[show %d more]", item.MoreCount)
 	}
