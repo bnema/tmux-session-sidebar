@@ -46,7 +46,7 @@ func TestFormatMetadataSublineLoadingUsesAsciiEllipsisInAsciiMode(t *testing.T) 
 	}
 }
 
-func TestFormatMetadataSublineShowsCleanGitBranch(t *testing.T) {
+func TestFormatMetadataSublineHidesCleanMainBranch(t *testing.T) {
 	tests := []struct {
 		name  string
 		icons MetadataIconMode
@@ -57,17 +57,17 @@ func TestFormatMetadataSublineShowsCleanGitBranch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := FormatMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Branch: "main", Clean: true}, MetadataSublineOptions{Icons: tt.icons, Width: 80})
-			if got == "" || strings.Contains(got, "clean") {
-				t.Fatalf("FormatMetadataSubline() = %q, want branch without clean suffix", got)
+			if got != "" {
+				t.Fatalf("FormatMetadataSubline() = %q, want empty clean main branch", got)
 			}
 		})
 	}
 }
 
-func TestFormatMetadataSublineShowsCleanGitWithoutUpstream(t *testing.T) {
+func TestFormatMetadataSublineShowsCleanNonMainGitBranch(t *testing.T) {
 	got := FormatMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Branch: "work", Clean: true, UpstreamMissing: true}, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 80})
-	if got != "  work" {
-		t.Fatalf("FormatMetadataSubline() = %q, want branch with clean state", got)
+	if got != "  work" || strings.Contains(got, "clean") {
+		t.Fatalf("FormatMetadataSubline() = %q, want branch without clean suffix", got)
 	}
 }
 
