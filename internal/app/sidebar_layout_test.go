@@ -285,7 +285,7 @@ func TestRuntimeRouterUsesDirectFallbackForStaleScopedIPC(t *testing.T) {
 	ctx := t.Context()
 	ipc := mocks.NewMockIPCClientPort(t)
 	tmux := mocks.NewMockTmuxSidebarPort(t)
-	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{OK: false, Message: "ipc stale tmux scope: daemon tmux server identity is stale"}, nil)
+	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{OK: false, Message: "daemon tmux server identity is stale", ErrorCode: ports.IPCErrorStaleScope}, nil)
 	tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 	tmux.EXPECT().ParkSingletonSidebar(ctx, "%9").Return(nil)
 

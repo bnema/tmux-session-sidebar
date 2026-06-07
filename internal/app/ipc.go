@@ -21,7 +21,7 @@ type daemonIPCHandler struct {
 
 func (h daemonIPCHandler) HandleIPC(ctx context.Context, req ports.Request) (ports.Response, error) {
 	if err := h.verifyScope(ctx); err != nil {
-		return ports.Response{OK: false, Message: err.Error()}, err
+		return ports.Response{OK: false, Message: err.Error(), ErrorCode: ports.IPCErrorStaleScope}, err
 	}
 	if req.Kind == ports.IPCHealth {
 		return ports.Response{OK: true, Message: "ok"}, nil

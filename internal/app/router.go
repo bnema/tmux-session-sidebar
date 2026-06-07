@@ -198,7 +198,7 @@ func (r runtimeRouter) sendIPC(ctx context.Context, route Route) error {
 	}
 	if !resp.OK {
 		message := strings.TrimSpace(resp.Message)
-		if strings.Contains(message, ports.ErrIPCStaleScope.Error()) || strings.Contains(message, "daemon tmux server identity is stale") {
+		if resp.ErrorCode == ports.IPCErrorStaleScope {
 			return fmt.Errorf("%w: daemon IPC %s failed: %s", ports.ErrIPCStaleScope, route.Path, message)
 		}
 		return fmt.Errorf("daemon IPC %s failed: %s", route.Path, message)

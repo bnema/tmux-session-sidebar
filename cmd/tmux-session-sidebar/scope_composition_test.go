@@ -67,8 +67,14 @@ func TestBuildRuntimeUsesOneScopedDirForIPCAndDaemon(t *testing.T) {
 	if !ok {
 		t.Fatalf("daemon launcher = %T", got.DaemonLauncher)
 	}
-	if client.SocketPath != scope.IPCSocketPath || server.SocketPath != scope.IPCSocketPath || launcher.StateDir != scope.Dir {
-		t.Fatalf("paths not composed from one scope: client=%q server=%q launcher=%q scope=%#v", client.SocketPath, server.SocketPath, launcher.StateDir, scope)
+	if client.SocketPath != scope.IPCSocketPath {
+		t.Fatalf("client socket = %q, want %q", client.SocketPath, scope.IPCSocketPath)
+	}
+	if server.SocketPath != scope.IPCSocketPath {
+		t.Fatalf("server socket = %q, want %q", server.SocketPath, scope.IPCSocketPath)
+	}
+	if launcher.StateDir != scope.Dir {
+		t.Fatalf("launcher dir = %q, want %q", launcher.StateDir, scope.Dir)
 	}
 	if filepath.Dir(client.SocketPath) != scope.Dir {
 		t.Fatalf("socket dir = %q, want %q", filepath.Dir(client.SocketPath), scope.Dir)

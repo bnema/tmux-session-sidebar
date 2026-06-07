@@ -6,7 +6,7 @@ import (
 )
 
 func init() {
-	os.Unsetenv("TMUX")
+	_ = os.Unsetenv("TMUX")
 }
 
 func matchesDaemonServeUICommand() func([]string) bool {

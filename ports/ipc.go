@@ -8,6 +8,8 @@ import (
 )
 
 const (
+	IPCErrorStaleScope = "stale_scope"
+
 	IPCSidebarOpen       = "sidebar.open"
 	IPCSidebarClose      = "sidebar.close"
 	IPCSidebarToggle     = "sidebar.toggle"
@@ -31,9 +33,10 @@ type Request struct {
 }
 
 type Response struct {
-	OK      bool
-	Message string
-	Payload []byte
+	OK        bool
+	Message   string
+	Payload   []byte
+	ErrorCode string
 }
 
 func SidebarRequest(kind string, clientID string, args map[string]string) Request {

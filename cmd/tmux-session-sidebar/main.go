@@ -18,8 +18,8 @@ import (
 var (
 	signalContext = signal.NotifyContext
 	runApp        = app.Run
-	newRouter     = func() app.Router {
-		router, _ := buildRuntimeRouter(context.Background(), process.Runner{})
+	newRouter     = func(ctx context.Context) app.Router {
+		router, _ := buildRuntimeRouter(ctx, process.Runner{})
 		return router
 	}
 )
@@ -35,7 +35,7 @@ func buildRuntimeRouter(ctx context.Context, runner ports.ProcessPort) (app.Rout
 func run(args []string, stdout io.Writer, stderr io.Writer) int {
 	ctx, stop := signalContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return runApp(ctx, args, stdout, stderr, newRouter())
+	return runApp(ctx, args, stdout, stderr, newRouter(ctx))
 }
 
 func main() {

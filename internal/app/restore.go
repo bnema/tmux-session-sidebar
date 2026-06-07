@@ -125,23 +125,21 @@ func bootstrapSidebarDaemon(ctx context.Context, stderr io.Writer, ipcServer por
 		return err
 	}
 	defer func() { _ = logFile.Close() }()
-	logf := func(format string, args ...any) {
-		_, _ = fmt.Fprintf(logFile, "tmux-session-sidebar: "+format+"\n", args...)
-	}
-	if err := ensureRestoredAndCapturedOnStartup(ctx); err != nil {
-		logf("daemon ensure failed: %v", err)
-		return err
-	}
-	if stderr == nil {
-		stderr = io.Discard
-	}
 	previousStderr := os.Stderr
 	os.Stderr = logFile
 	defer func() { os.Stderr = previousStderr }()
-	return serveSidebarDaemon(ctx, ipcServer, router)
+	return serveSidebarDaemonWithOptions(ctx, ipcServer, router, daemonServeOptions{ensureStartup: true})
+}
+
+type daemonServeOptions struct {
+	ensureStartup bool
 }
 
 func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, router Router) error {
+	return serveSidebarDaemonWithOptions(ctx, ipcServer, router, daemonServeOptions{})
+}
+
+func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServerPort, router Router, opts daemonServeOptions) error {
 	scope := CurrentRuntimeScope()
 	if current, err := runtimeScopeStillCurrent(ctx, scope); err != nil {
 		return err
@@ -173,6 +171,12 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 		_ = os.Remove(pidFile)
 	}()
 
+	if opts.ensureStartup {
+		if err := ensureRestoredAndCapturedOnStartup(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon ensure failed: %v\n", err)
+			return err
+		}
+	}
 	cfg := loadSidebarConfig(ctx)
 	if err := resetTransientHeatStateOnStartup(ctx); err != nil {
 		return err
