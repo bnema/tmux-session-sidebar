@@ -308,6 +308,40 @@ func TestApplyRecentSessionOrderReordersSidebarLayoutCategories(t *testing.T) {
 	}
 }
 
+func TestApplyRecentSessionOrderPartialCaptureIgnoresStaleRefsWhenCheckingCategoryCompleteness(t *testing.T) {
+	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
+	state := ports.PersistedState{
+		SessionOrder: []string{"alpha", "beta", "gamma"},
+		SidebarLayout: &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+			{ID: "category:work", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:work", Name: "Work", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}, {Name: "stale"}, {Name: "beta"}}}},
+			{ID: "category:personal", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:personal", Name: "Personal", Sessions: []ports.SidebarLayoutSessionRef{{Name: "gamma"}}}},
+		}},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-30 * time.Minute)},
+			"beta":  {LastActiveAt: now.Add(-5 * time.Minute)},
+			"gamma": {LastActiveAt: now.Add(-10 * time.Minute)},
+		}),
+	}
+	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}
+
+	applyRecentSessionOrderAfterCapture(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now, heatCaptureResult{
+		captured: true,
+		complete: false,
+		completeSessions: map[string]bool{
+			"alpha": true,
+			"beta":  true,
+			"gamma": false,
+		},
+	})
+
+	if got, want := sidebarLayoutSessionNames(state.SidebarLayout.Items[0].Category.Sessions), []string{"beta", "alpha", "stale"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("work category sessions = %#v, want live refs sorted and stale ref ignored for completeness: %#v", got, want)
+	}
+	if got, want := sidebarLayoutSessionNames(state.SidebarLayout.Items[1].Category.Sessions), []string{"gamma"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("personal category sessions = %#v, want unchanged incomplete category: %#v", got, want)
+	}
+}
+
 func TestApplyRecentSessionOrderKeepsPinnedSessionsAtCategoryPositions(t *testing.T) {
 	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
 	state := ports.PersistedState{

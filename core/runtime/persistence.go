@@ -305,7 +305,8 @@ func reorderSidebarLayoutCategories(layout *ports.SidebarLayout, order []string,
 func reorderCompleteSidebarLayoutCategories(layout *ports.SidebarLayout, order []string, pinned []string, completeSessions map[string]bool) {
 	reorderSidebarLayoutCategoriesWhere(layout, order, pinned, func(refs []ports.SidebarLayoutSessionRef) bool {
 		for _, ref := range refs {
-			if !completeSessions[ref.Name] {
+			complete, ok := completeSessions[ref.Name]
+			if ok && !complete {
 				return false
 			}
 		}

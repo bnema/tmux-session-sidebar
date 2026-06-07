@@ -18,7 +18,11 @@ func TestRotatingLogWriterRotatesBeforeWriteWouldExceedLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newRotatingLogWriter error: %v", err)
 	}
-	defer writer.Close()
+	defer func() {
+		if err := writer.Close(); err != nil {
+			t.Errorf("Close error: %v", err)
+		}
+	}()
 	if _, err := writer.Write([]byte("ab")); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
@@ -39,6 +43,19 @@ func TestRotatingLogWriterRotatesBeforeWriteWouldExceedLimit(t *testing.T) {
 	}
 	if got := string(rotated); got != "123456789" {
 		t.Fatalf("rotated log = %q, want old content", got)
+	}
+}
+
+func TestRotatingLogWriterSyncAfterCloseIsNoop(t *testing.T) {
+	writer, err := newRotatingLogWriter(filepath.Join(t.TempDir(), "activity.log"), 10)
+	if err != nil {
+		t.Fatalf("newRotatingLogWriter error: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close error: %v", err)
+	}
+	if err := writer.Sync(); err != nil {
+		t.Fatalf("Sync after Close error: %v", err)
 	}
 }
 

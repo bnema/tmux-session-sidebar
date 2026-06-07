@@ -54,6 +54,9 @@ func (w *rotatingLogWriter) Write(p []byte) (int, error) {
 func (w *rotatingLogWriter) Sync() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.file == nil {
+		return nil
+	}
 	return w.file.Sync()
 }
 
