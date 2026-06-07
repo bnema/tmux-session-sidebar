@@ -181,5 +181,5 @@ func runtimeScopeStillCurrent(ctx context.Context, scope RuntimeScope) (bool, er
 
 func boundedScopeHash(identity string) string {
 	sum := sha256.Sum256([]byte(identity))
-	return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:])[:32]
 }
