@@ -499,6 +499,42 @@ esac
 	}
 }
 
+func TestCaptureLiveSidebarHeatRotatesOversizedActivityDebugLog(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  list-sessions) printf '$1\talpha\t1\t0\n' ;;
+  list-clients) ;;
+  list-panes) printf '%%1\t$1\talpha\t@1\t/tmp/alpha\tpi\t0\t\t0\n' ;;
+  capture-pane) printf 'working\n' ;;
+esac
+`)
+	logPath := filepath.Join(os.Getenv("XDG_STATE_HOME"), "tmux-session-sidebar", "activity.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+		t.Fatalf("mkdir activity log dir: %v", err)
+	}
+	oversized := strings.Repeat("old-log-line\n", 120_000)
+	if err := os.WriteFile(logPath, []byte(oversized), 0o600); err != nil {
+		t.Fatalf("seed oversized activity log: %v", err)
+	}
+
+	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, ActivityDebugLog: true}
+	if err := captureLiveSidebarHeat(context.Background(), cfg); err != nil {
+		t.Fatalf("captureLiveSidebarHeat error: %v", err)
+	}
+
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read activity log: %v", err)
+	}
+	if strings.Contains(string(content), "old-log-line") {
+		t.Fatalf("activity log still contains rotated content")
+	}
+	if !strings.Contains(string(content), "status=doing-nothing") {
+		t.Fatalf("activity log missing fresh trace after rotation: %q", string(content))
+	}
+}
+
 func seedTransientHeatState(t *testing.T) {
 	t.Helper()
 	store := sessionOrderStore()

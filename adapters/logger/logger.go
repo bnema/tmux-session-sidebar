@@ -3,12 +3,17 @@ package logger
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
 type Logger struct {
 	Out io.Writer
+}
+
+type syncWriter interface {
+	Sync() error
 }
 
 func (l Logger) Debug(msg string, fields []ports.LogField) { l.log("debug", msg, fields) }
@@ -19,9 +24,14 @@ func (l Logger) log(level string, msg string, fields []ports.LogField) {
 	if l.Out == nil {
 		return
 	}
-	_, _ = fmt.Fprintf(l.Out, "%s: %s", level, msg)
+	var line strings.Builder
+	_, _ = fmt.Fprintf(&line, "%s: %s", level, msg)
 	for _, field := range fields {
-		_, _ = fmt.Fprintf(l.Out, " %s=%v", field.Key, field.Value)
+		_, _ = fmt.Fprintf(&line, " %s=%v", field.Key, field.Value)
 	}
-	_, _ = fmt.Fprintln(l.Out)
+	line.WriteByte('\n')
+	_, _ = io.WriteString(l.Out, line.String())
+	if syncer, ok := l.Out.(syncWriter); ok {
+		_ = syncer.Sync()
+	}
 }

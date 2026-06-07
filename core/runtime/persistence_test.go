@@ -308,6 +308,40 @@ func TestApplyRecentSessionOrderReordersSidebarLayoutCategories(t *testing.T) {
 	}
 }
 
+func TestApplyRecentSessionOrderPartialCaptureIgnoresStaleRefsWhenCheckingCategoryCompleteness(t *testing.T) {
+	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
+	state := ports.PersistedState{
+		SessionOrder: []string{"alpha", "beta", "gamma"},
+		SidebarLayout: &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+			{ID: "category:work", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:work", Name: "Work", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}, {Name: "stale"}, {Name: "beta"}}}},
+			{ID: "category:personal", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:personal", Name: "Personal", Sessions: []ports.SidebarLayoutSessionRef{{Name: "gamma"}}}},
+		}},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-30 * time.Minute)},
+			"beta":  {LastActiveAt: now.Add(-5 * time.Minute)},
+			"gamma": {LastActiveAt: now.Add(-10 * time.Minute)},
+		}),
+	}
+	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}
+
+	applyRecentSessionOrderAfterCapture(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now, heatCaptureResult{
+		captured: true,
+		complete: false,
+		completeSessions: map[string]bool{
+			"alpha": true,
+			"beta":  true,
+			"gamma": false,
+		},
+	})
+
+	if got, want := sidebarLayoutSessionNames(state.SidebarLayout.Items[0].Category.Sessions), []string{"beta", "alpha", "stale"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("work category sessions = %#v, want live refs sorted and stale ref ignored for completeness: %#v", got, want)
+	}
+	if got, want := sidebarLayoutSessionNames(state.SidebarLayout.Items[1].Category.Sessions), []string{"gamma"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("personal category sessions = %#v, want unchanged incomplete category: %#v", got, want)
+	}
+}
+
 func TestApplyRecentSessionOrderKeepsPinnedSessionsAtCategoryPositions(t *testing.T) {
 	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
 	state := ports.PersistedState{
@@ -507,10 +541,10 @@ func TestCaptureSessionHeatWithConfigDoesNotConsumeRecentOrderWhenPaneSampleFail
 	now := time.Now()
 	store := mocks.NewMockStateStorePort(t)
 	query := runtimeTestQuery{
-		live:         []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}, {ID: "$2", Name: "beta"}},
-		clients:      []ports.TmuxClientSnapshot{},
-		panes:        []ports.TmuxPaneSnapshot{{PaneID: "%1", SessionID: "$1", SessionName: "alpha"}},
-		captureError: errors.New("capture-pane failed"),
+		live:          []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}, {ID: "$2", Name: "beta"}},
+		clients:       []ports.TmuxClientSnapshot{},
+		panes:         []ports.TmuxPaneSnapshot{{PaneID: "%1", SessionID: "$1", SessionName: "alpha"}},
+		captureErrors: map[string]error{"%1": errors.New("capture-pane failed")},
 	}
 
 	initial := ports.PersistedState{
@@ -523,6 +557,54 @@ func TestCaptureSessionHeatWithConfigDoesNotConsumeRecentOrderWhenPaneSampleFail
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		return reflect.DeepEqual(state.SessionOrder, []string{"beta", "alpha"}) && state.Sidebar == nil
+	})).Return(nil)
+
+	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}); err != nil {
+		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
+	}
+}
+
+func TestCaptureSessionHeatWithConfigAutoSortsCompleteCategoriesWhenAnotherCategoryPaneSampleFails(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	now := time.Now()
+	store := mocks.NewMockStateStorePort(t)
+	query := runtimeTestQuery{
+		live: []ports.TmuxSessionSnapshot{
+			{ID: "$1", Name: "alpha"},
+			{ID: "$2", Name: "beta"},
+			{ID: "$3", Name: "gamma"},
+		},
+		clients: []ports.TmuxClientSnapshot{},
+		panes: []ports.TmuxPaneSnapshot{
+			{PaneID: "%1", SessionID: "$1", SessionName: "alpha"},
+			{PaneID: "%2", SessionID: "$2", SessionName: "beta"},
+			{PaneID: "%3", SessionID: "$3", SessionName: "gamma"},
+		},
+		captureText:   "stable pane text",
+		captureErrors: map[string]error{"%3": errors.New("capture-pane failed")},
+	}
+
+	initial := ports.PersistedState{
+		SessionOrder: []string{"alpha", "beta", "gamma"},
+		SidebarLayout: &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+			{ID: "category:work", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:work", Name: "Work", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}, {Name: "beta"}}}},
+			{ID: "category:personal", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:personal", Name: "Personal", Sessions: []ports.SidebarLayoutSessionRef{{Name: "gamma"}}}},
+		}},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-30 * time.Minute)},
+			"beta":  {LastActiveAt: now.Add(-5 * time.Minute)},
+			"gamma": {LastActiveAt: now.Add(-10 * time.Minute)},
+		}),
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		work := sidebarLayoutSessionNames(state.SidebarLayout.Items[0].Category.Sessions)
+		personal := sidebarLayoutSessionNames(state.SidebarLayout.Items[1].Category.Sessions)
+		return reflect.DeepEqual(work, []string{"beta", "alpha"}) &&
+			reflect.DeepEqual(personal, []string{"gamma"}) &&
+			reflect.DeepEqual(state.SessionOrder, []string{"alpha", "beta", "gamma"}) &&
+			state.Sidebar == nil
 	})).Return(nil)
 
 	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}); err != nil {
@@ -603,12 +685,13 @@ func sidebarLayoutSessionNames(refs []ports.SidebarLayoutSessionRef) []string {
 }
 
 type runtimeTestQuery struct {
-	live         []ports.TmuxSessionSnapshot
-	clients      []ports.TmuxClientSnapshot
-	panes        []ports.TmuxPaneSnapshot
-	sessionPaths map[string]string
-	captureText  string
-	captureError error
+	live          []ports.TmuxSessionSnapshot
+	clients       []ports.TmuxClientSnapshot
+	panes         []ports.TmuxPaneSnapshot
+	sessionPaths  map[string]string
+	captureText   string
+	captureError  error
+	captureErrors map[string]error
 }
 
 func (q runtimeTestQuery) ServerID(context.Context) (string, error) {
@@ -639,6 +722,9 @@ func (q runtimeTestQuery) ListPanes(context.Context) ([]ports.TmuxPaneSnapshot, 
 	return q.panes, nil
 }
 
-func (q runtimeTestQuery) CapturePaneText(context.Context, string, int) (string, error) {
+func (q runtimeTestQuery) CapturePaneText(_ context.Context, paneID string, _ int) (string, error) {
+	if q.captureErrors != nil && q.captureErrors[paneID] != nil {
+		return "", q.captureErrors[paneID]
+	}
 	return q.captureText, q.captureError
 }
