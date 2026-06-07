@@ -118,6 +118,9 @@ const (
 )
 
 func formatGitMetadataSublineParts(meta SessionMetadataSubline, icons MetadataIconMode, width int) []metadataPart {
+	if isQuietMainBranch(meta) {
+		return nil
+	}
 	partSets := [][]metadataPart{
 		gitDetailParts(meta, icons, gitDetailsFull),
 		gitDetailParts(meta, icons, gitDetailsSummary),
@@ -135,6 +138,10 @@ func formatGitMetadataSublineParts(meta SessionMetadataSubline, icons MetadataIc
 		return []metadataPart{branch}
 	}
 	return nil
+}
+
+func isQuietMainBranch(meta SessionMetadataSubline) bool {
+	return meta.Clean && strings.TrimSpace(meta.Branch) == "main"
 }
 
 func withBranchPart(meta SessionMetadataSubline, icons MetadataIconMode, width int, details []metadataPart) []metadataPart {

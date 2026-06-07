@@ -242,8 +242,8 @@ func TestTreeSidebarZeroTreeHeightRendersOnlyStatus(t *testing.T) {
 func TestTreeSidebarPageNavigationCountsRenderedMetadataRows(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
-		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "main", Clean: true}}, Depth: 1, ShowMetadata: true},
-		{Kind: TreeRowSession, ID: "category:work/session:beta", CategoryID: "category:work", Session: SessionItem{Name: "beta", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "main", Clean: true}}, Depth: 1, ShowMetadata: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "work", Clean: true}}, Depth: 1, ShowMetadata: true},
+		{Kind: TreeRowSession, ID: "category:work/session:beta", CategoryID: "category:work", Session: SessionItem{Name: "beta", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "work", Clean: true}}, Depth: 1, ShowMetadata: true},
 		{Kind: TreeRowSession, ID: "category:work/session:gamma", CategoryID: "category:work", Session: SessionItem{Name: "gamma"}, Depth: 1, LastChild: true},
 	}, Actions{}, SidebarOptions{})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 5})
