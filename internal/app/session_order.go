@@ -174,6 +174,10 @@ func updateSidebarStateWithSnapshot(ctx context.Context, update func(*ports.Pers
 }
 
 func StateDir() string {
+	return CurrentRuntimeScope().Dir
+}
+
+func LegacyStateRoot() string {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
 		if home, err := os.UserHomeDir(); err == nil && home != "" {
@@ -186,7 +190,11 @@ func StateDir() string {
 }
 
 func sessionOrderStore() storefs.Store {
-	return storefs.New(StateDir())
+	return storeForRuntimeScope(CurrentRuntimeScope())
+}
+
+func storeForRuntimeScope(scope RuntimeScope) storefs.Store {
+	return storefs.New(scope.Dir)
 }
 
 func withLoadedSidebarState(ctx context.Context, fn func(store storefs.Store, state *ports.PersistedState) error) error {

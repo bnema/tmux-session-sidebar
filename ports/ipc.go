@@ -21,6 +21,7 @@ var (
 	ErrIPCSocketMissing     = errors.New("ipc socket missing")
 	ErrIPCConnectionRefused = errors.New("ipc connection refused")
 	ErrIPCConnectionReset   = errors.New("ipc connection reset")
+	ErrIPCStaleScope        = errors.New("ipc stale tmux scope")
 )
 
 type Request struct {

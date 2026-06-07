@@ -80,6 +80,48 @@ func TestDaemonIPCHandlerSignalsMetadataReconcile(t *testing.T) {
 	}
 }
 
+func TestDaemonIPCHandlerRejectsStaleTmuxServerScope(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux,1,0")
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	scope := RuntimeScopeForProcess(t.Context(), scopeProcess{stdout: "/tmp/tmux/default\t111\n"})
+	oldRunner := commandRunner
+	commandRunner = func(_ context.Context, _ string, _ ...string) (string, error) {
+		return "/tmp/tmux/default\t222\n", nil
+	}
+	t.Cleanup(func() { commandRunner = oldRunner })
+
+	router := &recordingIPCRouter{}
+	resp, err := (daemonIPCHandler{router: router, expectedScope: scope}).HandleIPC(t.Context(), ports.SidebarToggleRequest("/dev/pts/0"))
+	if err == nil {
+		t.Fatal("HandleIPC error = nil, want stale scope error")
+	}
+	if resp.OK {
+		t.Fatalf("response OK = true, want false")
+	}
+	if len(router.routes) != 0 {
+		t.Fatalf("routes = %d, want no dispatch to stale daemon router", len(router.routes))
+	}
+}
+
+func TestDaemonIPCHandlerRejectsHealthForStaleTmuxServerScope(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux,1,0")
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	scope := RuntimeScopeForProcess(t.Context(), scopeProcess{stdout: "/tmp/tmux/default\t111\n"})
+	oldRunner := commandRunner
+	commandRunner = func(_ context.Context, _ string, _ ...string) (string, error) {
+		return "/tmp/tmux/default\t222\n", nil
+	}
+	t.Cleanup(func() { commandRunner = oldRunner })
+
+	resp, err := (daemonIPCHandler{expectedScope: scope}).HandleIPC(t.Context(), ports.HealthRequest())
+	if err == nil {
+		t.Fatal("HandleIPC health error = nil, want stale scope error")
+	}
+	if resp.OK {
+		t.Fatalf("health response OK = true, want false")
+	}
+}
+
 func TestDaemonIPCHandlerPreservesSidebarOpenWidth(t *testing.T) {
 	router := &recordingIPCRouter{}
 	resp, err := daemonIPCHandler{router: router}.HandleIPC(t.Context(), ports.SidebarOpenRequest("%1", "30"))

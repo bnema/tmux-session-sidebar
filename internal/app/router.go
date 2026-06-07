@@ -29,6 +29,21 @@ type runtimeRouter struct {
 	daemonLauncher ports.DaemonLauncherPort
 }
 
+type RuntimeRouterSnapshot struct {
+	Sidebar        ports.TmuxSidebarPort
+	IPCClient      ports.IPCClientPort
+	IPCServer      ports.IPCServerPort
+	DaemonLauncher ports.DaemonLauncherPort
+}
+
+func InspectRuntimeRouter(router Router) (RuntimeRouterSnapshot, bool) {
+	r, ok := router.(runtimeRouter)
+	if !ok {
+		return RuntimeRouterSnapshot{}, false
+	}
+	return RuntimeRouterSnapshot{Sidebar: r.sidebar, IPCClient: r.ipcClient, IPCServer: r.ipcServer, DaemonLauncher: r.daemonLauncher}, true
+}
+
 // NewRouter composes the production command router used by the tmux bootstrap.
 func NewRouter(sidebar ports.TmuxSidebarPort) Router {
 	return runtimeRouter{sidebar: sidebar}
@@ -98,6 +113,8 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 		return resurrectPostSaveLayout(ctx, route.Args[0])
 	case "daemon/ensure":
 		return ensureRestoredAndCapturedOnStartup(ctx)
+	case "daemon/bootstrap":
+		return bootstrapSidebarDaemon(ctx, stderr, r.ipcServer, r.direct())
 	case "daemon/serve-ui":
 		return serveSidebarUI(ctx, route.Flags, stdout, r.sidebar, r.ipcClient)
 	case "hook/client-attached":
@@ -123,7 +140,7 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 }
 
 func ipcUnavailableForBootstrap(err error) bool {
-	return errors.Is(err, ports.ErrIPCConnectionRefused) || errors.Is(err, ports.ErrIPCSocketMissing) || errors.Is(err, ports.ErrIPCConnectionReset)
+	return errors.Is(err, ports.ErrIPCConnectionRefused) || errors.Is(err, ports.ErrIPCSocketMissing) || errors.Is(err, ports.ErrIPCConnectionReset) || errors.Is(err, ports.ErrIPCStaleScope)
 }
 
 func (r runtimeRouter) ensureDaemonStartedBestEffort(ctx context.Context, route Route, stderr io.Writer) {
@@ -180,7 +197,11 @@ func (r runtimeRouter) sendIPC(ctx context.Context, route Route) error {
 		return err
 	}
 	if !resp.OK {
-		return fmt.Errorf("daemon IPC %s failed: %s", route.Path, strings.TrimSpace(resp.Message))
+		message := strings.TrimSpace(resp.Message)
+		if strings.Contains(message, ports.ErrIPCStaleScope.Error()) || strings.Contains(message, "daemon tmux server identity is stale") {
+			return fmt.Errorf("%w: daemon IPC %s failed: %s", ports.ErrIPCStaleScope, route.Path, message)
+		}
+		return fmt.Errorf("daemon IPC %s failed: %s", route.Path, message)
 	}
 	return nil
 }

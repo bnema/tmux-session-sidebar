@@ -82,6 +82,8 @@ func newRootCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, rou
 		leafCommand("serve", "Run the sidebar daemon", runRoute("daemon/serve")),
 		leafCommand("serve-ui", "Run the singleton sidebar UI", runRoute("daemon/serve-ui")),
 		leafCommand("ensure", "Ensure restored sidebar state is captured", runRoute("daemon/ensure")),
+		leafCommand("bootstrap", "Start or restart the scoped sidebar daemon", runRoute("daemon/bootstrap")),
+		leafCommand("restart", "Restart the scoped sidebar daemon", runRoute("daemon/bootstrap")),
 	))
 	command.AddCommand(groupCommand("hook", "Handle tmux runtime hooks",
 		leafCommand("client-attached", "Handle tmux client-attached", runRoute("hook/client-attached")),
