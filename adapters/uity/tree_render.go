@@ -186,10 +186,27 @@ func treeMetadataPrefix(item TreeItem) string {
 	if item.Depth <= 0 {
 		return ""
 	}
-	if item.LastChild {
-		return "   "
+	indent := metadataNameIndent(item)
+	if !item.LastChild && indent > 0 {
+		return "│" + strings.Repeat(" ", indent-1)
 	}
-	return "│  "
+	return strings.Repeat(" ", indent)
+}
+
+func metadataNameIndent(item TreeItem) int {
+	indent := metadataDisplayWidth(treeBranch(item))
+	if item.Session.Current {
+		indent += metadataDisplayWidth("┃")
+	} else {
+		indent++
+	}
+	if slot := slotPrefix(item.Slot); strings.TrimSpace(slot) != "" {
+		indent += metadataDisplayWidth(strings.TrimSpace(slot)) + 1
+	}
+	if marker := treeSessionMarker(item.Session); strings.TrimSpace(marker) != "" {
+		indent += metadataDisplayWidth(strings.TrimSpace(marker)) + 1
+	}
+	return max(indent, 0)
 }
 
 func currentSessionMarker(item SessionItem) string {

@@ -890,7 +890,22 @@ func TestTreeSidebarRenderShowsMetadataAsTreeChild(t *testing.T) {
 	model = requireSidebarModel(t, updated)
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "└─ 1 alpha") || !strings.Contains(view, "     feature/category-tree  2") {
-		t.Fatalf("tree render missing session metadata child: %q", view)
+	if !strings.Contains(view, "└─ 1 alpha") || !strings.Contains(view, "      feature/category-tree *2") {
+		t.Fatalf("tree render missing session metadata aligned under session name: %q", view)
+	}
+}
+
+func TestTreeSidebarRenderPreservesMetadataContinuationGuide(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Current: true, Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "feature/category-tree", Modified: 2}}, Slot: 1, Depth: 1, ShowMetadata: true},
+		{Kind: TreeRowSession, ID: "category:work/session:beta", CategoryID: "category:work", Session: SessionItem{Name: "beta"}, Slot: 2, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 8})
+	model = requireSidebarModel(t, updated)
+
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "├─┃1 alpha") || !strings.Contains(view, "│     feature/category-tree *2") || !strings.Contains(view, "└─ 2 beta") {
+		t.Fatalf("tree render should preserve metadata continuation guide for non-last session: %q", view)
 	}
 }

@@ -41,7 +41,7 @@ func formatMetadataSublineParts(meta SessionMetadataSubline, options MetadataSub
 
 func renderMetadataParts(parts []metadataPart, selected bool, active bool) string {
 	if !active {
-		return metadataInactiveSublineStyle().Render(metadataPartText(parts))
+		return metadataInactiveSublineStyle(selected).Render(metadataPartText(parts))
 	}
 	base := metadataSublineStyle()
 	var b strings.Builder
@@ -49,7 +49,7 @@ func renderMetadataParts(parts []metadataPart, selected bool, active bool) strin
 		if i > 0 {
 			b.WriteString(base.Render(" "))
 		}
-		b.WriteString(metadataPartStyle(part.Role, selected).Render(part.Text))
+		b.WriteString(renderMetadataPart(part, selected))
 	}
 	return b.String()
 }
@@ -58,8 +58,31 @@ func metadataSublineStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color("#cccccc"))
 }
 
-func metadataInactiveSublineStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex()))
+func metadataInactiveSublineStyle(selected bool) lipgloss.Style {
+	if selected {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(selectedInactiveMetadataRGB.Hex()))
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveMetadataRGB.Hex()))
+}
+
+func renderMetadataPart(part metadataPart, selected bool) string {
+	if part.Role == metadataPartCompare {
+		return renderCompareMetadataPart(part.Text, selected)
+	}
+	return metadataPartStyle(part.Role, selected).Render(part.Text)
+}
+
+func renderCompareMetadataPart(text string, selected bool) string {
+	before, after, ok := strings.Cut(text, "/")
+	if !ok {
+		return metadataPartStyle(metadataPartCompare, selected).Render(text)
+	}
+	compare := metadataPartStyle(metadataPartCompare, selected)
+	separator := lipgloss.NewStyle().Foreground(lipgloss.Color("#64748b"))
+	if selected {
+		separator = lipgloss.NewStyle().Foreground(lipgloss.Color("#94a3b8"))
+	}
+	return compare.Render(before) + separator.Render("/") + compare.Render(after)
 }
 
 func metadataPartStyle(role metadataPartRole, selected bool) lipgloss.Style {
@@ -80,6 +103,9 @@ func metadataPartStyle(role metadataPartRole, selected bool) lipgloss.Style {
 	case metadataPartUnstaged:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.unstaged))
 	default:
+		if selected {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("#94a3b8"))
+		}
 		return metadataSublineStyle()
 	}
 }
@@ -96,7 +122,7 @@ type metadataColors struct {
 
 func metadataActivePartColors(selected bool) metadataColors {
 	if selected {
-		return metadataColors{compare: "#7dd3fc", ahead: "#86efac", behind: "#f87171", staged: "#93c5fd", unstaged: "#fde047", unstagedIcon: "#93c5fd", unstagedCount: "#86efac"}
+		return metadataColors{compare: "#7dd3fc", ahead: "#86efac", behind: "#f87171", staged: "#93c5fd", unstaged: "#fbbf24", unstagedIcon: "#93c5fd", unstagedCount: "#fbbf24"}
 	}
-	return metadataColors{compare: "#38bdf8", ahead: "#4ade80", behind: "#f87171", staged: "#60a5fa", unstaged: "#eab308", unstagedIcon: "#60a5fa", unstagedCount: "#4ade80"}
+	return metadataColors{compare: "#38bdf8", ahead: "#4ade80", behind: "#f87171", staged: "#60a5fa", unstaged: "#f59e0b", unstagedIcon: "#60a5fa", unstagedCount: "#f59e0b"}
 }

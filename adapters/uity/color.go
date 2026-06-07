@@ -17,6 +17,12 @@ var (
 	// inactiveSessionRGB is the out-of-heat color: the default dark gray (#4b5563)
 	// used only for sessions outside the recent activity window.
 	inactiveSessionRGB = rgbColor{red: 75, green: 85, blue: 99}
+	// inactiveMetadataRGB is darker than inactive sessions so metadata remains
+	// visually secondary for dead/inactive rows (#374151).
+	inactiveMetadataRGB = rgbColor{red: 55, green: 65, blue: 81}
+	// selectedInactiveMetadataRGB keeps inactive metadata readable on the
+	// selected emerald row background without promoting it to active colors (#94a3b8).
+	selectedInactiveMetadataRGB = rgbColor{red: 148, green: 163, blue: 184}
 	// heatCoolRGB is the low-intensity heat endpoint: a dark green (#166534)
 	// used when recent activity is near the edge of the configured heat window.
 	heatCoolRGB = rgbColor{red: 22, green: 101, blue: 52}

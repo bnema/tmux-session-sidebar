@@ -16,7 +16,7 @@ func TestFormatMetadataSublineNerdGitStates(t *testing.T) {
 		Untracked: 1,
 	}, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 80})
 
-	want := "  feat/ui  2 -1  1  4"
+	want := " feat/ui ⇄2/1 +1 *4"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}
@@ -33,7 +33,23 @@ func TestFormatMetadataSublineASCIIGitStates(t *testing.T) {
 		Untracked: 1,
 	}, MetadataSublineOptions{Icons: MetadataIconsASCII, Width: 80})
 
-	want := "git feat/ui 2 -1 S1 U4"
+	want := "git feat/ui D2/1 S1 U4"
+	if got != want {
+		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
+	}
+}
+
+func TestFormatMetadataSublineShowsUpstreamPushPullSeparately(t *testing.T) {
+	got := FormatMetadataSubline(SessionMetadataSubline{
+		Kind:           MetadataKindGit,
+		Branch:         "feat/ui",
+		Ahead:          5,
+		Behind:         2,
+		UpstreamAhead:  1,
+		UpstreamBehind: 3,
+	}, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 80})
+
+	want := " feat/ui ⇄5/2 ↑1 ↓3"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}
@@ -66,7 +82,7 @@ func TestFormatMetadataSublineHidesCleanMainBranch(t *testing.T) {
 
 func TestFormatMetadataSublineShowsCleanNonMainGitBranch(t *testing.T) {
 	got := FormatMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Branch: "work", Clean: true, UpstreamMissing: true}, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 80})
-	if got != "  work" || strings.Contains(got, "clean") {
+	if got != " work" || strings.Contains(got, "clean") {
 		t.Fatalf("FormatMetadataSubline() = %q, want branch without clean suffix", got)
 	}
 }
@@ -80,7 +96,7 @@ func TestFormatMetadataSublineEllipsizesLongBranch(t *testing.T) {
 	}
 
 	got := FormatMetadataSubline(meta, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 24})
-	for _, want := range []string{"  feature", "…", " 2", " 3"} {
+	for _, want := range []string{" feature", "…", "⇄2/0", "*3"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("FormatMetadataSubline() = %q, want to contain %q", got, want)
 		}
@@ -102,7 +118,7 @@ func TestFormatMetadataSublineFallsBackToUnstagedSummaryWhenWidthIsTight(t *test
 	}
 
 	got := FormatMetadataSubline(meta, MetadataSublineOptions{Icons: MetadataIconsASCII, Width: 8})
-	want := "2 -1 U4"
+	want := "D2/1 U4"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}

@@ -62,6 +62,8 @@ func gitStatusMetadataSubline(status ports.GitStatus) uity.SessionMetadataSublin
 		Clean:           status.Clean,
 		Ahead:           status.Ahead,
 		Behind:          status.Behind,
+		UpstreamAhead:   status.UpstreamAhead,
+		UpstreamBehind:  status.UpstreamBehind,
 		Staged:          status.Staged,
 		Modified:        status.Modified,
 		Deleted:         status.Deleted,

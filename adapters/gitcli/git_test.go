@@ -64,8 +64,23 @@ func TestGitStatusComparesWorkingBranchWithDefaultRemoteBranch(t *testing.T) {
 	if !status.UpstreamConfigured || status.Ahead != 5 || status.Behind != 2 {
 		t.Fatalf("Status divergence = %#v, want 5 ahead 2 behind", status)
 	}
-	if got := process.revListTarget; got != "HEAD...origin/main" {
-		t.Fatalf("rev-list target = %q, want HEAD...origin/main", got)
+	if got := process.revListTargets[0]; got != "HEAD...origin/main" {
+		t.Fatalf("first rev-list target = %q, want HEAD...origin/main", got)
+	}
+}
+
+func TestGitStatusSeparatesDefaultBranchDivergenceFromUpstreamPushPull(t *testing.T) {
+	process := &workingBranchWithUpstreamProcess{}
+	status, err := (Git{Process: process}).Status(t.Context(), "/work")
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if !status.UpstreamConfigured || status.Ahead != 5 || status.Behind != 2 || status.UpstreamAhead != 1 || status.UpstreamBehind != 3 {
+		t.Fatalf("Status divergence = %#v, want base 5/2 and upstream 1/3", status)
+	}
+	wantTargets := []string{"HEAD...origin/main", "HEAD...@{upstream}"}
+	if !slices.Equal(process.revListTargets, wantTargets) {
+		t.Fatalf("rev-list targets = %#v, want %#v", process.revListTargets, wantTargets)
 	}
 }
 
@@ -78,8 +93,8 @@ func TestGitStatusComparesDefaultBranchWithUpstreamFallback(t *testing.T) {
 	if !status.UpstreamConfigured || status.Ahead != 1 || status.Behind != 0 {
 		t.Fatalf("Status divergence = %#v, want 1 ahead 0 behind", status)
 	}
-	if got := process.revListTarget; got != "HEAD...@{upstream}" {
-		t.Fatalf("rev-list target = %q, want HEAD...@{upstream}", got)
+	if got := process.revListTargets[0]; got != "HEAD...@{upstream}" {
+		t.Fatalf("first rev-list target = %q, want HEAD...@{upstream}", got)
 	}
 }
 
@@ -213,11 +228,41 @@ func (p *defaultBranchMissingUpstreamProcess) Exec(ctx context.Context, cmd stri
 	return ports.Result{}, errors.New("unexpected call")
 }
 
+type workingBranchWithUpstreamProcess struct {
+	revListTargets []string
+}
+
+func (p *workingBranchWithUpstreamProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
+	if len(args) >= 4 && args[2] == "rev-parse" && args[3] == "--show-toplevel" {
+		return ports.Result{Stdout: "/repo\n"}, nil
+	}
+	if len(args) >= 4 && args[2] == "branch" && args[3] == "--show-current" {
+		return ports.Result{Stdout: "feat/ui\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "symbolic-ref" && args[3] == "--short" && args[4] == "refs/remotes/origin/HEAD" {
+		return ports.Result{Stdout: "origin/main\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "rev-list" {
+		target := args[len(args)-1]
+		p.revListTargets = append(p.revListTargets, target)
+		switch target {
+		case "HEAD...origin/main":
+			return ports.Result{Stdout: "5\t2\n"}, nil
+		case "HEAD...@{upstream}":
+			return ports.Result{Stdout: "1\t3\n"}, nil
+		}
+	}
+	if len(args) >= 4 && args[2] == "status" {
+		return ports.Result{Stdout: "## feat/ui\n"}, nil
+	}
+	return ports.Result{}, errors.New("unexpected call")
+}
+
 type defaultBranchProcess struct {
-	branch        string
-	defaultRemote string
-	upstreamOut   string
-	revListTarget string
+	branch         string
+	defaultRemote  string
+	upstreamOut    string
+	revListTargets []string
 }
 
 func (p *defaultBranchProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
@@ -231,7 +276,7 @@ func (p *defaultBranchProcess) Exec(ctx context.Context, cmd string, args []stri
 		return ports.Result{Stdout: p.defaultRemote + "\n"}, nil
 	}
 	if len(args) >= 5 && args[2] == "rev-list" {
-		p.revListTarget = args[len(args)-1]
+		p.revListTargets = append(p.revListTargets, args[len(args)-1])
 		if p.upstreamOut != "" {
 			return ports.Result{Stdout: p.upstreamOut}, nil
 		}

@@ -14,6 +14,8 @@ type GitStatus struct {
 	Clean              bool
 	Ahead              int
 	Behind             int
+	UpstreamAhead      int
+	UpstreamBehind     int
 	Staged             int
 	Modified           int
 	Deleted            int
