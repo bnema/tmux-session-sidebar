@@ -78,14 +78,17 @@ func TestRuntimeScopeFallsBackToScopedTmuxEnvWhenIdentityQueryFails(t *testing.T
 
 func TestRuntimeScopeServerDirNameIsBoundedAndSafe(t *testing.T) {
 	t.Setenv("TMUX", "/tmp/tmux,1,0")
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", "/home/example/.local/state")
 	unsafeSocket := "/tmp/" + strings.Repeat("../very long socket name with spaces 🔥", 20)
 
 	scope := RuntimeScopeForProcess(t.Context(), scopeProcess{stdout: unsafeSocket + "\t999\n"})
 	name := filepath.Base(scope.Dir)
 
-	if len(name) > 80 {
-		t.Fatalf("scope dir name length = %d, want bounded <= 80 (%q)", len(name), name)
+	if len(name) > 32 {
+		t.Fatalf("scope dir name length = %d, want bounded <= 32 (%q)", len(name), name)
+	}
+	if len(scope.IPCSocketPath) > 107 {
+		t.Fatalf("ipc socket path length = %d, want <= 107 for Unix sockets (%q)", len(scope.IPCSocketPath), scope.IPCSocketPath)
 	}
 	if want := boundedScopeHash(scope.IdentityKey); name != want {
 		t.Fatalf("scope dir name = %q, want deterministic hash %q", name, want)
