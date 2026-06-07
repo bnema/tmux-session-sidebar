@@ -52,6 +52,12 @@ type heatConfig struct {
 	staleAfter time.Duration
 }
 
+type heatCaptureResult struct {
+	captured         bool
+	complete         bool
+	completeSessions map[string]bool
+}
+
 func (s *Service) RestorePersistedSessions(ctx context.Context, serverID string, home string) RestoreReport {
 	report := RestoreReport{Failed: map[string]error{}, SystemFailures: map[string]error{}}
 	if s.store == nil {
@@ -118,7 +124,7 @@ func (s *Service) CaptureLiveSessions(ctx context.Context, serverID string) erro
 	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
 	state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
 	state.PinColors = reconcilePinColors(state.PinColors, live)
-	s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
+	_ = s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
 	return s.store.Save(ctx, serverID, state)
 }
 
@@ -138,7 +144,7 @@ func (s *Service) CaptureSessionHeat(ctx context.Context, serverID string) error
 	if err != nil {
 		return err
 	}
-	s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
+	_ = s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
 	return s.store.Save(ctx, serverID, state)
 }
 
@@ -162,9 +168,8 @@ func (s *Service) CaptureLiveSessionsWithConfig(ctx context.Context, serverID st
 	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
 	state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
 	state.PinColors = reconcilePinColors(state.PinColors, live)
-	if s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot)) {
-		applyRecentSessionOrder(&state, live, snapshot, time.Now())
-	}
+	capture := s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot))
+	applyRecentSessionOrderAfterCapture(&state, live, snapshot, time.Now(), capture)
 	return s.store.Save(ctx, serverID, state)
 }
 
@@ -184,9 +189,8 @@ func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID str
 	if err != nil {
 		return err
 	}
-	if s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot)) {
-		applyRecentSessionOrder(&state, live, snapshot, time.Now())
-	}
+	capture := s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot))
+	applyRecentSessionOrderAfterCapture(&state, live, snapshot, time.Now(), capture)
 	return s.store.Save(ctx, serverID, state)
 }
 
@@ -267,23 +271,49 @@ func orderedPersistedSessionNames(state ports.PersistedState) []string {
 }
 
 func applyRecentSessionOrder(state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg ports.ConfigSnapshot, now time.Time) {
-	if state == nil || cfg.AutoSortRecentInterval <= 0 {
+	applyRecentSessionOrderAfterCapture(state, live, cfg, now, heatCaptureResult{captured: true, complete: true})
+}
+
+func applyRecentSessionOrderAfterCapture(state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg ports.ConfigSnapshot, now time.Time, capture heatCaptureResult) {
+	if state == nil || cfg.AutoSortRecentInterval <= 0 || !capture.captured {
 		return
 	}
+	if state.Sidebar != nil {
+		lastRunAt, ok := autoSortRecentLastRunAt(*state.Sidebar)
+		if ok && now.Sub(lastRunAt) < cfg.AutoSortRecentInterval {
+			return
+		}
+	}
+	ordered := orderSessionsByRecentActivityPinned(state.SessionOrder, live, decodeHeatStateMap(state.Heat), state.PinnedSessions)
+	if !capture.complete {
+		reorderCompleteSidebarLayoutCategories(state.SidebarLayout, ordered, state.PinnedSessions, capture.completeSessions)
+		return
+	}
+	state.SessionOrder = ordered
+	reorderSidebarLayoutCategories(state.SidebarLayout, state.SessionOrder, state.PinnedSessions)
 	if state.Sidebar == nil {
 		state.Sidebar = &ports.SidebarState{}
 	}
-	lastRunAt, ok := autoSortRecentLastRunAt(*state.Sidebar)
-	if ok && now.Sub(lastRunAt) < cfg.AutoSortRecentInterval {
-		return
-	}
-	state.SessionOrder = orderSessionsByRecentActivityPinned(state.SessionOrder, live, decodeHeatStateMap(state.Heat), state.PinnedSessions)
-	reorderSidebarLayoutCategories(state.SidebarLayout, state.SessionOrder, state.PinnedSessions)
 	state.Sidebar.AutoSortRecentRunAt = now.Format(time.RFC3339Nano)
 	state.Sidebar.AutoSortRecentRunDate = ""
 }
 
 func reorderSidebarLayoutCategories(layout *ports.SidebarLayout, order []string, pinned []string) {
+	reorderSidebarLayoutCategoriesWhere(layout, order, pinned, nil)
+}
+
+func reorderCompleteSidebarLayoutCategories(layout *ports.SidebarLayout, order []string, pinned []string, completeSessions map[string]bool) {
+	reorderSidebarLayoutCategoriesWhere(layout, order, pinned, func(refs []ports.SidebarLayoutSessionRef) bool {
+		for _, ref := range refs {
+			if !completeSessions[ref.Name] {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+func reorderSidebarLayoutCategoriesWhere(layout *ports.SidebarLayout, order []string, pinned []string, shouldReorder func([]ports.SidebarLayoutSessionRef) bool) {
 	if layout == nil {
 		return
 	}
@@ -293,7 +323,7 @@ func reorderSidebarLayoutCategories(layout *ports.SidebarLayout, order []string,
 	}
 	for itemIndex := range layout.Items {
 		category := layout.Items[itemIndex].Category
-		if category == nil {
+		if category == nil || shouldReorder != nil && !shouldReorder(category.Sessions) {
 			continue
 		}
 		category.Sessions = reorderSidebarLayoutCategorySessions(category.Sessions, orderIndex, pinned)
@@ -392,9 +422,9 @@ func usefulPath(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg heatConfig) bool {
+func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg heatConfig) heatCaptureResult {
 	if state == nil {
-		return false
+		return heatCaptureResult{}
 	}
 	clients, clientsErr := s.tmuxQuery.ListClients(ctx)
 	observations, observationsErr := collectPaneObservations(ctx, s.tmuxQuery)
@@ -402,7 +432,7 @@ func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.Persist
 	// return early so only reconcileLiveSessionHeat, state.Heat updates, and trace logging
 	// are skipped. Session metadata (Sessions, SessionOrder) is still persisted by callers.
 	if clientsErr != nil || observationsErr != nil {
-		return false
+		return heatCaptureResult{}
 	}
 	nextHeat, traces := reconcileLiveSessionHeat(
 		decodeHeatStateMap(state.Heat),
@@ -417,7 +447,20 @@ func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.Persist
 	for sessionName, trace := range traces {
 		s.logHeatTrace(sessionName, trace)
 	}
-	return paneObservationsComplete(observations)
+	return heatCaptureResult{captured: true, complete: paneObservationsComplete(observations), completeSessions: paneObservationCompleteSessions(live, observations)}
+}
+
+func paneObservationCompleteSessions(live []ports.TmuxSessionSnapshot, observations []paneObservation) map[string]bool {
+	complete := make(map[string]bool, len(live))
+	for _, session := range live {
+		complete[session.Name] = true
+	}
+	for _, observation := range observations {
+		if !observation.Sampled && observation.SessionName != "" {
+			complete[observation.SessionName] = false
+		}
+	}
+	return complete
 }
 
 func paneObservationsComplete(observations []paneObservation) bool {

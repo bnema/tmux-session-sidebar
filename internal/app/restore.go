@@ -16,6 +16,8 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
+const maxSidebarLogBytes = 1024 * 1024
+
 func ensureRestoredAndCaptured(ctx context.Context) error {
 	return ensureRestoredAndCapturedWithOptions(ctx, false)
 }
@@ -115,19 +117,16 @@ func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) error
 	})
 }
 
-func bootstrapSidebarDaemon(ctx context.Context, stderr io.Writer, ipcServer ports.IPCServerPort, router Router) error {
+func bootstrapSidebarDaemon(ctx context.Context, _ io.Writer, ipcServer ports.IPCServerPort, router Router) error {
 	scope := CurrentRuntimeScope()
 	if err := os.MkdirAll(scope.Dir, 0o700); err != nil {
 		return err
 	}
-	logFile, err := os.OpenFile(scope.ErrorsLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	restoreStderr, err := redirectStderrToRotatingLog(scope.ErrorsLogPath, maxSidebarLogBytes)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = logFile.Close() }()
-	previousStderr := os.Stderr
-	os.Stderr = logFile
-	defer func() { os.Stderr = previousStderr }()
+	defer restoreStderr()
 	return serveSidebarDaemonWithOptions(ctx, ipcServer, router, daemonServeOptions{ensureStartup: true})
 }
 
@@ -276,10 +275,7 @@ func withActivityDebugLogger(cfg ports.ConfigSnapshot, fn func(logger ports.Logg
 		return fn(nil)
 	}
 	logPath := filepath.Join(sessionOrderStore().Dir, "activity.log")
-	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	file, err := newRotatingLogWriter(logPath, maxSidebarLogBytes)
 	if err != nil {
 		return err
 	}
