@@ -115,11 +115,43 @@ func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) error
 	})
 }
 
+func bootstrapSidebarDaemon(ctx context.Context, stderr io.Writer, ipcServer ports.IPCServerPort, router Router) error {
+	scope := CurrentRuntimeScope()
+	if err := os.MkdirAll(scope.Dir, 0o700); err != nil {
+		return err
+	}
+	logFile, err := os.OpenFile(scope.ErrorsLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = logFile.Close() }()
+	previousStderr := os.Stderr
+	os.Stderr = logFile
+	defer func() { os.Stderr = previousStderr }()
+	return serveSidebarDaemonWithOptions(ctx, ipcServer, router, daemonServeOptions{ensureStartup: true})
+}
+
+type daemonServeOptions struct {
+	ensureStartup bool
+}
+
 func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, router Router) error {
-	store := sessionOrderStore()
+	return serveSidebarDaemonWithOptions(ctx, ipcServer, router, daemonServeOptions{})
+}
+
+func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServerPort, router Router, opts daemonServeOptions) error {
+	scope := CurrentRuntimeScope()
+	if current, err := runtimeScopeStillCurrent(ctx, scope); err != nil {
+		return err
+	} else if !current {
+		return fmt.Errorf("daemon tmux server identity is stale")
+	}
+	if err := writeRuntimeScopeMetadata(scope); err != nil {
+		return err
+	}
 	acquireCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	lock, err := (locker.FileLocker{Dir: filepath.Join(store.Dir, "locks")}).Acquire(acquireCtx, "tmux-sidebar-daemon")
+	lock, err := (locker.FileLocker{Dir: scope.LocksDir}).Acquire(acquireCtx, "tmux-sidebar-daemon")
 	if err != nil {
 		// A timeout/cancel here usually means another daemon already holds the lock, so
 		// treat it as a no-op instead of failing startup and racing concurrent restores.
@@ -129,7 +161,7 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 		return err
 	}
 	defer releaseSidebarLock(lock)
-	pidFile := filepath.Join(store.Dir, "daemon.pid")
+	pidFile := scope.PIDPath
 	if err := os.WriteFile(pidFile, fmt.Appendf(nil, "%d\n", os.Getpid()), 0o600); err != nil {
 		return err
 	}
@@ -139,6 +171,12 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 		_ = os.Remove(pidFile)
 	}()
 
+	if opts.ensureStartup {
+		if err := ensureRestoredAndCapturedOnStartup(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon ensure failed: %v\n", err)
+			return err
+		}
+	}
 	cfg := loadSidebarConfig(ctx)
 	if err := resetTransientHeatStateOnStartup(ctx); err != nil {
 		return err
@@ -174,7 +212,7 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 	var ipcWG sync.WaitGroup
 	if ipcServer != nil && router != nil {
 		ipcWG.Go(func() {
-			if err := ipcServer.Serve(ctx, daemonIPCHandler{router: router, stdout: io.Discard, stderr: os.Stderr, mu: &sync.Mutex{}, metadataReconcile: metadataReconcile}); err != nil && !errors.Is(err, context.Canceled) {
+			if err := ipcServer.Serve(ctx, daemonIPCHandler{router: router, stdout: io.Discard, stderr: os.Stderr, mu: &sync.Mutex{}, metadataReconcile: metadataReconcile, expectedScope: scope}); err != nil && !errors.Is(err, context.Canceled) {
 				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: ipc server failed: %v\n", err)
 			}
 		})
@@ -199,6 +237,11 @@ func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, rout
 			metadataWG.Wait()
 			return nil
 		case <-timer.C:
+		}
+		if current, err := runtimeScopeStillCurrent(ctx, scope); err != nil {
+			return err
+		} else if !current {
+			return fmt.Errorf("daemon tmux server identity is stale")
 		}
 		if !pendingFullCaptureAt.IsZero() && !time.Now().Before(pendingFullCaptureAt) {
 			if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {

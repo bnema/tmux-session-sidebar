@@ -8,6 +8,8 @@ import (
 )
 
 const (
+	IPCErrorStaleScope = "stale_scope"
+
 	IPCSidebarOpen       = "sidebar.open"
 	IPCSidebarClose      = "sidebar.close"
 	IPCSidebarToggle     = "sidebar.toggle"
@@ -21,6 +23,7 @@ var (
 	ErrIPCSocketMissing     = errors.New("ipc socket missing")
 	ErrIPCConnectionRefused = errors.New("ipc connection refused")
 	ErrIPCConnectionReset   = errors.New("ipc connection reset")
+	ErrIPCStaleScope        = errors.New("ipc stale tmux scope")
 )
 
 type Request struct {
@@ -30,9 +33,10 @@ type Request struct {
 }
 
 type Response struct {
-	OK      bool
-	Message string
-	Payload []byte
+	OK        bool
+	Message   string
+	Payload   []byte
+	ErrorCode string
 }
 
 func SidebarRequest(kind string, clientID string, args map[string]string) Request {

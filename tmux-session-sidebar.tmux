@@ -86,7 +86,7 @@ main() {
   set_default @session-sidebar-metadata-subline on
   set_default @session-sidebar-metadata-inactive on
 
-  local sidebar_key previous_key quoted_daemon_control quoted_runtime quoted_state_dir runtime_bin slot state_dir
+  local sidebar_key previous_key quoted_runtime runtime_bin slot
   sidebar_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-key)"
   previous_key="$("$TMUX_BIN" show-options -gvq @session-sidebar-bound-key 2>/dev/null || true)"
   if [ "$sidebar_key" = b ] && { [ -z "$previous_key" ] || [ "$previous_key" = b ]; }; then
@@ -95,16 +95,13 @@ main() {
   fi
   "$SCRIPTS_DIR/remove-git-update-hook.sh" >/dev/null 2>&1 || true
   runtime_bin="$("$SCRIPTS_DIR/ensure-runtime.sh")"
-  printf -v quoted_daemon_control '%q' "$SCRIPTS_DIR/daemon-control.sh"
   printf -v quoted_runtime '%q' "$runtime_bin"
-  state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar"
-  printf -v quoted_state_dir '%q' "$state_dir"
 
   if [ -n "$previous_key" ] && [ "$previous_key" != "$sidebar_key" ]; then
     unbind_plugin_binding "$previous_key"
   fi
 
-  "$TMUX_BIN" run-shell -b "$quoted_daemon_control $quoted_runtime $quoted_state_dir"
+  "$TMUX_BIN" run-shell -b "$quoted_runtime daemon bootstrap"
   "$TMUX_BIN" bind-key -n "$sidebar_key" \
     run-shell "$quoted_runtime sidebar toggle --client #{q:client_name}"
   "$TMUX_BIN" set-option -gq @session-sidebar-bound-key "$sidebar_key"

@@ -71,7 +71,7 @@ func handleConn(ctx context.Context, conn net.Conn, handler ports.IPCHandler) {
 	ctxWithDeadline, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	resp, err := handler.HandleIPC(ctxWithDeadline, req)
-	if err != nil {
+	if err != nil && resp.Message == "" && resp.ErrorCode == "" {
 		resp = ports.Response{OK: false, Message: err.Error()}
 	}
 	_ = conn.SetWriteDeadline(deadline)

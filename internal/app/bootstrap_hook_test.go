@@ -166,3 +166,67 @@ func TestInstallRuntimeHooksRegistersResizeCommands(t *testing.T) {
 		t.Fatalf("unexpected window hook %q", windowHook)
 	}
 }
+
+func TestMainBootstrapUsesRuntimeDaemonBootstrapWithoutStateDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "tmux.log")
+	pluginDir := filepath.Dir(mustAbs(t, filepath.Join("..", "..", "tmux-session-sidebar.tmux")))
+	testPluginDir := filepath.Join(tmpDir, "plugin")
+	if err := os.MkdirAll(filepath.Join(testPluginDir, "scripts"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(test plugin scripts) error: %v", err)
+	}
+	copyFile(t, filepath.Join(pluginDir, "tmux-session-sidebar.tmux"), filepath.Join(testPluginDir, "tmux-session-sidebar.tmux"), 0o755)
+	copyFile(t, filepath.Join(pluginDir, "scripts", "remove-git-update-hook.sh"), filepath.Join(testPluginDir, "scripts", "remove-git-update-hook.sh"), 0o755)
+	runtimePath := filepath.Join(tmpDir, "runtime")
+	fakeTmux := filepath.Join(tmpDir, "tmux")
+	if err := os.WriteFile(fakeTmux, []byte("#!/usr/bin/env bash\nprintf '%s\\x1f' \"$@\" >> \"$TMUX_LOG\"\nprintf '\\n' >> \"$TMUX_LOG\"\ncase \"$1\" in\n  show-options) ;;\nesac\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", fakeTmux, err)
+	}
+	ensureRuntime := filepath.Join(testPluginDir, "scripts", "ensure-runtime.sh")
+	if err := os.WriteFile(ensureRuntime, []byte("#!/usr/bin/env bash\nprintf '%s\\n' \"$TEST_RUNTIME\"\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", ensureRuntime, err)
+	}
+
+	cmd := exec.Command("bash", "--noprofile", "--norc", filepath.Join(testPluginDir, "tmux-session-sidebar.tmux"))
+	stateHome := filepath.Join(tmpDir, "xdg-state")
+	cmd.Env = append(os.Environ(),
+		"PATH="+tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"TMUX_LOG="+logPath,
+		"TEST_RUNTIME="+runtimePath,
+		"XDG_STATE_HOME="+stateHome,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("bootstrap script error: %v\n%s", err, output)
+	}
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v", logPath, err)
+	}
+	log := string(content)
+	if !strings.Contains(log, "run-shell\x1f-b\x1f"+runtimePath+" daemon bootstrap") {
+		t.Fatalf("daemon bootstrap command not registered, log=%q", log)
+	}
+	if strings.Contains(log, stateHome) || strings.Contains(log, "daemon-control.sh") {
+		t.Fatalf("bootstrap leaked shell-computed state dir or daemon-control, log=%q", log)
+	}
+}
+
+func copyFile(t *testing.T, src string, dst string, mode os.FileMode) {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v", src, err)
+	}
+	if err := os.WriteFile(dst, data, mode); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", dst, err)
+	}
+}
+
+func mustAbs(t *testing.T, path string) string {
+	t.Helper()
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("Abs(%q) error: %v", path, err)
+	}
+	return abs
+}

@@ -33,6 +33,7 @@ func TestRunDispatchesCommands(t *testing.T) {
 		{name: "daemon serve", args: []string{"daemon", "serve"}, wantExit: 0, wantRoute: "daemon/serve", wantArgs: []string{"daemon", "serve"}},
 		{name: "daemon serve ui", args: []string{"daemon", "serve-ui"}, wantExit: 0, wantRoute: "daemon/serve-ui", wantArgs: []string{"daemon", "serve-ui"}},
 		{name: "daemon ensure", args: []string{"daemon", "ensure"}, wantExit: 0, wantRoute: "daemon/ensure"},
+		{name: "daemon bootstrap", args: []string{"daemon", "bootstrap"}, wantExit: 0, wantRoute: "daemon/bootstrap"},
 		{name: "self update", args: []string{"self-update"}, wantExit: 0, wantRoute: "runtime/self-update"},
 		{name: "hook client attached", args: []string{"hook", "client-attached", "--client=/dev/pts/40", "--session=alpha"}, wantExit: 0, wantRoute: "hook/client-attached", wantFlags: map[string]string{"client": "/dev/pts/40", "session": "alpha"}},
 		{name: "hook detached", args: []string{"hook", "client-detached", "--client=/dev/pts/40", "--session=__floating-popup-1"}, wantExit: 0, wantRoute: "hook/client-detached", wantFlags: map[string]string{"client": "/dev/pts/40", "session": "__floating-popup-1"}},

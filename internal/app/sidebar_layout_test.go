@@ -280,6 +280,21 @@ func TestRuntimeRouterUsesDirectFallbackForUnavailableIPCSocket(t *testing.T) {
 	}
 }
 
+func TestRuntimeRouterUsesDirectFallbackForStaleScopedIPC(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	ipc := mocks.NewMockIPCClientPort(t)
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{OK: false, Message: "daemon tmux server identity is stale", ErrorCode: ports.IPCErrorStaleScope}, nil)
+	tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
+	tmux.EXPECT().ParkSingletonSidebar(ctx, "%9").Return(nil)
+
+	router := NewRuntimeRouter(tmux, ipc, nil)
+	if err := router.Handle(ctx, Route{Path: "sidebar/close", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {
+		t.Fatalf("Handle sidebar/close error: %v", err)
+	}
+}
+
 func TestRuntimeRouterEnsuresDaemonBeforeDirectFallbackForUnavailableIPC(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()

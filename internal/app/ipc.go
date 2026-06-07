@@ -16,9 +16,13 @@ type daemonIPCHandler struct {
 	stderr            io.Writer
 	mu                *sync.Mutex
 	metadataReconcile chan<- struct{}
+	expectedScope     RuntimeScope
 }
 
 func (h daemonIPCHandler) HandleIPC(ctx context.Context, req ports.Request) (ports.Response, error) {
+	if err := h.verifyScope(ctx); err != nil {
+		return ports.Response{OK: false, Message: err.Error(), ErrorCode: ports.IPCErrorStaleScope}, err
+	}
 	if req.Kind == ports.IPCHealth {
 		return ports.Response{OK: true, Message: "ok"}, nil
 	}
@@ -55,6 +59,20 @@ func (h daemonIPCHandler) HandleIPC(ctx context.Context, req ports.Request) (por
 		return ports.Response{OK: false, Message: err.Error()}, err
 	}
 	return ports.Response{OK: true, Message: "ok"}, nil
+}
+
+func (h daemonIPCHandler) verifyScope(ctx context.Context) error {
+	if h.expectedScope == (RuntimeScope{}) {
+		return nil
+	}
+	current, err := runtimeScopeStillCurrent(ctx, h.expectedScope)
+	if err != nil {
+		return err
+	}
+	if !current {
+		return fmt.Errorf("%w: daemon tmux server identity is stale", ports.ErrIPCStaleScope)
+	}
+	return nil
 }
 
 func ipcRouteMutatesSidebar(kind string) bool {
