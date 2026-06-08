@@ -137,6 +137,9 @@ func (r treeRenderer) fitSessionName(item TreeItem, currentMarker string, slot s
 	if item.Session.Attention {
 		budget -= metadataDisplayWidth(" ") + metadataDisplayWidth(attentionMarkerSymbol)
 	}
+	if budget <= 0 {
+		return ""
+	}
 	return fitMetadataText(name, budget, r.metadataIconMode)
 }
 
