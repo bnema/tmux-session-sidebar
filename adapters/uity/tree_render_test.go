@@ -57,6 +57,25 @@ func TestTreeSidebarRenderMarksCurrentSessionWithGreenBar(t *testing.T) {
 	}
 }
 
+func TestTreeSidebarEllipsizesLongSessionNameToPaneWidth(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "very-long-session-name-that-overflows", Attention: true}, Slot: 1, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 24, Height: 8})
+	model = requireSidebarModel(t, updated)
+
+	view := stripANSI(model.Render())
+	if strings.Contains(view, "very-long-session-name-that-overflows") || !strings.Contains(view, "…") {
+		t.Fatalf("tree render should ellipsize long session name: %q", view)
+	}
+	for line := range strings.SplitSeq(view, "\n") {
+		if metadataDisplayWidth(line) > 24 {
+			t.Fatalf("rendered line width = %d, want <= 24: %q in %q", metadataDisplayWidth(line), line, view)
+		}
+	}
+}
+
 func TestTreeSidebarRenderDisplaysContinuousDoubleDigitSlots(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
