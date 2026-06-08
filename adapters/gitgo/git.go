@@ -125,17 +125,17 @@ func (g Git) status(ctx context.Context, path string) (ports.GitStatus, error) {
 	if ok {
 		status.Ahead = ahead
 		status.Behind = behind
-		status.UpstreamConfigured = true
+		status.ComparisonConfigured = true
 	}
-	if comparesDefaultRemote(info.Branch, info.DefaultBranch) {
-		upstreamAhead, upstreamBehind, upstreamOK, err := g.upstreamDivergence(ctx, repo, info)
-		if err != nil {
-			return ports.GitStatus{}, err
-		}
-		if upstreamOK {
+	upstreamAhead, upstreamBehind, upstreamOK, err := g.upstreamDivergence(ctx, repo, info)
+	if err != nil {
+		return ports.GitStatus{}, err
+	}
+	if upstreamOK {
+		status.UpstreamConfigured = true
+		if comparesDefaultRemote(info.Branch, info.DefaultBranch) {
 			status.UpstreamAhead = upstreamAhead
 			status.UpstreamBehind = upstreamBehind
-			status.UpstreamConfigured = true
 		}
 	}
 	worktree, err := repo.Worktree()

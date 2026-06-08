@@ -49,7 +49,7 @@ func TestFormatMetadataSublineShowsUpstreamPushPullSeparately(t *testing.T) {
 		UpstreamBehind: 3,
 	}, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 80})
 
-	want := " feat/ui ⇄5/2 ↑1 ↓3"
+	want := " feat/ui ⇄5/2 ↑1↓3"
 	if got != want {
 		t.Fatalf("FormatMetadataSubline() = %q, want %q", got, want)
 	}
@@ -96,7 +96,7 @@ func TestFormatMetadataSublineEllipsizesLongBranch(t *testing.T) {
 	}
 
 	got := FormatMetadataSubline(meta, MetadataSublineOptions{Icons: MetadataIconsNerd, Width: 24})
-	for _, want := range []string{" feature", "…", "⇄2/0", "*3"} {
+	for _, want := range []string{" feature", "…", "⇄2", "*3"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("FormatMetadataSubline() = %q, want to contain %q", got, want)
 		}

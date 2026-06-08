@@ -97,15 +97,14 @@ func formatGitMetadataSubline(meta SessionMetadataSubline, icons MetadataIconMod
 type metadataPartRole string
 
 const (
-	metadataPartBase          metadataPartRole = "base"
-	metadataPartCompare       metadataPartRole = "compare"
-	metadataPartAhead         metadataPartRole = "ahead"
-	metadataPartBehind        metadataPartRole = "behind"
-	metadataPartStaged        metadataPartRole = "staged"
-	metadataPartUnstaged      metadataPartRole = "unstaged"
-	metadataPartUnstagedIcon  metadataPartRole = "unstaged-icon"
-	metadataPartUnstagedCount metadataPartRole = "unstaged-count"
-	metadataPartConflict      metadataPartRole = "conflict"
+	metadataPartBase     metadataPartRole = "base"
+	metadataPartCompare  metadataPartRole = "compare"
+	metadataPartAhead    metadataPartRole = "ahead"
+	metadataPartBehind   metadataPartRole = "behind"
+	metadataPartUpstream metadataPartRole = "upstream"
+	metadataPartStaged   metadataPartRole = "staged"
+	metadataPartUnstaged metadataPartRole = "unstaged"
+	metadataPartConflict metadataPartRole = "conflict"
 )
 
 type metadataPart struct {
@@ -233,21 +232,28 @@ func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level g
 }
 
 func divergenceParts(icons MetadataIconMode, ahead int, behind int) []metadataPart {
-	if icons == MetadataIconsNerd {
-		return []metadataPart{{Text: MetadataGitDiverged + strconv.Itoa(ahead) + "/" + strconv.Itoa(behind), Role: metadataPartCompare}}
+	text := MetadataGitDiverged + strconv.Itoa(ahead)
+	if icons != MetadataIconsNerd {
+		text = "D" + strconv.Itoa(ahead)
 	}
-	return []metadataPart{{Text: "D" + strconv.Itoa(ahead) + "/" + strconv.Itoa(behind), Role: metadataPartCompare}}
+	if behind > 0 {
+		text += "/" + strconv.Itoa(behind)
+	}
+	return []metadataPart{{Text: text, Role: metadataPartCompare}}
 }
 
 func upstreamDivergenceParts(icons MetadataIconMode, ahead int, behind int) []metadataPart {
-	parts := make([]metadataPart, 0, 2)
+	var text strings.Builder
 	if ahead > 0 {
-		parts = append(parts, countPart(icons, MetadataGitAhead, "↑", ahead, metadataPartAhead))
+		text.WriteString(countPart(icons, MetadataGitAhead, "↑", ahead, metadataPartAhead).Text)
 	}
 	if behind > 0 {
-		parts = append(parts, countPart(icons, MetadataGitBehind, "↓", behind, metadataPartBehind))
+		text.WriteString(countPart(icons, MetadataGitBehind, "↓", behind, metadataPartBehind).Text)
 	}
-	return parts
+	if text.Len() == 0 {
+		return nil
+	}
+	return []metadataPart{{Text: text.String(), Role: metadataPartUpstream}}
 }
 
 func countPart(icons MetadataIconMode, nerdIcon string, asciiPrefix string, count int, role metadataPartRole) metadataPart {
@@ -261,7 +267,7 @@ func unstagedCountParts(icons MetadataIconMode, count int) []metadataPart {
 	if icons != MetadataIconsNerd {
 		return []metadataPart{countPart(icons, MetadataGitWorktree, "U", count, metadataPartUnstaged)}
 	}
-	return []metadataPart{{Text: MetadataGitWorktree + strconv.Itoa(count), Role: metadataPartUnstagedCount}}
+	return []metadataPart{{Text: MetadataGitWorktree + strconv.Itoa(count), Role: metadataPartUnstaged}}
 }
 
 func metadataPartText(parts []metadataPart) string {

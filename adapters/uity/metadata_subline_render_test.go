@@ -8,7 +8,7 @@ import (
 func TestRenderMetadataSublineColorsActiveGitParts(t *testing.T) {
 	got := RenderMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Ahead: 12, Behind: 2, Staged: 3, Modified: 8}, MetadataSublineRenderOptions{Icons: MetadataIconsNerd, Width: 80, Selected: true, Active: true})
 
-	for _, want := range []string{"38;2;125;211;252", "38;2;147;197;253", "38;2;251;191;36"} {
+	for _, want := range []string{"38;2;125;211;252", "38;2;147;197;253", "38;2;228;217;135"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("RenderMetadataSubline() should include color %s, got %q", want, got)
 		}
@@ -21,8 +21,8 @@ func TestRenderMetadataSublineColorsActiveGitParts(t *testing.T) {
 func TestRenderMetadataSublineColorsUnstagedWorktreeSoftAmber(t *testing.T) {
 	got := RenderMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Modified: 2}, MetadataSublineRenderOptions{Icons: MetadataIconsNerd, Width: 80, Active: true})
 
-	if !strings.Contains(got, "38;2;245;158;11") {
-		t.Fatalf("RenderMetadataSubline() should color unstaged worktree soft amber, got %q", got)
+	if !strings.Contains(got, "38;2;214;200;111") {
+		t.Fatalf("RenderMetadataSubline() should color unstaged worktree muted quince, got %q", got)
 	}
 	if strings.Contains(got, "38;2;234;179;8") || strings.Contains(got, "38;2;253;224;71") {
 		t.Fatalf("RenderMetadataSubline() should not color unstaged metadata vivid yellow, got %q", got)
@@ -82,5 +82,25 @@ func TestRenderMetadataSublineMutesDivergenceSlash(t *testing.T) {
 	}
 	if !strings.Contains(got, "38;2;100;116;139m/") {
 		t.Fatalf("RenderMetadataSubline() should render divergence slash muted, got %q", got)
+	}
+}
+
+func TestRenderMetadataSublineHidesZeroBehindDivergence(t *testing.T) {
+	got := RenderMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Ahead: 2}, MetadataSublineRenderOptions{Icons: MetadataIconsNerd, Width: 80, Active: true})
+	if stripANSI(got) != "⇄2" {
+		t.Fatalf("RenderMetadataSubline() = %q, want compact one-sided divergence", got)
+	}
+	if strings.Contains(stripANSI(got), "/0") {
+		t.Fatalf("RenderMetadataSubline() should hide zero behind side, got %q", got)
+	}
+}
+
+func TestRenderMetadataSublineCombinesUpstreamPushPull(t *testing.T) {
+	got := RenderMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, UpstreamAhead: 1, UpstreamBehind: 2}, MetadataSublineRenderOptions{Icons: MetadataIconsNerd, Width: 80, Active: true})
+	if stripANSI(got) != "↑1↓2" {
+		t.Fatalf("RenderMetadataSubline() = %q, want combined upstream push/pull", got)
+	}
+	if !strings.Contains(got, "38;2;74;222;128m↑1") || !strings.Contains(got, "38;2;248;113;113m↓2") {
+		t.Fatalf("RenderMetadataSubline() should color upstream sides separately, got %q", got)
 	}
 }

@@ -99,17 +99,17 @@ func (g Git) Status(ctx context.Context, path string) (ports.GitStatus, error) {
 	if upstreamConfigured {
 		status.Ahead = ahead
 		status.Behind = behind
-		status.UpstreamConfigured = true
+		status.ComparisonConfigured = true
 	}
-	if comparesDefaultRemote(branch, defaultRemote) {
-		upstreamAhead, upstreamBehind, upstreamOK, err := g.UpstreamDivergence(ctx, repoRoot)
-		if err != nil {
-			return ports.GitStatus{}, err
-		}
-		if upstreamOK {
+	upstreamAhead, upstreamBehind, upstreamOK, err := g.UpstreamDivergence(ctx, repoRoot)
+	if err != nil {
+		return ports.GitStatus{}, err
+	}
+	if upstreamOK {
+		status.UpstreamConfigured = true
+		if comparesDefaultRemote(branch, defaultRemote) {
 			status.UpstreamAhead = upstreamAhead
 			status.UpstreamBehind = upstreamBehind
-			status.UpstreamConfigured = true
 		}
 	}
 	if err := g.workingTree(ctx, repoRoot, &status); err != nil {

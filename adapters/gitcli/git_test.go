@@ -56,13 +56,13 @@ func TestGitStatusCollectsBranchDivergenceAndWorkingTreeCounts(t *testing.T) {
 }
 
 func TestGitStatusComparesWorkingBranchWithDefaultRemoteBranch(t *testing.T) {
-	process := &defaultBranchProcess{branch: "feat/ui", defaultRemote: "origin/main"}
+	process := &workingBranchWithoutUpstreamProcess{}
 	status, err := (Git{Process: process}).Status(t.Context(), "/work")
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if !status.UpstreamConfigured || status.Ahead != 5 || status.Behind != 2 {
-		t.Fatalf("Status divergence = %#v, want 5 ahead 2 behind", status)
+	if !status.ComparisonConfigured || status.UpstreamConfigured || status.Ahead != 5 || status.Behind != 2 {
+		t.Fatalf("Status divergence = %#v, want base comparison 5/2 without upstream", status)
 	}
 	if got := process.revListTargets[0]; got != "HEAD...origin/main" {
 		t.Fatalf("first rev-list target = %q, want HEAD...origin/main", got)
@@ -75,7 +75,7 @@ func TestGitStatusSeparatesDefaultBranchDivergenceFromUpstreamPushPull(t *testin
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if !status.UpstreamConfigured || status.Ahead != 5 || status.Behind != 2 || status.UpstreamAhead != 1 || status.UpstreamBehind != 3 {
+	if !status.ComparisonConfigured || !status.UpstreamConfigured || status.Ahead != 5 || status.Behind != 2 || status.UpstreamAhead != 1 || status.UpstreamBehind != 3 {
 		t.Fatalf("Status divergence = %#v, want base 5/2 and upstream 1/3", status)
 	}
 	wantTargets := []string{"HEAD...origin/main", "HEAD...@{upstream}"}
@@ -90,8 +90,8 @@ func TestGitStatusComparesDefaultBranchWithUpstreamFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if !status.UpstreamConfigured || status.Ahead != 1 || status.Behind != 0 {
-		t.Fatalf("Status divergence = %#v, want 1 ahead 0 behind", status)
+	if !status.ComparisonConfigured || !status.UpstreamConfigured || status.Ahead != 1 || status.Behind != 0 {
+		t.Fatalf("Status divergence = %#v, want upstream comparison 1/0", status)
 	}
 	if got := process.revListTargets[0]; got != "HEAD...@{upstream}" {
 		t.Fatalf("first rev-list target = %q, want HEAD...@{upstream}", got)
@@ -104,10 +104,10 @@ func TestGitStatusComparesDefaultBranchWithDefaultRemoteWhenUpstreamMissing(t *t
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if !status.UpstreamConfigured || status.Ahead != 4 || status.Behind != 1 {
-		t.Fatalf("Status divergence = %#v, want 4 ahead 1 behind vs origin/main", status)
+	if !status.ComparisonConfigured || status.UpstreamConfigured || status.Ahead != 4 || status.Behind != 1 {
+		t.Fatalf("Status divergence = %#v, want fallback comparison 4/1 without real upstream", status)
 	}
-	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main"}
+	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main", "HEAD...@{upstream}"}
 	if !slices.Equal(process.revListTargets, wantTargets) {
 		t.Fatalf("rev-list targets = %#v, want %#v", process.revListTargets, wantTargets)
 	}
@@ -122,7 +122,7 @@ func TestGitStatusIgnoresStaleDefaultRemoteBranch(t *testing.T) {
 	if status.UpstreamConfigured || status.Ahead != 0 || status.Behind != 0 || !status.Clean {
 		t.Fatalf("Status divergence = %#v, want clean status without upstream when origin/main is missing", status)
 	}
-	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main"}
+	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main", "HEAD...@{upstream}"}
 	if !slices.Equal(process.revListTargets, wantTargets) {
 		t.Fatalf("rev-list targets = %#v, want %#v", process.revListTargets, wantTargets)
 	}
@@ -137,7 +137,7 @@ func TestGitStatusIgnoresStaleUpstreamBranch(t *testing.T) {
 	if status.UpstreamConfigured || status.Ahead != 0 || status.Behind != 0 || !status.Clean {
 		t.Fatalf("Status divergence = %#v, want clean status without upstream when tracked origin/main is missing", status)
 	}
-	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main"}
+	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main", "HEAD...@{upstream}"}
 	if !slices.Equal(process.revListTargets, wantTargets) {
 		t.Fatalf("rev-list targets = %#v, want %#v", process.revListTargets, wantTargets)
 	}
@@ -224,6 +224,36 @@ func (p *defaultBranchMissingUpstreamProcess) Exec(ctx context.Context, cmd stri
 	}
 	if len(args) >= 4 && args[2] == "status" {
 		return ports.Result{Stdout: "## main\n"}, nil
+	}
+	return ports.Result{}, errors.New("unexpected call")
+}
+
+type workingBranchWithoutUpstreamProcess struct {
+	revListTargets []string
+}
+
+func (p *workingBranchWithoutUpstreamProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
+	if len(args) >= 4 && args[2] == "rev-parse" && args[3] == "--show-toplevel" {
+		return ports.Result{Stdout: "/repo\n"}, nil
+	}
+	if len(args) >= 4 && args[2] == "branch" && args[3] == "--show-current" {
+		return ports.Result{Stdout: "feat/ui\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "symbolic-ref" && args[3] == "--short" && args[4] == "refs/remotes/origin/HEAD" {
+		return ports.Result{Stdout: "origin/main\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "rev-list" {
+		target := args[len(args)-1]
+		p.revListTargets = append(p.revListTargets, target)
+		switch target {
+		case "HEAD...origin/main":
+			return ports.Result{Stdout: "5\t2\n"}, nil
+		case "HEAD...@{upstream}":
+			return ports.Result{Stderr: "fatal: no upstream configured for branch 'feat/ui'"}, errors.New("exit status 128")
+		}
+	}
+	if len(args) >= 4 && args[2] == "status" {
+		return ports.Result{Stdout: "## feat/ui\n"}, nil
 	}
 	return ports.Result{}, errors.New("unexpected call")
 }

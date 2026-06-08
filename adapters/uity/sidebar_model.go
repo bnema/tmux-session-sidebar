@@ -22,7 +22,7 @@ const pinnedMarkerSymbol = "\uf08d"    // Nerd Font thumb-tack glyph (U+F08D / n
 const spaceKeySymbol = "\U000F1050"    // Nerd Font keyboard-space glyph (U+F1050 / nf-md-keyboard_space).
 const updateAvailableSymbol = "\uf062" // Nerd Font arrow-up glyph (U+F062 / nf-fa-arrow_up).
 
-const metadataSublinePaddingWidth = 6
+const metadataSublinePaddingWidth = 3
 const metadataSublineFallbackWidth = 80
 const metadataSublineSidebarFallbackWidth = 30
 const wideWidthSpikeMultiplier = 2

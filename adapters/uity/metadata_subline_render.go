@@ -69,6 +69,9 @@ func renderMetadataPart(part metadataPart, selected bool) string {
 	if part.Role == metadataPartCompare {
 		return renderCompareMetadataPart(part.Text, selected)
 	}
+	if part.Role == metadataPartUpstream {
+		return renderUpstreamMetadataPart(part.Text, selected)
+	}
 	return metadataPartStyle(part.Role, selected).Render(part.Text)
 }
 
@@ -85,6 +88,17 @@ func renderCompareMetadataPart(text string, selected bool) string {
 	return compare.Render(before) + separator.Render("/") + compare.Render(after)
 }
 
+func renderUpstreamMetadataPart(text string, selected bool) string {
+	behindIndex := strings.Index(text, MetadataGitBehind)
+	if behindIndex < 0 {
+		return metadataPartStyle(metadataPartAhead, selected).Render(text)
+	}
+	if behindIndex == 0 {
+		return metadataPartStyle(metadataPartBehind, selected).Render(text)
+	}
+	return metadataPartStyle(metadataPartAhead, selected).Render(text[:behindIndex]) + metadataPartStyle(metadataPartBehind, selected).Render(text[behindIndex:])
+}
+
 func metadataPartStyle(role metadataPartRole, selected bool) lipgloss.Style {
 	colors := metadataActivePartColors(selected)
 	switch role {
@@ -96,10 +110,6 @@ func metadataPartStyle(role metadataPartRole, selected bool) lipgloss.Style {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.behind))
 	case metadataPartStaged:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.staged))
-	case metadataPartUnstagedIcon:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.unstagedIcon))
-	case metadataPartUnstagedCount:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.unstagedCount))
 	case metadataPartUnstaged:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.unstaged))
 	default:
@@ -111,18 +121,16 @@ func metadataPartStyle(role metadataPartRole, selected bool) lipgloss.Style {
 }
 
 type metadataColors struct {
-	compare       string
-	ahead         string
-	behind        string
-	staged        string
-	unstaged      string
-	unstagedIcon  string
-	unstagedCount string
+	compare  string
+	ahead    string
+	behind   string
+	staged   string
+	unstaged string
 }
 
 func metadataActivePartColors(selected bool) metadataColors {
 	if selected {
-		return metadataColors{compare: "#7dd3fc", ahead: "#86efac", behind: "#f87171", staged: "#93c5fd", unstaged: "#fbbf24", unstagedIcon: "#93c5fd", unstagedCount: "#fbbf24"}
+		return metadataColors{compare: "#7dd3fc", ahead: "#86efac", behind: "#f87171", staged: "#93c5fd", unstaged: "#e4d987"}
 	}
-	return metadataColors{compare: "#38bdf8", ahead: "#4ade80", behind: "#f87171", staged: "#60a5fa", unstaged: "#f59e0b", unstagedIcon: "#60a5fa", unstagedCount: "#f59e0b"}
+	return metadataColors{compare: "#38bdf8", ahead: "#4ade80", behind: "#f87171", staged: "#60a5fa", unstaged: "#d6c86f"}
 }
