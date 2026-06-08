@@ -379,6 +379,10 @@ func (m SidebarModel) updateBrowseKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 			m.showHelp = false
 			return m.finishInteractiveUpdate()
 		}
+		if m.filter != "" {
+			m.filter = ""
+			return m.finishInteractiveUpdate()
+		}
 		return m, tea.Quit
 	case "/":
 		m.mode = ModeSearch
