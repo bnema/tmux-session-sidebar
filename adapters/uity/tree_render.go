@@ -107,7 +107,7 @@ func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 	currentMarker := currentSessionMarker(session)
 	slot := slotPrefix(item.Slot)
 	marker := treeSessionMarker(session)
-	name := sanitizeSessionName(session.Name)
+	name := r.fitSessionName(item, currentMarker, slot, marker)
 	bodyText := sessionBodyText(slot, marker, name)
 	if currentMarker != "" {
 		bodyText = strings.TrimPrefix(bodyText, " ")
@@ -122,6 +122,39 @@ func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 	}
 	body := sessionRowStyle(r.styles, session).Render(bodyText)
 	return branch + currentMarker + body + r.renderAttention(session, false)
+}
+
+func (r treeRenderer) fitSessionName(item TreeItem, currentMarker string, slot string, marker string) string {
+	name := sanitizeSessionName(item.Session.Name)
+	width := r.width
+	if width <= 0 {
+		return name
+	}
+	budget := width - 2 // account for sidebar horizontal padding added after tree rendering.
+	budget -= metadataDisplayWidth(treeBranch(item))
+	budget -= metadataDisplayWidth(currentMarker)
+	budget -= sessionBodyPrefixWidth(slot, marker, currentMarker != "")
+	if item.Session.Attention {
+		budget -= metadataDisplayWidth(" ") + metadataDisplayWidth(attentionMarkerSymbol)
+	}
+	if budget <= 0 {
+		return ""
+	}
+	return fitMetadataText(name, budget, r.metadataIconMode)
+}
+
+func sessionBodyPrefixWidth(slot string, marker string, current bool) int {
+	width := 1 // leading space before the row body.
+	if current {
+		width--
+	}
+	if strings.TrimSpace(slot) != "" {
+		width += metadataDisplayWidth(strings.TrimSpace(slot)) + 1
+	}
+	if strings.TrimSpace(marker) != "" {
+		width += metadataDisplayWidth(strings.TrimSpace(marker)) + 1
+	}
+	return max(width, 0)
 }
 
 func (r treeRenderer) renderMore(item TreeItem, selected bool) string {
@@ -186,10 +219,27 @@ func treeMetadataPrefix(item TreeItem) string {
 	if item.Depth <= 0 {
 		return ""
 	}
-	if item.LastChild {
-		return "   "
+	indent := metadataNameIndent(item)
+	if !item.LastChild && indent > 0 {
+		return "│" + strings.Repeat(" ", indent-1)
 	}
-	return "│  "
+	return strings.Repeat(" ", indent)
+}
+
+func metadataNameIndent(item TreeItem) int {
+	indent := metadataDisplayWidth(treeBranch(item))
+	if item.Session.Current {
+		indent += metadataDisplayWidth("┃")
+	} else {
+		indent++
+	}
+	if slot := slotPrefix(item.Slot); strings.TrimSpace(slot) != "" {
+		indent += metadataDisplayWidth(strings.TrimSpace(slot)) + 1
+	}
+	if marker := treeSessionMarker(item.Session); strings.TrimSpace(marker) != "" {
+		indent += metadataDisplayWidth(strings.TrimSpace(marker)) + 1
+	}
+	return max(indent, 0)
 }
 
 func currentSessionMarker(item SessionItem) string {

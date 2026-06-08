@@ -46,8 +46,8 @@ func TestGitStatusUsesInjectedDivergenceCounter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if counter.calls != 1 || counter.repoRoot != repo || counter.branch != "main" {
-		t.Fatalf("Divergence calls = %d repo = %q branch = %q, want one call for %q main", counter.calls, counter.repoRoot, counter.branch, repo)
+	if counter.calls != 2 || counter.repoRoot != repo || counter.branch != "main" {
+		t.Fatalf("Divergence calls = %d repo = %q branch = %q, want two calls for %q main", counter.calls, counter.repoRoot, counter.branch, repo)
 	}
 	if !status.UpstreamConfigured || status.Ahead != 2 || status.Behind != 3 || status.Clean {
 		t.Fatalf("Status divergence = %#v, want injected 2 ahead 3 behind and dirty", status)
@@ -90,8 +90,40 @@ func TestGitStatusComparesWorkingBranchToDefaultRemote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if !status.UpstreamConfigured || status.Ahead != 1 || status.Behind != 0 {
-		t.Fatalf("Status divergence = %#v, want 1 ahead 0 behind vs origin/main", status)
+	if !status.ComparisonConfigured || status.UpstreamConfigured || status.Ahead != 1 || status.Behind != 0 {
+		t.Fatalf("Status divergence = %#v, want base comparison 1/0 without upstream", status)
+	}
+}
+
+func TestGitStatusSeparatesDefaultBranchDivergenceFromUpstreamPushPull(t *testing.T) {
+	origin := initBareGitRepo(t)
+	work := cloneRepo(t, origin)
+	writeFile(t, work, "base.txt", "base\n")
+	runGit(t, work, "add", "base.txt")
+	runGit(t, work, "commit", "-m", "base")
+	runGit(t, work, "push", "-u", "origin", "main")
+	runGit(t, work, "remote", "set-head", "origin", "main")
+	runGit(t, work, "checkout", "-b", "feature")
+	writeFile(t, work, "feature.txt", "feature\n")
+	runGit(t, work, "add", "feature.txt")
+	runGit(t, work, "commit", "-m", "feature")
+	runGit(t, work, "push", "-u", "origin", "feature")
+	runGit(t, work, "checkout", "main")
+	writeFile(t, work, "main.txt", "main\n")
+	runGit(t, work, "add", "main.txt")
+	runGit(t, work, "commit", "-m", "main")
+	runGit(t, work, "push", "origin", "main")
+	runGit(t, work, "checkout", "feature")
+	writeFile(t, work, "feature-2.txt", "feature 2\n")
+	runGit(t, work, "add", "feature-2.txt")
+	runGit(t, work, "commit", "-m", "feature 2")
+
+	status, err := (Git{}).Status(t.Context(), work)
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if !status.ComparisonConfigured || !status.UpstreamConfigured || status.Ahead != 2 || status.Behind != 1 || status.UpstreamAhead != 1 || status.UpstreamBehind != 0 {
+		t.Fatalf("Status divergence = %#v, want base 2/1 and upstream 1/0", status)
 	}
 }
 
