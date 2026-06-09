@@ -77,6 +77,32 @@ func TestSidebarModelSearchFiltersTreeSessions(t *testing.T) {
 	}
 }
 
+func TestSidebarModelEscClearsCommittedSearchFilter(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}, Actions{})
+	updated, _ := model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("b", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+	if model.mode != ModeBrowse || model.filter != "b" {
+		t.Fatalf("committed filter state = mode %s filter %q, want browse with active filter", model.mode, model.filter)
+	}
+
+	updated, cmd := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}))
+	model = requireSidebarModel(t, updated)
+	if cmd != nil {
+		t.Fatal("esc with an active filter should not close the sidebar")
+	}
+	if model.filter != "" || model.mode != ModeBrowse {
+		t.Fatalf("state after esc = mode %s filter %q, want browse with filter cleared", model.mode, model.filter)
+	}
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "alpha") || !strings.Contains(view, "beta") || !strings.Contains(view, "gamma") {
+		t.Fatalf("cleared filter view = %q, want all sessions visible", view)
+	}
+}
+
 func TestSidebarModelSearchFiltersToMatchingSessionsAndAncestorCategories(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
