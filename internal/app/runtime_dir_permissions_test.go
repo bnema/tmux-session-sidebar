@@ -25,23 +25,22 @@ func TestEnsureRuntimeDirPrivate_CreatesMissingDir(t *testing.T) {
 	}
 }
 
-func TestEnsureRuntimeDirPrivate_TightensPermissiveExistingDir(t *testing.T) {
+func TestEnsureRuntimeDirPrivate_RejectsPermissiveExistingDir(t *testing.T) {
 	dir := t.TempDir()
 
-	// Widen permissions first.
 	if err := os.Chmod(dir, 0o755); err != nil {
 		t.Fatalf("chmod 0755: %v", err)
 	}
 
-	if err := EnsureRuntimeDirPrivate(dir); err != nil {
-		t.Fatalf("EnsureRuntimeDirPrivate for permissive dir: %v", err)
+	if err := EnsureRuntimeDirPrivate(dir); err == nil {
+		t.Fatal("EnsureRuntimeDirPrivate for permissive dir: got nil, want error")
 	}
 	info, err := os.Stat(dir)
 	if err != nil {
-		t.Fatalf("stat after tighten: %v", err)
+		t.Fatalf("stat after reject: %v", err)
 	}
-	if info.Mode().Perm() != 0o700 {
-		t.Fatalf("permissions = %o, want 0700", info.Mode().Perm())
+	if info.Mode().Perm() != 0o755 {
+		t.Fatalf("permissions = %o, want unchanged 0755", info.Mode().Perm())
 	}
 }
 
@@ -58,6 +57,9 @@ func TestEnsureRuntimeDirPrivate_RejectsNonDirectory(t *testing.T) {
 
 func TestEnsureRuntimeDirPrivate_ExistingPrivateDirIsNoOp(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatalf("chmod 0700: %v", err)
+	}
 	if err := EnsureRuntimeDirPrivate(dir); err != nil {
 		t.Fatalf("EnsureRuntimeDirPrivate for private dir: %v", err)
 	}
@@ -120,8 +122,8 @@ func TestEnsureRuntimeDirPrivate_RejectsSymlinkFile(t *testing.T) {
 func TestEnsureRuntimeDirPrivate_AcceptsOwnedDir(t *testing.T) {
 	// Verify that the ownership check passes for a directory the current user owns.
 	dir := t.TempDir()
-	if err := os.Chmod(dir, 0o755); err != nil {
-		t.Fatalf("chmod 0755: %v", err)
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatalf("chmod 0700: %v", err)
 	}
 	if err := EnsureRuntimeDirPrivate(dir); err != nil {
 		t.Fatalf("EnsureRuntimeDirPrivate for owned dir: %v", err)

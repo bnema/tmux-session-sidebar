@@ -39,6 +39,8 @@ const (
 	formatWindowID        = "#{window_id}"
 	formatWindowLayout    = "#{window_layout}"
 
+	configQuerySeparator = "__TMUX_SESSION_SIDEBAR_CFG_SEP__"
+
 	escapedFormatPaneID = "##{pane_id}"
 
 	optionSidebarPane                = "@session-sidebar-pane"
@@ -611,48 +613,67 @@ func splitProjectRoots(roots string) []string {
 	return filtered
 }
 
-func (c Client) loadOptionsMap(ctx context.Context) (map[string]string, error) {
-	result, err := c.Process.Exec(ctx, "tmux", []string{"show-options", "-g"})
-	if err != nil {
-		return nil, err
+var configOptionNames = []string{
+	"@session-sidebar-key",
+	"@session-sidebar-width",
+	"@session-sidebar-project-roots",
+	"@session-sidebar-close-after-switch",
+	"@session-sidebar-heat-colors",
+	"@session-sidebar-heat-half-life-hours",
+	"@session-sidebar-heat-stale-hours",
+	"@session-sidebar-heat-refresh-seconds",
+	"@session-sidebar-heat-recent",
+	"@session-sidebar-heat-max-highlighted",
+	"@session-sidebar-activity-debug-log",
+	"@session-sidebar-agent-attention",
+	"@session-sidebar-agent-attention-animation",
+	"@session-sidebar-auto-sort-recent",
+	"@session-sidebar-restore-sessions",
+	"@session-sidebar-continuum-grace-seconds",
+	"@session-sidebar-metadata-subline",
+	"@session-sidebar-metadata-inactive",
+}
+
+func tmuxConfigQueryFormat() string {
+	parts := make([]string, 0, len(configOptionNames))
+	for _, name := range configOptionNames {
+		parts = append(parts, "#{"+name+"}")
 	}
-	opts := make(map[string]string)
-	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, " ", 2)
-		if len(parts) >= 1 && parts[0] != "" {
-			if len(parts) == 2 {
-				opts[parts[0]] = tmuxUnquoteOptionValue(parts[1])
-			} else {
-				opts[parts[0]] = ""
+	return strings.Join(parts, configQuerySeparator)
+}
+
+func (c Client) loadOptionsMap(ctx context.Context) (map[string]string, error) {
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdDisplayMessage, "-p", tmuxConfigQueryFormat()})
+	if err == nil {
+		values := strings.Split(strings.TrimRight(result.Stdout, "\n"), configQuerySeparator)
+		if len(values) == len(configOptionNames) {
+			opts := make(map[string]string, len(configOptionNames))
+			for i, name := range configOptionNames {
+				opts[name] = values[i]
 			}
+			return opts, nil
 		}
+	}
+
+	// Fallback for malformed/unsupported tmux output paths (for example,
+	// narrow test doubles): preserve the legacy raw per-option semantics.
+	opts := make(map[string]string, len(configOptionNames))
+	for _, name := range configOptionNames {
+		value, err := c.loadOptionValue(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		opts[name] = value
 	}
 	return opts, nil
 }
 
-func tmuxUnquoteOptionValue(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "''" {
-		return ""
+func (c Client) loadOptionValue(ctx context.Context, name string) (string, error) {
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdShowOptions, "-gvq", name})
+	if err != nil {
+		return "", err
 	}
-	if len(value) >= 2 {
-		switch value[0] {
-		case '"':
-			if value[len(value)-1] == '"' {
-				if unquoted, err := strconv.Unquote(value); err == nil {
-					return unquoted
-				}
-			}
-		case '\'':
-			if value[len(value)-1] == '\'' {
-				return value[1 : len(value)-1]
-			}
-		}
-	}
-	return value
+	return strings.TrimSpace(result.Stdout), nil
 }
 
 func (c Client) display(ctx context.Context, format string) (string, error) {

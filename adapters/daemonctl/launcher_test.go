@@ -24,6 +24,9 @@ func (p *recordingProcess) Exec(_ context.Context, name string, args []string) (
 func TestLauncherEnsuresDaemonWithBackgroundTmuxCommand(t *testing.T) {
 	process := &recordingProcess{}
 	stateDir := t.TempDir()
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatalf("chmod state dir: %v", err)
+	}
 	launcher := Launcher{Process: process, RuntimePath: "/tmp/runtime bin", StateDir: stateDir}
 
 	if err := launcher.EnsureStarted(t.Context()); err != nil {

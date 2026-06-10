@@ -26,6 +26,9 @@ func writeTmuxJSON(t *testing.T, dir string, state ports.PersistedState) {
 
 func mustWriteRuntimeScopeMetadata(t *testing.T, scope RuntimeScope) {
 	t.Helper()
+	if err := os.Chmod(scope.Dir, 0o700); err != nil {
+		t.Fatalf("chmod %s: %v", scope.Dir, err)
+	}
 	if err := writeRuntimeScopeMetadata(scope); err != nil {
 		t.Fatalf("mustWriteRuntimeScopeMetadata(t, %q): %v", scope.Dir, err)
 	}
