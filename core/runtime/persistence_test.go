@@ -665,6 +665,208 @@ func TestCaptureLiveSessionsReturnsSaveError(t *testing.T) {
 	}
 }
 
+// ── Protected variant guardrail tests ──────────────────────────────────
+
+func TestCaptureLiveSessionsProtectedSkipsWhenOnlyNonPersistableLive(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	initial := ports.PersistedState{
+		Sessions: map[string]ports.SessionMetadata{
+			"alpha": {Kind: "captured", LastPath: "/tmp/alpha"},
+			"beta":  {Kind: "project", ProjectPath: "/projects/beta"},
+		},
+		SessionOrder: []string{"alpha", "beta"},
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	// Only non-persistable sessions visible (__startup is hidden, 123 is numeric).
+	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{
+		{Name: "__startup"},
+		{Name: "123"},
+	}, nil)
+	// No Save or ListClients expectation — guardrail should bail before heat capture or save.
+
+	captured, err := NewService(nil, query, nil, store).CaptureLiveSessionsProtected(ctx, serverID)
+	if err != nil {
+		t.Fatalf("CaptureLiveSessionsProtected error: %v", err)
+	}
+	if captured {
+		t.Fatal("CaptureLiveSessionsProtected captured = true, want false")
+	}
+}
+
+func TestCaptureLiveSessionsProtectedSkipsWhenLiveEmptyWithRichState(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	initial := ports.PersistedState{
+		Sessions: map[string]ports.SessionMetadata{
+			"alpha": {Kind: "captured", LastPath: "/tmp/alpha"},
+		},
+		SessionOrder: []string{"alpha"},
+		SidebarLayout: &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+			{ID: "category:work", Kind: "category", Category: &ports.SidebarLayoutCategory{
+				ID: "category:work", Name: "Work", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}},
+			}},
+		}},
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	query.EXPECT().ListSessions(ctx).Return(nil, nil)
+	// No Save expectation — guardrail prevents save.
+
+	captured, err := NewService(nil, query, nil, store).CaptureLiveSessionsProtected(ctx, serverID)
+	if err != nil {
+		t.Fatalf("CaptureLiveSessionsProtected error: %v", err)
+	}
+	if captured {
+		t.Fatal("CaptureLiveSessionsProtected captured = true, want false")
+	}
+}
+
+func TestCaptureLiveSessionsProtectedAllowsWhenStateEmpty(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	// Empty persisted state: nothing to lose, so capture should proceed even on protected path.
+	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "__startup"}}, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, nil)
+	store.EXPECT().Save(ctx, serverID, mock.Anything).Return(nil)
+
+	captured, err := NewService(nil, query, nil, store).CaptureLiveSessionsProtected(ctx, serverID)
+	if err != nil {
+		t.Fatalf("CaptureLiveSessionsProtected error: %v", err)
+	}
+	if !captured {
+		t.Fatal("CaptureLiveSessionsProtected captured = false, want true")
+	}
+}
+
+func TestCaptureLiveSessionsProtectedAllowsWhenPersistableSessionsExist(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	alphaPath := t.TempDir()
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	initial := ports.PersistedState{
+		Sessions: map[string]ports.SessionMetadata{
+			"alpha": {Kind: "captured", LastPath: "/tmp/alpha"},
+		},
+		SessionOrder: []string{"alpha"},
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	// Mix of non-persistable and real persistable sessions — should reconcile.
+	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{
+		{Name: "__startup"},
+		{Name: "alpha"},
+	}, nil)
+	query.EXPECT().SessionPath(ctx, "alpha").Return(alphaPath, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, nil)
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		return len(state.Sessions) == 1 && state.Sessions["alpha"].LastPath == alphaPath
+	})).Return(nil)
+
+	captured, err := NewService(nil, query, nil, store).CaptureLiveSessionsProtected(ctx, serverID)
+	if err != nil {
+		t.Fatalf("CaptureLiveSessionsProtected error: %v", err)
+	}
+	if !captured {
+		t.Fatal("CaptureLiveSessionsProtected captured = false, want true")
+	}
+}
+
+func TestCaptureLiveSessionsWithConfigProtectedSkipsWhenOnlyNonPersistableLive(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	initial := ports.PersistedState{
+		Sessions: map[string]ports.SessionMetadata{
+			"alpha": {Kind: "captured", LastPath: "/tmp/alpha"},
+		},
+		SessionOrder: []string{"alpha"},
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "__startup"}}, nil)
+	// No ListClients, Save expectations → guardrail prevents save.
+
+	captured, err := NewService(nil, query, nil, store).CaptureLiveSessionsWithConfigProtected(ctx, serverID, ports.ConfigSnapshot{})
+	if err != nil {
+		t.Fatalf("CaptureLiveSessionsWithConfigProtected error: %v", err)
+	}
+	if captured {
+		t.Fatal("CaptureLiveSessionsWithConfigProtected captured = true, want false")
+	}
+}
+
+// ── Unprotected (normal) variant tests: verify reconciliation always occurs ──
+
+func TestCaptureLiveSessionsPerformsReconciliationWhenOnlyNonPersistableLive(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	// Rich persisted state with meaningful Sessions and SessionOrder.
+	initial := ports.PersistedState{
+		Sessions: map[string]ports.SessionMetadata{
+			"alpha": {Kind: "captured", LastPath: "/tmp/alpha"},
+		},
+		SessionOrder: []string{"alpha"},
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	// Only non-persistable sessions visible — unprotected CaptureLiveSessions
+	// should still reconcile (prune alpha from Sessions/SessionOrder).
+	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{
+		{Name: "__startup"},
+		{Name: "123"},
+	}, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, nil)
+	// Expect save with empty Sessions and SessionOrder reflecting only live names.
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		return len(state.Sessions) == 0 &&
+			reflect.DeepEqual(state.SessionOrder, []string{"__startup", "123"})
+	})).Return(nil)
+
+	if err := NewService(nil, query, nil, store).CaptureLiveSessions(ctx, serverID); err != nil {
+		t.Fatalf("CaptureLiveSessions error: %v", err)
+	}
+}
+
+func TestCaptureLiveSessionsWithConfigPerformsReconciliationWhenOnlyNonPersistableLive(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	initial := ports.PersistedState{
+		Sessions: map[string]ports.SessionMetadata{
+			"alpha": {Kind: "captured", LastPath: "/tmp/alpha"},
+		},
+		SessionOrder: []string{"alpha"},
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "__startup"}}, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, nil)
+	// Unprotected CaptureLiveSessionsWithConfig should reconcile even when only
+	// non-persistable sessions are live — alpha should be pruned.
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		return len(state.Sessions) == 0
+	})).Return(nil)
+
+	if err := NewService(nil, query, nil, store).CaptureLiveSessionsWithConfig(ctx, serverID, ports.ConfigSnapshot{}); err != nil {
+		t.Fatalf("CaptureLiveSessionsWithConfig error: %v", err)
+	}
+}
+
 func assertStringSet(t *testing.T, got []string, want []string) {
 	t.Helper()
 	got = append([]string(nil), got...)

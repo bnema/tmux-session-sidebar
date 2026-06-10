@@ -72,8 +72,12 @@ func ensureRestoredAndCapturedWithOptions(ctx context.Context, resetTransientHea
 			// performs that live capture after its pending Continuum window expires.
 			return nil
 		}
-		if err := service.CaptureLiveSessions(ctx, "tmux"); err != nil {
+		captured, err := service.CaptureLiveSessionsProtected(ctx, "tmux")
+		if err != nil {
 			return err
+		}
+		if !captured {
+			return nil
 		}
 		return captureVisitedAgentAttentionIfEnabled(ctx, service, cfg)
 	})
@@ -96,16 +100,20 @@ func captureLiveSidebarSessions(ctx context.Context) error {
 	})
 }
 
-func captureLiveSidebarSessionsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) error {
-	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+func captureLiveSidebarSessionsWithConfigProtected(ctx context.Context, cfg ports.ConfigSnapshot) (bool, error) {
+	captured := false
+	err := withLockedSidebarStore(ctx, func(store storefs.Store) error {
 		return withActivityDebugLogger(cfg, func(logger ports.LoggerPort) error {
 			service := runtimeServiceWithStore(store).WithLogger(logger)
-			if err := service.CaptureLiveSessionsWithConfig(ctx, "tmux", cfg); err != nil {
+			var err error
+			captured, err = service.CaptureLiveSessionsWithConfigProtected(ctx, "tmux", cfg)
+			if err != nil || !captured {
 				return err
 			}
 			return captureVisitedAgentAttentionIfEnabled(ctx, service, cfg)
 		})
 	})
+	return captured, err
 }
 
 func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) error {
@@ -148,6 +156,7 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 	if err := writeRuntimeScopeMetadata(scope); err != nil {
 		return err
 	}
+
 	acquireCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	lock, err := (locker.FileLocker{Dir: scope.LocksDir}).Acquire(acquireCtx, "tmux-sidebar-daemon")
@@ -160,6 +169,17 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 		return err
 	}
 	defer releaseSidebarLock(lock)
+
+	// Migrate tmux.json state from a prior tmux server instance that used
+	// the same socket. On full tmux restart the PID changes so the current
+	// scope is empty; this copies the previous meaningful state into it.
+	// This runs after the daemon lock is acquired so no other daemon can
+	// race us, and internally acquires the tmux-sidebar-state lock to guard
+	// against concurrent startup commands writing tmux.json in this scope.
+	if err := ensureRuntimeStateMigrated(ctx, scope); err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: runtime state migration: %v\n", err)
+	}
+
 	pidFile := scope.PIDPath
 	if err := os.WriteFile(pidFile, fmt.Appendf(nil, "%d\n", os.Getpid()), 0o600); err != nil {
 		return err
@@ -200,13 +220,20 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 	if shouldSkipSidebarSessionRestoreForContinuum(ctx, cfg) {
 		pendingFullCaptureAt = time.Now().Add(time.Duration(continuumRestoreWindowSeconds(ctx, cfg)) * time.Second)
 	} else {
-		// captureLiveSidebarSessionsWithConfig must succeed during daemon startup so the
+		// captureLiveSidebarSessionsWithConfigProtected must succeed during daemon startup so the
 		// initial session snapshot is available; later captureLiveSidebarHeat ticks only log
 		// failures because stale heat/attention data is less critical than bootstrapping.
-		if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil {
+		// The protected variant guards against destructive overwrite of restored state
+		// when only hidden/numeric sessions are visible during startup.
+		captured, err := captureLiveSidebarSessionsWithConfigProtected(ctx, cfg)
+		if err != nil {
 			return err
 		}
-		startMetadataWatcher(cfg)
+		if !captured {
+			pendingFullCaptureAt = time.Now().Add(sidebarRefreshIntervalFromConfig(cfg))
+		} else {
+			startMetadataWatcher(cfg)
+		}
 	}
 	var ipcWG sync.WaitGroup
 	if ipcServer != nil && router != nil {
@@ -243,8 +270,11 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 			return fmt.Errorf("daemon tmux server identity is stale")
 		}
 		if !pendingFullCaptureAt.IsZero() && !time.Now().Before(pendingFullCaptureAt) {
-			if err := captureLiveSidebarSessionsWithConfig(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
+			captured, err := captureLiveSidebarSessionsWithConfigProtected(ctx, cfg)
+			if err != nil && !errors.Is(err, context.Canceled) {
 				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
+				pendingFullCaptureAt = time.Now().Add(sidebarRefreshIntervalFromConfig(cfg))
+			} else if !captured {
 				pendingFullCaptureAt = time.Now().Add(sidebarRefreshIntervalFromConfig(cfg))
 			} else {
 				pendingFullCaptureAt = time.Time{}

@@ -39,7 +39,7 @@ runtime_bin="$BIN_DIR/tmux-session-sidebar"
 stamp_file="$BIN_DIR/.build-fingerprint"
 RELEASE_REPO="${TMUX_SESSION_SIDEBAR_RELEASE_REPO:-bnema/tmux-session-sidebar}"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar"
-TMUX_CONF="${TMUX_CONF:-$HOME/.tmux.conf}"
+TMUX_CONF="${TMUX_CONF:-}"
 SIDEBAR_SESSION_NAME="${SIDEBAR_SESSION_NAME:-__tmux-session-sidebar}"
 UPDATE_LOG="${TMUX_SESSION_SIDEBAR_UPDATE_LOG:-$BIN_DIR/update-runtime.log}"
 lock_dir="$BIN_DIR/update-runtime.lock"
@@ -446,14 +446,39 @@ stop_runtime_processes() {
     fi
   fi
   pkill_runtime_subcommand serve-ui || return 1
+  pkill_runtime_subcommand bootstrap || return 1
   pkill_runtime_subcommand serve || return 1
   [ -n "$TMUX_BIN" ] || return 0
   "$TMUX_BIN" kill-session -t "$SIDEBAR_SESSION_NAME" 2>/dev/null || true
 }
 
 source_tmux_runtime() {
+  local config_file config_files sourced
   [ -n "$TMUX_BIN" ] || { echo 'tmux-session-sidebar: tmux not found' >&2; return 1; }
-  "$TMUX_BIN" source-file "$TMUX_CONF"
+  if [ -n "$TMUX_CONF" ]; then
+    "$TMUX_BIN" source-file "$TMUX_CONF"
+    return
+  fi
+  config_files="$($TMUX_BIN display-message -p '#{config_files}' 2>/dev/null || true)"
+  sourced=0
+  if [ -n "$config_files" ]; then
+    local IFS=,
+    for config_file in $config_files; do
+      [ -n "$config_file" ] || continue
+      [ -f "$config_file" ] || continue
+      "$TMUX_BIN" source-file "$config_file"
+      sourced=1
+    done
+  fi
+  if [ "$sourced" = 1 ]; then
+    return
+  fi
+  config_file="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf"
+  if [ -f "$config_file" ]; then
+    "$TMUX_BIN" source-file "$config_file"
+    return
+  fi
+  "$TMUX_BIN" source-file "$HOME/.tmux.conf"
 }
 
 restart_tmux_runtime() {
