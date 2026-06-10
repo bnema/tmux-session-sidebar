@@ -24,6 +24,13 @@ func writeTmuxJSON(t *testing.T, dir string, state ports.PersistedState) {
 	}
 }
 
+func mustWriteRuntimeScopeMetadata(t *testing.T, scope RuntimeScope) {
+	t.Helper()
+	if err := writeRuntimeScopeMetadata(scope); err != nil {
+		t.Fatalf("mustWriteRuntimeScopeMetadata(t, %q): %v", scope.Dir, err)
+	}
+}
+
 // setMtime sets the modification time of path to unixNano.
 func setMtime(t *testing.T, path string, unixNano int64) {
 	t.Helper()
@@ -42,7 +49,7 @@ func TestEnsureRuntimeStateMigrated_SameSocketNewPID(t *testing.T) {
 	if err := os.MkdirAll(oldScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(oldScope)
+	mustWriteRuntimeScopeMetadata(t, oldScope)
 	writeTmuxJSON(t, oldScope.Dir, ports.PersistedState{
 		SessionOrder: []string{"alpha", "beta"},
 		Sessions:     map[string]ports.SessionMetadata{},
@@ -53,7 +60,7 @@ func TestEnsureRuntimeStateMigrated_SameSocketNewPID(t *testing.T) {
 	if err := os.MkdirAll(newScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(newScope)
+	mustWriteRuntimeScopeMetadata(t, newScope)
 
 	// Current tmux.json does not exist yet -> migration should copy from old.
 	if err := ensureRuntimeStateMigrated(context.Background(), newScope); err != nil {
@@ -80,7 +87,7 @@ func TestEnsureRuntimeStateMigrated_DifferentSocketIgnored(t *testing.T) {
 	if err := os.MkdirAll(scopeA.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(scopeA)
+	mustWriteRuntimeScopeMetadata(t, scopeA)
 	writeTmuxJSON(t, scopeA.Dir, ports.PersistedState{
 		SessionOrder: []string{"from-a"},
 	})
@@ -90,7 +97,7 @@ func TestEnsureRuntimeStateMigrated_DifferentSocketIgnored(t *testing.T) {
 	if err := os.MkdirAll(scopeB.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(scopeB)
+	mustWriteRuntimeScopeMetadata(t, scopeB)
 	writeTmuxJSON(t, scopeB.Dir, ports.PersistedState{
 		SessionOrder: []string{"from-b"},
 	})
@@ -100,7 +107,7 @@ func TestEnsureRuntimeStateMigrated_DifferentSocketIgnored(t *testing.T) {
 	if err := os.MkdirAll(scopeC.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(scopeC)
+	mustWriteRuntimeScopeMetadata(t, scopeC)
 
 	if err := ensureRuntimeStateMigrated(context.Background(), scopeC); err != nil {
 		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
@@ -125,7 +132,7 @@ func TestEnsureRuntimeStateMigrated_CurrentMeaningfulNotOverwritten(t *testing.T
 	if err := os.MkdirAll(oldScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(oldScope)
+	mustWriteRuntimeScopeMetadata(t, oldScope)
 	writeTmuxJSON(t, oldScope.Dir, ports.PersistedState{
 		SessionOrder: []string{"old-data"},
 	})
@@ -134,7 +141,7 @@ func TestEnsureRuntimeStateMigrated_CurrentMeaningfulNotOverwritten(t *testing.T
 	if err := os.MkdirAll(newScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(newScope)
+	mustWriteRuntimeScopeMetadata(t, newScope)
 	// Already has meaningful state — should not be overwritten.
 	writeTmuxJSON(t, newScope.Dir, ports.PersistedState{
 		SessionOrder: []string{"current-state"},
@@ -164,7 +171,7 @@ func TestEnsureRuntimeStateMigrated_EmptyPriorIgnored(t *testing.T) {
 	if err := os.MkdirAll(oldScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(oldScope)
+	mustWriteRuntimeScopeMetadata(t, oldScope)
 	writeTmuxJSON(t, oldScope.Dir, ports.PersistedState{
 		SessionOrder: []string{},
 		Sessions:     map[string]ports.SessionMetadata{},
@@ -175,7 +182,7 @@ func TestEnsureRuntimeStateMigrated_EmptyPriorIgnored(t *testing.T) {
 	if err := os.MkdirAll(newScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(newScope)
+	mustWriteRuntimeScopeMetadata(t, newScope)
 
 	if err := ensureRuntimeStateMigrated(context.Background(), newScope); err != nil {
 		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
@@ -197,7 +204,7 @@ func TestEnsureRuntimeStateMigrated_EmptyDefaultJSONIgnored(t *testing.T) {
 	if err := os.MkdirAll(oldScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(oldScope)
+	mustWriteRuntimeScopeMetadata(t, oldScope)
 	// Write an empty JSON object — valid JSON, zero values.
 	if err := os.WriteFile(filepath.Join(oldScope.Dir, "tmux.json"), []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -207,7 +214,7 @@ func TestEnsureRuntimeStateMigrated_EmptyDefaultJSONIgnored(t *testing.T) {
 	if err := os.MkdirAll(newScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(newScope)
+	mustWriteRuntimeScopeMetadata(t, newScope)
 
 	if err := ensureRuntimeStateMigrated(context.Background(), newScope); err != nil {
 		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
@@ -226,14 +233,14 @@ func TestEnsureRuntimeStateMigrated_StartupOnlyStateDoesNotBlockMigration(t *tes
 	if err := os.MkdirAll(oldScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(oldScope)
+	mustWriteRuntimeScopeMetadata(t, oldScope)
 	writeTmuxJSON(t, oldScope.Dir, ports.PersistedState{SessionOrder: []string{"alpha"}})
 
 	newScope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "222")
 	if err := os.MkdirAll(newScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(newScope)
+	mustWriteRuntimeScopeMetadata(t, newScope)
 	writeTmuxJSON(t, newScope.Dir, ports.PersistedState{SessionOrder: []string{"__startup", "123"}})
 
 	if err := ensureRuntimeStateMigrated(context.Background(), newScope); err != nil {
@@ -259,7 +266,7 @@ func TestEnsureRuntimeStateMigrated_MultipleCandidatesChooseNewest(t *testing.T)
 	if err := os.MkdirAll(olderScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(olderScope)
+	mustWriteRuntimeScopeMetadata(t, olderScope)
 	writeTmuxJSON(t, olderScope.Dir, ports.PersistedState{
 		SessionOrder: []string{"older"},
 	})
@@ -270,7 +277,7 @@ func TestEnsureRuntimeStateMigrated_MultipleCandidatesChooseNewest(t *testing.T)
 	if err := os.MkdirAll(newerScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(newerScope)
+	mustWriteRuntimeScopeMetadata(t, newerScope)
 	writeTmuxJSON(t, newerScope.Dir, ports.PersistedState{
 		SessionOrder: []string{"newer"},
 	})
@@ -281,7 +288,7 @@ func TestEnsureRuntimeStateMigrated_MultipleCandidatesChooseNewest(t *testing.T)
 	if err := os.MkdirAll(targetScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(targetScope)
+	mustWriteRuntimeScopeMetadata(t, targetScope)
 
 	if err := ensureRuntimeStateMigrated(context.Background(), targetScope); err != nil {
 		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
@@ -305,7 +312,7 @@ func TestEnsureRuntimeStateMigrated_IgnoresNewerStartupOnlyCandidate(t *testing.
 	if err := os.MkdirAll(olderRealScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(olderRealScope)
+	mustWriteRuntimeScopeMetadata(t, olderRealScope)
 	writeTmuxJSON(t, olderRealScope.Dir, ports.PersistedState{SessionOrder: []string{"alpha"}})
 	setMtime(t, filepath.Join(olderRealScope.Dir, "tmux.json"), 1_000_000_000_000)
 
@@ -313,7 +320,7 @@ func TestEnsureRuntimeStateMigrated_IgnoresNewerStartupOnlyCandidate(t *testing.
 	if err := os.MkdirAll(newerStartupScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(newerStartupScope)
+	mustWriteRuntimeScopeMetadata(t, newerStartupScope)
 	writeTmuxJSON(t, newerStartupScope.Dir, ports.PersistedState{SessionOrder: []string{"__startup", "123"}})
 	setMtime(t, filepath.Join(newerStartupScope.Dir, "tmux.json"), 2_000_000_000_000)
 
@@ -321,7 +328,7 @@ func TestEnsureRuntimeStateMigrated_IgnoresNewerStartupOnlyCandidate(t *testing.
 	if err := os.MkdirAll(targetScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(targetScope)
+	mustWriteRuntimeScopeMetadata(t, targetScope)
 
 	if err := ensureRuntimeStateMigrated(context.Background(), targetScope); err != nil {
 		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
@@ -346,7 +353,7 @@ func TestEnsureRuntimeStateMigrated_LegacyNotMigrated(t *testing.T) {
 	if err := os.MkdirAll(legacyScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(legacyScope)
+	mustWriteRuntimeScopeMetadata(t, legacyScope)
 
 	// Scoped sibling with same effective socket should be skipped because
 	// the legacy scope's SocketPath is empty and IdentityKey is empty.
@@ -354,7 +361,7 @@ func TestEnsureRuntimeStateMigrated_LegacyNotMigrated(t *testing.T) {
 	if err := os.MkdirAll(scopedScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(scopedScope)
+	mustWriteRuntimeScopeMetadata(t, scopedScope)
 	writeTmuxJSON(t, scopedScope.Dir, ports.PersistedState{
 		SessionOrder: []string{"scoped-data"},
 	})
@@ -387,7 +394,7 @@ func TestEnsureRuntimeStateMigrated_MissingServerJSON(t *testing.T) {
 	if err := os.MkdirAll(newScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(newScope)
+	mustWriteRuntimeScopeMetadata(t, newScope)
 
 	if err := ensureRuntimeStateMigrated(context.Background(), newScope); err != nil {
 		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
@@ -407,7 +414,7 @@ func TestEnsureRuntimeStateMigrated_MeaningfulSidebarLayout(t *testing.T) {
 	if err := os.MkdirAll(oldScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(oldScope)
+	mustWriteRuntimeScopeMetadata(t, oldScope)
 	// State with no Sessions or SessionOrder but a layout with session refs.
 	writeTmuxJSON(t, oldScope.Dir, ports.PersistedState{
 		Sessions: map[string]ports.SessionMetadata{},
@@ -427,7 +434,7 @@ func TestEnsureRuntimeStateMigrated_MeaningfulSidebarLayout(t *testing.T) {
 	if err := os.MkdirAll(emptyScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(emptyScope)
+	mustWriteRuntimeScopeMetadata(t, emptyScope)
 	writeTmuxJSON(t, emptyScope.Dir, ports.PersistedState{
 		Sessions: map[string]ports.SessionMetadata{},
 	})
@@ -436,7 +443,7 @@ func TestEnsureRuntimeStateMigrated_MeaningfulSidebarLayout(t *testing.T) {
 	if err := os.MkdirAll(targetScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(targetScope)
+	mustWriteRuntimeScopeMetadata(t, targetScope)
 
 	if err := ensureRuntimeStateMigrated(context.Background(), targetScope); err != nil {
 		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
@@ -480,7 +487,7 @@ func TestEnsureRuntimeStateMigrated_RecheckCatchesLateState(t *testing.T) {
 	if err := os.MkdirAll(oldScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(oldScope)
+	mustWriteRuntimeScopeMetadata(t, oldScope)
 	writeTmuxJSON(t, oldScope.Dir, ports.PersistedState{
 		SessionOrder: []string{"old-data"},
 	})
@@ -492,7 +499,7 @@ func TestEnsureRuntimeStateMigrated_RecheckCatchesLateState(t *testing.T) {
 	if err := os.MkdirAll(extraOld.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(extraOld)
+	mustWriteRuntimeScopeMetadata(t, extraOld)
 	writeTmuxJSON(t, extraOld.Dir, ports.PersistedState{
 		SessionOrder: []string{"extra-old-data"},
 	})
@@ -502,7 +509,7 @@ func TestEnsureRuntimeStateMigrated_RecheckCatchesLateState(t *testing.T) {
 	if err := os.MkdirAll(targetScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(targetScope)
+	mustWriteRuntimeScopeMetadata(t, targetScope)
 
 	// Acquire the state lock externally. The migration goroutine will
 	// block trying to acquire this same lock after passing the initial
@@ -581,7 +588,7 @@ func TestEnsureRuntimeStateMigrated_NewStateBeforeLockSkips(t *testing.T) {
 	if err := os.MkdirAll(oldScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(oldScope)
+	mustWriteRuntimeScopeMetadata(t, oldScope)
 	writeTmuxJSON(t, oldScope.Dir, ports.PersistedState{
 		SessionOrder: []string{"old-data"},
 	})
@@ -590,7 +597,7 @@ func TestEnsureRuntimeStateMigrated_NewStateBeforeLockSkips(t *testing.T) {
 	if err := os.MkdirAll(targetScope.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeScopeMetadata(targetScope)
+	mustWriteRuntimeScopeMetadata(t, targetScope)
 	// Target already has meaningful state before migration runs.
 	writeTmuxJSON(t, targetScope.Dir, ports.PersistedState{
 		SessionOrder: []string{"current-state"},

@@ -177,7 +177,7 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 	// race us, and internally acquires the tmux-sidebar-state lock to guard
 	// against concurrent startup commands writing tmux.json in this scope.
 	if err := ensureRuntimeStateMigrated(ctx, scope); err != nil {
-		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: runtime state migration: %v\n", err)
+		return fmt.Errorf("runtime state migration for %s: %w", scope.Dir, err)
 	}
 
 	pidFile := scope.PIDPath

@@ -25,7 +25,6 @@ const updateAvailableSymbol = "\uf062" // Nerd Font arrow-up glyph (U+F062 / nf-
 const metadataSublinePaddingWidth = 3
 const metadataSublineFallbackWidth = 80
 const metadataSublineSidebarFallbackWidth = 30
-const wideWidthSpikeMultiplier = 2
 
 type SessionItem struct {
 	Name          string
@@ -186,7 +185,13 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Width <= 0 || msg.Height <= 0 {
 			return m, nil
 		}
-		if m.ignoreNextWideWidthSpike && m.width > 0 && msg.Width > m.width*wideWidthSpikeMultiplier {
+		// tmux can briefly report one stale, wider sidebar size immediately after
+		// a session switch before the pane settles back to its real width. If we
+		// accept that transient wider frame, metadata can expand to the full branch
+		// name for one render and then snap back to an ellipsized layout on the
+		// next frame. Ignore the first post-switch width increase only; the next
+		// width event is treated as authoritative.
+		if m.ignoreNextWideWidthSpike && m.width > 0 && msg.Width > m.width {
 			m.ignoreNextWideWidthSpike = false
 			m.ensureTreeCursorVisible()
 			return m, nil
