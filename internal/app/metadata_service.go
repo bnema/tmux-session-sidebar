@@ -226,9 +226,6 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 	if err := ctx.Err(); err != nil {
 		return changed, err
 	}
-	if len(deletes) == 0 && len(statuses) == 0 {
-		return changed, nil
-	}
 	if didChange, err := s.batchMetadataSave(ctx, lockStore, liveNames, deletes, statuses); err != nil {
 		return changed, err
 	} else if didChange {

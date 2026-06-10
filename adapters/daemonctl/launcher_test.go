@@ -46,24 +46,16 @@ func TestLauncherEnsuresDaemonWithBackgroundTmuxCommand(t *testing.T) {
 }
 
 func TestLauncherUsesPrivateChildDirWhenStateDirIsEmpty(t *testing.T) {
-	childDir := filepath.Join(os.TempDir(), ".tmux-session-sidebar-daemon")
+	tmpDir := t.TempDir()
+	t.Setenv("TMPDIR", tmpDir)
+	childDir := filepath.Join(tmpDir, ".tmux-session-sidebar-daemon")
 
-	// Record original TempDir permissions so we can verify they aren't touched.
-	origInfo, err := os.Stat(os.TempDir())
+	// Record original temp-root permissions so we can verify they aren't touched.
+	origInfo, err := os.Stat(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	origPerms := origInfo.Mode().Perm()
-
-	// Remove any leftover child dir from prior runs.
-	if err := os.RemoveAll(childDir); err != nil {
-		t.Fatalf("remove leftover child dir: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.RemoveAll(childDir); err != nil {
-			t.Fatalf("cleanup child dir: %v", err)
-		}
-	})
 
 	process := &recordingProcess{}
 	launcher := Launcher{Process: process, RuntimePath: "/tmp/runtime"}
@@ -72,13 +64,13 @@ func TestLauncherUsesPrivateChildDirWhenStateDirIsEmpty(t *testing.T) {
 		t.Fatalf("EnsureStarted error: %v", err)
 	}
 
-	// Verify os.TempDir() permissions are unchanged.
-	afterInfo, err := os.Stat(os.TempDir())
+	// Verify the temp root permissions are unchanged.
+	afterInfo, err := os.Stat(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if afterInfo.Mode().Perm() != origPerms {
-		t.Fatalf("os.TempDir() permissions changed: was %o, now %o", origPerms, afterInfo.Mode().Perm())
+		t.Fatalf("temp root permissions changed: was %o, now %o", origPerms, afterInfo.Mode().Perm())
 	}
 
 	// Verify private child dir exists with 0o700.

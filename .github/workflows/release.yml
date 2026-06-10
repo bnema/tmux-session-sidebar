@@ -20,8 +20,7 @@ jobs:
       # Required to upload the detached checksum signature asset onto the GitHub release.
       contents: write
     steps:
-      # TODO: pin actions/checkout to a full commit SHA once the preferred digest is recorded for this workflow.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           persist-credentials: false
       - name: Download checksums.txt from release
@@ -38,6 +37,9 @@ jobs:
           trap 'rm -f "$key_file"' EXIT
           printf '%s\n' "$SIGN_KEY" > "$key_file"
           openssl dgst -sha256 -sign "$key_file" -out checksums.txt.sig checksums.txt
+      - name: Verify checksums.txt signature before upload
+        run: |
+          openssl dgst -sha256 -verify scripts/update-runtime.pub.pem -signature checksums.txt.sig checksums.txt
       - name: Upload checksums.txt.sig to release
         env:
           GH_TOKEN: ${{ github.token }}

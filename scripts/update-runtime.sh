@@ -229,7 +229,7 @@ verify_release_signature() {
   fi
   if [ -z "$OPENSSL_BIN" ]; then
     echo "tmux-session-sidebar: openssl not found; cannot verify release signature" >&2
-    return 1
+    return 3
   fi
   "$OPENSSL_BIN" dgst -sha256 -verify "$pubkey" -signature "$sig_file" "$checksums_file" 2>/dev/null || {
     echo "tmux-session-sidebar: checksums.txt signature verification failed" >&2
@@ -268,7 +268,7 @@ cached_release_valid() {
 }
 
 download_release_candidate() {
-  local candidate="$1" archive arch asset checksum checksums checksums_url os tmp_dir tmp_runtime url version
+  local candidate="$1" archive arch asset checksum checksums checksums_url os tmp_dir tmp_runtime url verify_status version
   [ -n "$CURL_BIN" ] || return 1
   [ -n "$TAR_BIN" ] || return 1
   [ -n "$UNAME_BIN" ] || return 1
@@ -290,7 +290,14 @@ download_release_candidate() {
     echo "tmux-session-sidebar: failed to download signature file; release authenticity cannot be verified" >&2
     "$RM_BIN" -rf "$tmp_dir"; return 2;
   }
-  verify_release_signature "$checksums" "$checksums_sig" || { "$RM_BIN" -rf "$tmp_dir"; return 2; }
+  if ! verify_release_signature "$checksums" "$checksums_sig"; then
+    verify_status="$?"
+    "$RM_BIN" -rf "$tmp_dir"
+    if [ "$verify_status" -eq 3 ]; then
+      return 3
+    fi
+    return 2
+  fi
   log_update "downloading runtime from $url"
   "$CURL_BIN" -fsSL -o "$archive" "$url" || { "$RM_BIN" -rf "$tmp_dir"; return 1; }
   checksum="$(verify_release_checksum "$archive" "$asset" "$checksums")" || { "$RM_BIN" -rf "$tmp_dir"; return 2; }

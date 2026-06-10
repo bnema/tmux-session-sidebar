@@ -145,9 +145,37 @@ test_logs_and_aborts_when_existing_daemon_ignores_term() {
   trap - RETURN
 }
 
+test_rejects_symlink_state_dir() {
+  local root target
+  root="$(new_fixture)"
+  target="$(mktemp -d)"
+  TEMP_ROOTS+=("$target")
+  rm -rf "$root/state"
+  ln -s "$target" "$root/state"
+
+  if run_control "$root"; then
+    fail "daemon control should reject a symlink state dir"
+  fi
+}
+
+test_rejects_symlink_log_file() {
+  local root target
+  root="$(new_fixture)"
+  target="$(mktemp)"
+  TEMP_ROOTS+=("$target")
+  rm -f "$root/state/errors.log"
+  ln -s "$target" "$root/state/errors.log"
+
+  if run_control "$root"; then
+    fail "daemon control should reject a symlink log file"
+  fi
+}
+
 test_creates_state_dir_with_private_permissions
 test_starts_runtime_when_no_existing_pid
 test_stops_existing_matching_daemon_before_restart
 test_logs_and_aborts_when_existing_daemon_ignores_term
+test_rejects_symlink_state_dir
+test_rejects_symlink_log_file
 
 echo "daemon-control tests passed"

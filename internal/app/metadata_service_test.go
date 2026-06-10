@@ -165,6 +165,29 @@ func TestMetadataServiceCapturePersistsStaleMetadataPruneWhenLiveStatusUnchanged
 	}
 }
 
+func TestMetadataServiceCapturePrunesStaleMetadataWithoutStatusResults(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{
+		"gone": {RepoRoot: "/gone", Branch: "old", Modified: 9},
+	}}}
+	tmux := metadataFakeTmux{sessions: nil, paths: map[string]string{}}
+	git := metadataFakeGit{}
+	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
+
+	changed, err := svc.Capture(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	if err != nil {
+		t.Fatalf("Capture error: %v", err)
+	}
+	if !changed {
+		t.Fatal("Capture changed = false, want stale metadata prune to be persisted")
+	}
+	if _, ok := store.state.Metadata["gone"]; ok {
+		t.Fatalf("stale metadata survived without status results: %#v", store.state.Metadata)
+	}
+	if store.saveCount() != 1 {
+		t.Fatalf("save calls = %d, want 1", store.saveCount())
+	}
+}
+
 func TestMetadataServiceCaptureAndRefreshCleansNotifierOnSaveError(t *testing.T) {
 	store := &metadataFailingSaveStore{metadataFakeStore: metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}}
 	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
