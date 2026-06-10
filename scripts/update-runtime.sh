@@ -217,7 +217,8 @@ EOF
 
 verify_release_signature() {
   local checksums_file="$1" sig_file="$2"
-  local pubkey="$(cd "$("$DIRNAME_BIN" "${BASH_SOURCE[0]}")" && "$PWD_BIN")/update-runtime.pub.pem"
+  local pubkey
+  pubkey="$(cd "$("$DIRNAME_BIN" "${BASH_SOURCE[0]}")" && "$PWD_BIN")/update-runtime.pub.pem"
   if [ ! -f "$pubkey" ]; then
     echo "tmux-session-sidebar: public key not found at $pubkey" >&2
     return 1

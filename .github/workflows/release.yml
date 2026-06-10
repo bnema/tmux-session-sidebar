@@ -17,9 +17,13 @@ jobs:
     needs: [release]
     runs-on: ubuntu-latest
     permissions:
+      # Required to upload the detached checksum signature asset onto the GitHub release.
       contents: write
     steps:
+      # TODO: pin actions/checkout to a full commit SHA once the preferred digest is recorded for this workflow.
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Download checksums.txt from release
         env:
           GH_TOKEN: ${{ github.token }}

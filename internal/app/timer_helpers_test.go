@@ -32,11 +32,10 @@ func TestStopTimerBestEffort_StopsLiveTimer(t *testing.T) {
 }
 
 func TestStopTimerBestEffort_DrainsExpiredTimer(t *testing.T) {
-	tmr := time.NewTimer(0)
-	// Let the timer fire.
-	<-tmr.C
+	tmr := time.NewTimer(time.Millisecond)
+	// Let the timer fire but keep the fired value unread so the helper must drain it.
+	time.Sleep(10 * time.Millisecond)
 
-	// The timer channel now has a value; Stop returns false.
 	stopTimerBestEffort(tmr)
 	if !isTimerChannelEmpty(tmr) {
 		t.Fatal("expired timer channel should be drained after stopTimerBestEffort")

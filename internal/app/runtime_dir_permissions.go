@@ -7,11 +7,11 @@ import (
 	"syscall"
 )
 
-// EnsureRuntimeDirPrivate creates dir with 0o700 if it does not exist, or
-// tightens an existing directory's permissions to 0o700. It returns an error
-// if the path exists and is not a directory, if it is a symlink, if the
-// directory is not owned by the current user (on Unix), or if permissions
-// cannot be tightened to the required private state.
+// EnsureRuntimeDirPrivate creates dir with 0o700 if it does not exist.
+// Existing paths must already be private enough to trust: the helper returns
+// an error for symlinks, non-directories, Unix paths not owned by the current
+// user, or directories with unsafe group/world permissions instead of trying
+// to repair them in place.
 func EnsureRuntimeDirPrivate(dir string) error {
 	info, created, err := ensureRuntimeDirInfo(dir)
 	if err != nil {
