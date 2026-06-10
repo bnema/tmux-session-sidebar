@@ -66,7 +66,9 @@ main() {
   log_file="$state_dir/errors.log"
 
   mkdir -p "$state_dir"
+  chmod 0700 "$state_dir"
   touch "$log_file"
+  chmod 0600 "$log_file"
 
   if [ ! -x "$runtime_bin" ]; then
     log "$log_file" "runtime is not executable: $runtime_bin"

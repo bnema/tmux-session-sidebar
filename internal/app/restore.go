@@ -127,7 +127,7 @@ func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) error
 
 func bootstrapSidebarDaemon(ctx context.Context, _ io.Writer, ipcServer ports.IPCServerPort, router Router) error {
 	scope := CurrentRuntimeScope()
-	if err := os.MkdirAll(scope.Dir, 0o700); err != nil {
+	if err := EnsureRuntimeDirPrivate(scope.Dir); err != nil {
 		return err
 	}
 	restoreStderr, err := redirectStderrToRotatingLog(scope.ErrorsLogPath, maxSidebarLogBytes)
@@ -256,9 +256,7 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
+			stopTimerBestEffort(timer)
 			ipcWG.Wait()
 			metadataWG.Wait()
 			return nil

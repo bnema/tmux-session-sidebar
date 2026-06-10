@@ -136,7 +136,7 @@ func canonicalPath(path string) string {
 }
 
 func writeRuntimeScopeMetadata(scope RuntimeScope) error {
-	if err := os.MkdirAll(scope.Dir, 0o700); err != nil {
+	if err := EnsureRuntimeDirPrivate(scope.Dir); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(runtimeScopeMetadata{

@@ -12,3 +12,28 @@ jobs:
     uses: bnema/gh-actions/.github/workflows/go-release.yml@main
     with:
       go-version: stable
+
+  sign-checksum:
+    needs: [release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download checksums.txt from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "checksums.txt"
+      - name: Sign checksums.txt with secret signing key
+        env:
+          SIGN_KEY: ${{ secrets.UPDATE_RUNTIME_SIGN_KEY }}
+        run: |
+          printf '%s\n' "$SIGN_KEY" > /tmp/sign-key.pem
+          openssl dgst -sha256 -sign /tmp/sign-key.pem -out checksums.txt.sig checksums.txt
+          rm -f /tmp/sign-key.pem
+      - name: Upload checksums.txt.sig to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" checksums.txt.sig --repo "$GITHUB_REPOSITORY"

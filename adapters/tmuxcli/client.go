@@ -54,80 +54,61 @@ type Client struct {
 }
 
 func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
-	key, err := c.option(ctx, "@session-sidebar-key")
+	opts, err := c.loadOptionsMap(ctx)
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	width, err := c.option(ctx, "@session-sidebar-width")
+
+	get := func(name string) string { return opts[name] }
+	getInt := func(name string) (int, error) {
+		value := opts[name]
+		if value == "" {
+			return 0, nil
+		}
+		parsed, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil {
+			return 0, err
+		}
+		return parsed, nil
+	}
+
+	halfLifeHours, err := getInt("@session-sidebar-heat-half-life-hours")
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	roots, err := c.option(ctx, "@session-sidebar-project-roots")
+	staleHours, err := getInt("@session-sidebar-heat-stale-hours")
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	closeAfterSwitch, err := c.option(ctx, "@session-sidebar-close-after-switch")
+	refreshSeconds, err := getInt("@session-sidebar-heat-refresh-seconds")
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	heatColors, err := c.option(ctx, "@session-sidebar-heat-colors")
+	maxHighlighted, err := getInt("@session-sidebar-heat-max-highlighted")
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	halfLifeHours, err := c.optionInt(ctx, "@session-sidebar-heat-half-life-hours")
+	continuumGraceSeconds, err := getInt("@session-sidebar-continuum-grace-seconds")
 	if err != nil {
 		return ports.ConfigSnapshot{}, err
 	}
-	staleHours, err := c.optionInt(ctx, "@session-sidebar-heat-stale-hours")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
-	refreshSeconds, err := c.optionInt(ctx, "@session-sidebar-heat-refresh-seconds")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
-	recent, err := c.option(ctx, "@session-sidebar-heat-recent")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
+
+	key := get("@session-sidebar-key")
+	width := get("@session-sidebar-width")
+	roots := get("@session-sidebar-project-roots")
+	closeAfterSwitch := get("@session-sidebar-close-after-switch")
+	heatColors := get("@session-sidebar-heat-colors")
+	recent := get("@session-sidebar-heat-recent")
 	recentInterval := parseHeatRecentInterval(recent)
-	maxHighlighted, err := c.optionInt(ctx, "@session-sidebar-heat-max-highlighted")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
-	activityDebugLog, err := c.option(ctx, "@session-sidebar-activity-debug-log")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
-	agentAttention, err := c.option(ctx, "@session-sidebar-agent-attention")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
-	agentAttentionAnimation, err := c.option(ctx, "@session-sidebar-agent-attention-animation")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
-	autoSortRecent, err := c.option(ctx, "@session-sidebar-auto-sort-recent")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
+	activityDebugLog := get("@session-sidebar-activity-debug-log")
+	agentAttention := get("@session-sidebar-agent-attention")
+	agentAttentionAnimation := get("@session-sidebar-agent-attention-animation")
+	autoSortRecent := get("@session-sidebar-auto-sort-recent")
 	autoSortRecentInterval := parseAutoSortRecentInterval(autoSortRecent)
-	restoreSessionsMode, err := c.option(ctx, "@session-sidebar-restore-sessions")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
-	continuumGraceSeconds, err := c.optionInt(ctx, "@session-sidebar-continuum-grace-seconds")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
-	metadataSubline, err := c.option(ctx, "@session-sidebar-metadata-subline")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
-	metadataInactive, err := c.option(ctx, "@session-sidebar-metadata-inactive")
-	if err != nil {
-		return ports.ConfigSnapshot{}, err
-	}
+	restoreSessionsMode := get("@session-sidebar-restore-sessions")
+	metadataSubline := get("@session-sidebar-metadata-subline")
+	metadataInactive := get("@session-sidebar-metadata-inactive")
+
 	return ports.ConfigSnapshot{
 		Loaded:                  true,
 		KeyBinding:              key,
@@ -630,24 +611,48 @@ func splitProjectRoots(roots string) []string {
 	return filtered
 }
 
-func (c Client) option(ctx context.Context, name string) (string, error) {
-	result, err := c.Process.Exec(ctx, "tmux", []string{"show-options", "-gvq", name})
-	return strings.TrimSpace(result.Stdout), err
+func (c Client) loadOptionsMap(ctx context.Context) (map[string]string, error) {
+	result, err := c.Process.Exec(ctx, "tmux", []string{"show-options", "-g"})
+	if err != nil {
+		return nil, err
+	}
+	opts := make(map[string]string)
+	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, " ", 2)
+		if len(parts) >= 1 && parts[0] != "" {
+			if len(parts) == 2 {
+				opts[parts[0]] = tmuxUnquoteOptionValue(parts[1])
+			} else {
+				opts[parts[0]] = ""
+			}
+		}
+	}
+	return opts, nil
 }
 
-func (c Client) optionInt(ctx context.Context, name string) (int, error) {
-	value, err := c.option(ctx, name)
-	if err != nil {
-		return 0, err
+func tmuxUnquoteOptionValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "''" {
+		return ""
 	}
-	if value == "" {
-		return 0, nil
+	if len(value) >= 2 {
+		switch value[0] {
+		case '"':
+			if value[len(value)-1] == '"' {
+				if unquoted, err := strconv.Unquote(value); err == nil {
+					return unquoted
+				}
+			}
+		case '\'':
+			if value[len(value)-1] == '\'' {
+				return value[1 : len(value)-1]
+			}
+		}
 	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return 0, err
-	}
-	return parsed, nil
+	return value
 }
 
 func (c Client) display(ctx context.Context, format string) (string, error) {

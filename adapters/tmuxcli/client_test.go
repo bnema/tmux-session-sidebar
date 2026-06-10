@@ -3,6 +3,7 @@ package tmuxcli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -260,7 +261,7 @@ func TestLoadConfigFiltersProjectRoots(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
 	allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
-	expectLoadConfig(process, ctx, "b\n", "20\n", ":/a::/b:\n", "on\n", "on\n")
+	expectLoadConfig(process, ctx, "b\n", "30\n", ":/a::/b:\n", "on\n", "on\n")
 	got, err := (Client{Process: process}).LoadConfig(ctx)
 	if err != nil {
 		t.Fatalf("LoadConfig error: %v", err)
@@ -308,7 +309,7 @@ func TestLoadConfigParsesMetadataSublineBool(t *testing.T) {
 			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
 			allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
-			expectLoadConfigWithMetadata(process, ctx, "b\n", "20\n", "\n", "off\n", "off\n", tt.raw)
+			expectLoadConfigWithMetadata(process, ctx, "b\n", "30\n", "\n", "off\n", "off\n", tt.raw)
 
 			got, err := (Client{Process: process}).LoadConfig(ctx)
 			if err != nil {
@@ -335,7 +336,7 @@ func TestLoadConfigParsesMetadataInactiveBool(t *testing.T) {
 			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
 			allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
-			expectLoadConfigWithMetadataInactive(process, ctx, "b\n", "20\n", "\n", "off\n", "off\n", "on\n", tt.raw)
+			expectLoadConfigWithMetadataInactive(process, ctx, "b\n", "30\n", "\n", "off\n", "off\n", "on\n", tt.raw)
 
 			got, err := (Client{Process: process}).LoadConfig(ctx)
 			if err != nil {
@@ -364,7 +365,7 @@ func TestLoadConfigParsesAgentAttentionAnimation(t *testing.T) {
 			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
 			allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
-			expectLoadConfigWithAttentionAnimation(process, ctx, "b\n", "20\n", "\n", "off\n", "off\n", "on\n", "off\n", tt.raw)
+			expectLoadConfigWithAttentionAnimation(process, ctx, "b\n", "30\n", "\n", "off\n", "off\n", "on\n", "off\n", tt.raw)
 
 			got, err := (Client{Process: process}).LoadConfig(ctx)
 			if err != nil {
@@ -415,7 +416,7 @@ func TestLoadConfigParsesAutoSortRecentInterval(t *testing.T) {
 			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
 			allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
-			expectLoadConfig(process, ctx, "b\n", "20\n", "\n", "off\n", tt.raw)
+			expectLoadConfig(process, ctx, "b\n", "30\n", "\n", "off\n", tt.raw)
 
 			got, err := (Client{Process: process}).LoadConfig(ctx)
 			if err != nil {
@@ -425,6 +426,97 @@ func TestLoadConfigParsesAutoSortRecentInterval(t *testing.T) {
 				t.Fatalf("AutoSortRecentInterval = %v, want %v", got.AutoSortRecentInterval, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoadOptionsMapPreservesEmptyValues(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
+	// Line without trailing space after option name.
+	stdout := "@session-sidebar-key\n@session-sidebar-width 30\n@session-sidebar-project-roots \n@session-sidebar-close-after-switch off\n"
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-g"}).Return(ports.Result{Stdout: stdout}, nil)
+
+	opts, err := (Client{Process: process}).loadOptionsMap(ctx)
+	if err != nil {
+		t.Fatalf("loadOptionsMap error: %v", err)
+	}
+	if opts["@session-sidebar-key"] != "" {
+		t.Fatalf("key = %q, want empty for no-space line", opts["@session-sidebar-key"])
+	}
+	if opts["@session-sidebar-width"] != "30" {
+		t.Fatalf("width = %q, want 30", opts["@session-sidebar-width"])
+	}
+	if opts["@session-sidebar-project-roots"] != "" {
+		t.Fatalf("project-roots = %q, want empty for trailing-space line", opts["@session-sidebar-project-roots"])
+	}
+	if opts["@session-sidebar-close-after-switch"] != "off" {
+		t.Fatalf("close-after-switch = %q, want off", opts["@session-sidebar-close-after-switch"])
+	}
+}
+
+func TestLoadConfigParsesProjectRootsWithSpaces(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
+	// The roots value contains internal spaces.
+	expectLoadConfig(process, ctx, "b\n", "30\n", "/home/user/my project:/work\n", "off\n", "off\n")
+	got, err := (Client{Process: process}).LoadConfig(ctx)
+	if err != nil {
+		t.Fatalf("LoadConfig error: %v", err)
+	}
+	if len(got.ProjectRoots) != 2 {
+		t.Fatalf("ProjectRoots len = %d, want 2: %#v", len(got.ProjectRoots), got.ProjectRoots)
+	}
+	if got.ProjectRoots[0] != "/home/user/my project" {
+		t.Fatalf("ProjectRoots[0] = %q, want /home/user/my project", got.ProjectRoots[0])
+	}
+	if got.ProjectRoots[1] != "/work" {
+		t.Fatalf("ProjectRoots[1] = %q, want /work", got.ProjectRoots[1])
+	}
+}
+
+func TestLoadConfigParsesQuotedProjectRootsWithSpaces(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	allowMissingWindowLayoutOption(process, ctx, optionSidebarVisibleWindowLayout)
+	stdout := strings.Join([]string{
+		"@session-sidebar-key b",
+		"@session-sidebar-width 30",
+		"@session-sidebar-project-roots \"/home/user/my project:/work\"",
+		"@session-sidebar-close-after-switch off",
+		"@session-sidebar-heat-colors on",
+		"@session-sidebar-heat-half-life-hours 8",
+		"@session-sidebar-heat-stale-hours 24",
+		"@session-sidebar-heat-refresh-seconds 60",
+		"@session-sidebar-heat-recent 1h",
+		"@session-sidebar-heat-max-highlighted 0",
+		"@session-sidebar-activity-debug-log off",
+		"@session-sidebar-agent-attention on",
+		"@session-sidebar-agent-attention-animation pulse",
+		"@session-sidebar-auto-sort-recent off",
+		"@session-sidebar-restore-sessions auto",
+		"@session-sidebar-continuum-grace-seconds 3",
+		"@session-sidebar-metadata-subline ''",
+		"@session-sidebar-metadata-inactive off",
+	}, "\n") + "\n"
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-g"}).Return(ports.Result{Stdout: stdout}, nil)
+
+	got, err := (Client{Process: process}).LoadConfig(ctx)
+	if err != nil {
+		t.Fatalf("LoadConfig error: %v", err)
+	}
+	if len(got.ProjectRoots) != 2 {
+		t.Fatalf("ProjectRoots len = %d, want 2: %#v", len(got.ProjectRoots), got.ProjectRoots)
+	}
+	if got.ProjectRoots[0] != "/home/user/my project" {
+		t.Fatalf("ProjectRoots[0] = %q, want /home/user/my project", got.ProjectRoots[0])
+	}
+	if got.ProjectRoots[1] != "/work" {
+		t.Fatalf("ProjectRoots[1] = %q, want /work", got.ProjectRoots[1])
+	}
+	if !got.MetadataSublineEnabled {
+		t.Fatal("MetadataSublineEnabled = false, want default-on behavior for explicit empty string")
 	}
 }
 
@@ -441,24 +533,35 @@ func expectLoadConfigWithMetadataInactive(process *mocks.MockProcessPort, ctx co
 }
 
 func expectLoadConfigWithAttentionAnimation(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string, metadataSubline string, metadataInactive string, attentionAnimation string) {
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-key"}).Return(ports.Result{Stdout: key}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-width"}).Return(ports.Result{Stdout: width}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-project-roots"}).Return(ports.Result{Stdout: roots}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-close-after-switch"}).Return(ports.Result{Stdout: closeAfterSwitch}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-colors"}).Return(ports.Result{Stdout: "on\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-half-life-hours"}).Return(ports.Result{Stdout: "8\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-stale-hours"}).Return(ports.Result{Stdout: "24\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-refresh-seconds"}).Return(ports.Result{Stdout: "60\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-recent"}).Return(ports.Result{Stdout: "1h\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-heat-max-highlighted"}).Return(ports.Result{Stdout: "0\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-activity-debug-log"}).Return(ports.Result{Stdout: "off\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-agent-attention"}).Return(ports.Result{Stdout: "on\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-agent-attention-animation"}).Return(ports.Result{Stdout: attentionAnimation}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-auto-sort-recent"}).Return(ports.Result{Stdout: autoSortRecent}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-restore-sessions"}).Return(ports.Result{Stdout: "auto\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-continuum-grace-seconds"}).Return(ports.Result{Stdout: "3\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-metadata-subline"}).Return(ports.Result{Stdout: metadataSubline}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-gvq", "@session-sidebar-metadata-inactive"}).Return(ports.Result{Stdout: metadataInactive}, nil)
+	stdout := fmt.Sprintf(
+		"@session-sidebar-key %s\n"+
+			"@session-sidebar-width %s\n"+
+			"@session-sidebar-project-roots %s\n"+
+			"@session-sidebar-close-after-switch %s\n"+
+			"@session-sidebar-heat-colors on\n"+
+			"@session-sidebar-heat-half-life-hours 8\n"+
+			"@session-sidebar-heat-stale-hours 24\n"+
+			"@session-sidebar-heat-refresh-seconds 60\n"+
+			"@session-sidebar-heat-recent 1h\n"+
+			"@session-sidebar-heat-max-highlighted 0\n"+
+			"@session-sidebar-activity-debug-log off\n"+
+			"@session-sidebar-agent-attention on\n"+
+			"@session-sidebar-agent-attention-animation %s\n"+
+			"@session-sidebar-auto-sort-recent %s\n"+
+			"@session-sidebar-restore-sessions auto\n"+
+			"@session-sidebar-continuum-grace-seconds 3\n"+
+			"@session-sidebar-metadata-subline %s\n"+
+			"@session-sidebar-metadata-inactive %s\n",
+		strings.TrimSpace(key),
+		strings.TrimSpace(width),
+		strings.TrimSpace(roots),
+		strings.TrimSpace(closeAfterSwitch),
+		strings.TrimSpace(attentionAnimation),
+		strings.TrimSpace(autoSortRecent),
+		strings.TrimSpace(metadataSubline),
+		strings.TrimSpace(metadataInactive),
+	)
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-g"}).Return(ports.Result{Stdout: stdout}, nil)
 }
 
 func TestFindSidebarPaneIgnoresDeadMarkedPane(t *testing.T) {
