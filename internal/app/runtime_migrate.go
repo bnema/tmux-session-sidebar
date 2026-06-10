@@ -67,8 +67,6 @@ func ensureRuntimeStateMigrated(ctx context.Context, scope RuntimeScope) error {
 		return candidates[i].mtime > candidates[j].mtime
 	})
 
-	best := candidates[0]
-
 	if beforeMigrationStateLockForTest != nil {
 		beforeMigrationStateLockForTest()
 	}
@@ -97,6 +95,7 @@ func ensureRuntimeStateMigrated(ctx context.Context, scope RuntimeScope) error {
 		return nil
 	}
 
+	best := candidates[0]
 	data, err := os.ReadFile(best.tmuxJSONPath)
 	if err != nil {
 		return fmt.Errorf("read candidate tmux.json %s under lock: %w", best.tmuxJSONPath, err)

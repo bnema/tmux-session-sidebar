@@ -727,6 +727,29 @@ func TestCaptureLiveSessionsProtectedSkipsWhenLiveEmptyWithRichState(t *testing.
 	}
 }
 
+func TestCaptureLiveSessionsProtectedSkipsWhenOnlyPinsWouldBePruned(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockTmuxQueryPort(t)
+
+	initial := ports.PersistedState{
+		PinnedSessions: []string{"alpha"},
+		PinColors:      map[string]string{"alpha": "red"},
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "__startup"}}, nil)
+	// No Save expectation — guardrail prevents pruning pins/colors.
+
+	captured, err := NewService(nil, query, nil, store).CaptureLiveSessionsProtected(ctx, serverID)
+	if err != nil {
+		t.Fatalf("CaptureLiveSessionsProtected error: %v", err)
+	}
+	if captured {
+		t.Fatal("CaptureLiveSessionsProtected captured = true, want false")
+	}
+}
+
 func TestCaptureLiveSessionsProtectedAllowsWhenStateEmpty(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"

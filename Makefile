@@ -3,7 +3,7 @@ PLUGIN_REPO ?= bnema/$(PLUGIN_NAME)
 TPM_DIR ?= $(HOME)/.tmux/plugins
 TARGET_DIR ?= $(TPM_DIR)/$(PLUGIN_NAME)
 
-.PHONY: install uninstall mocks test-go test-runtime-bootstrap build-runtime restart-runtime update-runtime
+.PHONY: install uninstall mocks test-go test-runtime-bootstrap build-runtime dev-runtime prod-runtime restart-runtime update-runtime
 
 install:
 	@mkdir -p "$(TPM_DIR)"
@@ -36,10 +36,32 @@ build-runtime:
 		fi; \
 		echo "Updated tmux plugin runtime -> $$runtime_bin"
 
+dev-runtime:
+	@runtime_bin="$$(TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1 bash scripts/update-runtime.sh --ensure)"; status=$$?; \
+		if [ $$status -ne 0 ] || [ -z "$$runtime_bin" ]; then \
+			echo "Failed to update tmux plugin dev runtime" >&2; \
+			exit 1; \
+		fi; \
+		touch .bin/.dev-runtime; \
+		pkill -f "$$runtime_bin daemon serve-ui" 2>/dev/null || true; \
+		pkill -f "$$runtime_bin daemon bootstrap" 2>/dev/null || true; \
+		pkill -f "$$runtime_bin daemon serve" 2>/dev/null || true; \
+		if command -v tmux >/dev/null 2>&1; then \
+			tmux kill-session -t __tmux-session-sidebar 2>/dev/null || true; \
+		fi; \
+		echo "Updated dev runtime -> $$runtime_bin"; \
+		echo "Dev runtime marker written to .bin/.dev-runtime"; \
+		echo "Sidebar closed; reopen it manually to use the dev binary."
+
+prod-runtime:
+	@rm -f .bin/.dev-runtime
+	@bash scripts/update-runtime.sh
+
 restart-runtime:
 	@TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1 bash scripts/update-runtime.sh
 
 update-runtime:
+	@rm -f .bin/.dev-runtime
 	@bash scripts/update-runtime.sh
 
 uninstall:

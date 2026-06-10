@@ -331,6 +331,23 @@ test_downloads_latest_release_even_when_go_is_available() {
   assert_eq "downloaded-runtime" "$($expected)" "downloaded runtime should be executable"
 }
 
+test_dev_marker_prefers_source_even_when_release_is_available() {
+  local root expected output
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  rm -rf "$root/plugin/.bin"
+  mkdir -p "$root/plugin/.bin"
+  : >"$root/plugin/.bin/.dev-runtime"
+  prepare_release_download_fixture "$root" keep-go
+
+  output="$(run_ensure "$root")"
+
+  assert_eq "$expected" "$output" "dev marker should still return plugin-local runtime"
+  [ ! -e "$root/curl.log" ] || fail "dev marker should prevent release download during ensure"
+  assert_file_contains "$root/go-build.log" "build $root/plugin/.bin/source." "dev marker should trigger source build"
+  assert_eq "built-runtime" "$("$expected")" "dev marker should keep source-built runtime executable"
+}
+
 test_reuses_cached_release_when_go_is_available() {
   local root expected output
   root="$(new_fixture)"
@@ -512,6 +529,7 @@ test_runtime_rebuilds_for_untracked_source_files
 test_existing_runtime_is_reused_when_go_is_unavailable
 test_downloads_latest_release_when_go_is_unavailable_and_runtime_missing
 test_downloads_latest_release_even_when_go_is_available
+test_dev_marker_prefers_source_even_when_release_is_available
 test_reuses_cached_release_when_go_is_available
 test_refreshes_existing_release_runtime_when_requested
 test_matching_release_stamp_refreshes_invalid_cached_runtime

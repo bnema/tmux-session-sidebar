@@ -37,6 +37,7 @@ PLUGIN_DIR="$(cd "$("$DIRNAME_BIN" "${BASH_SOURCE[0]}")/.." && "$PWD_BIN")" || e
 BIN_DIR="$PLUGIN_DIR/.bin"
 runtime_bin="$BIN_DIR/tmux-session-sidebar"
 stamp_file="$BIN_DIR/.build-fingerprint"
+dev_marker_file="$BIN_DIR/.dev-runtime"
 RELEASE_REPO="${TMUX_SESSION_SIDEBAR_RELEASE_REPO:-bnema/tmux-session-sidebar}"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar"
 TMUX_CONF="${TMUX_CONF:-}"
@@ -331,10 +332,14 @@ ensure_source_runtime() {
   printf '%s\n' "$runtime_bin"
 }
 
+prefer_source_runtime() {
+  [ "${TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE:-}" = "1" ] || [ -f "$dev_marker_file" ]
+}
+
 ensure_runtime() {
   local release_status
   "$MKDIR_BIN" -p "$BIN_DIR"
-  if [ "${TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE:-}" != "1" ]; then
+  if ! prefer_source_runtime; then
     if ensure_release_runtime; then
       return 0
     else
