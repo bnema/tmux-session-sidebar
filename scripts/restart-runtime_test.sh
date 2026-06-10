@@ -42,6 +42,9 @@ PKILL
   cat >"$fakebin/tmux" <<'TMUX'
 #!/usr/bin/env bash
 printf 'tmux %s\n' "$*" >>"$TEST_LOG"
+if [ "$1" = display-message ] && [ "${*: -1}" = '#{config_files}' ]; then
+  printf '%s\n' "${TEST_TMUX_CONFIG_FILES:-}"
+fi
 TMUX
   cat >"$fakebin/ps" <<'PS'
 #!/usr/bin/env bash
@@ -61,7 +64,7 @@ run_restart() {
   local root="$1" state_home
   state_home="${XDG_STATE_HOME:-$root/statehome}"
   mkdir -p "$state_home"
-  TEST_ROOT="$root" TEST_LOG="$root/log" TEST_RUNTIME="$(cd "$(dirname "$0")/.." && pwd)/.bin/tmux-session-sidebar" XDG_STATE_HOME="$state_home" PATH="$root/fakebin:$PATH" "$(dirname "$0")/restart-runtime.sh"
+  TEST_ROOT="$root" TEST_LOG="$root/log" TEST_RUNTIME="$(cd "$(dirname "$0")/.." && pwd)/.bin/tmux-session-sidebar" XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$root/config}" XDG_STATE_HOME="$state_home" PATH="$root/fakebin:$PATH" "$(dirname "$0")/restart-runtime.sh"
 }
 
 test_restarts_tmux_sidebar_runtime_processes_and_hidden_session() {
@@ -71,9 +74,30 @@ test_restarts_tmux_sidebar_runtime_processes_and_hidden_session() {
   runtime_path="$(cd "$(dirname "$0")/.." && pwd)/.bin/tmux-session-sidebar"
   runtime_pattern="${runtime_path//./\\.}"
   assert_line_equals "$root/log" 1 "pkill -f $runtime_pattern daemon serve-ui" "restart should stop existing sidebar UI first with escaped plugin-local runtime scope"
-  assert_line_equals "$root/log" 2 "pkill -f $runtime_pattern daemon serve" "restart should stop existing daemon next with escaped plugin-local runtime scope"
-  assert_line_equals "$root/log" 3 "tmux kill-session -t __tmux-session-sidebar" "restart should remove hidden sidebar session"
-  assert_line_equals "$root/log" 4 "tmux source-file $HOME/.tmux.conf" "restart should reload tmux config last"
+  assert_line_equals "$root/log" 2 "pkill -f $runtime_pattern daemon bootstrap" "restart should stop plugin bootstrap daemon with escaped plugin-local runtime scope"
+  assert_line_equals "$root/log" 3 "pkill -f $runtime_pattern daemon serve" "restart should stop existing daemon next with escaped plugin-local runtime scope"
+  assert_line_equals "$root/log" 4 "tmux kill-session -t __tmux-session-sidebar" "restart should remove hidden sidebar session"
+  assert_line_equals "$root/log" 5 "tmux display-message -p #{config_files}" "restart should inspect active tmux config files before fallback"
+  assert_line_equals "$root/log" 6 "tmux source-file $HOME/.tmux.conf" "restart should reload fallback tmux config last"
+}
+
+test_sources_active_tmux_config_files() {
+  local root first_conf second_conf runtime_path runtime_pattern
+  root="$(new_fixture)"
+  first_conf="$root/first.conf"
+  second_conf="$root/second.conf"
+  : >"$first_conf"
+  : >"$second_conf"
+  TEST_TMUX_CONFIG_FILES="$first_conf,$second_conf" run_restart "$root"
+  runtime_path="$(cd "$(dirname "$0")/.." && pwd)/.bin/tmux-session-sidebar"
+  runtime_pattern="${runtime_path//./\\.}"
+  assert_line_equals "$root/log" 1 "pkill -f $runtime_pattern daemon serve-ui" "restart should stop sidebar UI before sourcing configs"
+  assert_line_equals "$root/log" 2 "pkill -f $runtime_pattern daemon bootstrap" "restart should stop bootstrap daemon before sourcing configs"
+  assert_line_equals "$root/log" 3 "pkill -f $runtime_pattern daemon serve" "restart should stop serve daemon before sourcing configs"
+  assert_line_equals "$root/log" 4 "tmux kill-session -t __tmux-session-sidebar" "restart should remove hidden sidebar session before sourcing configs"
+  assert_line_equals "$root/log" 5 "tmux display-message -p #{config_files}" "restart should query active tmux config files"
+  assert_line_equals "$root/log" 6 "tmux source-file $first_conf" "restart should reload first active tmux config"
+  assert_line_equals "$root/log" 7 "tmux source-file $second_conf" "restart should reload second active tmux config"
 }
 
 test_stops_pidfile_daemon_before_fallback_and_reload() {
@@ -97,6 +121,7 @@ test_stops_pidfile_daemon_before_fallback_and_reload() {
 }
 
 test_restarts_tmux_sidebar_runtime_processes_and_hidden_session
+test_sources_active_tmux_config_files
 test_stops_pidfile_daemon_before_fallback_and_reload
 
 echo "restart-runtime tests passed"

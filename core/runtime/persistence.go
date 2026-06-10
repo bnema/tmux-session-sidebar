@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bnema/tmux-session-sidebar/core/heat"
+	"github.com/bnema/tmux-session-sidebar/core/persisted"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
@@ -105,27 +106,12 @@ func (s *Service) RestorePersistedSessions(ctx context.Context, serverID string,
 }
 
 func (s *Service) CaptureLiveSessions(ctx context.Context, serverID string) error {
-	if s.store == nil {
-		return ErrMissingStateStore
-	}
-	if s.tmuxQuery == nil {
-		return ErrMissingTmuxQuery
-	}
+	_, err := s.captureLiveSessions(ctx, serverID, nil, false)
+	return err
+}
 
-	state, err := s.store.Load(ctx, serverID)
-	if err != nil {
-		return err
-	}
-	live, err := s.tmuxQuery.ListSessions(ctx)
-	if err != nil {
-		return err
-	}
-	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
-	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
-	state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
-	state.PinColors = reconcilePinColors(state.PinColors, live)
-	_ = s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
-	return s.store.Save(ctx, serverID, state)
+func (s *Service) CaptureLiveSessionsProtected(ctx context.Context, serverID string) (bool, error) {
+	return s.captureLiveSessions(ctx, serverID, nil, true)
 }
 
 func (s *Service) CaptureSessionHeat(ctx context.Context, serverID string) error {
@@ -149,28 +135,51 @@ func (s *Service) CaptureSessionHeat(ctx context.Context, serverID string) error
 }
 
 func (s *Service) CaptureLiveSessionsWithConfig(ctx context.Context, serverID string, snapshot ports.ConfigSnapshot) error {
+	_, err := s.captureLiveSessions(ctx, serverID, &snapshot, false)
+	return err
+}
+
+func (s *Service) CaptureLiveSessionsWithConfigProtected(ctx context.Context, serverID string, snapshot ports.ConfigSnapshot) (bool, error) {
+	return s.captureLiveSessions(ctx, serverID, &snapshot, true)
+}
+
+// captureLiveSessions is the shared implementation for all CaptureLiveSessions variants.
+// snapshot controls heat config and recent-session-order behavior: non-nil activates
+// captureHeatIntoState with the provided config and applyRecentSessionOrderAfterCapture;
+// nil loads heat config from tmux and skips recent-session-order.
+// protectEmpty controls whether a destructive-empty skip is applied: when true and no
+// persistable sessions are live but the persisted state is meaningful, the capture is
+// skipped to guard against overwriting restored state during startup/restore windows.
+func (s *Service) captureLiveSessions(ctx context.Context, serverID string, snapshot *ports.ConfigSnapshot, protectEmpty bool) (bool, error) {
 	if s.store == nil {
-		return ErrMissingStateStore
+		return false, ErrMissingStateStore
 	}
 	if s.tmuxQuery == nil {
-		return ErrMissingTmuxQuery
+		return false, ErrMissingTmuxQuery
 	}
 
 	state, err := s.store.Load(ctx, serverID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	live, err := s.tmuxQuery.ListSessions(ctx)
 	if err != nil {
-		return err
+		return false, err
+	}
+	if protectEmpty && persistableSessionCount(live) == 0 && persisted.IsMeaningful(state) {
+		return false, nil
 	}
 	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
 	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
 	state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
 	state.PinColors = reconcilePinColors(state.PinColors, live)
-	capture := s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot))
-	applyRecentSessionOrderAfterCapture(&state, live, snapshot, time.Now(), capture)
-	return s.store.Save(ctx, serverID, state)
+	if snapshot != nil {
+		capture := s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(*snapshot))
+		applyRecentSessionOrderAfterCapture(&state, live, *snapshot, time.Now(), capture)
+	} else {
+		_ = s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
+	}
+	return true, s.store.Save(ctx, serverID, state)
 }
 
 func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID string, snapshot ports.ConfigSnapshot) error {
@@ -259,6 +268,18 @@ func reconcilePinColors(colors map[string]string, live []ports.TmuxSessionSnapsh
 		liveNames = append(liveNames, session.Name)
 	}
 	return sessions.ReconcileNamedStrings(colors, liveNames)
+}
+
+// persistableSessionCount returns the number of live sessions whose name
+// qualifies for persistence (valid, non-hidden, non-numeric).
+func persistableSessionCount(live []ports.TmuxSessionSnapshot) int {
+	count := 0
+	for _, s := range live {
+		if sessions.IsPersistableName(s.Name) {
+			count++
+		}
+	}
+	return count
 }
 
 func orderedPersistedSessionNames(state ports.PersistedState) []string {
