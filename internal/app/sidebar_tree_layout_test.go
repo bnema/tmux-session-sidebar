@@ -570,27 +570,48 @@ func sidebarTreeFakeTmuxScript(metadataInactive string) string {
 	return `#!/usr/bin/env bash
 case "$1" in
   show-options)
-    case "$3" in
-      @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
-      @session-sidebar-project-roots) printf '\n' ;;
-      @session-sidebar-close-after-switch) printf 'off\n' ;;
-      @session-sidebar-heat-colors) printf 'on\n' ;;
-      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
-      @session-sidebar-heat-stale-hours) printf '24\n' ;;
-      @session-sidebar-heat-refresh-seconds) printf '60\n' ;;
-      @session-sidebar-heat-recent) printf '1h\n' ;;
-      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
-      @session-sidebar-activity-debug-log) printf 'off\n' ;;
-      @session-sidebar-agent-attention) printf 'off\n' ;;
-      @session-sidebar-agent-attention-animation) printf 'pulse\n' ;;
-      @session-sidebar-auto-sort-recent) printf 'off\n' ;;
-      @session-sidebar-restore-sessions) printf 'auto\n' ;;
-      @session-sidebar-continuum-grace-seconds) printf '3\n' ;;
-      @session-sidebar-metadata-subline) printf 'on\n' ;;
-      @session-sidebar-metadata-inactive) printf '` + metadataInactive + `\n' ;;
-      *) printf '\n' ;;
-    esac ;;
+    if [ "$2" = "-g" ] && [ $# -eq 2 ]; then
+      printf '@session-sidebar-key M-b\n'
+      printf '@session-sidebar-width 30\n'
+      printf '@session-sidebar-project-roots \n'
+      printf '@session-sidebar-close-after-switch off\n'
+      printf '@session-sidebar-heat-colors on\n'
+      printf '@session-sidebar-heat-half-life-hours 8\n'
+      printf '@session-sidebar-heat-stale-hours 24\n'
+      printf '@session-sidebar-heat-refresh-seconds 60\n'
+      printf '@session-sidebar-heat-recent 1h\n'
+      printf '@session-sidebar-heat-max-highlighted 0\n'
+      printf '@session-sidebar-activity-debug-log off\n'
+      printf '@session-sidebar-agent-attention off\n'
+      printf '@session-sidebar-agent-attention-animation pulse\n'
+      printf '@session-sidebar-auto-sort-recent off\n'
+      printf '@session-sidebar-restore-sessions auto\n'
+      printf '@session-sidebar-continuum-grace-seconds 3\n'
+      printf '@session-sidebar-metadata-subline on\n'
+      printf '@session-sidebar-metadata-inactive ` + metadataInactive + `\n'
+    else
+      case "$3" in
+        @session-sidebar-key) printf 'M-b\n' ;;
+        @session-sidebar-width) printf '30\n' ;;
+        @session-sidebar-project-roots) printf '\n' ;;
+        @session-sidebar-close-after-switch) printf 'off\n' ;;
+        @session-sidebar-heat-colors) printf 'on\n' ;;
+        @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+        @session-sidebar-heat-stale-hours) printf '24\n' ;;
+        @session-sidebar-heat-refresh-seconds) printf '60\n' ;;
+        @session-sidebar-heat-recent) printf '1h\n' ;;
+        @session-sidebar-heat-max-highlighted) printf '0\n' ;;
+        @session-sidebar-activity-debug-log) printf 'off\n' ;;
+        @session-sidebar-agent-attention) printf 'off\n' ;;
+        @session-sidebar-agent-attention-animation) printf 'pulse\n' ;;
+        @session-sidebar-auto-sort-recent) printf 'off\n' ;;
+        @session-sidebar-restore-sessions) printf 'auto\n' ;;
+        @session-sidebar-continuum-grace-seconds) printf '3\n' ;;
+        @session-sidebar-metadata-subline) printf 'on\n' ;;
+        @session-sidebar-metadata-inactive) printf '` + metadataInactive + `\n' ;;
+        *) printf '\n' ;;
+      esac
+    fi ;;
   display-message) printf 'alpha\n' ;;
   list-sessions) printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n' ;;
   list-clients) ;;

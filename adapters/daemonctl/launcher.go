@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bnema/tmux-session-sidebar/internal/app"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -36,9 +37,9 @@ func (l Launcher) EnsureStarted(ctx context.Context) error {
 	}
 	stateDir := strings.TrimSpace(l.StateDir)
 	if stateDir == "" {
-		stateDir = os.TempDir()
+		stateDir = filepath.Join(os.TempDir(), ".tmux-session-sidebar-daemon")
 	}
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+	if err := app.EnsureRuntimeDirPrivate(stateDir); err != nil {
 		return err
 	}
 	logPath := filepath.Join(stateDir, "errors.log")

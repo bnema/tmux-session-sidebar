@@ -177,7 +177,7 @@ case "$1" in
   show-options)
     case "$3" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-heat-colors) printf 'on\n' ;;
@@ -210,28 +210,49 @@ func TestReconcileSidebarVisibilityForClientReopensGlobalSidebarForOwnerClient(t
 	installFakeTmux(t, `#!/usr/bin/env bash
 case "$1" in
   show-options)
-    case "$3" in
-      @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
-      @session-sidebar-project-roots) printf '\n' ;;
-      @session-sidebar-close-after-switch) printf 'off\n' ;;
-      @session-sidebar-heat-colors) printf 'on\n' ;;
-      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
-      @session-sidebar-heat-stale-hours) printf '24\n' ;;
-      @session-sidebar-heat-refresh-seconds) printf '60\n' ;;
-      @session-sidebar-heat-recent) printf '1h\n' ;;
-      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
-      @session-sidebar-activity-debug-log) printf 'off\n' ;;
-      @session-sidebar-agent-attention) printf 'on\n' ;;
-      *) printf '\n' ;;
-    esac ;;
+    if [ "$2" = "-g" ] && [ $# -eq 2 ]; then
+      printf '@session-sidebar-key M-b\n'
+      printf '@session-sidebar-width 30\n'
+      printf '@session-sidebar-project-roots \n'
+      printf '@session-sidebar-close-after-switch off\n'
+      printf '@session-sidebar-heat-colors on\n'
+      printf '@session-sidebar-heat-half-life-hours 8\n'
+      printf '@session-sidebar-heat-stale-hours 24\n'
+      printf '@session-sidebar-heat-refresh-seconds 60\n'
+      printf '@session-sidebar-heat-recent 1h\n'
+      printf '@session-sidebar-heat-max-highlighted 0\n'
+      printf '@session-sidebar-activity-debug-log off\n'
+      printf '@session-sidebar-agent-attention on\n'
+      printf '@session-sidebar-agent-attention-animation pulse\n'
+      printf '@session-sidebar-auto-sort-recent off\n'
+      printf '@session-sidebar-restore-sessions auto\n'
+      printf '@session-sidebar-continuum-grace-seconds 0\n'
+      printf '@session-sidebar-metadata-subline off\n'
+      printf '@session-sidebar-metadata-inactive off\n'
+    else
+      case "$3" in
+        @session-sidebar-key) printf 'M-b\n' ;;
+        @session-sidebar-width) printf '30\n' ;;
+        @session-sidebar-project-roots) printf '\n' ;;
+        @session-sidebar-close-after-switch) printf 'off\n' ;;
+        @session-sidebar-heat-colors) printf 'on\n' ;;
+        @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+        @session-sidebar-heat-stale-hours) printf '24\n' ;;
+        @session-sidebar-heat-refresh-seconds) printf '60\n' ;;
+        @session-sidebar-heat-recent) printf '1h\n' ;;
+        @session-sidebar-heat-max-highlighted) printf '0\n' ;;
+        @session-sidebar-activity-debug-log) printf 'off\n' ;;
+        @session-sidebar-agent-attention) printf 'on\n' ;;
+        *) printf '\n' ;;
+      esac
+    fi ;;
   *) ;;
 esac
 `)
 	tmux := mocks.NewMockTmuxSidebarPort(t)
 	tmux.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
 	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
-	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "20").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
+	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "30").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
 
 	if err := reconcileSidebarVisibilityForClient(ctx, "client-1", tmux); err != nil {
 		t.Fatalf("reconcileSidebarVisibilityForClient error: %v", err)

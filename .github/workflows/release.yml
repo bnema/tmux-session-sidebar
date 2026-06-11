@@ -12,3 +12,36 @@ jobs:
     uses: bnema/gh-actions/.github/workflows/go-release.yml@main
     with:
       go-version: stable
+
+  sign-checksum:
+    needs: [release]
+    runs-on: ubuntu-latest
+    permissions:
+      # Required to upload the detached checksum signature asset onto the GitHub release.
+      contents: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - name: Download checksums.txt from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "checksums.txt"
+      - name: Sign checksums.txt with secret signing key
+        env:
+          SIGN_KEY: ${{ secrets.UPDATE_RUNTIME_SIGN_KEY }}
+        run: |
+          umask 077
+          key_file="$RUNNER_TEMP/update-runtime-sign-key.pem"
+          trap 'rm -f "$key_file"' EXIT
+          printf '%s\n' "$SIGN_KEY" > "$key_file"
+          openssl dgst -sha256 -sign "$key_file" -out checksums.txt.sig checksums.txt
+      - name: Verify checksums.txt signature before upload
+        run: |
+          openssl dgst -sha256 -verify scripts/update-runtime.pub.pem -signature checksums.txt.sig checksums.txt
+      - name: Upload checksums.txt.sig to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" checksums.txt.sig --clobber --repo "$GITHUB_REPOSITORY"

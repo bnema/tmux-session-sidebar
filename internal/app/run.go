@@ -144,7 +144,7 @@ func leafCommand(use string, short string, run func(*cobra.Command, []string) er
 }
 
 func addRuntimeFlags(flags *pflag.FlagSet) {
-	for _, name := range []string{"agent", "client", "confirmed", "event", "name", "pane", "project-path", "session", "slot", "window"} {
+	for _, name := range []string{"agent", "attach-target", "category-id", "client", "confirmed", "event", "name", "pane", "pane-id", "project-path", "session", "session-id", "slot", "source-path", "width", "window"} {
 		flags.String(name, "", "runtime value passed by tmux-session-sidebar")
 	}
 	flags.BoolP("yes", "y", false, "assume yes when installing or uninstalling hooks")

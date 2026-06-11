@@ -171,24 +171,6 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 			err = errors.Join(err, closeErr)
 		}
 	}()
-	refreshIfChanged := func(didChange bool) error {
-		if !didChange {
-			return nil
-		}
-		markChanged()
-		notifier.Signal()
-		return nil
-	}
-	for name := range terminalDeletes {
-		didChange, err := s.saveMetadataDelete(ctx, lockStore, liveNames, name)
-		if err != nil {
-			return changed, err
-		}
-		if err := refreshIfChanged(didChange); err != nil {
-			return changed, err
-		}
-	}
-
 	captureCtx, cancelCapture := context.WithCancel(ctx)
 	defer cancelCapture()
 	jobs := make(chan metadataCaptureJob)
@@ -224,31 +206,31 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 		close(results)
 	}()
 
+	deletes := make(map[string]struct{}, len(terminalDeletes))
+	for name := range terminalDeletes {
+		deletes[name] = struct{}{}
+	}
+	statuses := make(map[string]ports.GitStatus)
+
 	for result := range results {
 		if result.Err != nil {
 			if errors.Is(result.Err, ports.ErrNotGitRepository) || errors.Is(result.Err, ports.ErrGitPathMissing) {
-				didChange, err := s.saveMetadataDelete(ctx, lockStore, liveNames, result.SessionName)
-				if err != nil {
-					return changed, err
-				}
-				if err := refreshIfChanged(didChange); err != nil {
-					return changed, err
-				}
+				deletes[result.SessionName] = struct{}{}
 				continue
 			}
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: git status failed for session %q path %q: %v\n", result.SessionName, result.Path, result.Err)
 			continue
 		}
-		didChange, err := s.saveMetadataStatus(ctx, lockStore, liveNames, result.SessionName, result.Status)
-		if err != nil {
-			return changed, err
-		}
-		if err := refreshIfChanged(didChange); err != nil {
-			return changed, err
-		}
+		statuses[result.SessionName] = result.Status
 	}
 	if err := ctx.Err(); err != nil {
 		return changed, err
+	}
+	if didChange, err := s.batchMetadataSave(ctx, lockStore, liveNames, deletes, statuses); err != nil {
+		return changed, err
+	} else if didChange {
+		markChanged()
+		notifier.Signal()
 	}
 	return changed, nil
 }
@@ -318,7 +300,7 @@ type metadataCaptureResult struct {
 	Err         error
 }
 
-func (s *MetadataService) saveMetadataStatus(ctx context.Context, lockStore func(context.Context, func(ports.StateStorePort) error) error, liveNames map[string]struct{}, sessionName string, status ports.GitStatus) (bool, error) {
+func (s *MetadataService) batchMetadataSave(ctx context.Context, lockStore func(context.Context, func(ports.StateStorePort) error) error, liveNames map[string]struct{}, deletes map[string]struct{}, statuses map[string]ports.GitStatus) (bool, error) {
 	changed := false
 	err := lockStore(ctx, func(store ports.StateStorePort) error {
 		latest, err := store.Load(ctx, "tmux")
@@ -326,26 +308,10 @@ func (s *MetadataService) saveMetadataStatus(ctx context.Context, lockStore func
 			return err
 		}
 		next := liveMetadata(latest.Metadata, liveNames)
-		next[sessionName] = status
-		if gitMetadataEqual(latest.Metadata, next) {
-			return nil
+		for name := range deletes {
+			delete(next, name)
 		}
-		latest.Metadata = next
-		changed = true
-		return store.Save(ctx, "tmux", latest)
-	})
-	return changed, err
-}
-
-func (s *MetadataService) saveMetadataDelete(ctx context.Context, lockStore func(context.Context, func(ports.StateStorePort) error) error, liveNames map[string]struct{}, sessionName string) (bool, error) {
-	changed := false
-	err := lockStore(ctx, func(store ports.StateStorePort) error {
-		latest, err := store.Load(ctx, "tmux")
-		if err != nil {
-			return err
-		}
-		next := liveMetadata(latest.Metadata, liveNames)
-		delete(next, sessionName)
+		maps.Copy(next, statuses)
 		if gitMetadataEqual(latest.Metadata, next) {
 			return nil
 		}

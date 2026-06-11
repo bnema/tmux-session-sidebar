@@ -86,7 +86,7 @@ set -g @session-sidebar-metadata-inactive 'on'
 | `@session-sidebar-metadata-subline` | `on` | Show an event-driven metadata line under each session when available; set to `off` to keep one-line session rows |
 | `@session-sidebar-metadata-inactive` | `on` | Show metadata lines outside the active category in the category tree layout; set to `off` for active-category-only metadata |
 
-Persistent state and the daemon IPC socket are stored under `${XDG_STATE_HOME:-~/.local/state}/tmux-session-sidebar`.
+Persistent state and runtime files are stored under the state root `${XDG_STATE_HOME:-~/.local/state}/tmux-session-sidebar`. Inside tmux, runtime-specific files — `daemon.pid`, `sidebar.sock`, `errors.log`, and per-server state — live under `servers/<hash>/` below that root so that each tmux server gets its own isolated scope. Outside tmux the legacy root layout is used instead.
 
 ## Daemon lifecycle
 
@@ -96,10 +96,23 @@ Reloading tmux starts or restarts the Go runtime daemon through the plugin boots
 tmux source-file ~/.tmux.conf
 ```
 
-If the daemon exits later, sidebar open/close/toggle/refresh actions attempt a lightweight background restart before falling back to direct handling. Reload tmux to force a clean restart. To stop it manually, kill the PID recorded in the state directory:
+If the daemon exits later, sidebar open/close/toggle/refresh actions attempt a lightweight background restart before falling back to direct handling. Reload tmux to force a clean restart. To stop it manually, locate the daemon PID for your runtime scope. Inside tmux the PID is stored per tmux server under `servers/<hash>/` below the state root; outside tmux the legacy root-level file is used:
 
 ```bash
-kill "$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar/daemon.pid")"
+# List all daemon PID files across all scopes:
+find "${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar" -name daemon.pid 2>/dev/null
+
+# Inspect which PID file belongs to your tmux server (hash derived from
+# tmux server socket and PID):
+ls -la "${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar/servers/"
+
+# Kill with the correct PID file for your scope:
+# (adjust <hash> to match the directory for your tmux server)
+pkill -F "${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar/servers/<hash>/daemon.pid" 2>/dev/null || \
+  pkill -F "${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar/daemon.pid"
+
+# Reloading tmux is the simplest way to force a clean restart:
+tmux source-file ~/.tmux.conf
 ```
 
 To inspect the hidden sidebar session:
@@ -294,7 +307,12 @@ make restart-runtime
 make update-runtime
 make test-go
 make test-runtime-bootstrap
+make test-race
+make lint
 ```
+
+Run `make ci` before pushing to run the full CI-equivalent gate: shell/bootstrap
+tests, race-enabled Go tests, and lint.
 
 `make install` symlinks this checkout into `~/.tmux/plugins/tmux-session-sidebar`.
 

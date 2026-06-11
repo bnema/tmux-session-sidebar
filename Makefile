@@ -3,7 +3,7 @@ PLUGIN_REPO ?= bnema/$(PLUGIN_NAME)
 TPM_DIR ?= $(HOME)/.tmux/plugins
 TARGET_DIR ?= $(TPM_DIR)/$(PLUGIN_NAME)
 
-.PHONY: install uninstall mocks test-go test-runtime-bootstrap build-runtime dev-runtime prod-runtime restart-runtime update-runtime
+.PHONY: install uninstall mocks test-go test-runtime-bootstrap lint test-race ci build-runtime dev-runtime prod-runtime restart-runtime update-runtime
 
 install:
 	@mkdir -p "$(TPM_DIR)"
@@ -27,6 +27,21 @@ test-runtime-bootstrap:
 	@bash scripts/remove-git-update-hook_test.sh
 	@bash scripts/daemon-control_test.sh
 	@bash scripts/restart-runtime_test.sh
+
+lint:
+	@golangci-lint run --timeout=5m
+
+test-race:
+	@go test -race ./...
+
+ci:
+	@echo "=== Shell/bootstrap tests ==="
+	@$(MAKE) test-runtime-bootstrap
+	@echo "=== Race-enabled tests ==="
+	@$(MAKE) test-race
+	@echo "=== Lint ==="
+	@$(MAKE) lint
+	@echo "=== CI equivalent passed ==="
 
 build-runtime:
 	@runtime_bin="$$(TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1 bash scripts/update-runtime.sh --ensure)"; status=$$?; \

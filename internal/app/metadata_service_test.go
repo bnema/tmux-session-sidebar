@@ -102,11 +102,20 @@ func TestMetadataServiceCaptureAndRefreshPublishesReadyMetadataBeforeSlowRepoFin
 	done := make(chan error, 1)
 	go func() { done <- svc.CaptureAndRefresh(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true}) }()
 
-	eventually(t, func() bool {
-		return store.metadata("alpha").Modified == 1 && refresher.callCount() >= 1
-	})
+	// Strict batch mode does not publish partial metadata before all repos finish.
+	select {
+	case err := <-done:
+		t.Fatalf("CaptureAndRefresh finished before slow repo release: %v", err)
+	default:
+	}
+	if got := store.metadata("alpha"); got.Modified != 0 {
+		t.Fatalf("fast metadata was saved before slow repo release: %#v", got)
+	}
 	if got := store.metadata("beta"); got.Modified != 0 {
 		t.Fatalf("slow metadata was saved before release: %#v", got)
+	}
+	if refresher.callCount() != 0 {
+		t.Fatalf("refresh calls before slow repo release = %d, want 0", refresher.callCount())
 	}
 	git.release("/slow")
 	select {
@@ -117,8 +126,17 @@ func TestMetadataServiceCaptureAndRefreshPublishesReadyMetadataBeforeSlowRepoFin
 	case <-time.After(time.Second):
 		t.Fatal("CaptureAndRefresh did not finish after slow repo release")
 	}
+	if got := store.metadata("alpha"); got.Modified != 1 {
+		t.Fatalf("alpha metadata = %#v, want fast status", got)
+	}
 	if got := store.metadata("beta"); got.Modified != 2 {
-		t.Fatalf("slow metadata after release = %#v, want beta status", got)
+		t.Fatalf("beta metadata = %#v, want beta status", got)
+	}
+	if refresher.callCount() != 1 {
+		t.Fatalf("refresh calls after changed capture = %d, want 1", refresher.callCount())
+	}
+	if store.saveCount() != 1 {
+		t.Fatalf("save calls after changed capture = %d, want 1", store.saveCount())
 	}
 }
 
@@ -144,6 +162,29 @@ func TestMetadataServiceCapturePersistsStaleMetadataPruneWhenLiveStatusUnchanged
 	store.mu.Unlock()
 	if ok {
 		t.Fatalf("stale metadata survived: %#v", state.Metadata)
+	}
+}
+
+func TestMetadataServiceCapturePrunesStaleMetadataWithoutStatusResults(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{
+		"gone": {RepoRoot: "/gone", Branch: "old", Modified: 9},
+	}}}
+	tmux := metadataFakeTmux{sessions: nil, paths: map[string]string{}}
+	git := metadataFakeGit{}
+	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
+
+	changed, err := svc.Capture(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	if err != nil {
+		t.Fatalf("Capture error: %v", err)
+	}
+	if !changed {
+		t.Fatal("Capture changed = false, want stale metadata prune to be persisted")
+	}
+	if _, ok := store.state.Metadata["gone"]; ok {
+		t.Fatalf("stale metadata survived without status results: %#v", store.state.Metadata)
+	}
+	if store.saveCount() != 1 {
+		t.Fatalf("save calls = %d, want 1", store.saveCount())
 	}
 }
 
@@ -180,7 +221,7 @@ func TestMetadataServiceCaptureAndRefreshDoesNotBlockResultDrainOnSlowRefresh(t 
 	go func() { done <- svc.CaptureAndRefresh(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true}) }()
 
 	eventually(t, func() bool {
-		return refresher.callCount() >= 1 && store.metadata("alpha").Modified == 1 && store.metadata("beta").Modified == 2 && store.metadata("gamma").Modified == 3
+		return refresher.callCount() == 1 && store.metadata("alpha").Modified == 1 && store.metadata("beta").Modified == 2 && store.metadata("gamma").Modified == 3
 	})
 	select {
 	case err := <-done:
@@ -211,17 +252,24 @@ func TestMetadataServiceCaptureAndRefreshRefreshesOnlyWhenMetadataChanges(t *tes
 	if refresher.callCount() != 1 {
 		t.Fatalf("refresh calls after changed capture = %d, want 1", refresher.callCount())
 	}
+	if store.saveCount() != 1 {
+		t.Fatalf("save calls after changed capture = %d, want 1", store.saveCount())
+	}
 	if err := svc.CaptureAndRefresh(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true}); err != nil {
 		t.Fatalf("CaptureAndRefresh second error: %v", err)
 	}
 	if refresher.callCount() != 1 {
 		t.Fatalf("refresh calls after unchanged capture = %d, want still 1", refresher.callCount())
 	}
+	if store.saveCount() != 1 {
+		t.Fatalf("save calls after unchanged capture = %d, want still 1", store.saveCount())
+	}
 }
 
 type metadataFakeStore struct {
 	mu    sync.Mutex
 	state ports.PersistedState
+	saves atomic.Int64
 }
 
 func (s *metadataFakeStore) Load(ctx context.Context, serverID string) (ports.PersistedState, error) {
@@ -234,6 +282,7 @@ func (s *metadataFakeStore) Save(ctx context.Context, serverID string, state por
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state = cloneMetadataState(state)
+	s.saves.Add(1)
 	return nil
 }
 
@@ -241,6 +290,10 @@ func (s *metadataFakeStore) metadata(name string) ports.GitStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state.Metadata[name]
+}
+
+func (s *metadataFakeStore) saveCount() int64 {
+	return s.saves.Load()
 }
 
 func cloneMetadataState(state ports.PersistedState) ports.PersistedState {

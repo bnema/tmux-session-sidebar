@@ -27,6 +27,11 @@ func (s Server) Serve(ctx context.Context, handler ports.IPCHandler) error {
 		return err
 	}
 	defer func() { _ = listener.Close() }()
+	// Restrict socket permissions so that only the owner can connect.
+	if err := os.Chmod(s.SocketPath, 0o600); err != nil {
+		_ = listener.Close()
+		return err
+	}
 	go func() {
 		<-ctx.Done()
 		_ = listener.Close()

@@ -218,6 +218,10 @@ write_invalid_release() {
     checksum="$(shasum -a 256 "$root/release.tar.gz")"
   fi
   printf '%s  tmux-session-sidebar_Linux_x86_64.tar.gz\n' "${checksum%% *}" >"$root/checksums.txt"
+  # Re-sign the modified checksums.txt so signature verification still passes
+  if [ -f "$root/sign-key.pem" ]; then
+    openssl dgst -sha256 -sign "$root/sign-key.pem" -out "$root/checksums.txt.sig" "$root/checksums.txt" 2>/dev/null
+  fi
 }
 
 prepare_release_download_fixture() {
@@ -255,6 +259,12 @@ RUNTIME
     checksum="$(shasum -a 256 "$root/release.tar.gz")"
   fi
   printf '%s  tmux-session-sidebar_Linux_x86_64.tar.gz\n' "${checksum%% *}" >"$root/checksums.txt"
+  # Generate test signing keypair and sign checksums.txt for signature verification
+  if command -v openssl >/dev/null 2>&1; then
+    openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$root/sign-key.pem" 2>/dev/null
+    openssl pkey -in "$root/sign-key.pem" -pubout -out "$root/plugin/scripts/update-runtime.pub.pem" 2>/dev/null
+    openssl dgst -sha256 -sign "$root/sign-key.pem" -out "$root/checksums.txt.sig" "$root/checksums.txt" 2>/dev/null
+  fi
   ln -s "$bash_bin" "$root/fakebin/bash"
   write_exec_wrapper "$root/fakebin/dirname" "$dirname_bin"
   write_exec_wrapper "$root/fakebin/pwd" "$pwd_bin"
@@ -295,11 +305,16 @@ done
 [ -n "$out" ] || { echo "missing output" >&2; exit 1; }
 printf '%s\n' "$url" >>"$TEST_ROOT/curl.log"
 case "$url" in
+  */checksums.txt.sig) cp "$TEST_ROOT/checksums.txt.sig" "$out" ;;
   */checksums.txt) cp "$TEST_ROOT/checksums.txt" "$out" ;;
   *) cp "$TEST_ROOT/release.tar.gz" "$out" ;;
 esac
 CURLFAKE
   chmod +x "$root/fakebin/curl"
+  # Make openssl available in the restricted PATH for signature verification
+  if command -v openssl >/dev/null 2>&1; then
+    ln -sf "$(command -v openssl)" "$root/fakebin/openssl"
+  fi
 }
 
 test_downloads_latest_release_when_go_is_unavailable_and_runtime_missing() {
@@ -474,6 +489,10 @@ test_rejects_downloaded_runtime_with_checksum_mismatch() {
   rm -rf "$root/plugin/.bin"
   prepare_release_download_fixture "$root"
   printf '0000000000000000000000000000000000000000000000000000000000000000  tmux-session-sidebar_Linux_x86_64.tar.gz\n' >"$root/checksums.txt"
+  # Re-sign so signature verification passes and test reaches checksum verification
+  if [ -f "$root/sign-key.pem" ]; then
+    openssl dgst -sha256 -sign "$root/sign-key.pem" -out "$root/checksums.txt.sig" "$root/checksums.txt" 2>/dev/null
+  fi
 
   set +e
   output="$(TEST_ROOT="$root" PATH="$root/fakebin" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
@@ -495,6 +514,10 @@ test_rejects_downloaded_runtime_without_checksum_entry() {
   rm -rf "$root/plugin/.bin"
   prepare_release_download_fixture "$root"
   printf '0000000000000000000000000000000000000000000000000000000000000000  other.tar.gz\n' >"$root/checksums.txt"
+  # Re-sign so signature verification passes and test reaches checksum verification
+  if [ -f "$root/sign-key.pem" ]; then
+    openssl dgst -sha256 -sign "$root/sign-key.pem" -out "$root/checksums.txt.sig" "$root/checksums.txt" 2>/dev/null
+  fi
 
   set +e
   output="$(TEST_ROOT="$root" PATH="$root/fakebin" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
@@ -538,5 +561,94 @@ test_invalid_release_does_not_fall_back_to_source_when_go_is_available
 test_rejects_go_build_runtime_without_version_output
 test_rejects_downloaded_runtime_with_checksum_mismatch
 test_rejects_downloaded_runtime_without_checksum_entry
+
+# ---------------------------------------------------------------------------
+# Signature verification tests
+# ---------------------------------------------------------------------------
+
+test_ensure_signature_verification_passes_for_valid_release() {
+  local root expected output
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  rm -rf "$root/plugin/.bin"
+  prepare_release_download_fixture "$root"
+
+  [ -f "$root/plugin/scripts/update-runtime.pub.pem" ] || fail "public key not generated"
+  [ -f "$root/checksums.txt.sig" ] || fail "signature not generated"
+
+  output="$(TEST_ROOT="$root" PATH="$root/fakebin" "$root/plugin/scripts/ensure-runtime.sh")"
+
+  assert_eq "$expected" "$output" "valid signature should allow release install"
+  assert_eq "downloaded-runtime" "$("$expected")" "downloaded runtime should be executable under valid signature"
+}
+
+test_ensure_missing_signature_fails_install() {
+  local root expected output status
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  rm -rf "$root/plugin/.bin"
+  prepare_release_download_fixture "$root"
+  rm -f "$root/checksums.txt.sig"
+
+  set +e
+  output="$(TEST_ROOT="$root" PATH="$root/fakebin" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
+  status="$?"
+  set -e
+
+  [ "$status" -ne 0 ] || fail "missing signature should fail ensure"
+  case "$output" in
+    *"failed to download signature"*|*"release artifact failed validation"*) ;;
+    *) fail "missing signature should report download failure, got: $output" ;;
+  esac
+  [ ! -e "$expected" ] || fail "missing signature should not install runtime"
+}
+
+test_ensure_bad_signature_fails_install() {
+  local root expected output status
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  rm -rf "$root/plugin/.bin"
+  prepare_release_download_fixture "$root"
+  printf 'BAD_SIGNATURE' >"$root/checksums.txt.sig"
+
+  set +e
+  output="$(TEST_ROOT="$root" PATH="$root/fakebin" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
+  status="$?"
+  set -e
+
+  [ "$status" -ne 0 ] || fail "bad signature should fail ensure"
+  case "$output" in
+    *"signature verification failed"*) ;;
+    *) fail "bad signature should report verification failure, got: $output" ;;
+  esac
+  [ ! -e "$expected" ] || fail "bad signature should not install runtime"
+}
+
+test_ensure_signature_verified_before_checksum() {
+  local root expected output status
+  root="$(new_fixture)"
+  expected="$root/plugin/.bin/tmux-session-sidebar"
+  rm -rf "$root/plugin/.bin"
+  prepare_release_download_fixture "$root"
+  # Bad checksum should NOT be reached because corrupt sig is caught first
+  printf 'BAD_SIGNATURE' >"$root/checksums.txt.sig"
+  printf '0000000000000000000000000000000000000000000000000000000000000000  tmux-session-sidebar_Linux_x86_64.tar.gz\n' >"$root/checksums.txt"
+
+  set +e
+  output="$(TEST_ROOT="$root" PATH="$root/fakebin" "$root/plugin/scripts/ensure-runtime.sh" 2>&1)"
+  status="$?"
+  set -e
+
+  [ "$status" -ne 0 ] || fail "corrupt sig should fail ensure before checksum check"
+  case "$output" in
+    *"signature verification failed"*) ;;
+    *) fail "signature failure should be reported before checksum, got: $output" ;;
+  esac
+}
+
+test_ensure_signature_verification_passes_for_valid_release
+test_ensure_missing_signature_fails_install
+test_ensure_bad_signature_fails_install
+test_ensure_signature_verified_before_checksum
 
 echo "ensure-runtime tests passed"

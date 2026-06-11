@@ -77,6 +77,28 @@ assert_file_line_contains() {
   esac
 }
 
+test_creates_state_dir_with_private_permissions() {
+  local root
+  root="$(new_fixture)"
+  run_control "$root"
+
+  dir_perm="$(stat -c '%a' "$root/state" 2>/dev/null || stat -f '%OLp' "$root/state" 2>/dev/null || true)"
+  if [ -z "$dir_perm" ]; then
+    fail "cannot determine state dir permissions"
+  fi
+  if [ "$dir_perm" != "700" ]; then
+    fail "state dir permissions: $dir_perm, want 700"
+  fi
+
+  log_perm="$(stat -c '%a' "$root/state/errors.log" 2>/dev/null || stat -f '%OLp' "$root/state/errors.log" 2>/dev/null || true)"
+  if [ -z "$log_perm" ]; then
+    fail "cannot determine log file permissions"
+  fi
+  if [ "$log_perm" != "600" ]; then
+    fail "log file permissions: $log_perm, want 600"
+  fi
+}
+
 test_starts_runtime_when_no_existing_pid() {
   local root
   root="$(new_fixture)"
@@ -123,8 +145,48 @@ test_logs_and_aborts_when_existing_daemon_ignores_term() {
   trap - RETURN
 }
 
+test_preserves_existing_log_history() {
+  local root
+  root="$(new_fixture)"
+  printf 'previous diagnostic\n' >"$root/state/errors.log"
+
+  run_control "$root"
+
+  assert_file_contains "$root/state/errors.log" "previous diagnostic" "daemon control should preserve existing log history"
+}
+
+test_rejects_symlink_state_dir() {
+  local root target
+  root="$(new_fixture)"
+  target="$(mktemp -d)"
+  TEMP_ROOTS+=("$target")
+  rm -rf "$root/state"
+  ln -s "$target" "$root/state"
+
+  if run_control "$root"; then
+    fail "daemon control should reject a symlink state dir"
+  fi
+}
+
+test_rejects_symlink_log_file() {
+  local root target
+  root="$(new_fixture)"
+  target="$(mktemp)"
+  TEMP_ROOTS+=("$target")
+  rm -f "$root/state/errors.log"
+  ln -s "$target" "$root/state/errors.log"
+
+  if run_control "$root"; then
+    fail "daemon control should reject a symlink log file"
+  fi
+}
+
+test_creates_state_dir_with_private_permissions
 test_starts_runtime_when_no_existing_pid
 test_stops_existing_matching_daemon_before_restart
 test_logs_and_aborts_when_existing_daemon_ignores_term
+test_preserves_existing_log_history
+test_rejects_symlink_state_dir
+test_rejects_symlink_log_file
 
 echo "daemon-control tests passed"

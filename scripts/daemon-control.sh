@@ -6,6 +6,36 @@ log() {
   printf 'tmux-session-sidebar: %s\n' "$message" >>"$log_file"
 }
 
+ensure_private_state_paths() {
+  local state_dir="$1" log_file="$2"
+
+  if [ -L "$state_dir" ]; then
+    echo "tmux-session-sidebar: refusing symlink state dir: $state_dir" >&2
+    return 1
+  fi
+  if [ -e "$state_dir" ] && [ ! -d "$state_dir" ]; then
+    echo "tmux-session-sidebar: refusing non-directory state dir: $state_dir" >&2
+    return 1
+  fi
+
+  mkdir -p "$state_dir"
+  chmod 0700 "$state_dir"
+
+  if [ -L "$log_file" ]; then
+    echo "tmux-session-sidebar: refusing symlink log file: $log_file" >&2
+    return 1
+  fi
+  if [ -e "$log_file" ] && [ ! -f "$log_file" ]; then
+    echo "tmux-session-sidebar: refusing non-file log path: $log_file" >&2
+    return 1
+  fi
+
+  if [ ! -e "$log_file" ]; then
+    : >"$log_file"
+  fi
+  chmod 0600 "$log_file"
+}
+
 is_sidebar_daemon_pid() {
   local pid="$1" runtime_bin="$2" command
   [ -n "$pid" ] || return 1
@@ -65,8 +95,7 @@ main() {
   pid_file="$state_dir/daemon.pid"
   log_file="$state_dir/errors.log"
 
-  mkdir -p "$state_dir"
-  touch "$log_file"
+  ensure_private_state_paths "$state_dir" "$log_file" || exit 1
 
   if [ ! -x "$runtime_bin" ]; then
     log "$log_file" "runtime is not executable: $runtime_bin"

@@ -105,14 +105,35 @@ func TestDaemonEnsureRestoreSessionsOnOverridesContinuumStartupWindow(t *testing
 printf '%s\n' "$*" >> "$TMUX_LOG"
 case "$1" in
   show-options)
-    case "${@: -1}" in
-      @continuum-restore) printf 'on\n' ;;
-      @continuum-restore-max-delay) printf '10\n' ;;
-      @resurrect-restore-script-path) printf '/tmp/resurrect/restore.sh\n' ;;
-      @session-sidebar-restore-sessions) printf 'on\n' ;;
-      @session-sidebar-continuum-grace-seconds) printf '3\n' ;;
-      *) printf '\n' ;;
-    esac ;;
+    if [ "$2" = "-g" ] && [ $# -eq 2 ]; then
+      printf '@session-sidebar-key b\n'
+      printf '@session-sidebar-width 30\n'
+      printf '@session-sidebar-project-roots \n'
+      printf '@session-sidebar-close-after-switch off\n'
+      printf '@session-sidebar-heat-colors on\n'
+      printf '@session-sidebar-heat-half-life-hours 8\n'
+      printf '@session-sidebar-heat-stale-hours 24\n'
+      printf '@session-sidebar-heat-refresh-seconds 60\n'
+      printf '@session-sidebar-heat-recent 1h\n'
+      printf '@session-sidebar-heat-max-highlighted 0\n'
+      printf '@session-sidebar-activity-debug-log off\n'
+      printf '@session-sidebar-agent-attention on\n'
+      printf '@session-sidebar-agent-attention-animation pulse\n'
+      printf '@session-sidebar-auto-sort-recent off\n'
+      printf '@session-sidebar-restore-sessions on\n'
+      printf '@session-sidebar-continuum-grace-seconds 3\n'
+      printf '@session-sidebar-metadata-subline off\n'
+      printf '@session-sidebar-metadata-inactive off\n'
+    else
+      case "${@: -1}" in
+        @continuum-restore) printf 'on\n' ;;
+        @continuum-restore-max-delay) printf '10\n' ;;
+        @resurrect-restore-script-path) printf '/tmp/resurrect/restore.sh\n' ;;
+        @session-sidebar-restore-sessions) printf 'on\n' ;;
+        @session-sidebar-continuum-grace-seconds) printf '3\n' ;;
+        *) printf '\n' ;;
+      esac
+    fi ;;
   display-message)
     case "${@: -1}" in
       '#{start_time}') printf '%s\n' "$(date +%s)" ;;
@@ -164,7 +185,7 @@ case "$1" in
   show-options)
     case "$3" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-heat-half-life-hours) printf '8\n' ;;
@@ -273,7 +294,7 @@ case "$1" in
   show-options)
     case "${@: -1}" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-heat-colors) printf 'on\n' ;;
@@ -339,21 +360,42 @@ func TestDaemonServeRefreshesOpenSidebarsAfterHeatTick(t *testing.T) {
 printf '%s\n' "$*" >> "$TMUX_LOG"
 case "$1" in
   show-options)
-    case "$3" in
-      @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
-      @session-sidebar-project-roots) printf '\n' ;;
-      @session-sidebar-close-after-switch) printf 'off\n' ;;
-      @session-sidebar-heat-colors) printf 'on\n' ;;
-      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
-      @session-sidebar-heat-stale-hours) printf '24\n' ;;
-      @session-sidebar-heat-refresh-seconds) printf '1\n' ;;
-      @session-sidebar-heat-recent) printf '1h\n' ;;
-      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
-      @session-sidebar-activity-debug-log) printf 'off\n' ;;
-      @session-sidebar-agent-attention) printf 'on\n' ;;
-      *) printf '\n' ;;
-    esac ;;
+    if [ "$2" = "-g" ] && [ $# -eq 2 ]; then
+      printf '@session-sidebar-key M-b\n'
+      printf '@session-sidebar-width 30\n'
+      printf '@session-sidebar-project-roots \n'
+      printf '@session-sidebar-close-after-switch off\n'
+      printf '@session-sidebar-heat-colors on\n'
+      printf '@session-sidebar-heat-half-life-hours 8\n'
+      printf '@session-sidebar-heat-stale-hours 24\n'
+      printf '@session-sidebar-heat-refresh-seconds 1\n'
+      printf '@session-sidebar-heat-recent 1h\n'
+      printf '@session-sidebar-heat-max-highlighted 0\n'
+      printf '@session-sidebar-activity-debug-log off\n'
+      printf '@session-sidebar-agent-attention on\n'
+      printf '@session-sidebar-agent-attention-animation pulse\n'
+      printf '@session-sidebar-auto-sort-recent off\n'
+      printf '@session-sidebar-restore-sessions off\n'
+      printf '@session-sidebar-continuum-grace-seconds 0\n'
+      printf '@session-sidebar-metadata-subline off\n'
+      printf '@session-sidebar-metadata-inactive off\n'
+    else
+      case "$3" in
+        @session-sidebar-key) printf 'M-b\n' ;;
+        @session-sidebar-width) printf '30\n' ;;
+        @session-sidebar-project-roots) printf '\n' ;;
+        @session-sidebar-close-after-switch) printf 'off\n' ;;
+        @session-sidebar-heat-colors) printf 'on\n' ;;
+        @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+        @session-sidebar-heat-stale-hours) printf '24\n' ;;
+        @session-sidebar-heat-refresh-seconds) printf '1\n' ;;
+        @session-sidebar-heat-recent) printf '1h\n' ;;
+        @session-sidebar-heat-max-highlighted) printf '0\n' ;;
+        @session-sidebar-activity-debug-log) printf 'off\n' ;;
+        @session-sidebar-agent-attention) printf 'on\n' ;;
+        *) printf '\n' ;;
+      esac
+    fi ;;
   list-sessions) printf '$1\talpha\t1\t0\n' ;;
   list-clients) ;;
   list-panes)
@@ -407,7 +449,7 @@ case "$1" in
   show-options)
     case "$3" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-heat-half-life-hours) printf '8\n' ;;
@@ -439,7 +481,7 @@ case "$1" in
   show-options)
     case "$3" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-heat-half-life-hours) printf '8\n' ;;
@@ -586,7 +628,7 @@ case "$1" in
   show-options)
     case "$3" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-heat-colors) printf 'on\n' ;;
@@ -648,7 +690,7 @@ case "$1" in
   show-options)
     case "${@: -1}" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-agent-attention) printf 'on\n' ;;
@@ -694,7 +736,7 @@ case "$1" in
   show-options)
     case "${@: -1}" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-agent-attention) printf 'on\n' ;;
@@ -750,7 +792,7 @@ case "$1" in
     fi
     case "${@: -1}" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-agent-attention) printf 'on\n' ;;
@@ -827,7 +869,7 @@ case "$1" in
   show-options)
     case "$3" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-heat-colors) printf 'on\n' ;;

@@ -109,7 +109,7 @@ case "$1" in
   show-options)
     case "$3" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-heat-colors) printf 'on\n' ;;
@@ -157,7 +157,7 @@ case "$1" in
   show-options)
     case "$3" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-heat-colors) printf 'on\n' ;;
@@ -204,7 +204,7 @@ case "$1" in
   show-options)
     case "$3" in
       @session-sidebar-key) printf 'M-b\n' ;;
-      @session-sidebar-width) printf '20\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
       @session-sidebar-project-roots) printf '\n' ;;
       @session-sidebar-close-after-switch) printf 'off\n' ;;
       @session-sidebar-heat-colors) printf 'on\n' ;;
