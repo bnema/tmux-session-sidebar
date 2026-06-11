@@ -177,6 +177,56 @@ run_update() {
   TEST_ROOT="$root" XDG_STATE_HOME="$root/statehome" TMUX_CONF="$root/tmux.conf" PATH="$root/fakebin:$PATH" "$root/plugin/scripts/update-runtime.sh" "$@"
 }
 
+run_download_release_candidate_probe() {
+  local root="$1" verify_exit="$2" check_scope="$3"
+  TEST_ROOT="$root" UPDATE_RUNTIME_PATH="$root/plugin/scripts/update-runtime.sh" VERIFY_EXIT="$verify_exit" CHECK_SCOPE="$check_scope" bash <<'EOF'
+set -euo pipefail
+
+temp_script="$TEST_ROOT/sourceable-update-runtime.sh"
+sed '$d' "$UPDATE_RUNTIME_PATH" >"$temp_script"
+# shellcheck source=/dev/null
+source "$temp_script"
+
+BIN_DIR="$TEST_ROOT/probe-bin"
+RELEASE_REPO="bnema/tmux-session-sidebar"
+mkdir -p "$BIN_DIR"
+cat >"$TEST_ROOT/fake-curl-probe" <<'CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) shift; out="$1" ;;
+  esac
+  shift || true
+done
+: >"$out"
+CURL
+chmod +x "$TEST_ROOT/fake-curl-probe"
+CURL_BIN="$TEST_ROOT/fake-curl-probe"
+release_os() { printf 'Linux'; }
+release_arch() { printf 'x86_64'; }
+log_update() { :; }
+verify_release_signature() { return "$VERIFY_EXIT"; }
+
+if [ "$CHECK_SCOPE" = 1 ]; then
+  unset -v checksums_sig_url checksums_sig || true
+fi
+
+set +e
+download_release_candidate "$BIN_DIR/candidate" >/dev/null
+status="$?"
+set -e
+
+if [ "$CHECK_SCOPE" = 1 ]; then
+  [ "${checksums_sig_url+x}" != x ] || exit 10
+  [ "${checksums_sig+x}" != x ] || exit 11
+fi
+
+exit "$status"
+EOF
+}
+
 test_manual_update_refreshes_release_replaces_runtime_and_restarts_tmux() {
   local root expected
   root="$(new_fixture)"
@@ -404,9 +454,40 @@ test_release_only_mode_fails_on_missing_signature() {
   esac
 }
 
+test_download_release_candidate_preserves_missing_openssl_exit_code() {
+  local root status
+  root="$(new_fixture)"
+
+  set +e
+  run_download_release_candidate_probe "$root" 3 0
+  status="$?"
+  set -e
+
+  assert_eq "3" "$status" "download_release_candidate should preserve verify_release_signature exit code 3"
+}
+
+test_download_release_candidate_scopes_signature_paths_locally() {
+  local root status
+  root="$(new_fixture)"
+
+  set +e
+  run_download_release_candidate_probe "$root" 1 1
+  status="$?"
+  set -e
+
+  case "$status" in
+    2) ;;
+    10) fail "download_release_candidate should not leak checksums_sig_url into global scope" ;;
+    11) fail "download_release_candidate should not leak checksums_sig into global scope" ;;
+    *) fail "unexpected probe status: $status" ;;
+  esac
+}
+
 test_signature_verification_passes_for_valid_release
 test_missing_signature_asset_fails_install
 test_bad_signature_fails_install
 test_release_only_mode_fails_on_missing_signature
+test_download_release_candidate_preserves_missing_openssl_exit_code
+test_download_release_candidate_scopes_signature_paths_locally
 
 echo "update-runtime tests passed"

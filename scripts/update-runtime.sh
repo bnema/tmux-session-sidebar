@@ -268,7 +268,7 @@ cached_release_valid() {
 }
 
 download_release_candidate() {
-  local candidate="$1" archive arch asset checksum checksums checksums_url os tmp_dir tmp_runtime url verify_status version
+  local candidate="$1" archive arch asset checksum checksums checksums_sig checksums_sig_url checksums_url os tmp_dir tmp_runtime url verify_status version
   [ -n "$CURL_BIN" ] || return 1
   [ -n "$TAR_BIN" ] || return 1
   [ -n "$UNAME_BIN" ] || return 1
@@ -290,8 +290,11 @@ download_release_candidate() {
     echo "tmux-session-sidebar: failed to download signature file; release authenticity cannot be verified" >&2
     "$RM_BIN" -rf "$tmp_dir"; return 2;
   }
-  if ! verify_release_signature "$checksums" "$checksums_sig"; then
-    verify_status="$?"
+  set +e
+  verify_release_signature "$checksums" "$checksums_sig"
+  verify_status="$?"
+  set -e
+  if [ "$verify_status" -ne 0 ]; then
     "$RM_BIN" -rf "$tmp_dir"
     if [ "$verify_status" -eq 3 ]; then
       return 3

@@ -30,7 +30,9 @@ ensure_private_state_paths() {
     return 1
   fi
 
-  : >"$log_file"
+  if [ ! -e "$log_file" ]; then
+    : >"$log_file"
+  fi
   chmod 0600 "$log_file"
 }
 

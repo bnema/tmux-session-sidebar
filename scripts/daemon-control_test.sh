@@ -145,6 +145,16 @@ test_logs_and_aborts_when_existing_daemon_ignores_term() {
   trap - RETURN
 }
 
+test_preserves_existing_log_history() {
+  local root
+  root="$(new_fixture)"
+  printf 'previous diagnostic\n' >"$root/state/errors.log"
+
+  run_control "$root"
+
+  assert_file_contains "$root/state/errors.log" "previous diagnostic" "daemon control should preserve existing log history"
+}
+
 test_rejects_symlink_state_dir() {
   local root target
   root="$(new_fixture)"
@@ -175,6 +185,7 @@ test_creates_state_dir_with_private_permissions
 test_starts_runtime_when_no_existing_pid
 test_stops_existing_matching_daemon_before_restart
 test_logs_and_aborts_when_existing_daemon_ignores_term
+test_preserves_existing_log_history
 test_rejects_symlink_state_dir
 test_rejects_symlink_log_file
 
