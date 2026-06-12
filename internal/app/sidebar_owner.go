@@ -21,20 +21,15 @@ func (r sidebarOwnerResolver) ResolveActionClient(ctx context.Context, flags map
 		return client
 	}
 	state, err := persistedSidebarState(ctx)
-	if err != nil || !state.Open {
+	if err != nil {
 		return ""
 	}
-	owner := strings.TrimSpace(state.OwnerClient)
-	if owner == "" {
-		return r.clientViewingSidebarPane(ctx)
+	if state.Open {
+		if client := r.uniqueClientViewingVisibleSidebarPane(ctx); client != "" {
+			return client
+		}
 	}
-	if tmuxClientExists(ctx, owner) {
-		return owner
-	}
-	if viewingClient := r.clientViewingSidebarPane(ctx); viewingClient != "" {
-		return viewingClient
-	}
-	return owner
+	return strings.TrimSpace(state.OwnerClient)
 }
 
 func (r sidebarOwnerResolver) AdoptOpenSidebar(ctx context.Context, client string) error {
@@ -50,20 +45,7 @@ func (r sidebarOwnerResolver) AdoptOpenSidebar(ctx context.Context, client strin
 	})
 }
 
-func tmuxClientExists(ctx context.Context, client string) bool {
-	out, err := tmux(ctx, "list-clients", "-F", "#{client_name}")
-	if err != nil {
-		return true
-	}
-	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
-		if strings.TrimSpace(line) == client {
-			return true
-		}
-	}
-	return false
-}
-
-func (r sidebarOwnerResolver) clientViewingSidebarPane(ctx context.Context) string {
+func (r sidebarOwnerResolver) uniqueClientViewingVisibleSidebarPane(ctx context.Context) string {
 	pane := strings.TrimSpace(r.environ("TMUX_PANE"))
 	if pane == "" {
 		return ""
@@ -80,14 +62,23 @@ func (r sidebarOwnerResolver) clientViewingSidebarPane(ctx context.Context) stri
 	if err != nil {
 		return ""
 	}
+	var viewer string
 	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		fields := strings.Split(line, "\t")
 		if len(fields) < 3 || isInternalHookSession(fields[2]) {
 			continue
 		}
-		if strings.TrimSpace(fields[1]) == windowID {
-			return strings.TrimSpace(fields[0])
+		if strings.TrimSpace(fields[1]) != windowID {
+			continue
 		}
+		client := strings.TrimSpace(fields[0])
+		if client == "" {
+			continue
+		}
+		if viewer != "" {
+			return ""
+		}
+		viewer = client
 	}
-	return ""
+	return viewer
 }

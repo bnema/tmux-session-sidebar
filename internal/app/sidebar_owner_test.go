@@ -14,21 +14,46 @@ func TestSidebarOwnerResolverUsesExplicitClient(t *testing.T) {
 	}
 }
 
-func TestSidebarOwnerResolverUsesLivePersistedOwner(t *testing.T) {
+func TestSidebarOwnerResolverUsesUniqueClientViewingSidebarPaneBeforePersistedOwner(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	installFakeTmux(t, `#!/usr/bin/env bash
-case "$1" in
-  list-clients) printf 'client-1\nclient-2\n' ;;
+case "$1 $2" in
+  "list-clients -F")
+    case "$3" in
+      "#{client_name}") printf 'client-owner\nclient-viewer\n' ;;
+      *) printf 'client-owner\t@2\talpha\nclient-viewer\t@1\tbeta\nclient-sidebar\t@1\ttmux-session-sidebar\n' ;;
+    esac ;;
+  "display-message -p") printf '@1\n' ;;
 esac
 `)
 	ctx := context.Background()
-	if err := saveSidebarVisibility(ctx, true, "client-1"); err != nil {
+	if err := saveSidebarVisibility(ctx, true, "client-owner"); err != nil {
 		t.Fatalf("saveSidebarVisibility: %v", err)
 	}
 
+	resolver := sidebarOwnerResolver{environ: func(name string) string {
+		if name == "TMUX_PANE" {
+			return "%sidebar"
+		}
+		return ""
+	}}
+	if got := resolver.ResolveActionClient(ctx, nil); got != "client-viewer" {
+		t.Fatalf("ResolveActionClient = %q, want unique sidebar viewer", got)
+	}
+}
+
+func TestSidebarOwnerResolverFallsBackToPersistedOwnerWhenSidebarHidden(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: false, OwnerClient: "client-owner"}
+	}); err != nil {
+		t.Fatalf("seed sidebar state: %v", err)
+	}
+
 	resolver := sidebarOwnerResolver{environ: func(string) string { return "" }}
-	if got := resolver.ResolveActionClient(ctx, nil); got != "client-1" {
-		t.Fatalf("ResolveActionClient owner = %q, want client-1", got)
+	if got := resolver.ResolveActionClient(ctx, nil); got != "client-owner" {
+		t.Fatalf("ResolveActionClient hidden sidebar = %q, want persisted owner", got)
 	}
 }
 
@@ -84,6 +109,34 @@ esac
 	}
 }
 
+func TestSidebarOwnerResolverFallsBackToPersistedOwnerWhenSidebarViewerAmbiguous(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1 $2" in
+  "list-clients -F")
+    case "$3" in
+      "#{client_name}") printf 'client-a\nclient-b\n' ;;
+      *) printf 'client-a\t@1\talpha\nclient-b\t@1\tbeta\nclient-sidebar\t@1\ttmux-session-sidebar\n' ;;
+    esac ;;
+  "display-message -p") printf '@1\n' ;;
+esac
+`)
+	ctx := context.Background()
+	if err := saveSidebarVisibility(ctx, true, "client-owner"); err != nil {
+		t.Fatalf("saveSidebarVisibility: %v", err)
+	}
+
+	resolver := sidebarOwnerResolver{environ: func(name string) string {
+		if name == "TMUX_PANE" {
+			return "%sidebar"
+		}
+		return ""
+	}}
+	if got := resolver.ResolveActionClient(ctx, nil); got != "client-owner" {
+		t.Fatalf("ResolveActionClient ambiguous viewers = %q, want persisted owner", got)
+	}
+}
+
 func TestSidebarOwnerResolverDoesNotFallbackToInternalClient(t *testing.T) {
 	installFakeTmux(t, `#!/usr/bin/env bash
 case "$1" in
@@ -98,8 +151,8 @@ esac
 		return ""
 	}}
 
-	if got := resolver.clientViewingSidebarPane(context.Background()); got != "" {
-		t.Fatalf("clientViewingSidebarPane = %q, want empty when only internal client views sidebar pane", got)
+	if got := resolver.uniqueClientViewingVisibleSidebarPane(context.Background()); got != "" {
+		t.Fatalf("uniqueClientViewingVisibleSidebarPane = %q, want empty when only internal client views sidebar pane", got)
 	}
 }
 
