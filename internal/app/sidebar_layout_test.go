@@ -23,12 +23,18 @@ type debugSidebarPort struct {
 
 type resizeSyncSidebarPort struct {
 	*debugSidebarPort
-	syncCalls []string
+	syncCalls    []string
+	captureCalls []string
 }
 
 func (d *debugSidebarPort) SidebarDebugSnapshot(_ context.Context, windowID string) (string, error) {
 	d.snapshotCalls = append(d.snapshotCalls, windowID)
 	return d.snapshot, nil
+}
+
+func (d *resizeSyncSidebarPort) CaptureAttachedSidebarWidthBaseline(_ context.Context, windowID string, paneID string, width string) error {
+	d.captureCalls = append(d.captureCalls, windowID+"|"+paneID+"|"+width)
+	return nil
 }
 
 func (d *resizeSyncSidebarPort) SyncAttachedSidebarWidth(_ context.Context, windowID string, paneID string, width string) error {
@@ -483,7 +489,7 @@ func TestResizeHooksWithoutTargetAreNoops(t *testing.T) {
 	})
 	defer restore()
 
-	for _, path := range []string{"hook/window-resized", "hook/client-resized"} {
+	for _, path := range []string{"hook/window-resized", "hook/client-resized", "hook/window-layout-changed"} {
 		if err := (runtimeRouter{}).Handle(t.Context(), Route{Path: path}, nil, nil); err != nil {
 			t.Fatalf("Handle(%s) error: %v", path, err)
 		}
@@ -653,6 +659,32 @@ func TestWindowResizedHookWritesLayoutDebugLogWhenEnabled(t *testing.T) {
 	log := string(content)
 	if !strings.Contains(log, "action=window-resized-before") || !strings.Contains(log, "action=window-resized-after") || !strings.Contains(log, "pane=%9") || !strings.Contains(log, "width=30") {
 		t.Fatalf("activity log = %q, want resize before/after layout snapshots", log)
+	}
+}
+
+func TestWindowLayoutChangedHookDelegatesToSidebarBaselineCaptureWhenAvailable(t *testing.T) {
+	ctx := t.Context()
+	tmux := &resizeSyncSidebarPort{debugSidebarPort: &debugSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t)}}
+
+	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
+		if name != "tmux" {
+			t.Fatalf("command name = %q, want tmux", name)
+		}
+		switch strings.Join(args, "\x00") {
+		case "show-options\x00-gvq\x00@session-sidebar-width":
+			return "30\n", nil
+		default:
+			t.Fatalf("unexpected tmux args: %#v", args)
+			return "", nil
+		}
+	})
+	defer restore()
+
+	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/window-layout-changed", Flags: map[string]string{"window": "@1", "pane": "%9"}}, nil, nil); err != nil {
+		t.Fatalf("Handle error: %v", err)
+	}
+	if got := tmux.captureCalls; !reflect.DeepEqual(got, []string{"@1|%9|30"}) {
+		t.Fatalf("capture calls = %#v, want [@1|%%9|30]", got)
 	}
 }
 

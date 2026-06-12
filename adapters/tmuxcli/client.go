@@ -42,8 +42,10 @@ const (
 
 	escapedFormatPaneID = "##{pane_id}"
 
-	optionSidebarPane         = "@session-sidebar-pane"
-	optionSidebarWindowLayout = "@session-sidebar-window-layout"
+	optionSidebarPane             = "@session-sidebar-pane"
+	optionSidebarWindowLayout     = "@session-sidebar-window-layout"
+	optionSidebarOpenWorkBaseline = "@session-sidebar-open-work-baseline"
+	optionSidebarResizeSyncActive = "@session-sidebar-resize-sync-active"
 
 	singletonSidebarSessionName = "__tmux-session-sidebar"
 	singletonSidebarWindowName  = "sidebar"
@@ -405,16 +407,11 @@ func (c Client) captureWindowLayout(ctx context.Context, windowID string, option
 	if layout == "" {
 		return nil
 	}
-	_, err = c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-wq", "-t", windowID, option, layout})
-	return err
+	return c.setWindowOptionValue(ctx, windowID, option, layout)
 }
 
 func (c Client) clearWindowLayout(ctx context.Context, windowID string, option string) error {
-	if strings.TrimSpace(windowID) == "" {
-		return nil
-	}
-	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-wu", "-t", windowID, option})
-	return err
+	return c.clearWindowOptionValue(ctx, windowID, option)
 }
 
 func (c Client) restoreWindowLayout(ctx context.Context, windowID string, option string) error {
@@ -440,6 +437,26 @@ func (c Client) savedWindowLayout(ctx context.Context, windowID string) (string,
 }
 
 func (c Client) windowLayoutOption(ctx context.Context, windowID string, option string) (string, error) {
+	return c.windowOptionValue(ctx, windowID, option)
+}
+
+func (c Client) setWindowOptionValue(ctx context.Context, windowID string, option string, value string) error {
+	if strings.TrimSpace(windowID) == "" {
+		return nil
+	}
+	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-wq", "-t", windowID, option, value})
+	return err
+}
+
+func (c Client) clearWindowOptionValue(ctx context.Context, windowID string, option string) error {
+	if strings.TrimSpace(windowID) == "" {
+		return nil
+	}
+	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-wu", "-t", windowID, option})
+	return err
+}
+
+func (c Client) windowOptionValue(ctx context.Context, windowID string, option string) (string, error) {
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdShowOptions, "-w", "-v", "-t", windowID, option})
 	if err != nil {
 		if isTmuxMissingOption(result) {
@@ -447,11 +464,11 @@ func (c Client) windowLayoutOption(ctx context.Context, windowID string, option 
 		}
 		return "", wrapTmuxError(result, err)
 	}
-	layout := strings.TrimSpace(result.Stdout)
-	if layout == "" {
+	value := strings.TrimSpace(result.Stdout)
+	if value == "" {
 		return "", nil
 	}
-	return layout, nil
+	return value, nil
 }
 
 func isTmuxMissingOption(result ports.Result) bool {

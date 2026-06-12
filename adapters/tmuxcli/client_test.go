@@ -3,7 +3,9 @@ package tmuxcli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +21,23 @@ func allowMissingWindowLayoutOption(process *mocks.MockProcessPort, ctx context.
 	process.On("Exec", ctx, "tmux", mock.MatchedBy(func(args []string) bool {
 		return len(args) == 6 && args[0] == "show-options" && args[1] == "-w" && args[2] == "-v" && args[3] == "-t" && args[4] != "" && args[5] == option
 	})).Return(ports.Result{Stderr: "invalid option\n"}, errors.New("missing option")).Maybe()
+}
+
+func allowSidebarOpenBaselineCaptureMaybe(process *mocks.MockProcessPort, ctx context.Context, windowID string, paneID string, width string) {
+	width = strings.TrimSpace(width)
+	if width == "" {
+		width = "30"
+	}
+	parsedWidth, err := strconv.Atoi(width)
+	if err != nil || parsedWidth <= 0 {
+		parsedWidth = 30
+	}
+	process.On("Exec", ctx, "tmux", mock.MatchedBy(func(args []string) bool {
+		return len(args) == 5 && args[0] == "display-message" && args[1] == "-p" && args[2] == "-t" && (windowID == "" || args[3] == windowID) && args[4] == "#{window_width}\t#{window_height}"
+	})).Return(ports.Result{Stdout: "100\t30\n"}, nil).Maybe()
+	process.On("Exec", ctx, "tmux", mock.MatchedBy(func(args []string) bool {
+		return len(args) == 5 && args[0] == "list-panes" && args[1] == "-t" && (windowID == "" || args[2] == windowID) && args[3] == "-F" && args[4] == formatSidebarRebalancePane
+	})).Return(ports.Result{Stdout: fmt.Sprintf("%s\t0\t0\t%d\t30\t1\n%%1\t%d\t0\t%d\t30\t0\n", paneID, parsedWidth, parsedWidth+1, 99-parsedWidth)}, nil).Maybe()
 }
 
 func TestListSessionsParsesTmuxRows(t *testing.T) {
@@ -736,6 +755,7 @@ func TestSingletonSidebarPaneLifecycle(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := t.Context()
 			process := mocks.NewMockProcessPort(t)
+			allowSidebarOpenBaselineCaptureMaybe(process, ctx, "", "%9", "20")
 			tt.setup(ctx, process)
 			got, err := tt.call(ctx, Client{Process: process})
 			if (err != nil) != tt.wantErr {
@@ -790,6 +810,7 @@ func TestAttachSingletonSidebarClearsSavedTargetLayoutWhenJoinFails(t *testing.T
 func TestAttachSingletonSidebarIgnoresMissingSourceWindowAfterJoin(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
+	allowSidebarOpenBaselineCaptureMaybe(process, ctx, "", "%9", "20")
 
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
@@ -814,6 +835,7 @@ func TestAttachSingletonSidebarIgnoresMissingSourceWindowAfterJoin(t *testing.T)
 func TestAttachSingletonSidebarLeavesSourceWindowOnNativeTmuxLayoutAfterMove(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
+	allowSidebarOpenBaselineCaptureMaybe(process, ctx, "", "%9", "20")
 
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
@@ -840,6 +862,7 @@ func TestAttachSingletonSidebarLeavesSourceWindowOnNativeTmuxLayoutAfterMove(t *
 func TestAttachSingletonSidebarOverwritesStaleTargetHiddenLayoutBeforeJoin(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
+	allowSidebarOpenBaselineCaptureMaybe(process, ctx, "", "%9", "20")
 
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
@@ -862,6 +885,7 @@ func TestAttachSingletonSidebarResizesWidthAfterJoin(t *testing.T) {
 	// layout is left to tmux's native redistribution; there is no visible-layout replay.
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
+	allowSidebarOpenBaselineCaptureMaybe(process, ctx, "", "%9", "20")
 
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
@@ -885,6 +909,7 @@ func TestAttachSingletonSidebarUsesDirectWidthAfterJoin_NoVisibleLayoutSwap(t *t
 	// width resize is used unconditionally after join-pane.
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
+	allowSidebarOpenBaselineCaptureMaybe(process, ctx, "", "%9", "20")
 
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
@@ -961,6 +986,7 @@ func TestAttachSingletonSidebarRollsBackToSourceWindowAfterPostJoinFailures(t *t
 func TestAttachSingletonSidebarAndSwitchClientRunsMoveAndSwitchInOneTmuxCommand(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
+	allowSidebarOpenBaselineCaptureMaybe(process, ctx, "", "%9", "20")
 	var ops []string
 
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)

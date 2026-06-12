@@ -285,11 +285,15 @@ func TestSyncAttachedSidebarWidthPreservesGroupedWorkRatiosAcrossWindowResize(t 
 	windowID := strings.TrimSpace(runTmuxOutput(t, ctx, realTmux, socketName, "display-message", "-p", "-t", "work:", "#{window_id}"))
 
 	type attachedSidebarWidthSyncer interface {
+		CaptureAttachedSidebarWidthBaseline(context.Context, string, string, string) error
 		SyncAttachedSidebarWidth(context.Context, string, string, string) error
 	}
 	syncer, ok := any(client).(attachedSidebarWidthSyncer)
 	if !ok {
-		t.Fatalf("Client does not implement SyncAttachedSidebarWidth")
+		t.Fatalf("Client does not implement sidebar width sync")
+	}
+	if err := syncer.CaptureAttachedSidebarWidthBaseline(ctx, windowID, sidebarPane, "30"); err != nil {
+		t.Fatalf("CaptureAttachedSidebarWidthBaseline error: %v", err)
 	}
 
 	runTmux(t, ctx, realTmux, socketName, "resize-window", "-t", "work:", "-x", "59", "-y", "48")

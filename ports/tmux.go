@@ -119,9 +119,14 @@ type TmuxSidebarFollowPort interface {
 }
 
 type TmuxSidebarResizePort interface {
+	// CaptureAttachedSidebarWidthBaseline records the current sidebar-open
+	// top-level work-group proportions when the attached layout is in a stable
+	// shape. Intended for non-resize layout-change hooks and post-attach capture.
+	CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowID string, paneID string, width string) error
 	// SyncAttachedSidebarWidth restores the configured width for an already
-	// attached sidebar pane while best-effort preserving the current top-level
-	// work-group proportions in the same window. Intended for resize hooks.
+	// attached sidebar pane while best-effort preserving the last captured
+	// sidebar-open top-level work-group proportions in the same window.
+	// Intended for resize hooks.
 	SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string) error
 }
 

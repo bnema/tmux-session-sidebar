@@ -121,6 +121,7 @@ func (c Client) attachSingletonSidebar(ctx context.Context, targetID string, pan
 	}
 	if clearSourceWindowLayout {
 		c.clearSourceWindowLayoutBestEffort(ctx, currentWindowID)
+		c.captureAttachedSidebarWidthBaselineBestEffort(ctx, ref.WindowID, ref.PaneID, width)
 	}
 	return ref, nil
 }
@@ -200,7 +201,16 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 		return wrapTmuxError(result, err)
 	}
 	c.clearSourceWindowLayoutBestEffort(ctx, currentWindowID)
+	c.captureAttachedSidebarWidthBaselineBestEffort(ctx, windowID, paneID, width)
 	return nil
+}
+
+func (c Client) captureAttachedSidebarWidthBaselineBestEffort(ctx context.Context, windowID string, paneID string, width string) {
+	baseline, err := c.buildSidebarOpenWorkBaseline(ctx, windowID, paneID, width)
+	if err != nil || baseline == nil {
+		return
+	}
+	_ = c.saveSidebarOpenWorkBaseline(ctx, windowID, baseline)
 }
 
 func (c Client) saveTargetWindowLayoutBeforeAttach(ctx context.Context, windowID string) error {

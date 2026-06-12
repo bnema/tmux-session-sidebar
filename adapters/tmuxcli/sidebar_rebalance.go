@@ -2,6 +2,7 @@ package tmuxcli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -25,11 +26,9 @@ type horizontalSidebarClosePlan struct {
 	workSpans             []int
 }
 
-type horizontalSidebarWidthSyncPlan struct {
-	windowID              string
-	sidebarPaneID         string
-	representativePaneIDs []string
-	workWidths            []int
+type sidebarOpenWorkBaseline struct {
+	RepresentativePaneIDs []string `json:"representativePaneIDs"`
+	WorkWidths            []int    `json:"workWidths"`
 }
 
 type sidebarHorizontalGroup struct {
@@ -131,33 +130,60 @@ func (c Client) rebalanceHorizontalSidebarCloseBestEffort(ctx context.Context, p
 	}
 }
 
-func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string) error {
-	paneID = strings.TrimSpace(paneID)
-	if paneID == "" {
-		return nil
-	}
-	windowID = strings.TrimSpace(windowID)
-	if windowID == "" {
-		resolvedWindowID, err := c.WindowID(ctx, paneID)
-		if err != nil {
-			if isTmuxTargetGone(err) {
-				return nil
-			}
-			return err
-		}
-		windowID = strings.TrimSpace(resolvedWindowID)
-	}
-	width = strings.TrimSpace(width)
-	if width == "" {
-		width = "30"
-	}
-	plan, err := c.planHorizontalSidebarWidthSync(ctx, windowID, paneID)
+func (c Client) CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowID string, paneID string, width string) error {
+	windowID, paneID, width, err := c.normalizeAttachedSidebarResizeInputs(ctx, windowID, paneID, width)
 	if err != nil {
 		if isTmuxTargetGone(err) {
 			return nil
 		}
 		return err
 	}
+	if windowID == "" || paneID == "" {
+		return nil
+	}
+	active, err := c.sidebarResizeSyncActive(ctx, windowID)
+	if err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
+		return err
+	}
+	if active {
+		return nil
+	}
+	baseline, err := c.buildSidebarOpenWorkBaseline(ctx, windowID, paneID, width)
+	if err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
+		return err
+	}
+	if baseline == nil {
+		return nil
+	}
+	return c.saveSidebarOpenWorkBaseline(ctx, windowID, baseline)
+}
+
+func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string) error {
+	windowID, paneID, width, err := c.normalizeAttachedSidebarResizeInputs(ctx, windowID, paneID, width)
+	if err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
+		return err
+	}
+	if windowID == "" || paneID == "" {
+		return nil
+	}
+	baseline, err := c.loadSidebarOpenWorkBaseline(ctx, windowID)
+	if err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
+		return err
+	}
+	c.setSidebarResizeSyncActiveBestEffort(ctx, windowID, true)
+	defer c.setSidebarResizeSyncActiveBestEffort(ctx, windowID, false)
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdResizePane, "-t", paneID, "-x", width})
 	if err != nil {
 		wrapped := wrapTmuxError(result, err)
@@ -166,14 +192,45 @@ func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, p
 		}
 		return wrapped
 	}
-	c.rebalanceHorizontalSidebarWidthSyncBestEffort(ctx, plan)
+	c.restoreSidebarOpenWorkBaselineBestEffort(ctx, windowID, paneID, baseline)
 	return nil
 }
 
-func (c Client) planHorizontalSidebarWidthSync(ctx context.Context, windowID string, sidebarPaneID string) (*horizontalSidebarWidthSyncPlan, error) {
+func (c Client) normalizeAttachedSidebarResizeInputs(ctx context.Context, windowID string, paneID string, width string) (string, string, string, error) {
+	paneID = strings.TrimSpace(paneID)
+	if paneID == "" {
+		return "", "", "", nil
+	}
 	windowID = strings.TrimSpace(windowID)
-	sidebarPaneID = strings.TrimSpace(sidebarPaneID)
-	if windowID == "" || sidebarPaneID == "" {
+	if windowID == "" {
+		resolvedWindowID, err := c.WindowID(ctx, paneID)
+		if err != nil {
+			return "", "", "", err
+		}
+		windowID = strings.TrimSpace(resolvedWindowID)
+	}
+	width = strings.TrimSpace(width)
+	if width == "" {
+		width = "30"
+	}
+	return windowID, paneID, width, nil
+}
+
+func parseSidebarWidthCells(width string) (int, bool) {
+	width = strings.TrimSpace(width)
+	if width == "" {
+		width = "30"
+	}
+	parsed, err := strconv.Atoi(width)
+	if err != nil || parsed <= 0 {
+		return 0, false
+	}
+	return parsed, true
+}
+
+func (c Client) buildSidebarOpenWorkBaseline(ctx context.Context, windowID string, sidebarPaneID string, width string) (*sidebarOpenWorkBaseline, error) {
+	configuredWidth, ok := parseSidebarWidthCells(width)
+	if !ok {
 		return nil, nil
 	}
 	_, windowHeight, err := c.windowDimensions(ctx, windowID)
@@ -188,43 +245,92 @@ func (c Client) planHorizontalSidebarWidthSync(ctx context.Context, windowID str
 		return nil, nil
 	}
 	sidebar, work := splitSidebarAndWorkPanes(panes, sidebarPaneID)
-	if sidebar == nil || !sidebar.Sidebar || sidebar.Left != 0 || sidebar.Top != 0 || sidebar.Height != windowHeight {
+	if sidebar == nil || !sidebar.Sidebar || sidebar.Left != 0 || sidebar.Top != 0 || sidebar.Height != windowHeight || sidebar.Width != configuredWidth {
 		return nil, nil
 	}
 	groups := groupHorizontalPanes(work)
 	if len(groups) < 2 {
 		return nil, nil
 	}
-	widths := make([]int, 0, len(groups))
-	reps := make([]string, 0, len(groups))
+	baseline := &sidebarOpenWorkBaseline{RepresentativePaneIDs: make([]string, 0, len(groups)), WorkWidths: make([]int, 0, len(groups))}
 	for _, group := range groups {
 		if !group.UniformWidth || group.MinTop != 0 || group.MaxBottom != windowHeight || strings.TrimSpace(group.RepresentativePaneID) == "" || group.Width <= 0 {
 			return nil, nil
 		}
-		widths = append(widths, group.Width)
-		reps = append(reps, group.RepresentativePaneID)
+		baseline.RepresentativePaneIDs = append(baseline.RepresentativePaneIDs, group.RepresentativePaneID)
+		baseline.WorkWidths = append(baseline.WorkWidths, group.Width)
 	}
-	return &horizontalSidebarWidthSyncPlan{windowID: windowID, sidebarPaneID: sidebarPaneID, representativePaneIDs: reps, workWidths: widths}, nil
+	return baseline, nil
 }
 
-func (c Client) rebalanceHorizontalSidebarWidthSyncBestEffort(ctx context.Context, plan *horizontalSidebarWidthSyncPlan) {
-	if plan == nil {
+func (c Client) saveSidebarOpenWorkBaseline(ctx context.Context, windowID string, baseline *sidebarOpenWorkBaseline) error {
+	if baseline == nil || len(baseline.RepresentativePaneIDs) == 0 || len(baseline.RepresentativePaneIDs) != len(baseline.WorkWidths) {
+		return nil
+	}
+	encoded, err := json.Marshal(baseline)
+	if err != nil {
+		return err
+	}
+	return c.setWindowOptionValue(ctx, windowID, optionSidebarOpenWorkBaseline, string(encoded))
+}
+
+func (c Client) loadSidebarOpenWorkBaseline(ctx context.Context, windowID string) (*sidebarOpenWorkBaseline, error) {
+	raw, err := c.windowOptionValue(ctx, windowID, optionSidebarOpenWorkBaseline)
+	if err != nil {
+		return nil, err
+	}
+	if raw == "" {
+		return nil, nil
+	}
+	var baseline sidebarOpenWorkBaseline
+	if err := json.Unmarshal([]byte(raw), &baseline); err != nil {
+		return nil, nil
+	}
+	if len(baseline.RepresentativePaneIDs) < 2 || len(baseline.RepresentativePaneIDs) != len(baseline.WorkWidths) {
+		return nil, nil
+	}
+	for i, repID := range baseline.RepresentativePaneIDs {
+		if strings.TrimSpace(repID) == "" || baseline.WorkWidths[i] <= 0 {
+			return nil, nil
+		}
+	}
+	return &baseline, nil
+}
+
+func (c Client) sidebarResizeSyncActive(ctx context.Context, windowID string) (bool, error) {
+	value, err := c.windowOptionValue(ctx, windowID, optionSidebarResizeSyncActive)
+	if err != nil {
+		return false, err
+	}
+	return parseTmuxBool(value), nil
+}
+
+func (c Client) setSidebarResizeSyncActiveBestEffort(ctx context.Context, windowID string, active bool) {
+	if active {
+		_ = c.setWindowOptionValue(ctx, windowID, optionSidebarResizeSyncActive, "1")
 		return
 	}
-	_, windowHeight, err := c.windowDimensions(ctx, plan.windowID)
+	_ = c.clearWindowOptionValue(ctx, windowID, optionSidebarResizeSyncActive)
+}
+
+func (c Client) restoreSidebarOpenWorkBaselineBestEffort(ctx context.Context, windowID string, sidebarPaneID string, baseline *sidebarOpenWorkBaseline) {
+	if baseline == nil {
+		return
+	}
+	_, windowHeight, err := c.windowDimensions(ctx, windowID)
 	if err != nil {
 		return
 	}
-	panes, err := c.listSidebarRebalancePanes(ctx, plan.windowID)
+	panes, err := c.listSidebarRebalancePanes(ctx, windowID)
 	if err != nil {
 		return
 	}
-	sidebar, work := splitSidebarAndWorkPanes(panes, plan.sidebarPaneID)
+	sidebar, work := splitSidebarAndWorkPanes(panes, sidebarPaneID)
 	if sidebar == nil || !sidebar.Sidebar || sidebar.Left != 0 || sidebar.Top != 0 || sidebar.Height != windowHeight {
 		return
 	}
 	groups := groupHorizontalPanes(work)
-	if len(groups) != len(plan.representativePaneIDs) {
+	if len(groups) != len(baseline.RepresentativePaneIDs) {
 		return
 	}
 	groupByRep := make(map[string]sidebarHorizontalGroup, len(groups))
@@ -236,9 +342,9 @@ func (c Client) rebalanceHorizontalSidebarWidthSyncBestEffort(ctx context.Contex
 		groupByRep[group.RepresentativePaneID] = group
 		totalWidth += group.Width
 	}
-	targetWidths := proportionalWidths(plan.workWidths, totalWidth)
-	for i := 0; i < len(plan.representativePaneIDs)-1; i++ {
-		repID := plan.representativePaneIDs[i]
+	targetWidths := proportionalWidths(baseline.WorkWidths, totalWidth)
+	for i := 0; i < len(baseline.RepresentativePaneIDs)-1; i++ {
+		repID := baseline.RepresentativePaneIDs[i]
 		group, ok := groupByRep[repID]
 		if !ok || targetWidths[i] <= 0 {
 			return

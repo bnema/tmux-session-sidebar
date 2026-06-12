@@ -90,6 +90,7 @@ func newRootCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, rou
 		leafCommand("client-session-changed", "Handle tmux client-session-changed", runRoute("hook/client-session-changed")),
 		leafCommand("client-resized", "Handle tmux client-resized", runRoute("hook/client-resized")),
 		leafCommand("window-resized", "Handle tmux window-resized", runRoute("hook/window-resized")),
+		leafCommand("window-layout-changed", "Handle tmux window-layout-changed", runRoute("hook/window-layout-changed")),
 		leafCommand("agent-event", "Record an agent attention event", runRoute("hook/agent-event")),
 	))
 	command.AddCommand(groupCommand("resurrect", "Integrate with tmux-resurrect hooks",
