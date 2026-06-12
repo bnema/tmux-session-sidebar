@@ -118,6 +118,12 @@ type TmuxSidebarFollowPort interface {
 	AttachSingletonSidebarWithoutFocus(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
 }
 
+type TmuxSidebarDebugPort interface {
+	// SidebarDebugSnapshot returns a compact debug summary of the current tmux
+	// geometry for the affected window after a sidebar open/close operation.
+	SidebarDebugSnapshot(ctx context.Context, windowID string) (string, error)
+}
+
 type TmuxMetadataPort interface {
 	LoadSessionMetadata(ctx context.Context, sessionName string) (SessionMetadata, error)
 	SaveSessionMetadata(ctx context.Context, sessionName string, metadata SessionMetadata) error

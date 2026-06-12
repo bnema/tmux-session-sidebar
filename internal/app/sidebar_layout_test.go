@@ -3,6 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,6 +13,34 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports/mocks"
 	"github.com/stretchr/testify/mock"
 )
+
+type debugSidebarPort struct {
+	*mocks.MockTmuxSidebarPort
+	snapshot      string
+	snapshotCalls []string
+}
+
+func (d *debugSidebarPort) SidebarDebugSnapshot(_ context.Context, windowID string) (string, error) {
+	d.snapshotCalls = append(d.snapshotCalls, windowID)
+	return d.snapshot, nil
+}
+
+func sidebarActivityLogPathForTest() string {
+	return filepath.Join(os.Getenv("XDG_STATE_HOME"), "tmux-session-sidebar", "activity.log")
+}
+
+func fakeSidebarLoggingConfigTmuxScript(activityDebug string) string {
+	return fmt.Sprintf(`#!/usr/bin/env bash
+case "$1" in
+  display-message) printf '\n' ;;
+  show-options)
+    case "$3" in
+      @session-sidebar-activity-debug-log) printf '%s\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+esac
+`, activityDebug)
+}
 
 func TestOpenSidebarAttachesSingletonPaneToClient(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
@@ -77,6 +108,81 @@ func TestOpenSidebarRollsBackVisibilityWhenAttachFails(t *testing.T) {
 	}
 	if state.Sidebar == nil || state.Sidebar.Open || state.Sidebar.OwnerClient != "" {
 		t.Fatalf("sidebar state after attach failure = %#v, want closed", state.Sidebar)
+	}
+}
+
+func TestOpenSidebarWritesLayoutDebugLogWhenEnabled(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, fakeSidebarLoggingConfigTmuxScript("on"))
+	ctx := t.Context()
+	tmux := &debugSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t), snapshot: "session=work;window=@1;layout=main-vertical;panes=%1[size=120x40],%10[size=20x40]"}
+
+	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
+	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "20").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
+
+	if err := openSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux); err != nil {
+		t.Fatalf("openSidebar returned error: %v", err)
+	}
+	if got := tmux.snapshotCalls; len(got) != 1 || got[0] != "@1" {
+		t.Fatalf("snapshot calls = %#v, want [@1]", got)
+	}
+	content, err := os.ReadFile(sidebarActivityLogPathForTest())
+	if err != nil {
+		t.Fatalf("read activity log: %v", err)
+	}
+	log := string(content)
+	if !strings.Contains(log, "sidebar-layout") || !strings.Contains(log, "action=open") || !strings.Contains(log, "window=@1") || !strings.Contains(log, "panes=%1[size=120x40],%10[size=20x40]") {
+		t.Fatalf("activity log = %q, want open layout snapshot", log)
+	}
+}
+
+func TestCloseSidebarWritesLayoutDebugLogWhenEnabled(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, fakeSidebarLoggingConfigTmuxScript("on"))
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	tmux := &debugSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t), snapshot: "session=work;window=@1;layout=tiled;panes=%1[size=140x40]"}
+
+	tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
+	tmux.EXPECT().ParkSingletonSidebar(ctx, "%10").Return(nil)
+
+	if err := closeSidebar(ctx, tmux); err != nil {
+		t.Fatalf("closeSidebar returned error: %v", err)
+	}
+	if got := tmux.snapshotCalls; len(got) != 1 || got[0] != "@1" {
+		t.Fatalf("snapshot calls = %#v, want [@1]", got)
+	}
+	content, err := os.ReadFile(sidebarActivityLogPathForTest())
+	if err != nil {
+		t.Fatalf("read activity log: %v", err)
+	}
+	log := string(content)
+	if !strings.Contains(log, "sidebar-layout") || !strings.Contains(log, "action=close") || !strings.Contains(log, "window=@1") || !strings.Contains(log, "layout=tiled") {
+		t.Fatalf("activity log = %q, want close layout snapshot", log)
+	}
+}
+
+func TestOpenSidebarSkipsLayoutDebugLogWhenDisabled(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, fakeSidebarLoggingConfigTmuxScript("off"))
+	ctx := t.Context()
+	tmux := &debugSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t), snapshot: "session=work;window=@1;layout=ignored"}
+
+	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
+	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "20").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
+
+	if err := openSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux); err != nil {
+		t.Fatalf("openSidebar returned error: %v", err)
+	}
+	if len(tmux.snapshotCalls) != 0 {
+		t.Fatalf("snapshot calls = %#v, want none when debug logging disabled", tmux.snapshotCalls)
+	}
+	if _, err := os.Stat(sidebarActivityLogPathForTest()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("activity log err = %v, want not-exist", err)
 	}
 }
 

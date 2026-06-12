@@ -287,10 +287,12 @@ func openSidebarForClientWith(ctx context.Context, client string, attachTarget s
 	if strings.TrimSpace(attachTarget) == "" {
 		attachTarget = client
 	}
-	if _, err = attach(ctx, attachTarget, singleton.PaneID, width); err != nil {
+	attached, err := attach(ctx, attachTarget, singleton.PaneID, width)
+	if err != nil {
 		rollbackSidebarVisibility(ctx, client, err)
 		return err
 	}
+	logSidebarLayoutDebug(ctx, sidebar, "open", client, attached.PaneID, attached.WindowID, width)
 	return nil
 }
 
@@ -308,6 +310,7 @@ func closeSidebar(ctx context.Context, sidebar ports.TmuxSidebarPort) error {
 	if err := parkVisibleSidebar(ctx, sidebar, singleton.PaneID); err != nil {
 		return err
 	}
+	logSidebarLayoutDebug(ctx, sidebar, "close", "", singleton.PaneID, singleton.WindowID, "")
 	return saveSidebarVisibility(ctx, false, "")
 }
 
