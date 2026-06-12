@@ -28,10 +28,9 @@ const (
 	cmdSelectLayout   = "select-layout"
 	cmdSelectPane     = "select-pane"
 	cmdSendKeys       = "send-keys"
-	cmdSetOption      = "set-option"
-	cmdShowOptions    = "show-options"
-	cmdSwapPane       = "swap-pane"
-	cmdSwitchClient   = "switch-client"
+	cmdSetOption    = "set-option"
+	cmdShowOptions  = "show-options"
+	cmdSwitchClient = "switch-client"
 
 	formatPaneCurrentPath = "#{pane_current_path}"
 	formatPaneID          = "#{pane_id}"
@@ -43,9 +42,8 @@ const (
 
 	escapedFormatPaneID = "##{pane_id}"
 
-	optionSidebarPane                = "@session-sidebar-pane"
-	optionSidebarWindowLayout        = "@session-sidebar-window-layout"
-	optionSidebarVisibleWindowLayout = "@session-sidebar-visible-window-layout"
+	optionSidebarPane         = "@session-sidebar-pane"
+	optionSidebarWindowLayout = "@session-sidebar-window-layout"
 
 	singletonSidebarSessionName = "__tmux-session-sidebar"
 	singletonSidebarWindowName  = "sidebar"
@@ -391,24 +389,12 @@ func (c Client) SaveWindowLayout(ctx context.Context, windowID string) error {
 	return c.captureWindowLayout(ctx, windowID, optionSidebarWindowLayout, false)
 }
 
-func (c Client) SaveVisibleWindowLayout(ctx context.Context, windowID string) error {
-	return c.captureWindowLayout(ctx, windowID, optionSidebarVisibleWindowLayout, true)
-}
-
 func (c Client) ClearSavedWindowLayout(ctx context.Context, windowID string) error {
 	return c.clearWindowLayout(ctx, windowID, optionSidebarWindowLayout)
 }
 
-func (c Client) ClearVisibleWindowLayout(ctx context.Context, windowID string) error {
-	return c.clearWindowLayout(ctx, windowID, optionSidebarVisibleWindowLayout)
-}
-
 func (c Client) RestoreWindowLayout(ctx context.Context, windowID string) error {
 	return c.restoreWindowLayout(ctx, windowID, optionSidebarWindowLayout, true)
-}
-
-func (c Client) RestoreVisibleWindowLayout(ctx context.Context, windowID string) error {
-	return c.restoreWindowLayout(ctx, windowID, optionSidebarVisibleWindowLayout, false)
 }
 
 func (c Client) captureWindowLayout(ctx context.Context, windowID string, option string, overwrite bool) error {
@@ -518,19 +504,20 @@ func (c Client) ScheduleSidebarRestoreOnExit(ctx context.Context, clientID strin
 	}
 	layout, err := c.savedWindowLayout(ctx, windowID)
 	if err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
 		return err
 	}
 	if layout == "" {
 		// No saved layout means there is no sidebar-induced split to restore.
 		return nil
 	}
-	if err := c.SaveVisibleWindowLayout(ctx, windowID); err != nil {
-		if isTmuxTargetGone(err) {
-			return nil
-		}
-		return err
-	}
-	_, err = c.Process.Exec(ctx, tmuxBinary, []string{cmdRunShell, "-b", sidebarLayoutRestoreCommand(windowID, paneID)})
+	// No layout replay is needed here. Once the sidebar pane exits, tmux
+	// redistributes the remaining panes natively. The background command only
+	// waits for the sidebar pane to disappear, then clears the stale saved
+	// hidden-layout option best-effort.
+	_, err = c.Process.Exec(ctx, tmuxBinary, []string{cmdRunShell, "-b", sidebarLayoutCleanupCommand(windowID, paneID)})
 	return err
 }
 
@@ -749,7 +736,7 @@ func parsePaneRef(out string) (ports.PaneRef, error) {
 	return ports.PaneRef{PaneID: fields[0], WindowID: fields[1]}, nil
 }
 
-func sidebarLayoutRestoreCommand(windowID string, paneID string) string {
+func sidebarLayoutCleanupCommand(windowID string, paneID string) string {
 	script := "window=$1; pane=$2; hidden_option=$3; " +
 		"for _ in 1 2 3 4 5 6 7 8 9 10 " +
 		"11 12 13 14 15 16 17 18 19 20 " +
@@ -760,9 +747,6 @@ func sidebarLayoutRestoreCommand(windowID string, paneID string) string {
 		"sleep 0.05; " +
 		"done; " +
 		"tmux list-panes -t \"$window\" -F '" + escapedFormatPaneID + "' 2>/dev/null | grep -Fxq \"$pane\" && exit 0; " +
-		"layout=$(tmux show-options -w -v -t \"$window\" \"$hidden_option\" 2>/dev/null || true); " +
-		"[ -n \"$layout\" ] || exit 0; " +
-		"tmux select-layout -t \"$window\" \"$layout\" >/dev/null 2>&1 && " +
 		"tmux set-option -wu -t \"$window\" \"$hidden_option\" >/dev/null 2>&1 || true"
 	return "sh -c " + shellQuote(script) + " sh " + shellQuote(windowID) + " " + shellQuote(paneID) + " " + shellQuote(optionSidebarWindowLayout)
 }
