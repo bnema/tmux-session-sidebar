@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -108,6 +109,71 @@ func TestAttachSingletonSidebarPreservesVisibleRightSplit(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("visible right-split geometry changed after hide/reopen\nwant: %#v\n got: %#v", want, got)
 	}
+}
+
+func TestAttachSingletonSidebarPreservesFlatHorizontalWorkSplitAcrossToggle(t *testing.T) {
+	realTmux, err := exec.LookPath("tmux")
+	if err != nil {
+		t.Skip("tmux is not installed")
+	}
+
+	ctx := t.Context()
+	socketName := tmuxTestSocketName(t)
+	t.Cleanup(func() {
+		_ = exec.CommandContext(context.Background(), realTmux, "-f", "/dev/null", "-L", socketName, "kill-server").Run()
+	})
+	installTmuxSocketWrapper(t, realTmux, socketName)
+
+	client, sidebarPane := setupFlatWorkSessionWithSidebar(t, ctx, realTmux, socketName)
+	if _, err := client.AttachSingletonSidebar(ctx, "work:", sidebarPane, "30"); err != nil {
+		t.Fatalf("first AttachSingletonSidebar error: %v", err)
+	}
+	wantOpen := recordPaneGeometries(t, ctx, realTmux, socketName, "work:")
+
+	if err := client.ParkSingletonSidebar(ctx, sidebarPane); err != nil {
+		t.Fatalf("ParkSingletonSidebar error: %v", err)
+	}
+	assertPaneWidths(t, recordPaneGeometries(t, ctx, realTmux, socketName, "work:"), []int{90, 90})
+
+	if _, err := client.AttachSingletonSidebar(ctx, "work:", sidebarPane, "30"); err != nil {
+		t.Fatalf("second AttachSingletonSidebar error: %v", err)
+	}
+	got := recordPaneGeometries(t, ctx, realTmux, socketName, "work:")
+	assertGeometriesUnchanged(t, wantOpen, got)
+}
+
+func TestAttachSingletonSidebarPreservesGroupedHorizontalWorkSplitAcrossToggle(t *testing.T) {
+	realTmux, err := exec.LookPath("tmux")
+	if err != nil {
+		t.Skip("tmux is not installed")
+	}
+
+	ctx := t.Context()
+	socketName := tmuxTestSocketName(t)
+	t.Cleanup(func() {
+		_ = exec.CommandContext(context.Background(), realTmux, "-f", "/dev/null", "-L", socketName, "kill-server").Run()
+	})
+	installTmuxSocketWrapper(t, realTmux, socketName)
+
+	client, sidebarPane := setupFlatWorkSessionWithSidebar(t, ctx, realTmux, socketName)
+	if _, err := client.AttachSingletonSidebar(ctx, "work:", sidebarPane, "30"); err != nil {
+		t.Fatalf("first AttachSingletonSidebar error: %v", err)
+	}
+	rows := runTmuxOutput(t, ctx, realTmux, socketName, "list-panes", "-t", "work:", "-F", "#{pane_id}\t#{pane_left}\t#{?@session-sidebar-pane,1,0}")
+	leftWorkPane := leftmostWorkPaneID(t, rows)
+	runTmux(t, ctx, realTmux, socketName, "split-window", "-v", "-t", leftWorkPane)
+	wantOpen := recordPaneGeometries(t, ctx, realTmux, socketName, "work:")
+
+	if err := client.ParkSingletonSidebar(ctx, sidebarPane); err != nil {
+		t.Fatalf("ParkSingletonSidebar error: %v", err)
+	}
+	assertPaneWidths(t, recordPaneGeometries(t, ctx, realTmux, socketName, "work:"), []int{90, 90})
+
+	if _, err := client.AttachSingletonSidebar(ctx, "work:", sidebarPane, "30"); err != nil {
+		t.Fatalf("second AttachSingletonSidebar error: %v", err)
+	}
+	got := recordPaneGeometries(t, ctx, realTmux, socketName, "work:")
+	assertGeometriesUnchanged(t, wantOpen, got)
 }
 
 // ─── Priority scenario 1: Visible-side edits then toggle ─────────────────
@@ -495,6 +561,17 @@ func setupStackedWorkSessionWithSidebar(t *testing.T, ctx context.Context, realT
 	return Client{Process: processadapter.Runner{}}, sidebarPane
 }
 
+func setupFlatWorkSessionWithSidebar(t *testing.T, ctx context.Context, realTmux string, socketName string) (Client, string) {
+	t.Helper()
+	runTmux(t, ctx, realTmux, socketName, "new-session", "-d", "-s", "work", "-x", "181", "-y", "48")
+	runTmux(t, ctx, realTmux, socketName, "set-option", "-g", "pane-base-index", "1")
+	runTmux(t, ctx, realTmux, socketName, "split-window", "-h", "-t", "work:")
+	runTmux(t, ctx, realTmux, socketName, "new-session", "-d", "-s", singletonSidebarSessionName, "-n", singletonSidebarWindowName, "-x", "30", "-y", "48")
+	sidebarPane := strings.TrimSpace(runTmuxOutput(t, ctx, realTmux, socketName, "display-message", "-p", "-t", singletonSidebarSessionName+":", "#{pane_id}"))
+	runTmux(t, ctx, realTmux, socketName, "set-option", "-p", "-t", sidebarPane, optionSidebarPane, "1")
+	return Client{Process: processadapter.Runner{}}, sidebarPane
+}
+
 func tmuxTestSocketName(t *testing.T) string {
 	t.Helper()
 	name := strings.NewReplacer("/", "-", " ", "-", "_", "-").Replace(t.Name())
@@ -584,6 +661,81 @@ func assertGeometriesUnchanged(t *testing.T, want map[string]string, got map[str
 	}
 }
 
+func assertPaneWidths(t *testing.T, geometries map[string]string, want []int) {
+	t.Helper()
+	got := append([]int(nil), topLevelGroupWidthsFromGeometries(t, geometries)...)
+	want = append([]int(nil), want...)
+	sort.Ints(got)
+	sort.Ints(want)
+	if len(got) != len(want) {
+		t.Fatalf("hidden work widths = %#v, got widths %v want %v", geometries, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("hidden work widths = %#v, got widths %v want %v", geometries, got, want)
+		}
+	}
+}
+
+func topLevelGroupWidthsFromGeometries(t *testing.T, geometries map[string]string) []int {
+	t.Helper()
+	byLeft := map[int]int{}
+	for _, geometry := range geometries {
+		fields := strings.Split(geometry, ",")
+		if len(fields) != 4 {
+			t.Fatalf("malformed pane geometry %q", geometry)
+		}
+		left, err := strconv.Atoi(fields[0])
+		if err != nil {
+			t.Fatalf("parse pane left from %q: %v", geometry, err)
+		}
+		width, err := strconv.Atoi(fields[2])
+		if err != nil {
+			t.Fatalf("parse pane width from %q: %v", geometry, err)
+		}
+		if width > byLeft[left] {
+			byLeft[left] = width
+		}
+	}
+	lefts := make([]int, 0, len(byLeft))
+	for left := range byLeft {
+		lefts = append(lefts, left)
+	}
+	sort.Ints(lefts)
+	widths := make([]int, 0, len(lefts))
+	for _, left := range lefts {
+		widths = append(widths, byLeft[left])
+	}
+	return widths
+}
+
+func leftmostWorkPaneID(t *testing.T, rows string) string {
+	t.Helper()
+	bestID := ""
+	bestLeft := 0
+	for line := range strings.SplitSeq(strings.TrimSpace(rows), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 {
+			t.Fatalf("malformed work-pane row %q", line)
+		}
+		if fields[2] == "1" {
+			continue
+		}
+		left, err := strconv.Atoi(fields[1])
+		if err != nil {
+			t.Fatalf("parse pane left from %q: %v", line, err)
+		}
+		if bestID == "" || left < bestLeft {
+			bestID = fields[0]
+			bestLeft = left
+		}
+	}
+	if bestID == "" {
+		t.Fatalf("no non-sidebar work pane found in rows:\n%s", rows)
+	}
+	return bestID
+}
+
 func assertSidebarGeometryHasPositiveSize(t *testing.T, geometry string) {
 	t.Helper()
 	fields := strings.Split(geometry, ",")
@@ -593,6 +745,10 @@ func assertSidebarGeometryHasPositiveSize(t *testing.T, geometry string) {
 	left, err := strconv.Atoi(fields[0])
 	if err != nil {
 		t.Fatalf("parse sidebar left from %q: %v", geometry, err)
+	}
+	top, err := strconv.Atoi(fields[1])
+	if err != nil {
+		t.Fatalf("parse sidebar top from %q: %v", geometry, err)
 	}
 	width, err := strconv.Atoi(fields[2])
 	if err != nil {
@@ -604,6 +760,9 @@ func assertSidebarGeometryHasPositiveSize(t *testing.T, geometry string) {
 	}
 	if left != 0 {
 		t.Fatalf("sidebar left = %d, want 0 for left column geometry %q", left, geometry)
+	}
+	if top != 0 {
+		t.Fatalf("sidebar top = %d, want 0 for top of window %q", top, geometry)
 	}
 	if width <= 0 {
 		t.Fatalf("sidebar width = %d, want positive geometry %q", width, geometry)

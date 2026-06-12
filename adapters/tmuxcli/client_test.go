@@ -1084,6 +1084,8 @@ func TestParkSingletonSidebar(t *testing.T) {
 				// display-message for WindowID is called twice: once before break-pane
 				// (validate pane exists -> @1) and once after (resolve parked window -> @parked).
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil).Once()
+				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_width}\t#{window_height}"}).Return(ports.Result{Stdout: "100\t30\n"}, nil)
+				process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", formatSidebarRebalancePane}).Return(ports.Result{Stdout: "%9\t0\t0\t100\t30\t1\n"}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@parked\n"}, nil).Once()
 				process.EXPECT().Exec(ctx, "tmux", []string{"has-session", "-t", "__tmux-session-sidebar"}).Return(ports.Result{Stderr: "can't find session\n"}, errors.New("missing"))
 				process.EXPECT().Exec(ctx, "tmux", []string{"new-session", "-d", "-s", "__tmux-session-sidebar", "-n", "sidebar-parked"}).Return(ports.Result{}, nil)
@@ -1100,6 +1102,8 @@ func TestParkSingletonSidebar(t *testing.T) {
 				// display-message for WindowID is called twice: once before break-pane
 				// (validate pane exists -> @1) and once after (resolve parked window -> @parked).
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil).Once()
+				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_width}\t#{window_height}"}).Return(ports.Result{Stdout: "100\t30\n"}, nil)
+				process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", formatSidebarRebalancePane}).Return(ports.Result{Stdout: "%9\t0\t0\t100\t30\t1\n"}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@parked\n"}, nil).Once()
 				process.EXPECT().Exec(ctx, "tmux", []string{"has-session", "-t", "__tmux-session-sidebar"}).Return(ports.Result{}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"break-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
@@ -1139,6 +1143,8 @@ func TestParkSingletonSidebarSucceedsWithoutHiddenLayoutRestore(t *testing.T) {
 
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_width}\t#{window_height}"}).Return(ports.Result{Stdout: "100\t30\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", formatSidebarRebalancePane}).Return(ports.Result{Stdout: "%9\t0\t0\t100\t30\t1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"has-session", "-t", "__tmux-session-sidebar"}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"break-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
 	// The stale saved hidden-layout option is cleared best-effort after break-pane.
@@ -1258,7 +1264,7 @@ func TestScheduleSidebarRestoreOnExit(t *testing.T) {
 				return false
 			}
 		}
-		return !strings.Contains(command, "select-layout") && !strings.Contains(command, "show-options") && !strings.Contains(command, "seq ")
+		return !strings.Contains(command, "select-layout") && !strings.Contains(command, "show-options")
 	})).Return(ports.Result{}, nil)
 
 	if err := client.ScheduleSidebarRestoreOnExit(ctx, "", "%9"); err != nil {
@@ -1435,6 +1441,10 @@ func TestParkSingletonSidebarKillsStaleWindows(t *testing.T) {
 	)
 	rec.handle([]string{"show-options", "-pv", "-t", paneID, optionSidebarPane},
 		func(args []string) (string, string) { return "1", "" })
+	rec.handle([]string{"display-message", "-p", "-t", "@1", "#{window_width}\t#{window_height}"},
+		func(args []string) (string, string) { return "100\t30", "" })
+	rec.handle([]string{"list-panes", "-t", "@1", "-F", formatSidebarRebalancePane},
+		func(args []string) (string, string) { return paneID + "\t0\t0\t100\t30\t1", "" })
 	rec.handle([]string{"has-session", "-t", singletonSidebarSessionName},
 		func(args []string) (string, string) { return "", "" })
 	rec.handle([]string{"break-pane", "-d", "-s", paneID, "-t", singletonSidebarSessionName + ":"},
@@ -1466,6 +1476,10 @@ func TestParkSingletonSidebarKillsStaleWindows(t *testing.T) {
 	)
 	rec2.handle([]string{"show-options", "-pv", "-t", paneID, optionSidebarPane},
 		func(args []string) (string, string) { return "1", "" })
+	rec2.handle([]string{"display-message", "-p", "-t", "@1", "#{window_width}\t#{window_height}"},
+		func(args []string) (string, string) { return "100\t30", "" })
+	rec2.handle([]string{"list-panes", "-t", "@1", "-F", formatSidebarRebalancePane},
+		func(args []string) (string, string) { return paneID + "\t0\t0\t100\t30\t1", "" })
 	rec2.handle([]string{"has-session", "-t", singletonSidebarSessionName},
 		func(args []string) (string, string) { return "", "" })
 	rec2.handle([]string{"break-pane", "-d", "-s", paneID, "-t", singletonSidebarSessionName + ":"},

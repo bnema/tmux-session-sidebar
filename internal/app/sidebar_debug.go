@@ -7,9 +7,16 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
+// logSidebarLayoutDebug emits best-effort debug logs for sidebar open/close
+// layout actions when the sidebar adapter exposes ports.TmuxSidebarDebugPort.
+// It records action and window keys plus optional client, pane, width, and
+// snapshot or snapshot_error fields. The logger may be nil, missing debug-port
+// support or an empty windowID short-circuit silently, and snapshot/logging
+// errors are suppressed so debug instrumentation never affects normal flows.
 func logSidebarLayoutDebug(ctx context.Context, sidebar ports.TmuxSidebarPort, action string, client string, paneID string, windowID string, width string) {
 	debugger, ok := sidebar.(ports.TmuxSidebarDebugPort)
-	if !ok || strings.TrimSpace(windowID) == "" {
+	windowID = strings.TrimSpace(windowID)
+	if !ok || windowID == "" {
 		return
 	}
 	cfg := loadSidebarConfig(ctx)
@@ -17,7 +24,7 @@ func logSidebarLayoutDebug(ctx context.Context, sidebar ports.TmuxSidebarPort, a
 		if logger == nil {
 			return nil
 		}
-		fields := []ports.LogField{{Key: "action", Value: action}, {Key: "window", Value: strings.TrimSpace(windowID)}}
+		fields := []ports.LogField{{Key: "action", Value: action}, {Key: "window", Value: windowID}}
 		if trimmed := strings.TrimSpace(client); trimmed != "" {
 			fields = append(fields, ports.LogField{Key: "client", Value: trimmed})
 		}

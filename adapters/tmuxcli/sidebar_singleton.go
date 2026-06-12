@@ -210,6 +210,7 @@ func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	if err != nil {
 		return err
 	}
+	horizontalClosePlan, _ := c.planHorizontalSidebarClose(ctx, sourceWindowID, paneID)
 	if err := c.ensureParkingSession(ctx); err != nil {
 		return err
 	}
@@ -217,9 +218,11 @@ func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	if err != nil {
 		return wrapTmuxError(result, err)
 	}
+	c.rebalanceHorizontalSidebarCloseBestEffort(ctx, horizontalClosePlan)
 	// Best-effort cleanup of the stale saved hidden-layout option. After
 	// break-pane removes the sidebar, tmux natively redistributes the
-	// window, making any saved pre-sidebar layout stale.
+	// window, making any saved pre-sidebar layout stale unless the close path
+	// first rebalances top-level horizontal work-group widths.
 	c.clearSourceWindowLayoutBestEffort(ctx, sourceWindowID)
 
 	parkedWindowID, err := c.WindowID(ctx, paneID)

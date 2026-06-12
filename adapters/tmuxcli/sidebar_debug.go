@@ -83,8 +83,16 @@ func sanitizeSidebarDebugValue(value string) string {
 	if value == "" {
 		return "-"
 	}
-	value = strings.ReplaceAll(value, " ", "_")
-	value = strings.ReplaceAll(value, "\n", "|")
-	value = strings.ReplaceAll(value, "\t", "|")
-	return value
+	replacer := strings.NewReplacer(
+		" ", "_",
+		"\n", "|",
+		"\t", "|",
+		";", `\;`,
+		":", `\:`,
+		"=", `\=`,
+		"(", `\(`,
+		")", `\)`,
+		",", `\,`,
+	)
+	return replacer.Replace(value)
 }

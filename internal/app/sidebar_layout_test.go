@@ -35,7 +35,7 @@ case "$1" in
   display-message) printf '\n' ;;
   show-options)
     case "$3" in
-      @session-sidebar-activity-debug-log) printf '%s\n' ;;
+      @session-sidebar-activity-debug-log) printf '%%s\n' '%s' ;;
       *) printf '\n' ;;
     esac ;;
 esac
