@@ -713,6 +713,10 @@ func (e tmuxError) Unwrap() error {
 	return e.err
 }
 
+func (e tmuxError) Is(target error) bool {
+	return target == ports.ErrTmuxTargetGone && tmuxTargetGoneMessage(e.result.Stderr+e.result.Stdout)
+}
+
 func wrapTmuxError(result ports.Result, err error) error {
 	if err == nil {
 		return nil
@@ -721,11 +725,11 @@ func wrapTmuxError(result ports.Result, err error) error {
 }
 
 func isTmuxTargetGone(err error) bool {
-	var tmuxErr tmuxError
-	if !errors.As(err, &tmuxErr) {
-		return false
-	}
-	message := strings.ToLower(tmuxErr.result.Stderr + tmuxErr.result.Stdout)
+	return errors.Is(err, ports.ErrTmuxTargetGone)
+}
+
+func tmuxTargetGoneMessage(output string) bool {
+	message := strings.ToLower(output)
 	return strings.Contains(message, "no such window") ||
 		strings.Contains(message, "can't find window") ||
 		strings.Contains(message, "no such pane") ||

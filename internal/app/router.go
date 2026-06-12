@@ -410,7 +410,7 @@ func resizeSidebarPaneToWidth(ctx context.Context, paneID string, width string) 
 }
 
 func isIgnoredResizeHookError(err error) bool {
-	return err != nil && tmuxTargetGoneOutput(err.Error())
+	return errors.Is(err, ports.ErrTmuxTargetGone)
 }
 
 func tmuxCommandError(action string, output string, err error) error {

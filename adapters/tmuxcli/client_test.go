@@ -41,6 +41,9 @@ func allowSidebarOpenBaselineCaptureMaybe(process *mocks.MockProcessPort, ctx co
 	process.On("Exec", ctx, "tmux", mock.MatchedBy(func(args []string) bool {
 		return len(args) == 5 && args[0] == "list-panes" && args[1] == "-t" && (windowID == "" || args[2] == windowID) && args[3] == "-F" && args[4] == formatSidebarRebalancePane
 	})).Return(ports.Result{Stdout: fmt.Sprintf("%s\t0\t0\t%d\t30\t1\n%%1\t%d\t0\t%d\t30\t0\n", paneID, parsedWidth, parsedWidth+1, 99-parsedWidth)}, nil).Maybe()
+	process.On("Exec", ctx, "tmux", mock.MatchedBy(func(args []string) bool {
+		return len(args) == 5 && args[0] == "set-option" && args[1] == "-wu" && args[2] == "-t" && (windowID == "" || args[3] == windowID) && args[4] == optionSidebarOpenWorkBaseline
+	})).Return(ports.Result{}, nil).Maybe()
 }
 
 func TestListSessionsParsesTmuxRows(t *testing.T) {
@@ -905,6 +908,30 @@ func TestAttachSingletonSidebarResizesWidthAfterJoin(t *testing.T) {
 		t.Fatalf("AttachSingletonSidebar error: %v", err)
 	}
 	// The obsolete visible-layout option is gone, so there is no visible-layout assertion here.
+}
+
+func TestAttachSingletonSidebarCapturesSidebarOpenBaselineAfterJoin(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@hidden\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@2", "#{window_layout}"}).Return(ports.Result{Stdout: "target-hidden-layout\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@2", "@session-sidebar-window-layout", "target-hidden-layout"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@hidden", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "no such window: @hidden\n"}, errors.New("no such window"))
+	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@2", optionSidebarResizeSyncActive}).Return(ports.Result{Stdout: "0\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@2", "#{window_width}\t#{window_height}"}).Return(ports.Result{Stdout: "100\t30\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@2", "-F", formatSidebarRebalancePane}).Return(ports.Result{Stdout: "%9\t0\t0\t20\t30\t1\n%11\t21\t0\t39\t30\t0\n%12\t61\t0\t39\t15\t0\n%13\t61\t16\t39\t14\t0\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@2", optionSidebarOpenWorkBaseline, `{"representativePaneIDs":["%11","%12"],"workWidths":[39,39]}`}).Return(ports.Result{}, nil)
+
+	if _, err := (Client{Process: process}).AttachSingletonSidebar(ctx, "client-1", "%9", "20"); err != nil {
+		t.Fatalf("AttachSingletonSidebar error: %v", err)
+	}
 }
 
 func TestAttachSingletonSidebarUsesDirectWidthAfterJoin_NoVisibleLayoutSwap(t *testing.T) {

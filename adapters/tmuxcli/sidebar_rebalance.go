@@ -176,13 +176,13 @@ func (c Client) saveSidebarOpenWorkBaseline(ctx context.Context, windowID string
 	baseline := sidebarOpenWorkBaseline{RepresentativePaneIDs: make([]string, 0, len(weights)), WorkWidths: make([]int, 0, len(weights))}
 	for _, weight := range weights {
 		if strings.TrimSpace(weight.RepresentativePaneID) == "" || weight.Weight <= 0 {
-			return nil
+			return c.clearWindowOptionValue(ctx, windowID, optionSidebarOpenWorkBaseline)
 		}
 		baseline.RepresentativePaneIDs = append(baseline.RepresentativePaneIDs, weight.RepresentativePaneID)
 		baseline.WorkWidths = append(baseline.WorkWidths, weight.Weight)
 	}
 	if len(baseline.RepresentativePaneIDs) < 2 {
-		return nil
+		return c.clearWindowOptionValue(ctx, windowID, optionSidebarOpenWorkBaseline)
 	}
 	encoded, err := json.Marshal(baseline)
 	if err != nil {
@@ -247,23 +247,32 @@ func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID 
 		groupByRep[group.RepresentativePaneID] = group
 		totalWidth += group.Width
 	}
+	alignedGroups := make([]sidebarHorizontalGroup, len(weights))
 	targetWeights := make([]int, len(weights))
 	for i, weight := range weights {
-		if strings.TrimSpace(weight.RepresentativePaneID) == "" || weight.Weight <= 0 {
+		representativePaneID := strings.TrimSpace(weight.RepresentativePaneID)
+		if representativePaneID == "" || weight.Weight <= 0 {
 			return
 		}
+		group, ok := groupByRep[representativePaneID]
+		if !ok {
+			return
+		}
+		alignedGroups[i] = group
 		targetWeights[i] = weight.Weight
 	}
 	targetWidths := proportionalWidths(targetWeights, totalWidth)
-	for i := 0; i < len(weights)-1; i++ {
-		group, ok := groupByRep[weights[i].RepresentativePaneID]
-		if !ok || targetWidths[i] <= 0 {
+	for _, targetWidth := range targetWidths {
+		if targetWidth <= 0 {
 			return
 		}
+	}
+	for i := 0; i < len(alignedGroups)-1; i++ {
+		group := alignedGroups[i]
 		if group.Width == targetWidths[i] {
 			continue
 		}
-		_ = c.resizePaneWidth(ctx, weights[i].RepresentativePaneID, strconv.Itoa(targetWidths[i]))
+		_ = c.resizePaneWidth(ctx, group.RepresentativePaneID, strconv.Itoa(targetWidths[i]))
 	}
 }
 

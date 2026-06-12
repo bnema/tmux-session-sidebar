@@ -509,7 +509,7 @@ func TestWindowResizedHookDelegatesToSidebarResizeSyncWhenAvailable(t *testing.T
 func TestWindowResizedHookIgnoresMissingWindowTarget(t *testing.T) {
 	ctx := t.Context()
 	tmux := mocks.NewMockTmuxSidebarPort(t)
-	tmux.EXPECT().FindSidebarPane(ctx, "@1").Return(ports.PaneRef{}, errors.New("can't find window: @1"))
+	tmux.EXPECT().FindSidebarPane(ctx, "@1").Return(ports.PaneRef{}, ports.ErrTmuxTargetGone)
 
 	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"window": "@1"}}, nil, nil); err != nil {
 		t.Fatalf("Handle error: %v", err)
@@ -519,7 +519,7 @@ func TestWindowResizedHookIgnoresMissingWindowTarget(t *testing.T) {
 func TestClientResizedHookIgnoresMissingClientTarget(t *testing.T) {
 	ctx := t.Context()
 	tmux := mocks.NewMockTmuxSidebarPort(t)
-	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, errors.New("can't find client: client-1"))
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, ports.ErrTmuxTargetGone)
 
 	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/client-resized", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {
 		t.Fatalf("Handle error: %v", err)

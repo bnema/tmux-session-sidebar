@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/bnema/tmux-session-sidebar/core/config"
@@ -60,6 +61,8 @@ type PaneSize struct {
 	Width  int
 	Height int
 }
+
+var ErrTmuxTargetGone = errors.New("tmux target gone")
 
 type PaneRef struct {
 	PaneID   string
