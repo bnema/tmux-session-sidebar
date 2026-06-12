@@ -190,7 +190,7 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 }
 
 func (c Client) saveTargetWindowLayoutBeforeAttach(ctx context.Context, windowID string) error {
-	return c.captureWindowLayout(ctx, windowID, optionSidebarWindowLayout, true)
+	return c.captureWindowLayout(ctx, windowID, optionSidebarWindowLayout)
 }
 
 func (c Client) clearSourceWindowLayoutBestEffort(ctx context.Context, windowID string) {

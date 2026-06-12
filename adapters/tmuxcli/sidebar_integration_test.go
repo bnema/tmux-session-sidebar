@@ -282,16 +282,22 @@ func TestAttachSingletonSidebarPreservesHiddenSideEditsInWorkArea(t *testing.T) 
 		t.Fatalf("ParkSingletonSidebar error: %v", err)
 	}
 	parkedLayout := strings.TrimSpace(runTmuxOutput(t, ctx, realTmux, socketName, "display-message", "-p", "-t", "work:", "#{window_layout}"))
+	parkedGeometry := recordPaneGeometries(t, ctx, realTmux, socketName, "work:")
 
 	// Reorganize the work-window layout while sidebar is hidden (hidden-side edit).
-	runTmux(t, ctx, realTmux, socketName, "select-layout", "-t", "work:", "main-horizontal")
-	hiddenEditLayout := strings.TrimSpace(runTmuxOutput(t, ctx, realTmux, socketName, "display-message", "-p", "-t", "work:", "#{window_layout}"))
-	if hiddenEditLayout == parkedLayout {
-		t.Fatalf("hidden-side edit did not change the parked work-window layout\nparked: %s\n edited: %s", parkedLayout, hiddenEditLayout)
+	hiddenEditLayout := parkedLayout
+	wantWorkGeometry := parkedGeometry
+	for _, preset := range []string{"main-horizontal", "tiled", "main-vertical"} {
+		runTmux(t, ctx, realTmux, socketName, "select-layout", "-t", "work:", preset)
+		hiddenEditLayout = strings.TrimSpace(runTmuxOutput(t, ctx, realTmux, socketName, "display-message", "-p", "-t", "work:", "#{window_layout}"))
+		wantWorkGeometry = recordPaneGeometries(t, ctx, realTmux, socketName, "work:")
+		if !reflect.DeepEqual(wantWorkGeometry, parkedGeometry) {
+			break
+		}
 	}
-
-	// Record work-pane geometries after the hidden-side edit (before re-attach).
-	wantWorkGeometry := recordPaneGeometries(t, ctx, realTmux, socketName, "work:")
+	if reflect.DeepEqual(wantWorkGeometry, parkedGeometry) {
+		t.Fatalf("hidden-side edit did not change the parked work-window geometry\nparked layout: %s\n edited layout: %s\nparked geometry: %#v\n edited geometry: %#v", parkedLayout, hiddenEditLayout, parkedGeometry, wantWorkGeometry)
+	}
 
 	if _, err := client.AttachSingletonSidebar(ctx, "work:", sidebarPane, "20"); err != nil {
 		t.Fatalf("second AttachSingletonSidebar error: %v", err)
@@ -563,6 +569,10 @@ func setupStackedWorkSessionWithSidebar(t *testing.T, ctx context.Context, realT
 
 func setupFlatWorkSessionWithSidebar(t *testing.T, ctx context.Context, realTmux string, socketName string) (Client, string) {
 	t.Helper()
+	// These dimensions keep the integration layouts deterministic: 181 columns
+	// gives a parked 90 + 1 + 90 split, and the same window becomes 30 + 1 + 150
+	// when the sidebar is attached at width 30. Using 181x48 and 30x48 avoids
+	// tmux rounding noise in the flat and grouped top-level split scenarios.
 	runTmux(t, ctx, realTmux, socketName, "new-session", "-d", "-s", "work", "-x", "181", "-y", "48")
 	runTmux(t, ctx, realTmux, socketName, "set-option", "-g", "pane-base-index", "1")
 	runTmux(t, ctx, realTmux, socketName, "split-window", "-h", "-t", "work:")

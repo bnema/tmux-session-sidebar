@@ -24,8 +24,8 @@ func TestSidebarDebugSnapshotIncludesPaneSizesAndLayout(t *testing.T) {
 		"session=work($1)",
 		"window=@1:1:editor",
 		"layout=main-vertical",
-		`%1[idx\=0\,size\=120x40\,pos\=0\,0\,active\=true\,dead\=false\,sidebar\=false\,cmd\=zsh]`,
-		`%10[idx\=1\,size\=20x40\,pos\=120\,0\,active\=false\,dead\=false\,sidebar\=true\,cmd\=tmux-session-sidebar]`,
+		`%1[idx=0,size=120x40,pos=0,0,active=true,dead=false,sidebar=false,cmd=zsh]`,
+		`%10[idx=1,size=20x40,pos=120,0,active=false,dead=false,sidebar=true,cmd=tmux-session-sidebar]`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("SidebarDebugSnapshot = %q, want substring %q", got, want)
@@ -51,8 +51,8 @@ func TestSidebarDebugSnapshotHandlesEdgeCases(t *testing.T) {
 		process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", formatSidebarDebugWindow}).Return(ports.Result{Stderr: "no such window\n"}, boom)
 
 		_, err := (Client{Process: process}).SidebarDebugSnapshot(ctx, "@1")
-		if err == nil {
-			t.Fatal("SidebarDebugSnapshot error = nil, want propagated display-message error")
+		if !errors.Is(err, boom) {
+			t.Fatalf("SidebarDebugSnapshot error = %v, want %v", err, boom)
 		}
 	})
 
@@ -64,8 +64,8 @@ func TestSidebarDebugSnapshotHandlesEdgeCases(t *testing.T) {
 		process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", formatSidebarDebugPane}).Return(ports.Result{Stderr: "list-panes failed\n"}, boom)
 
 		_, err := (Client{Process: process}).SidebarDebugSnapshot(ctx, "@1")
-		if err == nil {
-			t.Fatal("SidebarDebugSnapshot error = nil, want propagated list-panes error")
+		if !errors.Is(err, boom) {
+			t.Fatalf("SidebarDebugSnapshot error = %v, want %v", err, boom)
 		}
 	})
 
@@ -84,6 +84,23 @@ func TestSidebarDebugSnapshotHandlesEdgeCases(t *testing.T) {
 		}
 	})
 
+	t.Run("sanitizes special characters in snapshot values", func(t *testing.T) {
+		ctx := t.Context()
+		process := mocks.NewMockProcessPort(t)
+		process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", formatSidebarDebugWindow}).Return(ports.Result{Stdout: "proj;ect\t$1\t@1\t1\tedit[or]\"q\"\tmain-vertical\n"}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", formatSidebarDebugPane}).Return(ports.Result{Stdout: "%1\t0\t120\t40\t0\t0\t1\t0\tcmd;with\\slashes\t0\n"}, nil)
+
+		got, err := (Client{Process: process}).SidebarDebugSnapshot(ctx, "@1")
+		if err != nil {
+			t.Fatalf("SidebarDebugSnapshot error: %v", err)
+		}
+		for _, want := range []string{`session=proj\;ect($1)`, `window=@1:1:edit[or]"q"`, `cmd=cmd\;with\\slashes`} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("SidebarDebugSnapshot = %q, want substring %q", got, want)
+			}
+		}
+	})
+
 	t.Run("malformed pane rows degrade to placeholders", func(t *testing.T) {
 		ctx := t.Context()
 		process := mocks.NewMockProcessPort(t)
@@ -94,7 +111,7 @@ func TestSidebarDebugSnapshotHandlesEdgeCases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SidebarDebugSnapshot error: %v", err)
 		}
-		if !strings.Contains(got, `%1[idx\=\,size\=x\,pos\=\,\,active\=false\,dead\=false\,sidebar\=false\,cmd\=]`) {
+		if !strings.Contains(got, `%1[idx=-,size=-x-,pos=-,-,active=false,dead=false,sidebar=false,cmd=-]`) {
 			t.Fatalf("SidebarDebugSnapshot = %q, want placeholder pane summary", got)
 		}
 	})

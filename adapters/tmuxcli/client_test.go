@@ -880,28 +880,6 @@ func TestAttachSingletonSidebarResizesWidthAfterJoin(t *testing.T) {
 	// The obsolete visible-layout option is gone, so there is no visible-layout assertion here.
 }
 
-func TestAttachSingletonSidebarUsesDirectWidthAfterJoin(t *testing.T) {
-	// No visible-layout swap or fallback is involved here; direct width resize
-	// is the primary layout step after join-pane.
-	ctx := t.Context()
-	process := mocks.NewMockProcessPort(t)
-
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@hidden\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@2", "#{window_layout}"}).Return(ports.Result{Stdout: "target-hidden-layout\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@2", "@session-sidebar-window-layout", "target-hidden-layout"}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2"}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1"}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9"}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@hidden", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "no such window: @hidden\n"}, errors.New("no such window"))
-
-	if _, err := (Client{Process: process}).AttachSingletonSidebar(ctx, "client-1", "%9", "20"); err != nil {
-		t.Fatalf("AttachSingletonSidebar error: %v", err)
-	}
-}
-
 func TestAttachSingletonSidebarUsesDirectWidthAfterJoin_NoVisibleLayoutSwap(t *testing.T) {
 	// There is no visible-layout swap path here. The mock asserts that direct
 	// width resize is used unconditionally after join-pane.
@@ -1162,11 +1140,10 @@ func TestSaveAndRestoreWindowLayout(t *testing.T) {
 	process := mocks.NewMockProcessPort(t)
 	client := Client{Process: process}
 
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "invalid option\n"}, errors.New("missing option")).Once()
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_layout}"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@1", "@session-sidebar-window-layout", "layout-before-sidebar"}).Return(ports.Result{}, nil)
-	if err := client.SaveWindowLayout(ctx, "@1"); err != nil {
-		t.Fatalf("SaveWindowLayout error: %v", err)
+	if err := client.saveTargetWindowLayoutBeforeAttach(ctx, "@1"); err != nil {
+		t.Fatalf("saveTargetWindowLayoutBeforeAttach error: %v", err)
 	}
 
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
@@ -1175,34 +1152,6 @@ func TestSaveAndRestoreWindowLayout(t *testing.T) {
 	if err := client.RestoreWindowLayout(ctx, "@1"); err != nil {
 		t.Fatalf("RestoreWindowLayout error: %v", err)
 	}
-}
-
-func TestSaveWindowLayout(t *testing.T) {
-	ctx := t.Context()
-	process := mocks.NewMockProcessPort(t)
-	client := Client{Process: process}
-
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stderr: "invalid option\n"}, errors.New("missing option")).Once()
-	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_layout}"}).Return(ports.Result{Stdout: "current-layout\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@1", "@session-sidebar-window-layout", "current-layout"}).Return(ports.Result{}, nil)
-
-	if err := client.SaveWindowLayout(ctx, "@1"); err != nil {
-		t.Fatalf("SaveWindowLayout error: %v", err)
-	}
-}
-
-func TestSaveWindowLayoutKeepsExistingSavedLayout(t *testing.T) {
-	ctx := t.Context()
-	process := mocks.NewMockProcessPort(t)
-	client := Client{Process: process}
-
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{Stdout: "layout-before-sidebar\n"}, nil)
-
-	if err := client.SaveWindowLayout(ctx, "@1"); err != nil {
-		t.Fatalf("SaveWindowLayout error: %v", err)
-	}
-	process.AssertNotCalled(t, "Exec", ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_layout}"})
-	process.AssertNotCalled(t, "Exec", ctx, "tmux", []string{"set-option", "-wq", "-t", "@1", "@session-sidebar-window-layout", "layout-before-sidebar"})
 }
 
 func TestRestoreWindowLayoutKeepsSavedLayoutWhenSelectFails(t *testing.T) {

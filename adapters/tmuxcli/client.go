@@ -28,9 +28,9 @@ const (
 	cmdSelectLayout   = "select-layout"
 	cmdSelectPane     = "select-pane"
 	cmdSendKeys       = "send-keys"
-	cmdSetOption    = "set-option"
-	cmdShowOptions  = "show-options"
-	cmdSwitchClient = "switch-client"
+	cmdSetOption      = "set-option"
+	cmdShowOptions    = "show-options"
+	cmdSwitchClient   = "switch-client"
 
 	formatPaneCurrentPath = "#{pane_current_path}"
 	formatPaneID          = "#{pane_id}"
@@ -385,30 +385,17 @@ func (c Client) refreshSidebarPane(ctx context.Context, paneID string) error {
 	return err
 }
 
-func (c Client) SaveWindowLayout(ctx context.Context, windowID string) error {
-	return c.captureWindowLayout(ctx, windowID, optionSidebarWindowLayout, false)
-}
-
 func (c Client) ClearSavedWindowLayout(ctx context.Context, windowID string) error {
 	return c.clearWindowLayout(ctx, windowID, optionSidebarWindowLayout)
 }
 
 func (c Client) RestoreWindowLayout(ctx context.Context, windowID string) error {
-	return c.restoreWindowLayout(ctx, windowID, optionSidebarWindowLayout, true)
+	return c.restoreWindowLayout(ctx, windowID, optionSidebarWindowLayout)
 }
 
-func (c Client) captureWindowLayout(ctx context.Context, windowID string, option string, overwrite bool) error {
+func (c Client) captureWindowLayout(ctx context.Context, windowID string, option string) error {
 	if strings.TrimSpace(windowID) == "" {
 		return nil
-	}
-	if !overwrite {
-		saved, err := c.windowLayoutOption(ctx, windowID, option)
-		if err != nil {
-			return err
-		}
-		if saved != "" {
-			return nil
-		}
 	}
 	layout, err := c.displayTarget(ctx, windowID, formatWindowLayout)
 	if err != nil {
@@ -430,7 +417,7 @@ func (c Client) clearWindowLayout(ctx context.Context, windowID string, option s
 	return err
 }
 
-func (c Client) restoreWindowLayout(ctx context.Context, windowID string, option string, clearOnSuccess bool) error {
+func (c Client) restoreWindowLayout(ctx context.Context, windowID string, option string) error {
 	if strings.TrimSpace(windowID) == "" {
 		return nil
 	}
@@ -444,9 +431,6 @@ func (c Client) restoreWindowLayout(ctx context.Context, windowID string, option
 	result, selectErr := c.Process.Exec(ctx, tmuxBinary, []string{cmdSelectLayout, "-t", windowID, layout})
 	if selectErr != nil {
 		return wrapTmuxError(result, selectErr)
-	}
-	if !clearOnSuccess {
-		return nil
 	}
 	return c.clearWindowLayout(ctx, windowID, option)
 }

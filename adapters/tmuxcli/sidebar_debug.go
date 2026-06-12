@@ -44,16 +44,16 @@ func formatSidebarDebugSnapshot(windowInfo string, panesInfo string) string {
 		}
 		fields := strings.Split(line, "\t")
 		panes = append(panes, fmt.Sprintf("%s[idx=%s,size=%sx%s,pos=%s,%s,active=%t,dead=%t,sidebar=%t,cmd=%s]",
-			debugField(fields, 0),
-			debugField(fields, 1),
-			debugField(fields, 2),
-			debugField(fields, 3),
-			debugField(fields, 4),
-			debugField(fields, 5),
+			sanitizeSidebarDebugValue(debugField(fields, 0)),
+			sanitizeSidebarDebugValue(debugField(fields, 1)),
+			sanitizeSidebarDebugValue(debugField(fields, 2)),
+			sanitizeSidebarDebugValue(debugField(fields, 3)),
+			sanitizeSidebarDebugValue(debugField(fields, 4)),
+			sanitizeSidebarDebugValue(debugField(fields, 5)),
 			parseTmuxBool(debugField(fields, 6)),
 			parseTmuxBool(debugField(fields, 7)),
 			parseTmuxBool(debugField(fields, 9)),
-			debugField(fields, 8),
+			sanitizeSidebarDebugValue(debugField(fields, 8)),
 		))
 	}
 	paneSummary := "none"
@@ -67,7 +67,7 @@ func formatSidebarDebugSnapshot(windowInfo string, panesInfo string) string {
 		sanitizeSidebarDebugValue(windowIndex),
 		sanitizeSidebarDebugValue(windowName),
 		sanitizeSidebarDebugValue(windowLayout),
-		sanitizeSidebarDebugValue(paneSummary),
+		paneSummary,
 	)
 }
 
@@ -84,6 +84,7 @@ func sanitizeSidebarDebugValue(value string) string {
 		return "-"
 	}
 	replacer := strings.NewReplacer(
+		`\`, `\\`,
 		" ", "_",
 		"\n", "|",
 		"\t", "|",

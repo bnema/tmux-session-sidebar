@@ -2,6 +2,7 @@ package tmuxcli
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -205,7 +206,7 @@ func (c Client) listSidebarRebalancePanes(ctx context.Context, windowID string) 
 		}
 		fields := strings.Split(line, "\t")
 		if len(fields) != 6 {
-			return nil, strconv.ErrSyntax
+			return nil, fmt.Errorf("expected 6 tab-separated fields, got %d: %q", len(fields), line)
 		}
 		left, err := strconv.Atoi(strings.TrimSpace(fields[1]))
 		if err != nil {
@@ -242,7 +243,7 @@ func (c Client) windowDimensions(ctx context.Context, windowID string) (int, int
 	}
 	fields := strings.Split(out, "\t")
 	if len(fields) != 2 {
-		return 0, 0, strconv.ErrSyntax
+		return 0, 0, fmt.Errorf("expected 2 tab-separated fields for window dimensions, got %d: %q", len(fields), out)
 	}
 	width, err := strconv.Atoi(strings.TrimSpace(fields[0]))
 	if err != nil {
@@ -271,26 +272,25 @@ func proportionalWidths(weights []int, total int) []int {
 	widths := make([]int, len(weights))
 	type remainder struct {
 		index int
-		rem   int
+		rem   int64
 	}
 	remainders := make([]remainder, 0, len(weights))
 	assigned := 0
+	total64 := int64(total)
+	sum64 := int64(sum)
 	for i, weight := range weights {
 		if weight <= 0 {
 			continue
 		}
-		numerator := weight * total
-		widths[i] = numerator / sum
+		numerator64 := int64(weight) * total64
+		widths[i] = int(numerator64 / sum64)
 		assigned += widths[i]
-		remainders = append(remainders, remainder{index: i, rem: numerator % sum})
+		remainders = append(remainders, remainder{index: i, rem: numerator64 % sum64})
 	}
 	sort.SliceStable(remainders, func(i, j int) bool { return remainders[i].rem > remainders[j].rem })
-	for i := 0; assigned < total && i < len(remainders); i++ {
-		widths[remainders[i].index]++
-		assigned++
-		if i == len(remainders)-1 {
-			i = -1
-		}
+	remaining := min(total-assigned, len(remainders))
+	for j := range remaining {
+		widths[remainders[j].index]++
 	}
 	return widths
 }
