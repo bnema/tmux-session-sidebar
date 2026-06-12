@@ -25,6 +25,13 @@ type horizontalSidebarClosePlan struct {
 	workSpans             []int
 }
 
+type horizontalSidebarWidthSyncPlan struct {
+	windowID              string
+	sidebarPaneID         string
+	representativePaneIDs []string
+	workWidths            []int
+}
+
 type sidebarHorizontalGroup struct {
 	Left                 int
 	Width                int
@@ -111,6 +118,125 @@ func (c Client) rebalanceHorizontalSidebarCloseBestEffort(ctx context.Context, p
 		totalWidth += group.Width
 	}
 	targetWidths := proportionalWidths(plan.workSpans, totalWidth)
+	for i := 0; i < len(plan.representativePaneIDs)-1; i++ {
+		repID := plan.representativePaneIDs[i]
+		group, ok := groupByRep[repID]
+		if !ok || targetWidths[i] <= 0 {
+			return
+		}
+		if group.Width == targetWidths[i] {
+			continue
+		}
+		_ = c.resizePaneWidth(ctx, repID, strconv.Itoa(targetWidths[i]))
+	}
+}
+
+func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string) error {
+	paneID = strings.TrimSpace(paneID)
+	if paneID == "" {
+		return nil
+	}
+	windowID = strings.TrimSpace(windowID)
+	if windowID == "" {
+		resolvedWindowID, err := c.WindowID(ctx, paneID)
+		if err != nil {
+			if isTmuxTargetGone(err) {
+				return nil
+			}
+			return err
+		}
+		windowID = strings.TrimSpace(resolvedWindowID)
+	}
+	width = strings.TrimSpace(width)
+	if width == "" {
+		width = "30"
+	}
+	plan, err := c.planHorizontalSidebarWidthSync(ctx, windowID, paneID)
+	if err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
+		return err
+	}
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdResizePane, "-t", paneID, "-x", width})
+	if err != nil {
+		wrapped := wrapTmuxError(result, err)
+		if isTmuxTargetGone(wrapped) {
+			return nil
+		}
+		return wrapped
+	}
+	c.rebalanceHorizontalSidebarWidthSyncBestEffort(ctx, plan)
+	return nil
+}
+
+func (c Client) planHorizontalSidebarWidthSync(ctx context.Context, windowID string, sidebarPaneID string) (*horizontalSidebarWidthSyncPlan, error) {
+	windowID = strings.TrimSpace(windowID)
+	sidebarPaneID = strings.TrimSpace(sidebarPaneID)
+	if windowID == "" || sidebarPaneID == "" {
+		return nil, nil
+	}
+	_, windowHeight, err := c.windowDimensions(ctx, windowID)
+	if err != nil {
+		return nil, err
+	}
+	panes, err := c.listSidebarRebalancePanes(ctx, windowID)
+	if err != nil {
+		return nil, err
+	}
+	if len(panes) < 3 {
+		return nil, nil
+	}
+	sidebar, work := splitSidebarAndWorkPanes(panes, sidebarPaneID)
+	if sidebar == nil || !sidebar.Sidebar || sidebar.Left != 0 || sidebar.Top != 0 || sidebar.Height != windowHeight {
+		return nil, nil
+	}
+	groups := groupHorizontalPanes(work)
+	if len(groups) < 2 {
+		return nil, nil
+	}
+	widths := make([]int, 0, len(groups))
+	reps := make([]string, 0, len(groups))
+	for _, group := range groups {
+		if !group.UniformWidth || group.MinTop != 0 || group.MaxBottom != windowHeight || strings.TrimSpace(group.RepresentativePaneID) == "" || group.Width <= 0 {
+			return nil, nil
+		}
+		widths = append(widths, group.Width)
+		reps = append(reps, group.RepresentativePaneID)
+	}
+	return &horizontalSidebarWidthSyncPlan{windowID: windowID, sidebarPaneID: sidebarPaneID, representativePaneIDs: reps, workWidths: widths}, nil
+}
+
+func (c Client) rebalanceHorizontalSidebarWidthSyncBestEffort(ctx context.Context, plan *horizontalSidebarWidthSyncPlan) {
+	if plan == nil {
+		return
+	}
+	_, windowHeight, err := c.windowDimensions(ctx, plan.windowID)
+	if err != nil {
+		return
+	}
+	panes, err := c.listSidebarRebalancePanes(ctx, plan.windowID)
+	if err != nil {
+		return
+	}
+	sidebar, work := splitSidebarAndWorkPanes(panes, plan.sidebarPaneID)
+	if sidebar == nil || !sidebar.Sidebar || sidebar.Left != 0 || sidebar.Top != 0 || sidebar.Height != windowHeight {
+		return
+	}
+	groups := groupHorizontalPanes(work)
+	if len(groups) != len(plan.representativePaneIDs) {
+		return
+	}
+	groupByRep := make(map[string]sidebarHorizontalGroup, len(groups))
+	totalWidth := 0
+	for _, group := range groups {
+		if !group.UniformWidth || group.MinTop != 0 || group.MaxBottom != windowHeight {
+			return
+		}
+		groupByRep[group.RepresentativePaneID] = group
+		totalWidth += group.Width
+	}
+	targetWidths := proportionalWidths(plan.workWidths, totalWidth)
 	for i := 0; i < len(plan.representativePaneIDs)-1; i++ {
 		repID := plan.representativePaneIDs[i]
 		group, ok := groupByRep[repID]

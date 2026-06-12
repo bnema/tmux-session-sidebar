@@ -100,24 +100,23 @@ func (c Client) attachSingletonSidebar(ctx context.Context, targetID string, pan
 	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
 		return ports.PaneRef{}, err
 	}
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdJoinPane, "-hbf", "-d", "-l", width, "-s", paneID, "-t", windowID})
-	if err != nil {
+	if err := c.joinSidebarPane(ctx, paneID, windowID, width); err != nil {
 		_ = c.ClearSavedWindowLayout(ctx, windowID)
-		return ports.PaneRef{}, wrapTmuxError(result, err)
+		return ports.PaneRef{}, err
 	}
 	ref := ports.PaneRef{PaneID: paneID, WindowID: windowID}
 	if err := c.markSidebarPane(ctx, ref.PaneID); err != nil {
-		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
+		c.rollbackAttachedSidebarAfterJoin(ctx, paneID, width, currentWindowID, ref.WindowID)
 		return ports.PaneRef{}, err
 	}
 	// The live tmux layout is authoritative after join-pane. Only set the
 	// explicit sidebar width; tmux handles work-pane layout natively.
 	if err := c.resizePaneWidth(ctx, ref.PaneID, width); err != nil {
-		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
+		c.rollbackAttachedSidebarAfterJoin(ctx, paneID, width, currentWindowID, ref.WindowID)
 		return ports.PaneRef{}, err
 	}
 	if err := c.selectAttachedSidebarPane(ctx, ref.PaneID, focus); err != nil {
-		_ = c.RestoreWindowLayout(ctx, ref.WindowID)
+		c.rollbackAttachedSidebarAfterJoin(ctx, paneID, width, currentWindowID, ref.WindowID)
 		return ports.PaneRef{}, err
 	}
 	if clearSourceWindowLayout {
@@ -133,6 +132,21 @@ func (c Client) selectAttachedSidebarPane(ctx context.Context, paneID string, fo
 	default:
 		return c.selectPane(ctx, paneID)
 	}
+}
+
+func (c Client) joinSidebarPane(ctx context.Context, paneID string, windowID string, width string) error {
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdJoinPane, "-hbf", "-d", "-l", width, "-s", paneID, "-t", windowID})
+	if err != nil {
+		return wrapTmuxError(result, err)
+	}
+	return nil
+}
+
+func (c Client) rollbackAttachedSidebarAfterJoin(ctx context.Context, paneID string, width string, currentWindowID string, targetWindowID string) {
+	if err := c.joinSidebarPane(ctx, paneID, currentWindowID, width); err != nil {
+		return
+	}
+	_ = c.RestoreWindowLayout(ctx, targetWindowID)
 }
 
 func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error {

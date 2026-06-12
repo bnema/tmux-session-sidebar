@@ -462,7 +462,9 @@ func isTmuxMissingOption(result ports.Result) bool {
 func (c Client) ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error {
 	paneID = strings.TrimSpace(paneID)
 	if paneID == "" {
-		// The sidebar pane can already be gone during TUI shutdown; nothing to schedule then.
+		// The sidebar pane can already be gone during TUI shutdown. When that
+		// happens, clear any stale saved hidden-layout option for the affected
+		// window and stop because there is no pane left to watch asynchronously.
 		pane, err := c.FindSidebarPane(ctx, clientID)
 		if err != nil {
 			if isTmuxTargetGone(err) {
@@ -471,9 +473,15 @@ func (c Client) ScheduleSidebarRestoreOnExit(ctx context.Context, clientID strin
 			return err
 		}
 		paneID = strings.TrimSpace(pane.PaneID)
-	}
-	if paneID == "" {
-		return nil
+		if paneID == "" {
+			if err := c.ClearSavedWindowLayout(ctx, pane.WindowID); err != nil {
+				if isTmuxTargetGone(err) {
+					return nil
+				}
+				return err
+			}
+			return nil
+		}
 	}
 	windowID, err := c.WindowID(ctx, paneID)
 	if err != nil {

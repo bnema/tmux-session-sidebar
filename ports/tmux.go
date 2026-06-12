@@ -118,6 +118,13 @@ type TmuxSidebarFollowPort interface {
 	AttachSingletonSidebarWithoutFocus(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
 }
 
+type TmuxSidebarResizePort interface {
+	// SyncAttachedSidebarWidth restores the configured width for an already
+	// attached sidebar pane while best-effort preserving the current top-level
+	// work-group proportions in the same window. Intended for resize hooks.
+	SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string) error
+}
+
 type TmuxSidebarDebugPort interface {
 	// SidebarDebugSnapshot returns a compact debug summary of the current tmux
 	// geometry for the specified window. Intended for diagnostics during
