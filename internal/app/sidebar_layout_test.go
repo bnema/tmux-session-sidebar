@@ -3,9 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -15,21 +12,10 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-type debugSidebarPort struct {
-	*mocks.MockTmuxSidebarPort
-	snapshot      string
-	snapshotCalls []string
-}
-
 type resizeSyncSidebarPort struct {
-	*debugSidebarPort
+	*mocks.MockTmuxSidebarPort
 	syncCalls    []string
 	captureCalls []string
-}
-
-func (d *debugSidebarPort) SidebarDebugSnapshot(_ context.Context, windowID string) (string, error) {
-	d.snapshotCalls = append(d.snapshotCalls, windowID)
-	return d.snapshot, nil
 }
 
 func (d *resizeSyncSidebarPort) CaptureAttachedSidebarWidthBaseline(_ context.Context, windowID string, paneID string, width string) error {
@@ -40,23 +26,6 @@ func (d *resizeSyncSidebarPort) CaptureAttachedSidebarWidthBaseline(_ context.Co
 func (d *resizeSyncSidebarPort) SyncAttachedSidebarWidth(_ context.Context, windowID string, paneID string, width string) error {
 	d.syncCalls = append(d.syncCalls, windowID+"|"+paneID+"|"+width)
 	return nil
-}
-
-func sidebarActivityLogPathForTest() string {
-	return filepath.Join(os.Getenv("XDG_STATE_HOME"), "tmux-session-sidebar", "activity.log")
-}
-
-func fakeSidebarLoggingConfigTmuxScript(activityDebug string) string {
-	return fmt.Sprintf(`#!/usr/bin/env bash
-case "$1" in
-  display-message) printf '\n' ;;
-  show-options)
-    case "$3" in
-      @session-sidebar-activity-debug-log) printf '%%s\n' '%s' ;;
-      *) printf '\n' ;;
-    esac ;;
-esac
-`, activityDebug)
 }
 
 func TestOpenSidebarAttachesSingletonPaneToClient(t *testing.T) {
@@ -125,81 +94,6 @@ func TestOpenSidebarRollsBackVisibilityWhenAttachFails(t *testing.T) {
 	}
 	if state.Sidebar == nil || state.Sidebar.Open || state.Sidebar.OwnerClient != "" {
 		t.Fatalf("sidebar state after attach failure = %#v, want closed", state.Sidebar)
-	}
-}
-
-func TestOpenSidebarWritesLayoutDebugLogWhenEnabled(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	installFakeTmux(t, fakeSidebarLoggingConfigTmuxScript("on"))
-	ctx := t.Context()
-	tmux := &debugSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t), snapshot: "session=work;window=@1;layout=main-vertical;panes=%1[size=120x40],%10[size=20x40]"}
-
-	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
-	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "20").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
-
-	if err := openSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux); err != nil {
-		t.Fatalf("openSidebar returned error: %v", err)
-	}
-	if got := tmux.snapshotCalls; len(got) != 1 || got[0] != "@1" {
-		t.Fatalf("snapshot calls = %#v, want [@1]", got)
-	}
-	content, err := os.ReadFile(sidebarActivityLogPathForTest())
-	if err != nil {
-		t.Fatalf("read activity log: %v", err)
-	}
-	log := string(content)
-	if !strings.Contains(log, "sidebar-layout") || !strings.Contains(log, "action=open") || !strings.Contains(log, "window=@1") || !strings.Contains(log, "panes=%1[size=120x40],%10[size=20x40]") {
-		t.Fatalf("activity log = %q, want open layout snapshot", log)
-	}
-}
-
-func TestCloseSidebarWritesLayoutDebugLogWhenEnabled(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	installFakeTmux(t, fakeSidebarLoggingConfigTmuxScript("on"))
-	ctx := t.Context()
-	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
-		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
-	}); err != nil {
-		t.Fatalf("updateSidebarState error: %v", err)
-	}
-	tmux := &debugSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t), snapshot: "session=work;window=@1;layout=tiled;panes=%1[size=140x40]"}
-
-	tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
-	tmux.EXPECT().ParkSingletonSidebar(ctx, "%10").Return(nil)
-
-	if err := closeSidebar(ctx, tmux); err != nil {
-		t.Fatalf("closeSidebar returned error: %v", err)
-	}
-	if got := tmux.snapshotCalls; len(got) != 1 || got[0] != "@1" {
-		t.Fatalf("snapshot calls = %#v, want [@1]", got)
-	}
-	content, err := os.ReadFile(sidebarActivityLogPathForTest())
-	if err != nil {
-		t.Fatalf("read activity log: %v", err)
-	}
-	log := string(content)
-	if !strings.Contains(log, "sidebar-layout") || !strings.Contains(log, "action=close") || !strings.Contains(log, "window=@1") || !strings.Contains(log, "layout=tiled") {
-		t.Fatalf("activity log = %q, want close layout snapshot", log)
-	}
-}
-
-func TestOpenSidebarSkipsLayoutDebugLogWhenDisabled(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	installFakeTmux(t, fakeSidebarLoggingConfigTmuxScript("off"))
-	ctx := t.Context()
-	tmux := &debugSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t), snapshot: "session=work;window=@1;layout=ignored"}
-
-	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
-	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "20").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
-
-	if err := openSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux); err != nil {
-		t.Fatalf("openSidebar returned error: %v", err)
-	}
-	if len(tmux.snapshotCalls) != 0 {
-		t.Fatalf("snapshot calls = %#v, want none when debug logging disabled", tmux.snapshotCalls)
-	}
-	if _, err := os.Stat(sidebarActivityLogPathForTest()); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("activity log err = %v, want not-exist", err)
 	}
 }
 
@@ -498,6 +392,8 @@ func TestResizeHooksWithoutTargetAreNoops(t *testing.T) {
 
 func TestWindowResizedHookResizesProvidedSidebarPaneToConfiguredWidth(t *testing.T) {
 	ctx := t.Context()
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux.EXPECT().FindSidebarPane(ctx, "%9").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
 		if name != "tmux" {
@@ -515,49 +411,21 @@ func TestWindowResizedHookResizesProvidedSidebarPaneToConfiguredWidth(t *testing
 	})
 	defer restore()
 
-	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"pane": "%9"}}, nil, nil); err != nil {
-		t.Fatalf("Handle error: %v", err)
-	}
-}
-
-func TestWindowResizedHookUsesWindowToFindMarkedSidebarPane(t *testing.T) {
-	ctx := t.Context()
-
-	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
-		if name != "tmux" {
-			t.Fatalf("command name = %q, want tmux", name)
-		}
-		switch strings.Join(args, "\x00") {
-		case "list-panes\x00-t\x00@1\x00-f\x00#{==:#{@session-sidebar-pane},1}\x00-F\x00#{pane_id}":
-			return "%9\n", nil
-		case "show-options\x00-gvq\x00@session-sidebar-width":
-			return "30\n", nil
-		case "resize-pane\x00-t\x00%9\x00-x\x0030":
-			return "", nil
-		default:
-			t.Fatalf("unexpected tmux args: %#v", args)
-			return "", nil
-		}
-	})
-	defer restore()
-
-	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"window": "@1"}}, nil, nil); err != nil {
+	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"pane": "%9"}}, nil, nil); err != nil {
 		t.Fatalf("Handle error: %v", err)
 	}
 }
 
 func TestClientResizedHookUsesClientToFindMarkedSidebarPane(t *testing.T) {
 	ctx := t.Context()
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
 		if name != "tmux" {
 			t.Fatalf("command name = %q, want tmux", name)
 		}
 		switch strings.Join(args, "\x00") {
-		case "display-message\x00-p\x00-t\x00client-1\x00#{window_id}":
-			return "@1\n", nil
-		case "list-panes\x00-t\x00@1\x00-f\x00#{==:#{@session-sidebar-pane},1}\x00-F\x00#{pane_id}":
-			return "%9\n", nil
 		case "show-options\x00-gvq\x00@session-sidebar-width":
 			return "30\n", nil
 		case "resize-pane\x00-t\x00%9\x00-x\x0030":
@@ -569,102 +437,25 @@ func TestClientResizedHookUsesClientToFindMarkedSidebarPane(t *testing.T) {
 	})
 	defer restore()
 
-	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "hook/client-resized", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {
-		t.Fatalf("Handle error: %v", err)
-	}
-}
-
-func TestWindowResizedHookUsesFirstMarkedSidebarPaneWhenMultipleAreReturned(t *testing.T) {
-	ctx := t.Context()
-
-	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
-		if name != "tmux" {
-			t.Fatalf("command name = %q, want tmux", name)
-		}
-		switch strings.Join(args, "\x00") {
-		case "list-panes\x00-t\x00@1\x00-f\x00#{==:#{@session-sidebar-pane},1}\x00-F\x00#{pane_id}":
-			return "%9\n%10\n", nil
-		case "show-options\x00-gvq\x00@session-sidebar-width":
-			return "30\n", nil
-		case "resize-pane\x00-t\x00%9\x00-x\x0030":
-			return "", nil
-		default:
-			t.Fatalf("unexpected command %s %#v", name, args)
-			return "", nil
-		}
-	})
-	defer restore()
-
-	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"window": "@1"}}, nil, nil); err != nil {
+	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/client-resized", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {
 		t.Fatalf("Handle error: %v", err)
 	}
 }
 
 func TestWindowResizedHookDoesNothingWhenSidebarIsMissing(t *testing.T) {
 	ctx := t.Context()
-
-	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
-		if name != "tmux" {
-			t.Fatalf("command name = %q, want tmux", name)
-		}
-		switch strings.Join(args, "\x00") {
-		case "list-panes\x00-t\x00@1\x00-f\x00#{==:#{@session-sidebar-pane},1}\x00-F\x00#{pane_id}":
-			return "", nil
-		default:
-			t.Fatalf("unexpected command %s %#v", name, args)
-			return "", nil
-		}
-	})
-	defer restore()
-
-	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"window": "@1"}}, nil, nil); err != nil {
-		t.Fatalf("Handle error: %v", err)
-	}
-}
-
-func TestWindowResizedHookWritesLayoutDebugLogWhenEnabled(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	installFakeTmux(t, fakeSidebarLoggingConfigTmuxScript("on"))
-	ctx := t.Context()
-	tmux := &debugSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t), snapshot: "session=work;window=@1;layout=main-vertical;panes=%1[size=120x40],%9[size=30x40]"}
-
-	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
-		if name != "tmux" {
-			t.Fatalf("command name = %q, want tmux", name)
-		}
-		switch strings.Join(args, "\x00") {
-		case "list-panes\x00-t\x00@1\x00-f\x00#{==:#{@session-sidebar-pane},1}\x00-F\x00#{pane_id}":
-			return "%9\n", nil
-		case "show-options\x00-gvq\x00@session-sidebar-width":
-			return "30\n", nil
-		case "resize-pane\x00-t\x00%9\x00-x\x0030":
-			return "", nil
-		default:
-			t.Fatalf("unexpected tmux args: %#v", args)
-			return "", nil
-		}
-	})
-	defer restore()
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux.EXPECT().FindSidebarPane(ctx, "@1").Return(ports.PaneRef{WindowID: "@1"}, nil)
 
 	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"window": "@1"}}, nil, nil); err != nil {
 		t.Fatalf("Handle error: %v", err)
-	}
-	if got := tmux.snapshotCalls; !reflect.DeepEqual(got, []string{"@1", "@1"}) {
-		t.Fatalf("snapshot calls = %#v, want [@1 @1]", got)
-	}
-	content, err := os.ReadFile(sidebarActivityLogPathForTest())
-	if err != nil {
-		t.Fatalf("read activity log: %v", err)
-	}
-	log := string(content)
-	if !strings.Contains(log, "action=window-resized-before") || !strings.Contains(log, "action=window-resized-after") || !strings.Contains(log, "pane=%9") || !strings.Contains(log, "width=30") {
-		t.Fatalf("activity log = %q, want resize before/after layout snapshots", log)
 	}
 }
 
 func TestWindowLayoutChangedHookDelegatesToSidebarBaselineCaptureWhenAvailable(t *testing.T) {
 	ctx := t.Context()
-	tmux := &resizeSyncSidebarPort{debugSidebarPort: &debugSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t)}}
+	tmux := &resizeSyncSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t)}
+	tmux.EXPECT().FindSidebarPane(ctx, "%9").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
 		if name != "tmux" {
@@ -690,7 +481,8 @@ func TestWindowLayoutChangedHookDelegatesToSidebarBaselineCaptureWhenAvailable(t
 
 func TestWindowResizedHookDelegatesToSidebarResizeSyncWhenAvailable(t *testing.T) {
 	ctx := t.Context()
-	tmux := &resizeSyncSidebarPort{debugSidebarPort: &debugSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t)}}
+	tmux := &resizeSyncSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t)}
+	tmux.EXPECT().FindSidebarPane(ctx, "%9").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
 		if name != "tmux" {
@@ -715,43 +507,29 @@ func TestWindowResizedHookDelegatesToSidebarResizeSyncWhenAvailable(t *testing.T
 }
 
 func TestWindowResizedHookIgnoresMissingWindowTarget(t *testing.T) {
-	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
-		if name != "tmux" {
-			t.Fatalf("command name = %q, want tmux", name)
-		}
-		if strings.Join(args, "\x00") == "list-panes\x00-t\x00@1\x00-f\x00#{==:#{@session-sidebar-pane},1}\x00-F\x00#{pane_id}" {
-			return "can't find window: @1\n", errors.New("exit status 1")
-		}
-		t.Fatalf("unexpected command %s %#v", name, args)
-		return "", nil
-	})
-	defer restore()
+	ctx := t.Context()
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux.EXPECT().FindSidebarPane(ctx, "@1").Return(ports.PaneRef{}, errors.New("can't find window: @1"))
 
-	if err := (runtimeRouter{}).Handle(t.Context(), Route{Path: "hook/window-resized", Flags: map[string]string{"window": "@1"}}, nil, nil); err != nil {
+	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"window": "@1"}}, nil, nil); err != nil {
 		t.Fatalf("Handle error: %v", err)
 	}
 }
 
 func TestClientResizedHookIgnoresMissingClientTarget(t *testing.T) {
-	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
-		if name != "tmux" {
-			t.Fatalf("command name = %q, want tmux", name)
-		}
-		if strings.Join(args, "\x00") == "display-message\x00-p\x00-t\x00client-1\x00#{window_id}" {
-			return "can't find client: client-1\n", errors.New("exit status 1")
-		}
-		t.Fatalf("unexpected command %s %#v", name, args)
-		return "", nil
-	})
-	defer restore()
+	ctx := t.Context()
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, errors.New("can't find client: client-1"))
 
-	if err := (runtimeRouter{}).Handle(t.Context(), Route{Path: "hook/client-resized", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {
+	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/client-resized", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {
 		t.Fatalf("Handle error: %v", err)
 	}
 }
 
 func TestWindowResizedHookIgnoresSidebarPaneThatDisappearsBeforeResize(t *testing.T) {
 	ctx := t.Context()
+	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux.EXPECT().FindSidebarPane(ctx, "%9").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
 		if name != "tmux" {
@@ -769,7 +547,7 @@ func TestWindowResizedHookIgnoresSidebarPaneThatDisappearsBeforeResize(t *testin
 	})
 	defer restore()
 
-	if err := (runtimeRouter{}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"pane": "%9"}}, nil, nil); err != nil {
+	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"pane": "%9"}}, nil, nil); err != nil {
 		t.Fatalf("Handle error: %v", err)
 	}
 }

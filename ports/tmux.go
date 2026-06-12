@@ -130,14 +130,6 @@ type TmuxSidebarResizePort interface {
 	SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string) error
 }
 
-type TmuxSidebarDebugPort interface {
-	// SidebarDebugSnapshot returns a compact debug summary of the current tmux
-	// geometry for the specified window. Intended for diagnostics during
-	// sidebar operations. Empty or whitespace-only window IDs are treated as a
-	// no-op and must return ("", nil). Returns an error if tmux commands fail.
-	SidebarDebugSnapshot(ctx context.Context, windowID string) (string, error)
-}
-
 type TmuxMetadataPort interface {
 	LoadSessionMetadata(ctx context.Context, sessionName string) (SessionMetadata, error)
 	SaveSessionMetadata(ctx context.Context, sessionName string, metadata SessionMetadata) error

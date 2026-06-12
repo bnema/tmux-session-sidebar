@@ -206,11 +206,7 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 }
 
 func (c Client) captureAttachedSidebarWidthBaselineBestEffort(ctx context.Context, windowID string, paneID string, width string) {
-	baseline, err := c.buildSidebarOpenWorkBaseline(ctx, windowID, paneID, width)
-	if err != nil || baseline == nil {
-		return
-	}
-	_ = c.saveSidebarOpenWorkBaseline(ctx, windowID, baseline)
+	_ = c.CaptureAttachedSidebarWidthBaseline(ctx, windowID, paneID, width)
 }
 
 func (c Client) saveTargetWindowLayoutBeforeAttach(ctx context.Context, windowID string) error {
@@ -234,7 +230,7 @@ func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	if err != nil {
 		return err
 	}
-	horizontalClosePlan, _ := c.planHorizontalSidebarClose(ctx, sourceWindowID, paneID)
+	horizontalCloseWeights, _ := c.captureSidebarWorkWeights(ctx, sourceWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
 	if err := c.ensureParkingSession(ctx); err != nil {
 		return err
 	}
@@ -242,7 +238,7 @@ func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	if err != nil {
 		return wrapTmuxError(result, err)
 	}
-	c.rebalanceHorizontalSidebarCloseBestEffort(ctx, horizontalClosePlan)
+	c.applySidebarWorkWeightsBestEffort(ctx, sourceWindowID, "", horizontalCloseWeights, false)
 	// Best-effort cleanup of the stale saved hidden-layout option. After
 	// break-pane removes the sidebar, tmux natively redistributes the
 	// window, making any saved pre-sidebar layout stale unless the close path

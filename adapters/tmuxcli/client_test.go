@@ -33,6 +33,9 @@ func allowSidebarOpenBaselineCaptureMaybe(process *mocks.MockProcessPort, ctx co
 		parsedWidth = 30
 	}
 	process.On("Exec", ctx, "tmux", mock.MatchedBy(func(args []string) bool {
+		return len(args) == 6 && args[0] == "show-options" && args[1] == "-w" && args[2] == "-v" && args[3] == "-t" && (windowID == "" || args[4] == windowID) && args[5] == optionSidebarResizeSyncActive
+	})).Return(ports.Result{Stderr: "invalid option\n"}, errors.New("missing option")).Maybe()
+	process.On("Exec", ctx, "tmux", mock.MatchedBy(func(args []string) bool {
 		return len(args) == 5 && args[0] == "display-message" && args[1] == "-p" && args[2] == "-t" && (windowID == "" || args[3] == windowID) && args[4] == "#{window_width}\t#{window_height}"
 	})).Return(ports.Result{Stdout: "100\t30\n"}, nil).Maybe()
 	process.On("Exec", ctx, "tmux", mock.MatchedBy(func(args []string) bool {
