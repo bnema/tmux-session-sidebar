@@ -7,10 +7,11 @@ import (
 )
 
 type MetadataSublineRenderOptions struct {
-	Icons    MetadataIconMode
-	Width    int
-	Selected bool
-	Active   bool
+	Icons             MetadataIconMode
+	Width             int
+	Selected          bool
+	Active            bool
+	InactiveIntensity float64
 }
 
 func RenderMetadataSubline(meta SessionMetadataSubline, options MetadataSublineRenderOptions) string {
@@ -18,7 +19,7 @@ func RenderMetadataSubline(meta SessionMetadataSubline, options MetadataSublineR
 	if len(parts) == 0 {
 		return ""
 	}
-	return renderMetadataParts(parts, options.Selected, options.Active)
+	return renderMetadataParts(parts, options)
 }
 
 func formatMetadataSublineParts(meta SessionMetadataSubline, options MetadataSublineOptions) []metadataPart {
@@ -39,9 +40,9 @@ func formatMetadataSublineParts(meta SessionMetadataSubline, options MetadataSub
 	return []metadataPart{{Text: text, Role: metadataPartBase}}
 }
 
-func renderMetadataParts(parts []metadataPart, selected bool, active bool) string {
-	if !active {
-		return metadataInactiveSublineStyle(selected).Render(metadataPartText(parts))
+func renderMetadataParts(parts []metadataPart, options MetadataSublineRenderOptions) string {
+	if !options.Active {
+		return metadataInactiveSublineStyle(options.Selected, options.InactiveIntensity).Render(metadataPartText(parts))
 	}
 	base := metadataSublineStyle()
 	var b strings.Builder
@@ -49,7 +50,7 @@ func renderMetadataParts(parts []metadataPart, selected bool, active bool) strin
 		if i > 0 {
 			b.WriteString(base.Render(" "))
 		}
-		b.WriteString(renderMetadataPart(part, selected))
+		b.WriteString(renderMetadataPart(part, options.Selected))
 	}
 	return b.String()
 }
@@ -58,11 +59,11 @@ func metadataSublineStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color("#cccccc"))
 }
 
-func metadataInactiveSublineStyle(selected bool) lipgloss.Style {
+func metadataInactiveSublineStyle(selected bool, intensity float64) lipgloss.Style {
 	if selected {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(selectedInactiveMetadataRGB.Hex()))
 	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveMetadataRGB.Hex()))
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveMetadataColor(intensity)))
 }
 
 func renderMetadataPart(part metadataPart, selected bool) string {

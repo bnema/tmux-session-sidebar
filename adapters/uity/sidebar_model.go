@@ -27,15 +27,16 @@ const metadataSublineFallbackWidth = 80
 const metadataSublineSidebarFallbackWidth = 30
 
 type SessionItem struct {
-	Name          string
-	Current       bool
-	Slot          int
-	Heat          string
-	HeatIntensity float64
-	Attention     bool
-	Pinned        bool
-	PinColor      string
-	Metadata      SessionMetadataSubline
+	Name              string
+	Current           bool
+	Slot              int
+	Heat              string
+	HeatIntensity     float64
+	InactiveIntensity float64
+	Attention         bool
+	Pinned            bool
+	PinColor          string
+	Metadata          SessionMetadataSubline
 }
 
 type ProjectItem struct {
