@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -67,7 +67,8 @@ func sessionItemsFromState(current string, views []sessions.View, persisted port
 	heatStates := decodePersistedHeat(persisted.Heat)
 	attentionStates := attentionStateMap(persisted.AgentAttention)
 	now := time.Now().UTC()
-	names := sessions.ApplyOrder(sessionNames(sessions.FilterVisible(views, true)), persisted.SessionOrder)
+	showNumeric := persistedShowNumeric(persisted)
+	names := sessions.ApplyOrder(sessionNames(sessions.FilterVisible(views, showNumeric)), persisted.SessionOrder)
 	pinned := pinnedSessionSet(persisted.PinnedSessions)
 	viewsByName := make(map[string]sessions.View, len(views))
 	for _, view := range views {
@@ -124,37 +125,20 @@ func inactiveGradientIntensities(names []string, current string, states map[stri
 		}
 		candidates = append(candidates, candidate{name: name, recent: recent})
 	}
-	slices.SortFunc(candidates, func(a, b candidate) int {
-		if cmp := a.recent.Compare(b.recent); cmp != 0 {
-			return cmp
-		}
-		return strings.Compare(a.name, b.name)
-	})
 	intensities := make(map[string]float64, len(candidates))
 	if len(candidates) == 0 {
 		return intensities
 	}
-	groupIndexByName := make(map[string]int, len(candidates))
-	groupCount := 0
-	var previous time.Time
-	for index, candidate := range candidates {
-		if index == 0 || !candidate.recent.Equal(previous) {
-			if index > 0 {
-				groupCount++
-			}
-			previous = candidate.recent
-		}
-		groupIndexByName[candidate.name] = groupCount
-	}
-	if groupCount == 0 {
-		for _, candidate := range candidates {
-			intensities[candidate.name] = 1
-		}
+	if len(candidates) == 1 {
+		intensities[candidates[0].name] = 1
 		return intensities
 	}
-	denominator := float64(groupCount)
-	for _, candidate := range candidates {
-		intensities[candidate.name] = float64(groupIndexByName[candidate.name]) / denominator
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].recent.After(candidates[j].recent)
+	})
+	denominator := float64(len(candidates) - 1)
+	for index, candidate := range candidates {
+		intensities[candidate.name] = 1 - float64(index)/denominator
 	}
 	return intensities
 }
