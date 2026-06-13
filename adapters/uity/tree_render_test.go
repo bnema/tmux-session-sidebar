@@ -58,6 +58,68 @@ func TestTreeSidebarRenderUsesInactiveGradientColorsForSessionRows(t *testing.T)
 	}
 }
 
+func TestTreeSidebarRenderSelectedRowSuppressesInactiveGradientColor(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", InactiveIntensity: 0}, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:work/session:beta", CategoryID: "category:work", Session: SessionItem{Name: "beta", InactiveIntensity: 1}, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+	model.cursor = 2
+
+	view := model.Render()
+	if strings.Contains(view, "38;2;204;204;204m beta") {
+		t.Fatalf("selected session row should not keep inactive gradient foreground, view=%q", view)
+	}
+	if !strings.Contains(view, "48;2;6;95;70") {
+		t.Fatalf("selected session row should use selected background, view=%q", view)
+	}
+}
+
+func TestTreeSidebarRenderCurrentRowSuppressesInactiveGradientColor(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Current: true, InactiveIntensity: 1}, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+
+	view := model.Render()
+	if strings.Contains(view, "38;2;204;204;204malpha") {
+		t.Fatalf("current session row should not keep inactive gradient foreground, view=%q", view)
+	}
+	if !strings.Contains(view, "38;2;255;255;255m") {
+		t.Fatalf("current session row should use active foreground, view=%q", view)
+	}
+}
+
+func TestTreeSidebarRenderPinnedRowSuppressesInactiveGradientColor(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Pinned: true, InactiveIntensity: 1}, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+
+	view := model.Render()
+	if strings.Contains(view, "38;2;204;204;204m alpha") {
+		t.Fatalf("pinned session row should not keep inactive gradient foreground, view=%q", view)
+	}
+	if !strings.Contains(view, "38;2;250;204;21m") {
+		t.Fatalf("pinned session row should use pin color foreground, view=%q", view)
+	}
+}
+
+func TestTreeSidebarRenderHeatStyledRowSuppressesInactiveGradientColor(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", Heat: "current", HeatIntensity: 1, InactiveIntensity: 0}, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+
+	view := model.Render()
+	if strings.Contains(view, "38;2;75;85;99m alpha") {
+		t.Fatalf("heat-styled session row should not fall back to inactive gradient foreground, view=%q", view)
+	}
+	if !strings.Contains(view, "38;2;240;253;244m alpha") {
+		t.Fatalf("heat-styled session row should use heat foreground, view=%q", view)
+	}
+}
+
 func TestTreeSidebarRenderMarksCurrentSessionWithGreenBar(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},

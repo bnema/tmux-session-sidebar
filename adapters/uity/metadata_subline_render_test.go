@@ -85,6 +85,26 @@ func TestRenderMetadataSublineUsesInactiveGradientShade(t *testing.T) {
 	}
 }
 
+func TestRenderMetadataSublineSelectedInactiveIgnoresGradientIntensity(t *testing.T) {
+	got := RenderMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Ahead: 1}, MetadataSublineRenderOptions{Icons: MetadataIconsNerd, Width: 80, Selected: true, Active: false, InactiveIntensity: 1})
+	if !strings.Contains(got, "38;2;148;163;184") {
+		t.Fatalf("RenderMetadataSubline() should keep selected inactive slate, got %q", got)
+	}
+	if strings.Contains(got, "38;2;184;184;186") {
+		t.Fatalf("RenderMetadataSubline() should not keep inactive gradient when selected, got %q", got)
+	}
+}
+
+func TestRenderMetadataSublineActiveIgnoresInactiveGradientIntensity(t *testing.T) {
+	got := RenderMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Modified: 2}, MetadataSublineRenderOptions{Icons: MetadataIconsNerd, Width: 80, Active: true, InactiveIntensity: 1})
+	if !strings.Contains(got, "38;2;214;200;111") {
+		t.Fatalf("RenderMetadataSubline() should keep active metadata colors, got %q", got)
+	}
+	if strings.Contains(got, "38;2;184;184;186") {
+		t.Fatalf("RenderMetadataSubline() should not keep inactive gradient when active, got %q", got)
+	}
+}
+
 func TestRenderMetadataSublineMutesDivergenceSlash(t *testing.T) {
 	got := RenderMetadataSubline(SessionMetadataSubline{Kind: MetadataKindGit, Ahead: 2, Behind: 1}, MetadataSublineRenderOptions{Icons: MetadataIconsNerd, Width: 80, Active: true})
 	if stripANSI(got) != "⇄2/1" {

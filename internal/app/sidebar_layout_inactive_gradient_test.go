@@ -81,6 +81,89 @@ func TestSessionItemsFromStateGivesEqualRecencyTiesEqualInactiveIntensity(t *tes
 	}
 }
 
+func TestSessionItemsFromStateIncludesRecentSessionsInInactiveGradientWhenHeatColorsDisabled(t *testing.T) {
+	now := time.Now().UTC()
+	persisted := ports.PersistedState{
+		SessionOrder: []string{"alpha", "beta", "hot"},
+		Heat: encodeHeatStateMapForSidebarGradientTest(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-48 * time.Hour)},
+			"beta":  {LastVisitedAt: now.Add(-24 * time.Hour)},
+			"hot":   {LastActiveAt: now.Add(-5 * time.Minute)},
+		}),
+	}
+	views := []sessions.View{{Name: "alpha", Visible: true}, {Name: "beta", Visible: true}, {Name: "hot", Visible: true}}
+
+	_, byName := sessionItemsFromState("current", views, persisted, ports.ConfigSnapshot{HeatColorsEnabled: false, HeatRecentInterval: time.Hour})
+
+	if got := byName["hot"].Heat; got != "" {
+		t.Fatalf("hot heat bucket = %q, want no explicit heat when colors are disabled", got)
+	}
+	if got := byName["alpha"].InactiveIntensity; got != 0 {
+		t.Fatalf("alpha inactive intensity = %v, want oldest stale session at dark endpoint", got)
+	}
+	if got := byName["beta"].InactiveIntensity; math.Abs(got-0.5) > 0.001 {
+		t.Fatalf("beta inactive intensity = %v, want midpoint stale shade", got)
+	}
+	if got := byName["hot"].InactiveIntensity; got != 1 {
+		t.Fatalf("hot inactive intensity = %v, want freshest session included in inactive gradient when heat is disabled", got)
+	}
+}
+
+func TestSessionItemsFromStateKeepsNonHighlightedRecentSessionsInInactiveGradient(t *testing.T) {
+	now := time.Now().UTC()
+	persisted := ports.PersistedState{
+		SessionOrder: []string{"alpha", "beta", "warm", "hot"},
+		Heat: encodeHeatStateMapForSidebarGradientTest(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-48 * time.Hour)},
+			"beta":  {LastVisitedAt: now.Add(-24 * time.Hour)},
+			"warm":  {LastActiveAt: now.Add(-10 * time.Minute)},
+			"hot":   {LastActiveAt: now.Add(-5 * time.Minute)},
+		}),
+	}
+	views := []sessions.View{{Name: "alpha", Visible: true}, {Name: "beta", Visible: true}, {Name: "warm", Visible: true}, {Name: "hot", Visible: true}}
+
+	_, byName := sessionItemsFromState("current", views, persisted, ports.ConfigSnapshot{HeatColorsEnabled: true, HeatRecentInterval: time.Hour, HeatMaxHighlighted: 1})
+
+	if got := byName["hot"].Heat; got != string(heat.BucketCurrent) {
+		t.Fatalf("hot heat bucket = %q, want hottest session highlighted", got)
+	}
+	if got := byName["hot"].InactiveIntensity; got != 0 {
+		t.Fatalf("hot inactive intensity = %v, want highlighted hottest session excluded from inactive gradient", got)
+	}
+	if got := byName["warm"].Heat; got != "" {
+		t.Fatalf("warm heat bucket = %q, want capped recent session left unhighlighted", got)
+	}
+	if got := byName["alpha"].InactiveIntensity; got != 0 {
+		t.Fatalf("alpha inactive intensity = %v, want oldest non-highlighted session at dark endpoint", got)
+	}
+	if got := byName["beta"].InactiveIntensity; math.Abs(got-0.5) > 0.001 {
+		t.Fatalf("beta inactive intensity = %v, want midpoint non-highlighted shade", got)
+	}
+	if got := byName["warm"].InactiveIntensity; got != 1 {
+		t.Fatalf("warm inactive intensity = %v, want freshest non-highlighted session at light endpoint", got)
+	}
+}
+
+func TestSessionItemsFromStateUsesLightEndpointForSingleInactiveCandidate(t *testing.T) {
+	now := time.Now().UTC()
+	persisted := ports.PersistedState{
+		SessionOrder: []string{"alpha", "unknown"},
+		Heat: encodeHeatStateMapForSidebarGradientTest(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-48 * time.Hour)},
+		}),
+	}
+	views := []sessions.View{{Name: "alpha", Visible: true}, {Name: "unknown", Visible: true}}
+
+	_, byName := sessionItemsFromState("current", views, persisted, ports.ConfigSnapshot{HeatColorsEnabled: true, HeatRecentInterval: time.Hour})
+
+	if got := byName["alpha"].InactiveIntensity; got != 1 {
+		t.Fatalf("alpha inactive intensity = %v, want lone inactive candidate at light endpoint", got)
+	}
+	if got := byName["unknown"].InactiveIntensity; got != 0 {
+		t.Fatalf("unknown inactive intensity = %v, want sessions without recency signals unchanged", got)
+	}
+}
+
 func encodeHeatStateMapForSidebarGradientTest(states map[string]heat.State) map[string][]byte {
 	encoded := make(map[string][]byte, len(states))
 	for name, state := range states {

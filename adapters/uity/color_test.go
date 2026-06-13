@@ -38,9 +38,11 @@ func TestInactiveSessionColorGradient(t *testing.T) {
 		wantHex   string
 		wantANSI  string
 	}{
+		"below range clamps to 0":                   {intensity: -0.5, wantHex: "#4b5563", wantANSI: "\033[38;2;75;85;99m"},
 		"dark endpoint stays current inactive gray": {intensity: 0, wantHex: "#4b5563", wantANSI: "\033[38;2;75;85;99m"},
 		"midpoint lifts toward cool light gray":     {intensity: 0.5, wantHex: "#8c9198", wantANSI: "\033[38;2;140;145;152m"},
 		"fresh endpoint reaches light gray":         {intensity: 1, wantHex: "#cccccc", wantANSI: "\033[38;2;204;204;204m"},
+		"above range clamps to 1":                   {intensity: 2.0, wantHex: "#cccccc", wantANSI: "\033[38;2;204;204;204m"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -60,9 +62,11 @@ func TestInactiveMetadataColorGradientStaysDarkerThanSessionGradient(t *testing.
 		wantHex   string
 		wantANSI  string
 	}{
+		"below range clamps to 0":                                      {intensity: -0.5, wantHex: "#374151", wantANSI: "\033[38;2;55;65;81m"},
 		"dark endpoint stays current inactive metadata gray":           {intensity: 0, wantHex: "#374151", wantANSI: "\033[38;2;55;65;81m"},
 		"midpoint stays slightly darker than session midpoint":         {intensity: 0.5, wantHex: "#787d86", wantANSI: "\033[38;2;120;125;134m"},
 		"fresh endpoint stays slightly darker than session light gray": {intensity: 1, wantHex: "#b8b8ba", wantANSI: "\033[38;2;184;184;186m"},
+		"above range clamps to 1":                                      {intensity: 1.5, wantHex: "#b8b8ba", wantANSI: "\033[38;2;184;184;186m"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -72,6 +76,14 @@ func TestInactiveMetadataColorGradientStaysDarkerThanSessionGradient(t *testing.
 			if got := inactiveMetadataRGBForIntensity(tt.intensity).ANSI(); got != tt.wantANSI {
 				t.Fatalf("inactiveMetadataRGBForIntensity(%v).ANSI() = %q, want %q", tt.intensity, got, tt.wantANSI)
 			}
+			assertRGBNotLighter(t, inactiveMetadataRGBForIntensity(tt.intensity), inactiveSessionRGBForIntensity(tt.intensity), tt.intensity)
 		})
+	}
+}
+
+func assertRGBNotLighter(t *testing.T, metadata rgbColor, session rgbColor, intensity float64) {
+	t.Helper()
+	if metadata.red > session.red || metadata.green > session.green || metadata.blue > session.blue {
+		t.Fatalf("inactive metadata rgb=%+v should stay darker-or-equal than inactive session rgb=%+v at intensity %v", metadata, session, intensity)
 	}
 }
