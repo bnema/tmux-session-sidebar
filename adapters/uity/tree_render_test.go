@@ -82,7 +82,7 @@ func TestTreeSidebarRenderCurrentRowSuppressesInactiveGradientColor(t *testing.T
 	}, Actions{}, SidebarOptions{})
 
 	view := model.Render()
-	if strings.Contains(view, "38;2;204;204;204malpha") {
+	if strings.Contains(view, "38;2;204;204;204") {
 		t.Fatalf("current session row should not keep inactive gradient foreground, view=%q", view)
 	}
 	if !strings.Contains(view, "38;2;255;255;255m") {
