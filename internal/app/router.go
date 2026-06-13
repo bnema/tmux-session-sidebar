@@ -124,7 +124,9 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "hook/client-session-changed":
 		return r.withMetadataReconcile(ctx, captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar, true))
 	case "hook/client-resized", "hook/window-resized":
-		return syncSidebarWidth(ctx, route.Flags)
+		return syncSidebarWidth(ctx, route.Path, route.Flags, r.sidebar)
+	case "hook/window-layout-changed":
+		return captureSidebarWidthBaseline(ctx, route.Flags, r.sidebar)
 	case "hook/agent-event":
 		return recordAgentHookEvent(ctx, route.Flags)
 	case "hooks/run":
@@ -287,7 +289,8 @@ func openSidebarForClientWith(ctx context.Context, client string, attachTarget s
 	if strings.TrimSpace(attachTarget) == "" {
 		attachTarget = client
 	}
-	if _, err = attach(ctx, attachTarget, singleton.PaneID, width); err != nil {
+	_, err = attach(ctx, attachTarget, singleton.PaneID, width)
+	if err != nil {
 		rollbackSidebarVisibility(ctx, client, err)
 		return err
 	}
@@ -326,41 +329,76 @@ func parkVisibleSidebar(ctx context.Context, sidebar ports.TmuxSidebarPort, pane
 	return sidebar.ParkSingletonSidebar(ctx, paneID)
 }
 
-func syncSidebarWidth(ctx context.Context, flags map[string]string) error {
-	paneID := strings.TrimSpace(flags["pane"])
-	if paneID == "" {
-		windowID := strings.TrimSpace(flags["window"])
-		if windowID == "" {
-			var err error
-			windowID, err = windowIDForResizeHook(ctx, strings.TrimSpace(flags["client"]))
-			if err != nil {
-				return err
-			}
-		}
-		if windowID == "" {
-			return nil
-		}
-		var err error
-		paneID, err = sidebarPaneForWindow(ctx, windowID)
-		if err != nil {
-			return err
-		}
-		if paneID == "" {
-			return nil
-		}
+func syncSidebarWidth(ctx context.Context, _ string, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+	if sidebar == nil {
+		return nil
 	}
-	return resizeSidebarPaneToConfiguredWidth(ctx, paneID)
+	ref, err := findSidebarForHook(ctx, sidebar, flags)
+	if err != nil {
+		if isIgnoredResizeHookError(err) {
+			return nil
+		}
+		return err
+	}
+	if ref.PaneID == "" {
+		return nil
+	}
+	width, err := configuredSidebarWidth(ctx)
+	if err != nil {
+		return err
+	}
+	if syncer, ok := sidebar.(ports.TmuxSidebarResizePort); ok {
+		return syncer.SyncAttachedSidebarWidth(ctx, ref.WindowID, ref.PaneID, width)
+	}
+	return resizeSidebarPaneToWidth(ctx, ref.PaneID, width)
 }
 
-func resizeSidebarPaneToConfiguredWidth(ctx context.Context, paneID string) error {
+func captureSidebarWidthBaseline(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+	if sidebar == nil {
+		return nil
+	}
+	capturer, ok := sidebar.(ports.TmuxSidebarResizePort)
+	if !ok {
+		return nil
+	}
+	ref, err := findSidebarForHook(ctx, sidebar, flags)
+	if err != nil {
+		if isIgnoredResizeHookError(err) {
+			return nil
+		}
+		return err
+	}
+	if ref.PaneID == "" {
+		return nil
+	}
+	width, err := configuredSidebarWidth(ctx)
+	if err != nil {
+		return err
+	}
+	return capturer.CaptureAttachedSidebarWidthBaseline(ctx, ref.WindowID, ref.PaneID, width)
+}
+
+func findSidebarForHook(ctx context.Context, sidebar ports.TmuxSidebarPort, flags map[string]string) (ports.PaneRef, error) {
+	target := firstNonEmpty(strings.TrimSpace(flags["pane"]), strings.TrimSpace(flags["window"]), strings.TrimSpace(flags["client"]))
+	if target == "" {
+		return ports.PaneRef{}, nil
+	}
+	return sidebar.FindSidebarPane(ctx, target)
+}
+
+func configuredSidebarWidth(ctx context.Context) (string, error) {
 	widthOutput, err := tmux(ctx, "show-options", "-gvq", "@session-sidebar-width")
 	if err != nil {
-		return tmuxCommandError("show @session-sidebar-width", widthOutput, err)
+		return "", tmuxCommandError("show @session-sidebar-width", widthOutput, err)
 	}
 	width := strings.TrimSpace(widthOutput)
 	if width == "" {
 		width = "30"
 	}
+	return width, nil
+}
+
+func resizeSidebarPaneToWidth(ctx context.Context, paneID string, width string) error {
 	resizeOutput, err := tmux(ctx, "resize-pane", "-t", paneID, "-x", width)
 	if err != nil && tmuxTargetGoneOutput(resizeOutput) {
 		return nil
@@ -371,41 +409,8 @@ func resizeSidebarPaneToConfiguredWidth(ctx context.Context, paneID string) erro
 	return nil
 }
 
-func windowIDForResizeHook(ctx context.Context, target string) (string, error) {
-	target = strings.TrimSpace(target)
-	if target == "" {
-		return "", nil
-	}
-	output, err := tmux(ctx, "display-message", "-p", "-t", target, "#{window_id}")
-	if err != nil {
-		if tmuxTargetGoneOutput(output) {
-			return "", nil
-		}
-		return "", tmuxCommandError("resolve resize hook window", output, err)
-	}
-	return firstTrimmedLine(output), nil
-}
-
-func sidebarPaneForWindow(ctx context.Context, windowID string) (string, error) {
-	output, err := tmux(ctx, "list-panes", "-t", windowID, "-f", "#{==:#{@session-sidebar-pane},1}", "-F", "#{pane_id}")
-	if err != nil {
-		if tmuxTargetGoneOutput(output) {
-			return "", nil
-		}
-		return "", tmuxCommandError("find sidebar pane", output, err)
-	}
-	return firstTrimmedLine(output), nil
-}
-
-func firstTrimmedLine(output string) string {
-	trimmed := strings.TrimSpace(output)
-	if trimmed == "" {
-		return ""
-	}
-	if line, _, ok := strings.Cut(trimmed, "\n"); ok {
-		return strings.TrimSpace(line)
-	}
-	return trimmed
+func isIgnoredResizeHookError(err error) bool {
+	return errors.Is(err, ports.ErrTmuxTargetGone)
 }
 
 func tmuxCommandError(action string, output string, err error) error {

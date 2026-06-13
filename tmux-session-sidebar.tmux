@@ -63,6 +63,8 @@ install_runtime_hooks() {
     "run-shell -b \"$quoted_runtime hook client-resized --client #{q:hook_client}\""
   "$TMUX_BIN" set-hook -g window-resized[9705] \
     "run-shell -b \"$quoted_runtime hook window-resized --window #{q:hook_window}\""
+  "$TMUX_BIN" set-hook -g window-layout-changed[9706] \
+    "run-shell -b \"$quoted_runtime hook window-layout-changed --window #{q:hook_window}\""
 }
 
 main() {

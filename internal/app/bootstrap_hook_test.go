@@ -146,6 +146,10 @@ func TestInstallRuntimeHooksRegistersResizeCommands(t *testing.T) {
 	if windowHook == "" {
 		t.Fatalf("window-resized hook not registered, log=%q", string(content))
 	}
+	layoutChangedHook := hooks["window-layout-changed[9706]"]
+	if layoutChangedHook == "" {
+		t.Fatalf("window-layout-changed hook not registered, log=%q", string(content))
+	}
 
 	for name, hook := range map[string]string{
 		"client-attached":        attachedHook,
@@ -164,6 +168,9 @@ func TestInstallRuntimeHooksRegistersResizeCommands(t *testing.T) {
 	}
 	if !strings.Contains(windowHook, `run-shell -b "/tmp/runtime hook window-resized --window #{q:hook_window}"`) {
 		t.Fatalf("unexpected window hook %q", windowHook)
+	}
+	if !strings.Contains(layoutChangedHook, `run-shell -b "/tmp/runtime hook window-layout-changed --window #{q:hook_window}"`) {
+		t.Fatalf("unexpected window-layout-changed hook %q", layoutChangedHook)
 	}
 }
 

@@ -40,6 +40,7 @@ func TestRunDispatchesCommands(t *testing.T) {
 		{name: "hook session changed", args: []string{"hook", "client-session-changed", "--client=/dev/pts/40", "--session="}, wantExit: 0, wantRoute: "hook/client-session-changed", wantFlags: map[string]string{"client": "/dev/pts/40", "session": ""}},
 		{name: "hook client resized", args: []string{"hook", "client-resized", "--client", "%1"}, wantExit: 0, wantRoute: "hook/client-resized", wantFlags: map[string]string{"client": "%1"}},
 		{name: "hook window resized", args: []string{"hook", "window-resized", "--window", "@1"}, wantExit: 0, wantRoute: "hook/window-resized", wantFlags: map[string]string{"window": "@1"}},
+		{name: "hook window layout changed", args: []string{"hook", "window-layout-changed", "--window", "@1"}, wantExit: 0, wantRoute: "hook/window-layout-changed", wantFlags: map[string]string{"window": "@1"}},
 		{name: "hook agent event", args: []string{"hook", "agent-event", "--agent", "pi", "--event", "end", "--pane", "%2"}, wantExit: 0, wantRoute: "hook/agent-event", wantFlags: map[string]string{"agent": "pi", "event": "end", "pane": "%2"}},
 		{name: "hooks setup", args: []string{"hooks", "setup", "--agent", "codex"}, wantExit: 0, wantRoute: "hooks/run", wantArgs: []string{"hooks", "setup"}, wantFlags: map[string]string{"agent": "codex"}},
 		{name: "hooks agent event", args: []string{"hooks", "codex", "stop", "--pane", "%2"}, wantExit: 0, wantRoute: "hooks/run", wantArgs: []string{"hooks", "codex", "stop"}, wantFlags: map[string]string{"pane": "%2"}},

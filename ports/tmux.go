@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/bnema/tmux-session-sidebar/core/config"
@@ -61,6 +62,8 @@ type PaneSize struct {
 	Height int
 }
 
+var ErrTmuxTargetGone = errors.New("tmux target gone")
+
 type PaneRef struct {
 	PaneID   string
 	WindowID string
@@ -116,6 +119,18 @@ type TmuxSidebarFollowPort interface {
 	// focus in the work pane. Callers may fall back to AttachSingletonSidebar
 	// when an adapter does not implement this optional behavior.
 	AttachSingletonSidebarWithoutFocus(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
+}
+
+type TmuxSidebarResizePort interface {
+	// CaptureAttachedSidebarWidthBaseline records the current sidebar-open
+	// top-level work-group proportions when the attached layout is in a stable
+	// shape. Intended for non-resize layout-change hooks and post-attach capture.
+	CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowID string, paneID string, width string) error
+	// SyncAttachedSidebarWidth restores the configured width for an already
+	// attached sidebar pane while best-effort preserving the last captured
+	// sidebar-open top-level work-group proportions in the same window.
+	// Intended for resize hooks.
+	SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string) error
 }
 
 type TmuxMetadataPort interface {

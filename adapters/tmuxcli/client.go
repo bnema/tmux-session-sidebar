@@ -30,7 +30,6 @@ const (
 	cmdSendKeys       = "send-keys"
 	cmdSetOption      = "set-option"
 	cmdShowOptions    = "show-options"
-	cmdSwapPane       = "swap-pane"
 	cmdSwitchClient   = "switch-client"
 
 	formatPaneCurrentPath = "#{pane_current_path}"
@@ -43,9 +42,10 @@ const (
 
 	escapedFormatPaneID = "##{pane_id}"
 
-	optionSidebarPane                = "@session-sidebar-pane"
-	optionSidebarWindowLayout        = "@session-sidebar-window-layout"
-	optionSidebarVisibleWindowLayout = "@session-sidebar-visible-window-layout"
+	optionSidebarPane             = "@session-sidebar-pane"
+	optionSidebarWindowLayout     = "@session-sidebar-window-layout"
+	optionSidebarOpenWorkBaseline = "@session-sidebar-open-work-baseline"
+	optionSidebarResizeSyncActive = "@session-sidebar-resize-sync-active"
 
 	singletonSidebarSessionName = "__tmux-session-sidebar"
 	singletonSidebarWindowName  = "sidebar"
@@ -387,42 +387,17 @@ func (c Client) refreshSidebarPane(ctx context.Context, paneID string) error {
 	return err
 }
 
-func (c Client) SaveWindowLayout(ctx context.Context, windowID string) error {
-	return c.captureWindowLayout(ctx, windowID, optionSidebarWindowLayout, false)
-}
-
-func (c Client) SaveVisibleWindowLayout(ctx context.Context, windowID string) error {
-	return c.captureWindowLayout(ctx, windowID, optionSidebarVisibleWindowLayout, true)
-}
-
 func (c Client) ClearSavedWindowLayout(ctx context.Context, windowID string) error {
 	return c.clearWindowLayout(ctx, windowID, optionSidebarWindowLayout)
 }
 
-func (c Client) ClearVisibleWindowLayout(ctx context.Context, windowID string) error {
-	return c.clearWindowLayout(ctx, windowID, optionSidebarVisibleWindowLayout)
-}
-
 func (c Client) RestoreWindowLayout(ctx context.Context, windowID string) error {
-	return c.restoreWindowLayout(ctx, windowID, optionSidebarWindowLayout, true)
+	return c.restoreWindowLayout(ctx, windowID, optionSidebarWindowLayout)
 }
 
-func (c Client) RestoreVisibleWindowLayout(ctx context.Context, windowID string) error {
-	return c.restoreWindowLayout(ctx, windowID, optionSidebarVisibleWindowLayout, false)
-}
-
-func (c Client) captureWindowLayout(ctx context.Context, windowID string, option string, overwrite bool) error {
+func (c Client) captureWindowLayout(ctx context.Context, windowID string, option string) error {
 	if strings.TrimSpace(windowID) == "" {
 		return nil
-	}
-	if !overwrite {
-		saved, err := c.windowLayoutOption(ctx, windowID, option)
-		if err != nil {
-			return err
-		}
-		if saved != "" {
-			return nil
-		}
 	}
 	layout, err := c.displayTarget(ctx, windowID, formatWindowLayout)
 	if err != nil {
@@ -432,19 +407,14 @@ func (c Client) captureWindowLayout(ctx context.Context, windowID string, option
 	if layout == "" {
 		return nil
 	}
-	_, err = c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-wq", "-t", windowID, option, layout})
-	return err
+	return c.setWindowOptionValue(ctx, windowID, option, layout)
 }
 
 func (c Client) clearWindowLayout(ctx context.Context, windowID string, option string) error {
-	if strings.TrimSpace(windowID) == "" {
-		return nil
-	}
-	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-wu", "-t", windowID, option})
-	return err
+	return c.clearWindowOptionValue(ctx, windowID, option)
 }
 
-func (c Client) restoreWindowLayout(ctx context.Context, windowID string, option string, clearOnSuccess bool) error {
+func (c Client) restoreWindowLayout(ctx context.Context, windowID string, option string) error {
 	if strings.TrimSpace(windowID) == "" {
 		return nil
 	}
@@ -459,9 +429,6 @@ func (c Client) restoreWindowLayout(ctx context.Context, windowID string, option
 	if selectErr != nil {
 		return wrapTmuxError(result, selectErr)
 	}
-	if !clearOnSuccess {
-		return nil
-	}
 	return c.clearWindowLayout(ctx, windowID, option)
 }
 
@@ -470,6 +437,26 @@ func (c Client) savedWindowLayout(ctx context.Context, windowID string) (string,
 }
 
 func (c Client) windowLayoutOption(ctx context.Context, windowID string, option string) (string, error) {
+	return c.windowOptionValue(ctx, windowID, option)
+}
+
+func (c Client) setWindowOptionValue(ctx context.Context, windowID string, option string, value string) error {
+	if strings.TrimSpace(windowID) == "" {
+		return nil
+	}
+	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-wq", "-t", windowID, option, value})
+	return err
+}
+
+func (c Client) clearWindowOptionValue(ctx context.Context, windowID string, option string) error {
+	if strings.TrimSpace(windowID) == "" {
+		return nil
+	}
+	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-wu", "-t", windowID, option})
+	return err
+}
+
+func (c Client) windowOptionValue(ctx context.Context, windowID string, option string) (string, error) {
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdShowOptions, "-w", "-v", "-t", windowID, option})
 	if err != nil {
 		if isTmuxMissingOption(result) {
@@ -477,11 +464,11 @@ func (c Client) windowLayoutOption(ctx context.Context, windowID string, option 
 		}
 		return "", wrapTmuxError(result, err)
 	}
-	layout := strings.TrimSpace(result.Stdout)
-	if layout == "" {
+	value := strings.TrimSpace(result.Stdout)
+	if value == "" {
 		return "", nil
 	}
-	return layout, nil
+	return value, nil
 }
 
 func isTmuxMissingOption(result ports.Result) bool {
@@ -492,7 +479,9 @@ func isTmuxMissingOption(result ports.Result) bool {
 func (c Client) ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error {
 	paneID = strings.TrimSpace(paneID)
 	if paneID == "" {
-		// The sidebar pane can already be gone during TUI shutdown; nothing to schedule then.
+		// The sidebar pane can already be gone during TUI shutdown. When that
+		// happens, clear any stale saved hidden-layout option for the affected
+		// window and stop because there is no pane left to watch asynchronously.
 		pane, err := c.FindSidebarPane(ctx, clientID)
 		if err != nil {
 			if isTmuxTargetGone(err) {
@@ -501,9 +490,15 @@ func (c Client) ScheduleSidebarRestoreOnExit(ctx context.Context, clientID strin
 			return err
 		}
 		paneID = strings.TrimSpace(pane.PaneID)
-	}
-	if paneID == "" {
-		return nil
+		if paneID == "" {
+			if err := c.ClearSavedWindowLayout(ctx, pane.WindowID); err != nil {
+				if isTmuxTargetGone(err) {
+					return nil
+				}
+				return err
+			}
+			return nil
+		}
 	}
 	windowID, err := c.WindowID(ctx, paneID)
 	if err != nil {
@@ -518,19 +513,20 @@ func (c Client) ScheduleSidebarRestoreOnExit(ctx context.Context, clientID strin
 	}
 	layout, err := c.savedWindowLayout(ctx, windowID)
 	if err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
 		return err
 	}
 	if layout == "" {
 		// No saved layout means there is no sidebar-induced split to restore.
 		return nil
 	}
-	if err := c.SaveVisibleWindowLayout(ctx, windowID); err != nil {
-		if isTmuxTargetGone(err) {
-			return nil
-		}
-		return err
-	}
-	_, err = c.Process.Exec(ctx, tmuxBinary, []string{cmdRunShell, "-b", sidebarLayoutRestoreCommand(windowID, paneID)})
+	// No layout replay is needed here. Once the sidebar pane exits, tmux
+	// redistributes the remaining panes natively. The background command only
+	// waits for the sidebar pane to disappear, then clears the stale saved
+	// hidden-layout option best-effort.
+	_, err = c.Process.Exec(ctx, tmuxBinary, []string{cmdRunShell, "-b", sidebarLayoutCleanupCommand(windowID, paneID)})
 	return err
 }
 
@@ -717,6 +713,10 @@ func (e tmuxError) Unwrap() error {
 	return e.err
 }
 
+func (e tmuxError) Is(target error) bool {
+	return target == ports.ErrTmuxTargetGone && tmuxTargetGoneMessage(e.result.Stderr+e.result.Stdout)
+}
+
 func wrapTmuxError(result ports.Result, err error) error {
 	if err == nil {
 		return nil
@@ -725,11 +725,11 @@ func wrapTmuxError(result ports.Result, err error) error {
 }
 
 func isTmuxTargetGone(err error) bool {
-	var tmuxErr tmuxError
-	if !errors.As(err, &tmuxErr) {
-		return false
-	}
-	message := strings.ToLower(tmuxErr.result.Stderr + tmuxErr.result.Stdout)
+	return errors.Is(err, ports.ErrTmuxTargetGone)
+}
+
+func tmuxTargetGoneMessage(output string) bool {
+	message := strings.ToLower(output)
 	return strings.Contains(message, "no such window") ||
 		strings.Contains(message, "can't find window") ||
 		strings.Contains(message, "no such pane") ||
@@ -749,7 +749,7 @@ func parsePaneRef(out string) (ports.PaneRef, error) {
 	return ports.PaneRef{PaneID: fields[0], WindowID: fields[1]}, nil
 }
 
-func sidebarLayoutRestoreCommand(windowID string, paneID string) string {
+func sidebarLayoutCleanupCommand(windowID string, paneID string) string {
 	script := "window=$1; pane=$2; hidden_option=$3; " +
 		"for _ in 1 2 3 4 5 6 7 8 9 10 " +
 		"11 12 13 14 15 16 17 18 19 20 " +
@@ -760,9 +760,6 @@ func sidebarLayoutRestoreCommand(windowID string, paneID string) string {
 		"sleep 0.05; " +
 		"done; " +
 		"tmux list-panes -t \"$window\" -F '" + escapedFormatPaneID + "' 2>/dev/null | grep -Fxq \"$pane\" && exit 0; " +
-		"layout=$(tmux show-options -w -v -t \"$window\" \"$hidden_option\" 2>/dev/null || true); " +
-		"[ -n \"$layout\" ] || exit 0; " +
-		"tmux select-layout -t \"$window\" \"$layout\" >/dev/null 2>&1 && " +
 		"tmux set-option -wu -t \"$window\" \"$hidden_option\" >/dev/null 2>&1 || true"
 	return "sh -c " + shellQuote(script) + " sh " + shellQuote(windowID) + " " + shellQuote(paneID) + " " + shellQuote(optionSidebarWindowLayout)
 }
