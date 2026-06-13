@@ -42,6 +42,22 @@ func TestTreeSidebarRenderUsesDarkTreeGuide(t *testing.T) {
 	}
 }
 
+func TestTreeSidebarRenderUsesInactiveGradientColorsForSessionRows(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha", InactiveIntensity: 0}, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:work/session:beta", CategoryID: "category:work", Session: SessionItem{Name: "beta", InactiveIntensity: 1}, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+
+	view := model.Render()
+	if !strings.Contains(view, "38;2;75;85;99m alpha") {
+		t.Fatalf("oldest inactive row should render dark inactive gray, view=%q", view)
+	}
+	if !strings.Contains(view, "38;2;204;204;204m beta") {
+		t.Fatalf("freshest inactive row should render lifted light gray, view=%q", view)
+	}
+}
+
 func TestTreeSidebarRenderMarksCurrentSessionWithGreenBar(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},

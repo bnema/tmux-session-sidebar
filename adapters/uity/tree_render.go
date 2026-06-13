@@ -198,7 +198,7 @@ func (r treeRenderer) renderMetadata(item TreeItem, selected bool) string {
 	if width <= 0 {
 		return ""
 	}
-	subline := RenderMetadataSubline(item.Session.Metadata, MetadataSublineRenderOptions{Icons: r.metadataIconMode, Width: width, Selected: selected, Active: metadataColorActive(item.Session)})
+	subline := RenderMetadataSubline(item.Session.Metadata, MetadataSublineRenderOptions{Icons: r.metadataIconMode, Width: width, Selected: selected, Active: metadataColorActive(item.Session), InactiveIntensity: item.Session.InactiveIntensity})
 	if subline == "" {
 		return ""
 	}

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -73,11 +74,12 @@ func sessionItemsFromState(current string, views []sessions.View, persisted port
 		viewsByName[view.Name] = view
 	}
 	heatDisplays := heatDisplaysForNames(names, heatStates, now, cfg)
+	inactiveIntensities := inactiveGradientIntensities(names, current, heatStates, heatDisplays, now, cfg.HeatColorsEnabled)
 	items := make([]uity.SessionItem, 0, len(names))
 	byName := make(map[string]uity.SessionItem, len(names))
 	for _, name := range names {
 		_, isPinned := pinned[name]
-		item := uity.SessionItem{Name: name, Current: name == current, Pinned: isPinned, PinColor: persisted.PinColors[name]}
+		item := uity.SessionItem{Name: name, Current: name == current, Pinned: isPinned, PinColor: persisted.PinColors[name], InactiveIntensity: inactiveIntensities[name]}
 		if display, ok := heatDisplays[name]; ok && cfg.HeatColorsEnabled {
 			item.Heat = string(display.Bucket)
 			item.HeatIntensity = display.Intensity
@@ -98,6 +100,76 @@ func sessionItemsFromState(current string, views []sessions.View, persisted port
 		byName[name] = item
 	}
 	return items, byName
+}
+
+func inactiveGradientIntensities(names []string, current string, states map[string]heat.State, heatDisplays map[string]heat.Display, now time.Time, excludeHeatHighlighted bool) map[string]float64 {
+	type candidate struct {
+		name   string
+		recent time.Time
+	}
+
+	candidates := make([]candidate, 0, len(names))
+	for _, name := range names {
+		if name == current {
+			continue
+		}
+		if excludeHeatHighlighted {
+			if _, ok := heatDisplays[name]; ok {
+				continue
+			}
+		}
+		recent := mostRecentInactiveSignal(states[name], now)
+		if recent.IsZero() {
+			continue
+		}
+		candidates = append(candidates, candidate{name: name, recent: recent})
+	}
+	slices.SortFunc(candidates, func(a, b candidate) int {
+		if cmp := a.recent.Compare(b.recent); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(a.name, b.name)
+	})
+	intensities := make(map[string]float64, len(candidates))
+	if len(candidates) == 0 {
+		return intensities
+	}
+	groupIndexByName := make(map[string]int, len(candidates))
+	groupCount := 0
+	var previous time.Time
+	for index, candidate := range candidates {
+		if index == 0 || !candidate.recent.Equal(previous) {
+			if index > 0 {
+				groupCount++
+			}
+			previous = candidate.recent
+		}
+		groupIndexByName[candidate.name] = groupCount
+	}
+	if groupCount == 0 {
+		for _, candidate := range candidates {
+			intensities[candidate.name] = 1
+		}
+		return intensities
+	}
+	denominator := float64(groupCount)
+	for _, candidate := range candidates {
+		intensities[candidate.name] = float64(groupIndexByName[candidate.name]) / denominator
+	}
+	return intensities
+}
+
+func mostRecentInactiveSignal(state heat.State, now time.Time) time.Time {
+	var recent time.Time
+	for _, timestamp := range []time.Time{state.LastVisitedAt, state.LastActiveAt} {
+		if timestamp.IsZero() || timestamp.After(now) {
+			continue
+		}
+		if recent.IsZero() || timestamp.After(recent) {
+			recent = timestamp
+		}
+	}
+	return recent
 }
 
 func coreLayoutFromPersisted(persisted *ports.SidebarLayout) sidebarlayout.Layout {

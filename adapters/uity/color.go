@@ -17,9 +17,15 @@ var (
 	// inactiveSessionRGB is the out-of-heat color: the default dark gray (#4b5563)
 	// used only for sessions outside the recent activity window.
 	inactiveSessionRGB = rgbColor{red: 75, green: 85, blue: 99}
+	// freshInactiveSessionRGB is the light endpoint for stale/non-heat sessions
+	// so the freshest inactive row can lift toward a soft gray (#cccccc).
+	freshInactiveSessionRGB = rgbColor{red: 204, green: 204, blue: 204}
 	// inactiveMetadataRGB is darker than inactive sessions so metadata remains
 	// visually secondary for dead/inactive rows (#374151).
 	inactiveMetadataRGB = rgbColor{red: 55, green: 65, blue: 81}
+	// freshInactiveMetadataRGB tracks the inactive session lift while staying a
+	// little darker than the session label (#b8b8ba).
+	freshInactiveMetadataRGB = rgbColor{red: 184, green: 184, blue: 186}
 	// selectedInactiveMetadataRGB keeps inactive metadata readable on the
 	// selected emerald row background without promoting it to active colors (#94a3b8).
 	selectedInactiveMetadataRGB = rgbColor{red: 148, green: 163, blue: 184}
@@ -37,6 +43,22 @@ func heatColor(intensity float64) string {
 
 func heatRGB(intensity float64) rgbColor {
 	return blendRGB(heatCoolRGB, heatHotRGB, clampIntensity(intensity))
+}
+
+func inactiveSessionColor(intensity float64) string {
+	return inactiveSessionRGBForIntensity(intensity).Hex()
+}
+
+func inactiveSessionRGBForIntensity(intensity float64) rgbColor {
+	return blendRGB(inactiveSessionRGB, freshInactiveSessionRGB, clampIntensity(intensity))
+}
+
+func inactiveMetadataColor(intensity float64) string {
+	return inactiveMetadataRGBForIntensity(intensity).Hex()
+}
+
+func inactiveMetadataRGBForIntensity(intensity float64) rgbColor {
+	return blendRGB(inactiveMetadataRGB, freshInactiveMetadataRGB, clampIntensity(intensity))
 }
 
 func hslHex(hue, saturation, lightness float64) string {

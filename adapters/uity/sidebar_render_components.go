@@ -58,7 +58,6 @@ type sidebarStyles struct {
 	dim             lipgloss.Style
 	treeGuide       lipgloss.Style
 	active          lipgloss.Style
-	stale           lipgloss.Style
 	selected        lipgloss.Style
 	pinned          lipgloss.Style
 	warning         lipgloss.Style
@@ -73,7 +72,6 @@ func newSidebarStyles() sidebarStyles {
 		dim:             lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
 		treeGuide:       lipgloss.NewStyle().Foreground(lipgloss.Color("#333333")),
 		active:          lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
-		stale:           lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionRGB.Hex())),
 		selected:        lipgloss.NewStyle().Background(lipgloss.Color(selectedRowBackgroundRGB.Hex())).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
 		pinned:          lipgloss.NewStyle().Foreground(lipgloss.Color(defaultPinColor)).Bold(true),
 		warning:         lipgloss.NewStyle().Foreground(lipgloss.Color("#fbbf24")).Bold(true),
@@ -99,7 +97,7 @@ func baseSessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style 
 		return styles.active
 	}
 	if item.Heat == "" || item.Heat == string(heat.BucketStale) {
-		return styles.stale
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionColor(item.InactiveIntensity)))
 	}
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(heatColor(item.HeatIntensity)))
 }
