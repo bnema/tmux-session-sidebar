@@ -116,6 +116,39 @@ func TestSyncAttachedSidebarWidthPreservesGroupedWorkRatiosAcrossWindowResize(t 
 	}
 }
 
+func TestAttachSidebarSessionRoundTripKeepsWorkSplit(t *testing.T) {
+	realTmux, err := exec.LookPath("tmux")
+	if err != nil {
+		t.Skip("tmux is not installed")
+	}
+
+	ctx := t.Context()
+	socketName := tmuxTestSocketName(t)
+	t.Cleanup(func() {
+		_ = exec.CommandContext(context.Background(), realTmux, "-f", "/dev/null", "-L", socketName, "kill-server").Run()
+	})
+	installTmuxSocketWrapper(t, realTmux, socketName)
+
+	client, sidebarPane := setupFlatWorkSessionWithSidebar(t, ctx, realTmux, socketName)
+	runTmux(t, ctx, realTmux, socketName, "new-session", "-d", "-s", "other", "-x", "181", "-y", "48")
+
+	if _, err := client.AttachSingletonSidebar(ctx, "work:", sidebarPane, "30"); err != nil {
+		t.Fatalf("AttachSingletonSidebar work error: %v", err)
+	}
+	wantOpen := recordPaneGeometries(t, ctx, realTmux, socketName, "work:")
+	assertPaneWidths(t, geometriesWithoutPane(wantOpen, sidebarPane), []int{74, 75})
+
+	if _, err := client.AttachSingletonSidebarWithoutFocus(ctx, "other:", sidebarPane, "30"); err != nil {
+		t.Fatalf("AttachSingletonSidebarWithoutFocus other error: %v", err)
+	}
+	assertPaneWidths(t, recordPaneGeometries(t, ctx, realTmux, socketName, "work:"), []int{90, 90})
+
+	if _, err := client.AttachSingletonSidebarWithoutFocus(ctx, "work:", sidebarPane, "30"); err != nil {
+		t.Fatalf("AttachSingletonSidebarWithoutFocus work error: %v", err)
+	}
+	assertGeometriesUnchanged(t, wantOpen, recordPaneGeometries(t, ctx, realTmux, socketName, "work:"))
+}
+
 func TestAttachSingletonSidebarPreservesHiddenSideEditsInWorkArea(t *testing.T) {
 	realTmux, err := exec.LookPath("tmux")
 	if err != nil {

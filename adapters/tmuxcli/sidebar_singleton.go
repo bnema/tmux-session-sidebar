@@ -96,6 +96,10 @@ func (c Client) attachSingletonSidebar(ctx context.Context, targetID string, pan
 		}
 		return ports.PaneRef{PaneID: paneID, WindowID: windowID}, nil
 	}
+	var sourceCloseWeights []sidebarWorkWeight
+	if clearSourceWindowLayout {
+		sourceCloseWeights, _ = c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
+	}
 	// Save target hidden layout for rollback if the multi-step attach fails.
 	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
 		return ports.PaneRef{}, err
@@ -106,21 +110,21 @@ func (c Client) attachSingletonSidebar(ctx context.Context, targetID string, pan
 	}
 	ref := ports.PaneRef{PaneID: paneID, WindowID: windowID}
 	if err := c.markSidebarPane(ctx, ref.PaneID); err != nil {
-		c.rollbackAttachedSidebarAfterJoin(ctx, paneID, width, currentWindowID, ref.WindowID)
+		c.rollbackAttachedSidebarAfterJoin(ctx, paneID, width, currentWindowID, ref.WindowID, sourceCloseWeights)
 		return ports.PaneRef{}, err
 	}
 	// The live tmux layout is authoritative after join-pane. Only set the
 	// explicit sidebar width; tmux handles work-pane layout natively.
 	if err := c.resizePaneWidth(ctx, ref.PaneID, width); err != nil {
-		c.rollbackAttachedSidebarAfterJoin(ctx, paneID, width, currentWindowID, ref.WindowID)
+		c.rollbackAttachedSidebarAfterJoin(ctx, paneID, width, currentWindowID, ref.WindowID, sourceCloseWeights)
 		return ports.PaneRef{}, err
 	}
 	if err := c.selectAttachedSidebarPane(ctx, ref.PaneID, focus); err != nil {
-		c.rollbackAttachedSidebarAfterJoin(ctx, paneID, width, currentWindowID, ref.WindowID)
+		c.rollbackAttachedSidebarAfterJoin(ctx, paneID, width, currentWindowID, ref.WindowID, sourceCloseWeights)
 		return ports.PaneRef{}, err
 	}
 	if clearSourceWindowLayout {
-		c.clearSourceWindowLayoutBestEffort(ctx, currentWindowID)
+		c.rebalanceSourceWindowAfterSidebarMoveBestEffort(ctx, currentWindowID, sourceCloseWeights)
 		c.captureAttachedSidebarWidthBaselineBestEffort(ctx, ref.WindowID, ref.PaneID, width)
 	}
 	return ref, nil
@@ -143,7 +147,8 @@ func (c Client) joinSidebarPane(ctx context.Context, paneID string, windowID str
 	return nil
 }
 
-func (c Client) rollbackAttachedSidebarAfterJoin(ctx context.Context, paneID string, width string, currentWindowID string, targetWindowID string) {
+func (c Client) rollbackAttachedSidebarAfterJoin(ctx context.Context, paneID string, width string, currentWindowID string, targetWindowID string, sourceCloseWeights []sidebarWorkWeight) {
+	c.rebalanceSourceWindowAfterSidebarMoveBestEffort(ctx, currentWindowID, sourceCloseWeights)
 	if err := c.joinSidebarPane(ctx, paneID, currentWindowID, width); err != nil {
 		return
 	}
@@ -177,6 +182,7 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 		}
 		return c.selectPaneRightOf(ctx, paneID)
 	}
+	sourceCloseWeights, _ := c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
 	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
 		return err
 	}
@@ -192,6 +198,9 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 	args = append(args, ";", cmdSelectPane, "-t", paneID, "-R")
 	result, err := c.Process.Exec(ctx, tmuxBinary, args)
 	if err != nil {
+		if c.sidebarPaneMovedAwayFromWindowBestEffort(ctx, paneID, currentWindowID) {
+			c.rebalanceSourceWindowAfterSidebarMoveBestEffort(ctx, currentWindowID, sourceCloseWeights)
+		}
 		if _, rollbackErr := c.attachSingletonSidebar(ctx, currentWindowID, paneID, width, sidebarAttachFocusSidebar, false); rollbackErr != nil {
 			return errors.Join(wrapTmuxError(result, err), fmt.Errorf("restore sidebar after failed switch to %q: %w", sessionName, rollbackErr))
 		}
@@ -200,7 +209,7 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 		}
 		return wrapTmuxError(result, err)
 	}
-	c.clearSourceWindowLayoutBestEffort(ctx, currentWindowID)
+	c.rebalanceSourceWindowAfterSidebarMoveBestEffort(ctx, currentWindowID, sourceCloseWeights)
 	c.captureAttachedSidebarWidthBaselineBestEffort(ctx, windowID, paneID, width)
 	return nil
 }
@@ -209,8 +218,26 @@ func (c Client) captureAttachedSidebarWidthBaselineBestEffort(ctx context.Contex
 	_ = c.CaptureAttachedSidebarWidthBaseline(ctx, windowID, paneID, width)
 }
 
+func (c Client) sidebarPaneMovedAwayFromWindowBestEffort(ctx context.Context, paneID string, originalWindowID string) bool {
+	paneID = strings.TrimSpace(paneID)
+	originalWindowID = strings.TrimSpace(originalWindowID)
+	if paneID == "" || originalWindowID == "" {
+		return false
+	}
+	windowID, err := c.WindowID(ctx, paneID)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(windowID) != originalWindowID
+}
+
 func (c Client) saveTargetWindowLayoutBeforeAttach(ctx context.Context, windowID string) error {
 	return c.captureWindowLayout(ctx, windowID, optionSidebarWindowLayout)
+}
+
+func (c Client) rebalanceSourceWindowAfterSidebarMoveBestEffort(ctx context.Context, windowID string, weights []sidebarWorkWeight) {
+	c.applySidebarWorkWeightsBestEffort(ctx, windowID, "", weights, false)
+	c.clearSourceWindowLayoutBestEffort(ctx, windowID)
 }
 
 func (c Client) clearSourceWindowLayoutBestEffort(ctx context.Context, windowID string) {
