@@ -52,32 +52,80 @@ func TestSessionItemsFromStateAssignsInactiveIntensityByActualRecency(t *testing
 	}
 }
 
-func TestSessionItemsFromStateGivesEqualRecencyTiesEqualInactiveIntensity(t *testing.T) {
+func TestSessionItemsFromStateUsesVisibleOrderToBreakInactiveRecencyTies(t *testing.T) {
 	now := time.Now().UTC()
 	persisted := ports.PersistedState{
-		SessionOrder: []string{"alpha", "beta", "gamma"},
+		SessionOrder: []string{"alpha", "beta", "gamma", "delta"},
 		Heat: encodeHeatStateMapForSidebarGradientTest(map[string]heat.State{
 			"alpha": {LastActiveAt: now.Add(-48 * time.Hour)},
 			"beta":  {LastVisitedAt: now.Add(-48 * time.Hour)},
-			"gamma": {LastActiveAt: now.Add(-12 * time.Hour)},
+			"gamma": {LastActiveAt: now.Add(-48 * time.Hour)},
+			"delta": {LastVisitedAt: now.Add(-48 * time.Hour)},
 		}),
 	}
 	views := []sessions.View{
 		{Name: "alpha", Visible: true},
 		{Name: "beta", Visible: true},
 		{Name: "gamma", Visible: true},
+		{Name: "delta", Visible: true},
 	}
 
 	_, byName := sessionItemsFromState("current", views, persisted, ports.ConfigSnapshot{HeatColorsEnabled: true, HeatRecentInterval: time.Hour})
 
-	if got := byName["alpha"].InactiveIntensity; got != 0 {
-		t.Fatalf("alpha inactive intensity = %v, want dark endpoint for oldest tie group", got)
+	if got := byName["alpha"].InactiveIntensity; got != 1 {
+		t.Fatalf("alpha inactive intensity = %v, want first visible tied session at light endpoint", got)
 	}
-	if got := byName["beta"].InactiveIntensity; got != 0 {
-		t.Fatalf("beta inactive intensity = %v, want same dark endpoint as alpha for equal recency", got)
+	if got := byName["beta"].InactiveIntensity; math.Abs(got-(2.0/3.0)) > 0.001 {
+		t.Fatalf("beta inactive intensity = %v, want second visible tied session stepped down from alpha", got)
+	}
+	if got := byName["gamma"].InactiveIntensity; math.Abs(got-(1.0/3.0)) > 0.001 {
+		t.Fatalf("gamma inactive intensity = %v, want third visible tied session stepped down again", got)
+	}
+	if got := byName["delta"].InactiveIntensity; got != 0 {
+		t.Fatalf("delta inactive intensity = %v, want last visible tied session at dark endpoint", got)
+	}
+}
+
+func TestSessionItemsFromStateIgnoresHiddenNumericSessionsWhenSpreadingInactiveGradient(t *testing.T) {
+	now := time.Now().UTC()
+	persisted := ports.PersistedState{
+		SessionOrder: []string{"alpha", "1", "beta", "2", "gamma"},
+		Sidebar:      &ports.SidebarState{ShowNumericSessions: false},
+		Heat: encodeHeatStateMapForSidebarGradientTest(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-72 * time.Hour)},
+			"1":     {LastActiveAt: now.Add(-60 * time.Hour)},
+			"beta":  {LastActiveAt: now.Add(-48 * time.Hour)},
+			"2":     {LastActiveAt: now.Add(-36 * time.Hour)},
+			"gamma": {LastActiveAt: now.Add(-24 * time.Hour)},
+		}),
+	}
+	views := []sessions.View{
+		{Name: "alpha", Visible: true},
+		{Name: "1", Visible: true},
+		{Name: "beta", Visible: true},
+		{Name: "2", Visible: true},
+		{Name: "gamma", Visible: true},
+	}
+
+	items, byName := sessionItemsFromState("current", views, persisted, ports.ConfigSnapshot{HeatColorsEnabled: true, HeatRecentInterval: time.Hour})
+
+	if got := len(items); got != 3 {
+		t.Fatalf("visible session item count = %d, want hidden numeric sessions excluded", got)
+	}
+	if _, exists := byName["1"]; exists {
+		t.Fatalf("byName unexpectedly contains hidden numeric session 1")
+	}
+	if _, exists := byName["2"]; exists {
+		t.Fatalf("byName unexpectedly contains hidden numeric session 2")
+	}
+	if got := byName["alpha"].InactiveIntensity; got != 0 {
+		t.Fatalf("alpha inactive intensity = %v, want oldest visible stale session at dark endpoint", got)
+	}
+	if got := byName["beta"].InactiveIntensity; math.Abs(got-0.5) > 0.001 {
+		t.Fatalf("beta inactive intensity = %v, want midpoint visible stale shade", got)
 	}
 	if got := byName["gamma"].InactiveIntensity; got != 1 {
-		t.Fatalf("gamma inactive intensity = %v, want freshest distinct group at light endpoint", got)
+		t.Fatalf("gamma inactive intensity = %v, want freshest visible stale session at light endpoint", got)
 	}
 }
 
