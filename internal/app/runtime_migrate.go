@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/locker"
 	"github.com/bnema/tmux-session-sidebar/core/persisted"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
@@ -74,7 +73,7 @@ func ensureRuntimeStateMigrated(ctx context.Context, scope RuntimeScope) error {
 	// Acquire the same state-level lock used by withLockedSidebarStore so
 	// that no concurrent startup command can write meaningful tmux.json into
 	// our current scope between our meaningfulness check and the final copy.
-	lock, err := (locker.FileLocker{Dir: filepath.Join(scope.Dir, "locks")}).Acquire(ctx, "tmux-sidebar-state")
+	lock, err := runtimeLocker(filepath.Join(scope.Dir, "locks")).Acquire(ctx, "tmux-sidebar-state")
 	if err != nil {
 		return fmt.Errorf("acquire state lock for migration: %w", err)
 	}

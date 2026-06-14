@@ -7,18 +7,14 @@ import (
 	"io"
 	"maps"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
-
-	"github.com/bnema/tmux-session-sidebar/adapters/githubrelease"
-	"github.com/bnema/tmux-session-sidebar/adapters/uity"
 	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
+	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -446,22 +442,20 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 	}
 	persisted, _ := loadSidebarState(ctx)
 	actions := buildSidebarActions(ctx, flags, stdout, sidebar, ipcClient)
-	options := uity.SidebarOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, githubrelease.Client{}), AgentAttentionAnimation: cfg.AgentAttentionAnimation}
+	options := SidebarUIOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, runtimeReleaseChecker()), AgentAttentionAnimation: cfg.AgentAttentionAnimation}
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}
-	program := tea.NewProgram(uity.NewTreeSidebarModelWithOptions(items, actions, options), tea.WithOutput(stdout))
-	_, err = program.Run()
-	return err
+	return runtimeSidebarUI().Run(ctx, items, actions, options, stdout)
 }
 
-func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort) uity.Actions {
+func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort) SidebarUIActions {
 	currentClient := func() string { return effectiveUIClient(ctx, flags) }
-	return uity.Actions{
+	return SidebarUIActions{
 		SwitchSession: func(name string) bool {
 			return handleActionError(ctx, "switch session", switchClient(ctx, currentClient(), name, sidebar))
 		},
-		CreateProject: func(project uity.ProjectItem, categoryID string) bool {
+		CreateProject: func(project viewmodel.ProjectItem, categoryID string) bool {
 			return handleMetadataAction(ctx, ipcClient, "create project session", createProject(ctx, map[string]string{"client": currentClient(), "project-path": project.Path, "category-id": categoryID}, stdout, sidebar))
 		},
 		CreateGitProject: func(categoryID string) bool {
@@ -500,13 +494,11 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 		SetShowNumericItems: func(show bool) bool {
 			return handleActionError(ctx, "save sidebar state", saveShowNumericSessions(ctx, show))
 		},
-		SelfUpdate: func() tea.Cmd {
-			return func() tea.Msg {
-				return uity.SelfUpdateFinishedMsg{Err: runSelfUpdateBackground()}
-			}
+		SelfUpdate: func() error {
+			return runSelfUpdateBackground()
 		},
-		LoadProjects: func() []uity.ProjectItem { return loadProjectItems(ctx) },
-		ReloadTreeItems: func() []uity.TreeItem {
+		LoadProjects: func() []viewmodel.ProjectItem { return loadProjectItems(ctx) },
+		ReloadTreeItems: func() []viewmodel.TreeItem {
 			items, err := loadSidebarTreeItemsWithConfig(ctx, loadSidebarConfig(ctx))
 			if err != nil {
 				handleActionError(ctx, "reload sidebar tree", err)
@@ -550,8 +542,8 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 			selection := sidebarlayoutSelectionForItem(itemID)
 			return handleActionError(ctx, "move sidebar item", saveMovedSidebarLayoutItem(ctx, selection, delta, live))
 		},
-		DeleteTreeItem: func(item uity.TreeItem) bool {
-			if item.Kind == uity.TreeRowSession {
+		DeleteTreeItem: func(item viewmodel.TreeItem) bool {
+			if item.Kind == viewmodel.TreeRowSession {
 				return handleMetadataAction(ctx, ipcClient, "delete session", killSession(ctx, map[string]string{"client": currentClient(), "session": item.Session.Name, "confirmed": "yes"}, sidebar))
 			}
 			live, err := currentLiveSessionNames(ctx)
@@ -685,7 +677,17 @@ func runCommand(ctx context.Context, name string, args ...string) (string, error
 }
 
 var commandRunner = func(ctx context.Context, name string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	// Only tmux goes through this legacy command hook; other external commands
+	// must be modeled behind explicit runtime ports.
+	if name != "tmux" {
+		return "", fmt.Errorf("unsupported runtime command %q", name)
+	}
+	result, err := runtimeTmux().Run(ctx, args)
+	if err != nil {
+		if strings.TrimSpace(result.Stderr) != "" {
+			return result.Stderr, err
+		}
+		return result.Stdout, err
+	}
+	return result.Stdout, nil
 }

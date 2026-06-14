@@ -9,6 +9,8 @@ import (
 	"unicode/utf8"
 
 	lipgloss "charm.land/lipgloss/v2"
+
+	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
 )
 
 const (
@@ -23,41 +25,23 @@ const (
 	MetadataNerdShell     = "\uf120" // nf-fa-terminal
 )
 
-type MetadataKind string
+type MetadataKind = viewmodel.MetadataKind
 
 const (
-	MetadataKindGit       MetadataKind = "git"
-	MetadataKindDirectory MetadataKind = "directory"
-	MetadataKindAdhoc     MetadataKind = "adhoc"
-	MetadataKindLoading   MetadataKind = "loading"
+	MetadataKindGit       = viewmodel.MetadataKindGit
+	MetadataKindDirectory = viewmodel.MetadataKindDirectory
+	MetadataKindAdhoc     = viewmodel.MetadataKindAdhoc
+	MetadataKindLoading   = viewmodel.MetadataKindLoading
 )
 
-type MetadataIconMode string
+type MetadataIconMode = viewmodel.MetadataIconMode
 
 const (
-	MetadataIconsNerd  MetadataIconMode = "nerd"
-	MetadataIconsASCII MetadataIconMode = "ascii"
+	MetadataIconsNerd  = viewmodel.MetadataIconsNerd
+	MetadataIconsASCII = viewmodel.MetadataIconsASCII
 )
 
-type SessionMetadataSubline struct {
-	Kind            MetadataKind
-	SessionName     string
-	Branch          string
-	Clean           bool
-	Ahead           int
-	Behind          int
-	UpstreamAhead   int
-	UpstreamBehind  int
-	Staged          int
-	Modified        int
-	Deleted         int
-	Renamed         int
-	Untracked       int
-	Conflicts       int
-	UpstreamMissing bool
-	Path            string
-	Label           string
-}
+type SessionMetadataSubline = viewmodel.SessionMetadataSubline
 
 type MetadataSublineOptions struct {
 	Icons MetadataIconMode
@@ -198,7 +182,7 @@ func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level g
 	if meta.Clean {
 		return nil
 	}
-	if !meta.hasDivergence() && !meta.hasUpstreamDivergence() && meta.stagedCount() == 0 && meta.unstagedCount() == 0 && meta.Conflicts == 0 {
+	if !hasDivergence(meta) && !hasUpstreamDivergence(meta) && stagedCount(meta) == 0 && unstagedCount(meta) == 0 && meta.Conflicts == 0 {
 		return nil
 	}
 	parts := make([]metadataPart, 0, 8)
@@ -215,17 +199,17 @@ func gitDetailParts(meta SessionMetadataSubline, icons MetadataIconMode, level g
 		return parts
 	}
 	if level == gitDetailsSummary {
-		if unstaged := meta.unstagedCount(); unstaged > 0 {
+		if unstaged := unstagedCount(meta); unstaged > 0 {
 			parts = append(parts, unstagedCountParts(icons, unstaged)...)
-		} else if staged := meta.stagedCount(); staged > 0 {
+		} else if staged := stagedCount(meta); staged > 0 {
 			parts = append(parts, countPart(icons, MetadataGitStaged, "S", staged, metadataPartStaged))
 		}
 		return parts
 	}
-	if staged := meta.stagedCount(); staged > 0 {
+	if staged := stagedCount(meta); staged > 0 {
 		parts = append(parts, countPart(icons, MetadataGitStaged, "S", staged, metadataPartStaged))
 	}
-	if unstaged := meta.unstagedCount(); unstaged > 0 {
+	if unstaged := unstagedCount(meta); unstaged > 0 {
 		parts = append(parts, unstagedCountParts(icons, unstaged)...)
 	}
 	return parts
@@ -280,20 +264,20 @@ func metadataPartText(parts []metadataPart) string {
 	return strings.Join(texts, " ")
 }
 
-func (m SessionMetadataSubline) hasDivergence() bool {
-	return m.Ahead > 0 || m.Behind > 0
+func hasDivergence(meta SessionMetadataSubline) bool {
+	return meta.Ahead > 0 || meta.Behind > 0
 }
 
-func (m SessionMetadataSubline) hasUpstreamDivergence() bool {
-	return m.UpstreamAhead > 0 || m.UpstreamBehind > 0
+func hasUpstreamDivergence(meta SessionMetadataSubline) bool {
+	return meta.UpstreamAhead > 0 || meta.UpstreamBehind > 0
 }
 
-func (m SessionMetadataSubline) stagedCount() int {
-	return m.Staged
+func stagedCount(meta SessionMetadataSubline) int {
+	return meta.Staged
 }
 
-func (m SessionMetadataSubline) unstagedCount() int {
-	return m.Modified + m.Deleted + m.Renamed + m.Untracked
+func unstagedCount(meta SessionMetadataSubline) int {
+	return meta.Modified + meta.Deleted + meta.Renamed + meta.Untracked
 }
 
 func formatDirectoryMetadataSubline(meta SessionMetadataSubline, icons MetadataIconMode, width int) string {

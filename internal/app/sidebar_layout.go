@@ -7,16 +7,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
-	"github.com/bnema/tmux-session-sidebar/adapters/uity"
 	"github.com/bnema/tmux-session-sidebar/core/attention"
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
+	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-func loadSidebarTreeItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) ([]uity.TreeItem, error) {
+func loadSidebarTreeItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) ([]viewmodel.TreeItem, error) {
 	current, err := tmux(ctx, "display-message", "-p", "#{session_name}")
 	if err != nil {
 		return nil, fmt.Errorf("getting current tmux session: %w", err)
@@ -36,26 +35,26 @@ func loadSidebarTreeItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapsho
 	selection := sidebarSelectionForCurrent(layout, strings.TrimSpace(current))
 	rows := sidebarlayout.Flatten(layout, selection, persistedShowNumeric(persisted))
 	activeCategoryID := sidebarlayout.ActiveCategoryID(layout, selection)
-	tree := make([]uity.TreeItem, 0, len(rows))
+	tree := make([]viewmodel.TreeItem, 0, len(rows))
 	for _, row := range rows {
-		item := uity.TreeItem{ID: row.ItemID, CategoryID: row.CategoryID, CategoryName: row.CategoryName, CategoryOpen: row.CategoryOpen, Color: row.Color, Slot: row.Slot, Depth: row.Depth, LastChild: row.LastChild, OverflowHidden: row.OverflowHidden}
+		item := viewmodel.TreeItem{ID: row.ItemID, CategoryID: row.CategoryID, CategoryName: row.CategoryName, CategoryOpen: row.CategoryOpen, Color: row.Color, Slot: row.Slot, Depth: row.Depth, LastChild: row.LastChild, OverflowHidden: row.OverflowHidden}
 		switch row.Kind {
 		case sidebarlayout.RowKindCategory:
-			item.Kind = uity.TreeRowCategory
+			item.Kind = viewmodel.TreeRowCategory
 		case sidebarlayout.RowKindSeparator:
-			item.Kind = uity.TreeRowSeparator
+			item.Kind = viewmodel.TreeRowSeparator
 		case sidebarlayout.RowKindSpacer:
-			item.Kind = uity.TreeRowSpacer
+			item.Kind = viewmodel.TreeRowSpacer
 		case sidebarlayout.RowKindMore:
-			item.Kind = uity.TreeRowMore
+			item.Kind = viewmodel.TreeRowMore
 			item.MoreCount = row.MoreCount
 			item.MoreExpanded = row.MoreExpanded
 		case sidebarlayout.RowKindSession:
-			item.Kind = uity.TreeRowSession
+			item.Kind = viewmodel.TreeRowSession
 			item.Session = byName[row.Session]
 			item.ShowMetadata = cfg.MetadataSublineEnabled && (cfg.MetadataInactiveEnabled || row.CategoryID == activeCategoryID)
 			if item.ShowMetadata && item.Session.Metadata.Kind == "" {
-				item.Session.Metadata = uity.SessionMetadataSubline{Kind: uity.MetadataKindLoading, SessionName: row.Session}
+				item.Session.Metadata = viewmodel.SessionMetadataSubline{Kind: viewmodel.MetadataKindLoading, SessionName: row.Session}
 			}
 		}
 		tree = append(tree, item)
@@ -63,7 +62,7 @@ func loadSidebarTreeItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapsho
 	return tree, nil
 }
 
-func sessionItemsFromState(current string, views []sessions.View, persisted ports.PersistedState, cfg ports.ConfigSnapshot) ([]uity.SessionItem, map[string]uity.SessionItem) {
+func sessionItemsFromState(current string, views []sessions.View, persisted ports.PersistedState, cfg ports.ConfigSnapshot) ([]viewmodel.SessionItem, map[string]viewmodel.SessionItem) {
 	heatStates := decodePersistedHeat(persisted.Heat)
 	attentionStates := attentionStateMap(persisted.AgentAttention)
 	now := time.Now().UTC()
@@ -76,11 +75,11 @@ func sessionItemsFromState(current string, views []sessions.View, persisted port
 	}
 	heatDisplays := heatDisplaysForNames(names, heatStates, now, cfg)
 	inactiveIntensities := inactiveGradientIntensities(names, current, heatStates, heatDisplays, now, cfg.HeatColorsEnabled)
-	items := make([]uity.SessionItem, 0, len(names))
-	byName := make(map[string]uity.SessionItem, len(names))
+	items := make([]viewmodel.SessionItem, 0, len(names))
+	byName := make(map[string]viewmodel.SessionItem, len(names))
 	for _, name := range names {
 		_, isPinned := pinned[name]
-		item := uity.SessionItem{Name: name, Current: name == current, Pinned: isPinned, PinColor: persisted.PinColors[name], InactiveIntensity: inactiveIntensities[name]}
+		item := viewmodel.SessionItem{Name: name, Current: name == current, Pinned: isPinned, PinColor: persisted.PinColors[name], InactiveIntensity: inactiveIntensities[name]}
 		if display, ok := heatDisplays[name]; ok && cfg.HeatColorsEnabled {
 			item.Heat = string(display.Bucket)
 			item.HeatIntensity = display.Intensity
@@ -94,7 +93,7 @@ func sessionItemsFromState(current string, views []sessions.View, persisted port
 			if metadata, ok := persisted.Metadata[name]; ok {
 				item.Metadata = gitStatusMetadataSubline(metadata)
 			} else if path, ok := sessionMetadataPath(persisted.Sessions[name]); ok {
-				item.Metadata = uity.SessionMetadataSubline{Kind: uity.MetadataKindDirectory, SessionName: name, Path: path}
+				item.Metadata = viewmodel.SessionMetadataSubline{Kind: viewmodel.MetadataKindDirectory, SessionName: name, Path: path}
 			}
 		}
 		items = append(items, item)
@@ -259,7 +258,7 @@ func saveSidebarCategoryColor(ctx context.Context, categoryID string, color stri
 	if categoryID == "" || color == "" {
 		return nil
 	}
-	return withLoadedSidebarState(ctx, func(store storefs.Store, state *ports.PersistedState) error {
+	return withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
 		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
 		found := false
 		for i := range layout.Items {
@@ -316,7 +315,7 @@ func saveRenamedSidebarCategory(ctx context.Context, categoryID string, name str
 	if name == "" {
 		return fmt.Errorf("rename sidebar category: name is required")
 	}
-	return withLoadedSidebarState(ctx, func(store storefs.Store, state *ports.PersistedState) error {
+	return withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
 		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
 		found := false
 		for i, item := range layout.Items {

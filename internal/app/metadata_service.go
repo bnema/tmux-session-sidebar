@@ -11,11 +11,6 @@ import (
 	"sync"
 	"time"
 
-	watchfsnotify "github.com/bnema/tmux-session-sidebar/adapters/fsnotify"
-	"github.com/bnema/tmux-session-sidebar/adapters/gitcli"
-	"github.com/bnema/tmux-session-sidebar/adapters/gitgo"
-	"github.com/bnema/tmux-session-sidebar/adapters/process"
-	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -50,37 +45,13 @@ type MetadataRepoSubscription struct {
 	WatchDirs    []string
 }
 
-type metadataGit struct {
-	StatusGit ports.GitPort
-	RepoGit   ports.GitPort
-}
-
-func (g metadataGit) RepoRoot(ctx context.Context, path string) (string, error) {
-	return g.RepoGit.RepoRoot(ctx, path)
-}
-
-func (g metadataGit) Status(ctx context.Context, path string) (ports.GitStatus, error) {
-	return g.StatusGit.Status(ctx, path)
-}
-
-func (g metadataGit) RepoInfo(ctx context.Context, path string) (ports.GitRepoInfo, error) {
-	return g.RepoGit.RepoInfo(ctx, path)
-}
-
-func (g metadataGit) WatchTargets(ctx context.Context, path string) (ports.GitWatchTargets, error) {
-	return g.RepoGit.WatchTargets(ctx, path)
-}
-
 func NewMetadataService() *MetadataService {
-	tmux := newTmuxClient()
-	gitProcess := process.Runner{}
-	fastGit := gitcli.Git{Process: gitProcess}
-	repoGit := gitgo.Git{Fallback: fastGit, Divergence: fastGit}
+	tmux := runtimeTmux()
 	return &MetadataService{
 		Store:                  sessionOrderStore(),
 		Tmux:                   tmux,
-		Git:                    metadataGit{StatusGit: fastGit, RepoGit: repoGit},
-		Watcher:                watchfsnotify.Watcher{},
+		Git:                    runtimeGit(),
+		Watcher:                runtimeWatcher(),
 		Refresher:              tmux,
 		LockStore:              defaultMetadataLockStore,
 		Debounce:               250 * time.Millisecond,
@@ -92,7 +63,7 @@ func NewMetadataService() *MetadataService {
 }
 
 func defaultMetadataLockStore(ctx context.Context, fn func(ports.StateStorePort) error) error {
-	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+	return withLockedSidebarStore(ctx, func(store scopedStateStore) error {
 		return fn(store)
 	})
 }

@@ -15,6 +15,7 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 
 	"github.com/bnema/tmux-session-sidebar/core/config"
+	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
 )
 
 const attentionMarkerSymbol = "\uf0f3" // Nerd Font bell glyph (U+F0F3 / nf-fa-bell).
@@ -26,50 +27,21 @@ const metadataSublinePaddingWidth = 3
 const metadataSublineFallbackWidth = 80
 const metadataSublineSidebarFallbackWidth = 30
 
-type SessionItem struct {
-	Name              string
-	Current           bool
-	Slot              int
-	Heat              string
-	HeatIntensity     float64
-	InactiveIntensity float64
-	Attention         bool
-	Pinned            bool
-	PinColor          string
-	Metadata          SessionMetadataSubline
-}
+type SessionItem = viewmodel.SessionItem
 
-type ProjectItem struct {
-	Name string
-	Path string
-}
+type ProjectItem = viewmodel.ProjectItem
 
-type TreeRowKind string
+type TreeRowKind = viewmodel.TreeRowKind
 
 const (
-	TreeRowCategory  TreeRowKind = "category"
-	TreeRowSession   TreeRowKind = "session"
-	TreeRowSeparator TreeRowKind = "separator"
-	TreeRowSpacer    TreeRowKind = "spacer"
-	TreeRowMore      TreeRowKind = "more"
+	TreeRowCategory  = viewmodel.TreeRowCategory
+	TreeRowSession   = viewmodel.TreeRowSession
+	TreeRowSeparator = viewmodel.TreeRowSeparator
+	TreeRowSpacer    = viewmodel.TreeRowSpacer
+	TreeRowMore      = viewmodel.TreeRowMore
 )
 
-type TreeItem struct {
-	Kind           TreeRowKind
-	ID             string
-	CategoryID     string
-	CategoryName   string
-	CategoryOpen   bool
-	Color          string
-	Session        SessionItem
-	Slot           int
-	Depth          int
-	LastChild      bool
-	ShowMetadata   bool
-	MoreCount      int
-	MoreExpanded   bool
-	OverflowHidden bool
-}
+type TreeItem = viewmodel.TreeItem
 
 type Actions struct {
 	SwitchSession               func(string) bool

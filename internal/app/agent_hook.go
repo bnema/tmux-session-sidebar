@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/core/attention"
 	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -22,7 +21,7 @@ func recordAgentHookEvent(ctx context.Context, flags map[string]string) error {
 		return err
 	}
 	refresh := false
-	if err := withLockedSidebarStore(ctx, func(store storefs.Store) error {
+	if err := withLockedSidebarStore(ctx, func(store scopedStateStore) error {
 		return withActivityDebugLogger(cfg, func(logger ports.LoggerPort) error {
 			if logger != nil {
 				logger.Debug("agent-event", []ports.LogField{

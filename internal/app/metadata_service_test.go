@@ -75,17 +75,10 @@ func TestMetadataServiceDefaultGitStatusTimeoutAllowsModeratelySlowRepositories(
 	}
 }
 
-func TestNewMetadataServiceUsesCLIStatusBackend(t *testing.T) {
+func TestNewMetadataServiceUsesCLIGitBackend(t *testing.T) {
 	svc := NewMetadataService()
-	git, ok := svc.Git.(metadataGit)
-	if !ok {
-		t.Fatalf("NewMetadataService Git backend = %T, want metadataGit", svc.Git)
-	}
-	if _, ok := git.StatusGit.(gitcli.Git); !ok {
-		t.Fatalf("metadata status backend = %T, want gitcli.Git", git.StatusGit)
-	}
-	if _, ok := git.RepoGit.(gitcli.Git); ok {
-		t.Fatalf("metadata repo/watch backend = gitcli.Git, want non-CLI backend to avoid reconcile subprocess fanout")
+	if _, ok := svc.Git.(gitcli.Git); !ok {
+		t.Fatalf("NewMetadataService Git backend = %T, want gitcli.Git", svc.Git)
 	}
 }
 

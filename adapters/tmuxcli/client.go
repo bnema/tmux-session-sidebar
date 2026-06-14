@@ -55,6 +55,10 @@ type Client struct {
 	Process ports.ProcessPort
 }
 
+func (c Client) Run(ctx context.Context, args []string) (ports.Result, error) {
+	return c.Process.Exec(ctx, tmuxBinary, args)
+}
+
 func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	opts, err := c.loadOptionsMap(ctx)
 	if err != nil {

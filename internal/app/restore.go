@@ -10,9 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/locker"
-	adapterlogger "github.com/bnema/tmux-session-sidebar/adapters/logger"
-	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -41,7 +38,7 @@ func ensureRestoredAndCapturedOnStartup(ctx context.Context) error {
 
 func ensureRestoredAndCapturedWithOptions(ctx context.Context, resetTransientHeat bool) error {
 	cfg := loadSidebarConfig(ctx)
-	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+	return withLockedSidebarStore(ctx, func(store scopedStateStore) error {
 		service := runtimeServiceWithStore(store)
 		if resetTransientHeat {
 			if err := service.ResetTransientHeatState(ctx, "tmux"); err != nil {
@@ -84,14 +81,14 @@ func ensureRestoredAndCapturedWithOptions(ctx context.Context, resetTransientHea
 }
 
 func resetTransientHeatStateOnStartup(ctx context.Context) error {
-	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+	return withLockedSidebarStore(ctx, func(store scopedStateStore) error {
 		return runtimeServiceWithStore(store).ResetTransientHeatState(ctx, "tmux")
 	})
 }
 
 func captureLiveSidebarSessions(ctx context.Context) error {
 	cfg := loadSidebarConfig(ctx)
-	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+	return withLockedSidebarStore(ctx, func(store scopedStateStore) error {
 		service := runtimeServiceWithStore(store)
 		if err := service.CaptureLiveSessions(ctx, "tmux"); err != nil {
 			return err
@@ -102,7 +99,7 @@ func captureLiveSidebarSessions(ctx context.Context) error {
 
 func captureLiveSidebarSessionsWithConfigProtected(ctx context.Context, cfg ports.ConfigSnapshot) (bool, error) {
 	captured := false
-	err := withLockedSidebarStore(ctx, func(store storefs.Store) error {
+	err := withLockedSidebarStore(ctx, func(store scopedStateStore) error {
 		return withActivityDebugLogger(cfg, func(logger ports.LoggerPort) error {
 			service := runtimeServiceWithStore(store).WithLogger(logger)
 			var err error
@@ -117,7 +114,7 @@ func captureLiveSidebarSessionsWithConfigProtected(ctx context.Context, cfg port
 }
 
 func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) error {
-	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+	return withLockedSidebarStore(ctx, func(store scopedStateStore) error {
 		return withActivityDebugLogger(cfg, func(logger ports.LoggerPort) error {
 			service := runtimeServiceWithStore(store).WithLogger(logger)
 			return service.CaptureSessionHeatWithConfig(ctx, "tmux", cfg)
@@ -159,7 +156,7 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 
 	acquireCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	lock, err := (locker.FileLocker{Dir: scope.LocksDir}).Acquire(acquireCtx, "tmux-sidebar-daemon")
+	lock, err := runtimeLocker(scope.LocksDir).Acquire(acquireCtx, "tmux-sidebar-daemon")
 	if err != nil {
 		// A timeout/cancel here usually means another daemon already holds the lock, so
 		// treat it as a no-op instead of failing startup and racing concurrent restores.
@@ -302,13 +299,13 @@ func withActivityDebugLogger(cfg ports.ConfigSnapshot, fn func(logger ports.Logg
 	if !cfg.ActivityDebugLog {
 		return fn(nil)
 	}
-	logPath := filepath.Join(sessionOrderStore().Dir, "activity.log")
-	file, err := newRotatingLogWriter(logPath, maxSidebarLogBytes)
+	logPath := filepath.Join(StateDir(), "activity.log")
+	logger, closer, err := runtimeActivityLogger(logPath, maxSidebarLogBytes)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = file.Close() }()
-	return fn(adapterlogger.Logger{Out: file})
+	defer func() { _ = closer.Close() }()
+	return fn(logger)
 }
 
 func sidebarRefreshIntervalFromConfig(cfg ports.ConfigSnapshot) time.Duration {
@@ -318,9 +315,9 @@ func sidebarRefreshIntervalFromConfig(cfg ports.ConfigSnapshot) time.Duration {
 	return time.Minute
 }
 
-func withLockedSidebarStore(ctx context.Context, fn func(storefs.Store) error) error {
+func withLockedSidebarStore(ctx context.Context, fn func(scopedStateStore) error) error {
 	store := sessionOrderStore()
-	lock, err := (locker.FileLocker{Dir: filepath.Join(store.Dir, "locks")}).Acquire(ctx, "tmux-sidebar-state")
+	lock, err := runtimeLocker(filepath.Join(store.Dir(), "locks")).Acquire(ctx, "tmux-sidebar-state")
 	if err != nil {
 		return err
 	}

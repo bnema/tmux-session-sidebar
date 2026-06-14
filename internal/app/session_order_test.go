@@ -352,8 +352,8 @@ func TestSessionOrderStoreResolvesStateDirectory(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", base)
 			got := sessionOrderStore()
 			want := filepath.Join(base, "tmux-session-sidebar")
-			if got.Dir != want {
-				t.Fatalf("Dir = %q, want %q", got.Dir, want)
+			if got.Dir() != want {
+				t.Fatalf("Dir = %q, want %q", got.Dir(), want)
 			}
 		})
 	}
