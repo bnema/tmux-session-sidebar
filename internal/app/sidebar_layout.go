@@ -255,7 +255,7 @@ func saveSidebarSessionCategory(ctx context.Context, sessionName string, categor
 func saveSidebarCategoryColor(ctx context.Context, categoryID string, color string, live []string) error {
 	categoryID = strings.TrimSpace(categoryID)
 	color = strings.TrimSpace(color)
-	if categoryID == "" || color == "" {
+	if categoryID == "" {
 		return nil
 	}
 	return withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
@@ -269,6 +269,9 @@ func saveSidebarCategoryColor(ctx context.Context, categoryID string, color stri
 			}
 		}
 		if !found {
+			if color == "" {
+				return nil
+			}
 			return fmt.Errorf("color sidebar category: category %q not found", categoryID)
 		}
 		state.SidebarLayout = persistedLayoutFromCore(layout)

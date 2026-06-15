@@ -510,6 +510,44 @@ func TestSidebarModelColorizesSelectedCategoryWithC(t *testing.T) {
 	}
 }
 
+func TestSidebarModelResetColorClearsSelectedSessionColor(t *testing.T) {
+	var coloredName, coloredColor string
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha", PinColor: "#38bdf8"}}, Actions{ColorSession: func(name string, color string) bool {
+		coloredName, coloredColor = name, color
+		return true
+	}, ReloadTree: reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "alpha"}} })})
+
+	updated, _ := model.Update(keyPress("C", tea.ModShift))
+	model = requireSidebarModel(t, updated)
+	model.pinColorPicker.Cursor = model.pinColorPicker.resetIndex()
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+
+	if coloredName != "alpha" || coloredColor != "" || model.mode != ModeBrowse {
+		t.Fatalf("session reset result name=%q color=%q mode=%s", coloredName, coloredColor, model.mode)
+	}
+}
+
+func TestSidebarModelResetColorClearsSelectedCategoryColor(t *testing.T) {
+	var categoryID, categoryColor string
+	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true, Color: "#38bdf8"}}, Actions{ColorCategory: func(id string, color string) bool {
+		categoryID, categoryColor = id, color
+		return true
+	}, ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Appearance: config.ColorSchemeAppearanceDark}
+	}}, SidebarOptions{})
+
+	updated, _ := model.Update(keyPress("C", tea.ModShift))
+	model = requireSidebarModel(t, updated)
+	model.pinColorPicker.Cursor = model.pinColorPicker.resetIndex()
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+
+	if categoryID != "category:work" || categoryColor != "" || model.mode != ModeBrowse {
+		t.Fatalf("category reset result id=%q color=%q mode=%s", categoryID, categoryColor, model.mode)
+	}
+}
+
 func TestSidebarModelColorPickerPositionsBelowSelectedItem(t *testing.T) {
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"}}, Actions{ColorSession: func(string, string) bool { return true }})
 	model.width = 50
