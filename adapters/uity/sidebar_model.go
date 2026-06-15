@@ -635,11 +635,11 @@ func (m *SidebarModel) startColorPicker() {
 	case TreeRowSession:
 		m.mode = ModePinColor
 		m.colorTarget = colorTarget{SessionName: item.Session.Name, ItemID: item.ID}
-		m.pinColorPicker = PinColorPicker{}
+		m.pinColorPicker = PinColorPicker{Appearance: m.appearance}
 	case TreeRowCategory:
 		m.mode = ModePinColor
 		m.colorTarget = colorTarget{CategoryID: item.CategoryID, ItemID: item.ID}
-		m.pinColorPicker = PinColorPicker{}
+		m.pinColorPicker = PinColorPicker{Appearance: m.appearance}
 	}
 }
 

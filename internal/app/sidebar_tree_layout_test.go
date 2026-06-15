@@ -445,6 +445,75 @@ func TestSaveSidebarCategoryColorPersistsState(t *testing.T) {
 	}
 }
 
+func TestSaveSidebarCategoryColorClearsStoredColorOnReset(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	live := []string{"alpha"}
+	if err := saveReconciledSidebarLayout(ctx, live); err != nil {
+		t.Fatalf("saveReconciledSidebarLayout error: %v", err)
+	}
+	if err := saveSidebarCategoryColor(ctx, sidebarlayout.DefaultCategoryID, "#38bdf8", live); err != nil {
+		t.Fatalf("saveSidebarCategoryColor seed error: %v", err)
+	}
+	if err := saveSidebarCategoryColor(ctx, sidebarlayout.DefaultCategoryID, "", live); err != nil {
+		t.Fatalf("saveSidebarCategoryColor reset error: %v", err)
+	}
+	state, err := sessionOrderStore().Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	layout := coreLayoutFromPersisted(state.SidebarLayout)
+	if len(layout.Items) != 1 || layout.Items[0].Category.Color != "" {
+		t.Fatalf("layout color after reset = %#v, want cleared default category color", layout.Items)
+	}
+}
+
+func TestSaveSidebarCategoryColorTrimsWhitespaceReset(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	live := []string{"alpha"}
+	if err := saveReconciledSidebarLayout(ctx, live); err != nil {
+		t.Fatalf("saveReconciledSidebarLayout error: %v", err)
+	}
+	if err := saveSidebarCategoryColor(ctx, sidebarlayout.DefaultCategoryID, "#38bdf8", live); err != nil {
+		t.Fatalf("saveSidebarCategoryColor seed error: %v", err)
+	}
+	if err := saveSidebarCategoryColor(ctx, sidebarlayout.DefaultCategoryID, "   ", live); err != nil {
+		t.Fatalf("saveSidebarCategoryColor whitespace reset error: %v", err)
+	}
+	state, err := sessionOrderStore().Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	layout := coreLayoutFromPersisted(state.SidebarLayout)
+	if len(layout.Items) != 1 || layout.Items[0].Category.Color != "" {
+		t.Fatalf("layout color after whitespace reset = %#v, want cleared default category color", layout.Items)
+	}
+}
+
+func TestSaveSidebarCategoryColorResetIgnoresMissingCategory(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	live := []string{"alpha"}
+	if err := saveReconciledSidebarLayout(ctx, live); err != nil {
+		t.Fatalf("saveReconciledSidebarLayout error: %v", err)
+	}
+	before, err := sessionOrderStore().Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if err := saveSidebarCategoryColor(ctx, "category:missing", "", live); err != nil {
+		t.Fatalf("saveSidebarCategoryColor missing reset error = %v, want nil", err)
+	}
+	after, err := sessionOrderStore().Load(ctx, "tmux")
+	if err != nil {
+		t.Fatalf("reload state: %v", err)
+	}
+	if !reflect.DeepEqual(after.SidebarLayout, before.SidebarLayout) {
+		t.Fatalf("layout changed after missing reset: got %#v want %#v", after.SidebarLayout, before.SidebarLayout)
+	}
+}
+
 func TestSaveSidebarCategoryColorRejectsMissingCategory(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := context.Background()

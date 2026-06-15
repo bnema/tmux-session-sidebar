@@ -110,6 +110,48 @@ func TestSaveSessionColorDoesNotPinSession(t *testing.T) {
 	}
 }
 
+func TestSaveSessionColorClearsStoredColorOnReset(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.PinColors = map[string]string{"beta": "#38bdf8"}
+	}); err != nil {
+		t.Fatalf("seed sidebar state error = %v", err)
+	}
+	if err := saveSessionColor(ctx, []string{"alpha", "beta"}, "beta", ""); err != nil {
+		t.Fatalf("saveSessionColor() reset error = %v", err)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() after reset error = %v", err)
+	}
+	if _, ok := state.PinColors["beta"]; ok {
+		t.Fatalf("PinColors[beta] after reset = %#v, want cleared entry", state.PinColors)
+	}
+}
+
+func TestSaveSessionColorTrimsWhitespaceReset(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.PinColors = map[string]string{"beta": "#38bdf8"}
+	}); err != nil {
+		t.Fatalf("seed sidebar state error = %v", err)
+	}
+	if err := saveSessionColor(ctx, []string{"alpha", "beta"}, "beta", "   "); err != nil {
+		t.Fatalf("saveSessionColor() whitespace reset error = %v", err)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() after whitespace reset error = %v", err)
+	}
+	if _, ok := state.PinColors["beta"]; ok {
+		t.Fatalf("PinColors[beta] after whitespace reset = %#v, want cleared entry", state.PinColors)
+	}
+}
+
 func TestSaveSessionColorIgnoresNonLiveSession(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())

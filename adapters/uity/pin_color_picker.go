@@ -5,41 +5,36 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
+
+	"github.com/bnema/tmux-session-sidebar/core/config"
 )
 
 const defaultPinColor = "#facc15"
-const selectedPinColorAccent = "#065f46"
+const pinColorResetLabel = "auto"
 
-var pinColorPalette = generatePinColorPalette()
-
-func generatePinColorPalette() []string {
-	// Columns move around the hue wheel; rows move from soft pastel to richer
-	// vivid tones. This gives the picker a predictable visual hierarchy instead
-	// of a random-looking scatter of colors.
-	hues := []float64{42, 145, 205, 315}
-	tiers := []struct {
-		saturation float64
-		lightness  float64
-	}{
-		{saturation: 0.55, lightness: 0.84},
-		{saturation: 0.68, lightness: 0.74},
-		{saturation: 0.78, lightness: 0.62},
-		{saturation: 0.86, lightness: 0.48},
-	}
-	palette := make([]string, 0, len(hues)*len(tiers))
-	for _, tier := range tiers {
-		for _, hue := range hues {
-			palette = append(palette, hslHex(hue, tier.saturation, tier.lightness))
-		}
-	}
-	return palette
+var pinColorPalette = []string{
+	defaultPinColor,
+	"#f97316",
+	"#ef4444",
+	"#ec4899",
+	"#a855f7",
+	"#6366f1",
+	"#3b82f6",
+	"#06b6d4",
+	"#14b8a6",
+	"#22c55e",
+	"#84cc16",
 }
 
 type PinColorPicker struct {
-	Cursor int
+	Cursor     int
+	Appearance config.ColorSchemeAppearance
 }
 
 func (p PinColorPicker) SelectedColor() string {
+	if p.Cursor == p.resetIndex() {
+		return ""
+	}
 	if p.Cursor < 0 || p.Cursor >= len(pinColorPalette) {
 		return defaultPinColor
 	}
@@ -47,10 +42,7 @@ func (p PinColorPicker) SelectedColor() string {
 }
 
 func (p PinColorPicker) Move(delta int) int {
-	if len(pinColorPalette) == 0 {
-		return 0
-	}
-	return (p.Cursor + delta + len(pinColorPalette)) % len(pinColorPalette)
+	return (p.Cursor + delta + p.optionCount()) % p.optionCount()
 }
 
 func (p PinColorPicker) MoveDelta(msg tea.KeyPressMsg) (int, bool) {
@@ -103,21 +95,21 @@ func (p PinColorPicker) RenderOverlayAt(content string, width int, height int, y
 }
 
 func (p PinColorPicker) Render() string {
-	styles := newPinColorPickerStyles()
+	styles := newPinColorPickerStyles(p.Appearance)
 	columns := p.columns()
-	rows := make([]string, 0, (len(pinColorPalette)+columns-1)/columns)
-	for start := 0; start < len(pinColorPalette); start += columns {
+	rows := make([]string, 0, (p.optionCount()+columns-1)/columns)
+	for start := 0; start < p.optionCount(); start += columns {
 		cells := make([]string, 0, columns)
-		for i := 0; i < columns && start+i < len(pinColorPalette); i++ {
+		for i := 0; i < columns && start+i < p.optionCount(); i++ {
 			index := start + i
-			cells = append(cells, p.renderSwatch(styles, index))
+			cells = append(cells, p.renderOption(styles, index))
 		}
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, cells...))
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		styles.title.Render("colorize"),
 		lipgloss.JoinVertical(lipgloss.Left, rows...),
-		styles.hint.Render("↵/sp ok esc"),
+		styles.hint.Render("↵/sp apply\nesc cancel"),
 	)
 	return styles.box.Render(body)
 }
@@ -126,29 +118,59 @@ func (p PinColorPicker) columns() int {
 	return 4
 }
 
+func (p PinColorPicker) optionCount() int {
+	return len(pinColorPalette) + 1
+}
+
+func (p PinColorPicker) resetIndex() int {
+	return len(pinColorPalette)
+}
+
+func (p PinColorPicker) renderOption(styles pinColorPickerStyles, index int) string {
+	if index == p.resetIndex() {
+		return p.renderResetOption(styles)
+	}
+	return p.renderSwatch(styles, index)
+}
+
 func (p PinColorPicker) renderSwatch(styles pinColorPickerStyles, index int) string {
 	color := lipgloss.Color(pinColorPalette[index])
 	style := styles.swatch.Foreground(color)
 	if index == p.Cursor {
-		return style.Background(lipgloss.Color(selectedPinColorAccent)).Render("▄▄▄▄\n▀▀▀▀")
+		return style.Background(lipgloss.Color(styles.selectedBackground)).Render("▄▄▄▄\n▀▀▀▀")
 	}
 	return style.Render("████\n████")
 }
 
-type pinColorPickerStyles struct {
-	box    lipgloss.Style
-	title  lipgloss.Style
-	hint   lipgloss.Style
-	swatch lipgloss.Style
+func (p PinColorPicker) renderResetOption(styles pinColorPickerStyles) string {
+	style := styles.reset
+	if p.Cursor == p.resetIndex() {
+		style = style.Background(lipgloss.Color(styles.selectedBackground)).Foreground(lipgloss.Color(styles.selectedForeground)).Bold(true)
+	}
+	return style.Render("────\n" + pinColorResetLabel)
 }
 
-func newPinColorPickerStyles() pinColorPickerStyles {
-	background := lipgloss.Color("#0f172a")
+type pinColorPickerStyles struct {
+	box                lipgloss.Style
+	title              lipgloss.Style
+	hint               lipgloss.Style
+	swatch             lipgloss.Style
+	reset              lipgloss.Style
+	selectedBackground string
+	selectedForeground string
+}
+
+func newPinColorPickerStyles(appearance config.ColorSchemeAppearance) pinColorPickerStyles {
+	scheme := colorScheme(appearance)
+	background := lipgloss.Color(scheme.pinPickerBackground)
 	return pinColorPickerStyles{
-		box:    lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(selectedPinColorAccent)).Background(background).Padding(0, 1),
-		title:  lipgloss.NewStyle().Foreground(lipgloss.Color("#e0f2fe")).Background(background).Bold(true),
-		hint:   lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")).Background(background),
-		swatch: lipgloss.NewStyle().Background(background),
+		box:                lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(scheme.pinPickerBorder)).Background(background).Padding(0, 1),
+		title:              lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.pinPickerTitle)).Background(background).Bold(true),
+		hint:               lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.pinPickerHint)).Background(background),
+		swatch:             lipgloss.NewStyle().Background(background),
+		reset:              lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.pinPickerHint)).Background(background),
+		selectedBackground: scheme.selectedRowBackgroundRGB.Hex(),
+		selectedForeground: scheme.selectedForeground,
 	}
 }
 

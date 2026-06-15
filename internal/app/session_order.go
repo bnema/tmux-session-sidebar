@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -49,11 +50,19 @@ func saveToggledPinnedSession(ctx context.Context, live []string, session string
 }
 
 func saveSessionColor(ctx context.Context, live []string, session string, color string) error {
+	color = strings.TrimSpace(color)
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
 		state.PinColors = sessions.ReconcileNamedStrings(state.PinColors, live)
 		state.PinnedSessions = sessions.ReconcilePinned(state.PinnedSessions, live)
 		state.SessionOrder = sessions.ApplyOrder(live, state.SessionOrder)
 		if !slices.Contains(live, session) {
+			return
+		}
+		if color == "" {
+			delete(state.PinColors, session)
+			if len(state.PinColors) == 0 {
+				state.PinColors = nil
+			}
 			return
 		}
 		if state.PinColors == nil {
