@@ -17,6 +17,14 @@ type SidebarUIOptions struct {
 	CheckUpdateAvailable    func(currentVersion string) (bool, error)
 	MetadataIconMode        viewmodel.MetadataIconMode
 	AgentAttentionAnimation config.AgentAttentionAnimation
+	Appearance              config.ColorSchemeAppearance
+}
+
+// SidebarReloadResult bundles tree items and the resolved appearance from a
+// single config snapshot so reload always reads config once.
+type SidebarReloadResult struct {
+	Items      []viewmodel.TreeItem
+	Appearance config.ColorSchemeAppearance
 }
 
 // SidebarUIActions defines the app-layer callbacks that the sidebar UI may
@@ -36,7 +44,7 @@ type SidebarUIActions struct {
 	// of collapsing them into a generic success/failure boolean.
 	SelfUpdate                  func() error
 	LoadProjects                func() []viewmodel.ProjectItem
-	ReloadTreeItems             func() []viewmodel.TreeItem
+	ReloadTree                  func() *SidebarReloadResult
 	CreateCategory              func(string) bool
 	RenameCategory              func(string, string) bool
 	CreateSpacer                func() bool

@@ -43,6 +43,13 @@ const (
 
 type TreeItem = viewmodel.TreeItem
 
+// ReloadResult bundles tree items and appearance from a single reload so the
+// UI never reads config in two separate trips.
+type ReloadResult struct {
+	Items      []TreeItem
+	Appearance config.ColorSchemeAppearance
+}
+
 type Actions struct {
 	SwitchSession               func(string) bool
 	CreateProject               func(ProjectItem, string) bool
@@ -56,7 +63,7 @@ type Actions struct {
 	SetShowNumericItems         func(bool) bool
 	SelfUpdate                  func() tea.Cmd
 	LoadProjects                func() []ProjectItem
-	ReloadTreeItems             func() []TreeItem
+	ReloadTree                  func() *ReloadResult
 	CreateCategory              func(string) bool
 	RenameCategory              func(string, string) bool
 	CreateSpacer                func() bool
@@ -77,6 +84,7 @@ type SidebarOptions struct {
 	CheckUpdateAvailable    func(currentVersion string) (bool, error)
 	MetadataIconMode        MetadataIconMode
 	AgentAttentionAnimation config.AgentAttentionAnimation
+	Appearance              config.ColorSchemeAppearance
 }
 
 type SidebarModel struct {
@@ -107,6 +115,7 @@ type SidebarModel struct {
 	treeScroll                       int
 	pinColorPicker                   PinColorPicker
 	colorTarget                      colorTarget
+	appearance                       config.ColorSchemeAppearance
 	attentionAnimationStyle          config.AgentAttentionAnimation
 	attentionAnimationFrame          int
 	attentionAnimationTickPending    bool
@@ -142,6 +151,7 @@ func NewTreeSidebarModelWithOptions(treeItems []TreeItem, actions Actions, optio
 		updateCheck:                      newUpdateCheckState(options.Version, options.CheckUpdateAvailable),
 		updateSpinner:                    updateSpinner,
 		metadataIconMode:                 iconMode,
+		appearance:                       options.Appearance,
 		attentionAnimationStyle:          attentionAnimationStyle,
 		attentionAnimationTickPending:    attentionAnimationTickPending,
 		attentionAnimationTickGeneration: attentionAnimationTickGeneration,
@@ -482,7 +492,7 @@ func (m *SidebarModel) movePage(delta int) {
 	if delta < 0 {
 		direction = -1
 	}
-	m.cursor = min(max(m.cursor+m.pageItemDelta(visible, step, direction, newSidebarStyles()), 0), len(visible)-1)
+	m.cursor = min(max(m.cursor+m.pageItemDelta(visible, step, direction, newSidebarStylesForAppearance(m.appearance)), 0), len(visible)-1)
 	m.ensureTreeCursorVisible()
 }
 
@@ -839,7 +849,7 @@ func (m SidebarModel) View() tea.View {
 }
 
 func (m SidebarModel) Render() string {
-	styles := newSidebarStyles()
+	styles := newSidebarStylesForAppearance(m.appearance)
 	lines := []string{""}
 	lines = append(lines, m.renderScrollableTree(styles)...)
 	if status := m.statusLine(); status != "" {

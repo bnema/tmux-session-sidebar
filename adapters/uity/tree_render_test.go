@@ -267,11 +267,12 @@ func TestTreeSidebarIgnoresOneWideResizeSpikeAfterSwitch(t *testing.T) {
 		{Kind: TreeRowSession, ID: "category:default/session:beta", CategoryID: "category:default", Session: SessionItem{Name: "beta", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "feature/very-long-branch-name-that-would-overflow-during-switch", Modified: 3}}, Slot: 2, Depth: 1, LastChild: true, ShowMetadata: true},
 	}, Actions{
 		SwitchSession: func(string) bool { return true },
-		ReloadTreeItems: func() []TreeItem {
-			return []TreeItem{
+		ReloadTree: func() *ReloadResult {
+			return &ReloadResult{Items: []TreeItem{
 				{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true},
 				{Kind: TreeRowSession, ID: "category:default/session:alpha", CategoryID: "category:default", Session: SessionItem{Name: "alpha"}, Slot: 1, Depth: 1},
 				{Kind: TreeRowSession, ID: "category:default/session:beta", CategoryID: "category:default", Session: SessionItem{Name: "beta", Current: true, Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "feature/very-long-branch-name-that-would-overflow-during-switch", Modified: 3}}, Slot: 2, Depth: 1, LastChild: true, ShowMetadata: true},
+			}, Appearance: config.ColorSchemeAppearanceDark,
 			}
 		},
 	}, SidebarOptions{})
@@ -303,11 +304,12 @@ func TestTreeSidebarIgnoresModerateWidthSpikeAfterSwitch(t *testing.T) {
 		{Kind: TreeRowSession, ID: "category:default/session:beta", CategoryID: "category:default", Session: SessionItem{Name: "beta", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: branch, Modified: 3}}, Slot: 2, Depth: 1, LastChild: true, ShowMetadata: true},
 	}, Actions{
 		SwitchSession: func(string) bool { return true },
-		ReloadTreeItems: func() []TreeItem {
-			return []TreeItem{
+		ReloadTree: func() *ReloadResult {
+			return &ReloadResult{Items: []TreeItem{
 				{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true},
 				{Kind: TreeRowSession, ID: "category:default/session:alpha", CategoryID: "category:default", Session: SessionItem{Name: "alpha"}, Slot: 1, Depth: 1},
 				{Kind: TreeRowSession, ID: "category:default/session:beta", CategoryID: "category:default", Session: SessionItem{Name: "beta", Current: true, Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: branch, Modified: 3}}, Slot: 2, Depth: 1, LastChild: true, ShowMetadata: true},
+			},
 			}
 		},
 	}, SidebarOptions{})
@@ -430,9 +432,9 @@ func TestTreeSidebarReloadsTreeAfterCreateSpacer(t *testing.T) {
 	reloaded := false
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{
 		CreateSpacer: func() bool { return true },
-		ReloadTreeItems: func() []TreeItem {
+		ReloadTree: func() *ReloadResult {
 			reloaded = true
-			return []TreeItem{{Kind: TreeRowSpacer, ID: "spacer:1"}}
+			return &ReloadResult{Items: []TreeItem{{Kind: TreeRowSpacer, ID: "spacer:1"}}}
 		},
 	}, SidebarOptions{})
 
@@ -520,11 +522,12 @@ func TestTreeSidebarRendersAndTogglesMoreRow(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions(items, Actions{SetCategorySessionsExpanded: func(categoryID string, next bool) bool {
 		expanded = next
 		return categoryID == "category:work"
-	}, ReloadTreeItems: func() []TreeItem {
-		return []TreeItem{
+	}, ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Items: []TreeItem{
 			{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
 			{Kind: TreeRowSession, ID: "category:work/session:one", CategoryID: "category:work", Session: SessionItem{Name: "one"}, Depth: 1},
 			{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreExpanded: expanded},
+		}, Appearance: config.ColorSchemeAppearanceDark,
 		}
 	}}, SidebarOptions{})
 	model.cursor = 2
@@ -559,14 +562,14 @@ func TestTreeSidebarKeepsExpandedMoreRowAfterSessionSwitchReload(t *testing.T) {
 			switched = name == "s2"
 			return switched
 		},
-		ReloadTreeItems: func() []TreeItem {
+		ReloadTree: func() *ReloadResult {
 			next := []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}
 			for i := 1; i <= 12; i++ {
 				name := fmt.Sprintf("s%d", i)
 				next = append(next, TreeItem{Kind: TreeRowSession, ID: "category:work/session:" + name, CategoryID: "category:work", Session: SessionItem{Name: name, Current: (switched && name == "s2") || (!switched && name == "s1")}, Depth: 1, OverflowHidden: i > 10})
 			}
 			next = append(next, TreeItem{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 2})
-			return next
+			return &ReloadResult{Items: next}
 		},
 	}, SidebarOptions{})
 	model.cursor = 11
@@ -593,7 +596,7 @@ func TestTreeSidebarCollapseMoreRowHidesOverflowWhenReloadFails(t *testing.T) {
 	items = append(items, TreeItem{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreCount: 2, MoreExpanded: true})
 	model := NewTreeSidebarModelWithOptions(items, Actions{
 		SetCategorySessionsExpanded: func(categoryID string, next bool) bool { return categoryID == "category:work" && !next },
-		ReloadTreeItems:             func() []TreeItem { return nil },
+		ReloadTree:                  func() *ReloadResult { return nil },
 	}, SidebarOptions{})
 	model.cursor = 13
 
@@ -648,10 +651,11 @@ func TestTreeSidebarMoveReselectsSessionAfterCategoryChangesID(t *testing.T) {
 		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Depth: 1, LastChild: true},
 	}, Actions{
 		MoveTreeItem: func(string, int) bool { return true },
-		ReloadTreeItems: func() []TreeItem {
-			return []TreeItem{
+		ReloadTree: func() *ReloadResult {
+			return &ReloadResult{Items: []TreeItem{
 				{Kind: TreeRowCategory, ID: "category:other", CategoryID: "category:other", CategoryName: "Other", CategoryOpen: true},
 				{Kind: TreeRowSession, ID: "category:other/session:alpha", CategoryID: "category:other", Session: SessionItem{Name: "alpha"}, Depth: 1, LastChild: true},
+			}, Appearance: config.ColorSchemeAppearanceDark,
 			}
 		},
 	}, SidebarOptions{})
@@ -674,8 +678,8 @@ func TestTreeSidebarJMovesSelectedTreeItemAndReloads(t *testing.T) {
 		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Depth: 1, LastChild: true},
 	}, Actions{
 		MoveTreeItem: func(id string, d int) bool { movedID, delta = id, d; return true },
-		ReloadTreeItems: func() []TreeItem {
-			return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}
+		ReloadTree: func() *ReloadResult {
+			return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}}
 		},
 	}, SidebarOptions{})
 
@@ -691,9 +695,9 @@ func TestTreeSidebarToggleNumericReloadsTree(t *testing.T) {
 	reloaded := false
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{
 		SetShowNumericItems: func(bool) bool { return true },
-		ReloadTreeItems: func() []TreeItem {
+		ReloadTree: func() *ReloadResult {
 			reloaded = true
-			return []TreeItem{{Kind: TreeRowSession, ID: "category:work/session:1", CategoryID: "category:work", Session: SessionItem{Name: "1"}, Depth: 1, LastChild: true}}
+			return &ReloadResult{Items: []TreeItem{{Kind: TreeRowSession, ID: "category:work/session:1", CategoryID: "category:work", Session: SessionItem{Name: "1"}, Depth: 1, LastChild: true}}}
 		},
 	}, SidebarOptions{})
 
@@ -728,8 +732,8 @@ func TestTreeSidebarRPromptsAndRenamesSelectedCategory(t *testing.T) {
 		renamedID = id
 		renamedName = name
 		return true
-	}, ReloadTreeItems: func() []TreeItem {
-		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Client", CategoryOpen: true}}
+	}, ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Client", CategoryOpen: true}}}
 	}}, SidebarOptions{})
 
 	updated, _ := model.Update(keyPress("r", 0))
@@ -777,9 +781,9 @@ func TestTreeSidebarNOpensQuickNamedSessionPrompt(t *testing.T) {
 	}, Actions{CreateNamedSession: func(name string, categoryID string) bool {
 		created = name
 		return true
-	}, ReloadTreeItems: func() []TreeItem {
+	}, ReloadTree: func() *ReloadResult {
 		reloaded = true
-		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}}
 	}}, SidebarOptions{})
 
 	updated, _ := model.Update(keyPress("n", 0))
@@ -803,8 +807,8 @@ func TestTreeSidebarCOpensCreateSessionSheetAndRunsGitChoice(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{CreateGitProject: func(categoryID string) bool {
 		called = true
 		return true
-	}, ReloadTreeItems: func() []TreeItem {
-		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}
+	}, ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}}
 	}}, SidebarOptions{})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 16})
 	model = requireSidebarModel(t, updated)
@@ -850,7 +854,7 @@ func TestTreeSidebarCreateMenuUsesSelectedSessionCategory(t *testing.T) {
 					gotAction, gotCategoryID = "pwd", categoryID
 					return true
 				},
-				ReloadTreeItems: func() []TreeItem { return nil },
+				ReloadTree: func() *ReloadResult { return nil },
 			}, SidebarOptions{})
 			updated, _ := model.Update(keyPress("j", 0))
 			model = requireSidebarModel(t, updated)
@@ -878,7 +882,7 @@ func TestTreeSidebarCreateNamedSessionUsesSelectedSessionCategory(t *testing.T) 
 		gotName = name
 		gotCategoryID = categoryID
 		return true
-	}, ReloadTreeItems: func() []TreeItem { return nil }}, SidebarOptions{})
+	}, ReloadTree: func() *ReloadResult { return nil }}, SidebarOptions{})
 	updated, _ := model.Update(keyPress("j", 0))
 	model = requireSidebarModel(t, updated)
 	updated, _ = model.Update(keyPress("c", 0))
@@ -921,8 +925,8 @@ func TestTreeSidebarCreateNamedSessionUsesSelectedCategory(t *testing.T) {
 		gotName = name
 		gotCategoryID = categoryID
 		return true
-	}, ReloadTreeItems: func() []TreeItem {
-		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}
+	}, ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}}
 	}}, SidebarOptions{})
 	updated, _ := model.Update(keyPress("c", 0))
 	model = requireSidebarModel(t, updated)
@@ -950,8 +954,8 @@ func TestTreeSidebarCategoryCollapseShortcuts(t *testing.T) {
 			collapsed  bool
 		}{categoryID: categoryID, collapsed: collapsed})
 		return true
-	}, ReloadTreeItems: func() []TreeItem {
-		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: false}}
+	}, ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: false}}}
 	}}, SidebarOptions{})
 	updated, _ := model.Update(keyPress("h", 0))
 	model = requireSidebarModel(t, updated)
@@ -967,8 +971,8 @@ func TestTreeSidebarCreateCategoryPromptsForName(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{CreateCategory: func(name string) bool {
 		created = name
 		return true
-	}, ReloadTreeItems: func() []TreeItem {
-		return []TreeItem{{Kind: TreeRowCategory, ID: "category:new", CategoryID: "category:new", CategoryName: "Databases", CategoryOpen: true}}
+	}, ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:new", CategoryID: "category:new", CategoryName: "Databases", CategoryOpen: true}}}
 	}}, SidebarOptions{})
 	updated, _ := model.Update(keyPress("c", 0))
 	model = requireSidebarModel(t, updated)
@@ -998,11 +1002,12 @@ func TestTreeSidebarCreateSessionNamedPrompt(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{CreateNamedSession: func(name string, categoryID string) bool {
 		created = name
 		return true
-	}, ReloadTreeItems: func() []TreeItem {
+	}, ReloadTree: func() *ReloadResult {
 		reloaded = true
-		return []TreeItem{
+		return &ReloadResult{Items: []TreeItem{
 			{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
 			{Kind: TreeRowSession, ID: "category:work/session:scratch", CategoryID: "category:work", Session: SessionItem{Name: "scratch", Current: true}, Depth: 1, LastChild: true},
+		},
 		}
 	}}, SidebarOptions{})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 10})

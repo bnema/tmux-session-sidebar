@@ -31,13 +31,13 @@ func testTreeItems(items []SessionItem) []TreeItem {
 	return tree
 }
 
-func reloadTestSessions(fn func() []SessionItem) func() []TreeItem {
-	return func() []TreeItem {
+func reloadTestSessions(fn func() []SessionItem) func() *ReloadResult {
+	return func() *ReloadResult {
 		items := fn()
 		if items == nil {
 			return nil
 		}
-		return testTreeItems(items)
+		return &ReloadResult{Items: testTreeItems(items), Appearance: config.ColorSchemeAppearanceDark}
 	}
 }
 
@@ -185,7 +185,7 @@ func TestSidebarModelBrowseShortcuts(t *testing.T) {
 func TestSidebarModelSwitchSelectedReloadsAndKeepsSwitchedSessionSelected(t *testing.T) {
 	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
 		SwitchSession: func(name string) bool { return name == "beta" },
-		ReloadTreeItems: reloadTestSessions(func() []SessionItem {
+		ReloadTree: reloadTestSessions(func() []SessionItem {
 			return []SessionItem{{Name: "alpha", Attention: true, Slot: 1}, {Name: "beta", Current: true, Slot: 2}}
 		}),
 	}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationPulse})
@@ -202,7 +202,7 @@ func TestSidebarModelSwitchSelectedReloadsAndKeepsSwitchedSessionSelected(t *tes
 
 func TestSidebarModelReloadKeepsPreviousCurrentSelectedWhenCurrentChanges(t *testing.T) {
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
-		ReloadTreeItems: reloadTestSessions(func() []SessionItem {
+		ReloadTree: reloadTestSessions(func() []SessionItem {
 			return []SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Current: true, Slot: 2}}
 		}),
 	})
@@ -217,7 +217,7 @@ func TestSidebarModelReloadKeepsPreviousCurrentSelectedWhenCurrentChanges(t *tes
 
 func TestSidebarModelReloadPreservesSelectionWhenPreviousCurrentWasEmpty(t *testing.T) {
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
-		ReloadTreeItems: reloadTestSessions(func() []SessionItem {
+		ReloadTree: reloadTestSessions(func() []SessionItem {
 			return []SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Current: true, Slot: 2}}
 		}),
 	})
@@ -232,7 +232,7 @@ func TestSidebarModelReloadPreservesSelectionWhenPreviousCurrentWasEmpty(t *test
 
 func TestSidebarModelReloadPreservesSelectionWhenPreviousCurrentIsFilteredOut(t *testing.T) {
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
-		ReloadTreeItems: reloadTestSessions(func() []SessionItem {
+		ReloadTree: reloadTestSessions(func() []SessionItem {
 			return []SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Current: true, Slot: 2}}
 		}),
 	})
@@ -249,8 +249,8 @@ func TestSidebarModelReloadPreservesSelectionWhenPreviousCurrentIsFilteredOut(t 
 func TestSidebarModelDeleteSelectedTreeItemRequiresConfirmationAndReloadsTree(t *testing.T) {
 	deleted := TreeItem{}
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
-		DeleteTreeItem:  func(item TreeItem) bool { deleted = item; return true },
-		ReloadTreeItems: reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "beta"}} }),
+		DeleteTreeItem: func(item TreeItem) bool { deleted = item; return true },
+		ReloadTree:     reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "beta"}} }),
 	})
 	updated, _ := model.Update(keyPress("d", 0))
 	model = requireSidebarModel(t, updated)
@@ -273,8 +273,8 @@ func TestSidebarModelDeleteSelectedCategory(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{DeleteTreeItem: func(item TreeItem) bool {
 		deleted = item
 		return true
-	}, ReloadTreeItems: func() []TreeItem {
-		return []TreeItem{{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true}}
+	}, ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true}}, Appearance: config.ColorSchemeAppearanceDark}
 	}}, SidebarOptions{})
 	updated, _ := model.Update(keyPress("d", 0))
 	model = requireSidebarModel(t, updated)
@@ -303,8 +303,8 @@ func TestSidebarModelDeleteConfirmationCanBeCancelled(t *testing.T) {
 func TestSidebarModelKillRequiresConfirmationAndReloadsTree(t *testing.T) {
 	called := 0
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
-		KillSession:     func(name string) bool { called++; return name == "alpha" },
-		ReloadTreeItems: reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "beta"}} }),
+		KillSession: func(name string) bool { called++; return name == "alpha" },
+		ReloadTree:  reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "beta"}} }),
 	})
 	updated, _ := model.Update(keyPress("x", 0))
 	model = requireSidebarModel(t, updated)
@@ -363,8 +363,8 @@ func TestSidebarModelConfirmationKeys(t *testing.T) {
 func TestSidebarModelSlotSwitchPreservesSelectionWhenReloadFails(t *testing.T) {
 	called := ""
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
-		SwitchSession:   func(name string) bool { called = name; return true },
-		ReloadTreeItems: func() []TreeItem { return nil },
+		SwitchSession: func(name string) bool { called = name; return true },
+		ReloadTree:    func() *ReloadResult { return nil },
 	})
 	updated, _ := model.Update(keyPress("2", 0))
 	model = requireSidebarModel(t, updated)
@@ -380,7 +380,7 @@ func TestSidebarModelSlotSwitchesVisibleSession(t *testing.T) {
 	called := ""
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Current: true, Slot: 1}, {Name: "beta", Slot: 2}}, Actions{
 		SwitchSession: func(name string) bool { called = name; return true },
-		ReloadTreeItems: reloadTestSessions(func() []SessionItem {
+		ReloadTree: reloadTestSessions(func() []SessionItem {
 			return []SessionItem{{Name: "alpha", Slot: 1}, {Name: "beta", Current: true, Slot: 2}}
 		}),
 	})
@@ -439,8 +439,8 @@ func TestSidebarModelReordersSelectedTreeItem(t *testing.T) {
 	var gotID string
 	var gotDelta int
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{
-		MoveTreeItem:    func(id string, delta int) bool { gotID, gotDelta = id, delta; return true },
-		ReloadTreeItems: reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "beta"}, {Name: "alpha"}} }),
+		MoveTreeItem: func(id string, delta int) bool { gotID, gotDelta = id, delta; return true },
+		ReloadTree:   reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "beta"}, {Name: "alpha"}} }),
 	})
 	updated, _ := model.Update(keyPress("J", tea.ModShift))
 	model = requireSidebarModel(t, updated)
@@ -457,7 +457,7 @@ func TestSidebarModelSpaceTogglesPinWithoutOpeningColorPicker(t *testing.T) {
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{TogglePinnedSession: func(name string) bool {
 		pinnedName = name
 		return true
-	}, ReloadTreeItems: reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "alpha", Pinned: true}} })})
+	}, ReloadTree: reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "alpha", Pinned: true}} })})
 
 	updated, _ := model.Update(tea.KeyPressMsg(tea.Key{Text: " ", Code: ' '}))
 	model = requireSidebarModel(t, updated)
@@ -472,7 +472,7 @@ func TestSidebarModelColorizesSelectedSessionWithC(t *testing.T) {
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{ColorSession: func(name string, color string) bool {
 		coloredName, coloredColor = name, color
 		return true
-	}, ReloadTreeItems: reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "alpha", PinColor: "#38bdf8"}} })})
+	}, ReloadTree: reloadTestSessions(func() []SessionItem { return []SessionItem{{Name: "alpha", PinColor: "#38bdf8"}} })})
 
 	updated, _ := model.Update(keyPress("C", tea.ModShift))
 	model = requireSidebarModel(t, updated)
@@ -491,8 +491,8 @@ func TestSidebarModelColorizesSelectedCategoryWithC(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{ColorCategory: func(id string, color string) bool {
 		categoryID, categoryColor = id, color
 		return true
-	}, ReloadTreeItems: func() []TreeItem {
-		return []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true, Color: "#38bdf8"}}
+	}, ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true, Color: "#38bdf8"}}, Appearance: config.ColorSchemeAppearanceDark}
 	}}, SidebarOptions{})
 
 	updated, _ := model.Update(keyPress("C", tea.ModShift))
@@ -539,6 +539,52 @@ func TestSessionRowColorPreservesCurrentEmphasis(t *testing.T) {
 	style := sessionRowStyle(newSidebarStyles(), SessionItem{Name: "alpha", Current: true, PinColor: "#38bdf8"})
 	if !style.GetBold() {
 		t.Fatal("colored current session style should preserve active bold emphasis")
+	}
+}
+
+func TestSidebarModelRenderUsesConfiguredLightAppearancePalette(t *testing.T) {
+	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Appearance: config.ColorSchemeAppearanceLight})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 12})
+	model = requireSidebarModel(t, updated)
+	view := model.Render()
+	if !strings.Contains(view, "48;2;167;243;208") {
+		t.Fatalf("render missing light selected background, view=%q", view)
+	}
+	if strings.Contains(view, "48;2;6;95;70") {
+		t.Fatalf("render still used dark selected background, view=%q", view)
+	}
+}
+
+func TestSidebarModelReloadTreePreservesLightAppearancePalette(t *testing.T) {
+	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Items: testTreeItems([]SessionItem{{Name: "alpha"}}), Appearance: config.ColorSchemeAppearanceLight}
+	}}, SidebarOptions{Appearance: config.ColorSchemeAppearanceLight})
+	if !model.reloadTreeItems() {
+		t.Fatal("reloadTreeItems() = false, want true")
+	}
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 12})
+	model = requireSidebarModel(t, updated)
+	view := model.Render()
+	if !strings.Contains(view, "48;2;167;243;208") {
+		t.Fatalf("render missing light selected background after reload, view=%q", view)
+	}
+	if strings.Contains(view, "48;2;6;95;70") {
+		t.Fatalf("render still used dark selected background after reload, view=%q", view)
+	}
+}
+
+func TestSidebarModelReloadTreeWithNilItemsClearsTreeAndUpdatesAppearance(t *testing.T) {
+	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Appearance: config.ColorSchemeAppearanceLight}
+	}}, SidebarOptions{Appearance: config.ColorSchemeAppearanceDark})
+	if !model.reloadTreeItems() {
+		t.Fatal("reloadTreeItems() = false, want true")
+	}
+	if got := model.appearance; got != config.ColorSchemeAppearanceLight {
+		t.Fatalf("appearance = %q, want %q", got, config.ColorSchemeAppearanceLight)
+	}
+	if got := len(model.treeItems); got != 0 {
+		t.Fatalf("len(treeItems) = %d, want 0", got)
 	}
 }
 

@@ -231,6 +231,17 @@ func TestWindowIDReturnsHelpfulErrorWhenTargetResolvesNoWindow(t *testing.T) {
 	}
 }
 
+func TestWindowIDTreatsEmptyOutputForConcreteWindowTargetAsTargetGone(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@351", "#{window_id}"}).Return(ports.Result{Stdout: "\n"}, nil)
+
+	_, err := (Client{Process: process}).WindowID(ctx, "@351")
+	if !errors.Is(err, ports.ErrTmuxTargetGone) {
+		t.Fatalf("WindowID error = %v, want ErrTmuxTargetGone", err)
+	}
+}
+
 func TestCurrentPanePathUsesDisplayWhenTargetIsEmpty(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
@@ -358,6 +369,33 @@ func TestLoadConfigParsesMetadataInactiveBool(t *testing.T) {
 	}
 }
 
+func TestLoadConfigParsesColorSchemeMode(t *testing.T) {
+	tests := map[string]struct {
+		raw  string
+		want config.ColorSchemeMode
+	}{
+		"default empty is system": {raw: "\n", want: config.ColorSchemeModeSystem},
+		"system":                  {raw: "system\n", want: config.ColorSchemeModeSystem},
+		"light":                   {raw: "light\n", want: config.ColorSchemeModeLight},
+		"dark":                    {raw: "dark\n", want: config.ColorSchemeModeDark},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			process := mocks.NewMockProcessPort(t)
+			expectLoadConfigWithColorScheme(process, ctx, "b\n", "30\n", "\n", "off\n", "off\n", "on\n", "off\n", "pulse\n", tt.raw)
+
+			got, err := (Client{Process: process}).LoadConfig(ctx)
+			if err != nil {
+				t.Fatalf("LoadConfig error: %v", err)
+			}
+			if got.ColorSchemeMode != tt.want {
+				t.Fatalf("ColorSchemeMode = %q, want %q", got.ColorSchemeMode, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadConfigParsesAgentAttentionAnimation(t *testing.T) {
 	tests := map[string]struct {
 		raw  string
@@ -456,6 +494,7 @@ func TestLoadOptionsMapPreservesEmptyValues(t *testing.T) {
 		"off",
 		"auto",
 		"3",
+		"system",
 		"",
 		"off",
 	}, configQuerySeparator) + "\n"
@@ -519,6 +558,7 @@ func TestLoadConfigPreservesBackslashesAndExplicitEmptyValues(t *testing.T) {
 		"off",
 		"auto",
 		"3",
+		"system",
 		"",
 		"off",
 	}, configQuerySeparator) + "\n"
@@ -555,6 +595,10 @@ func expectLoadConfigWithMetadataInactive(process *mocks.MockProcessPort, ctx co
 }
 
 func expectLoadConfigWithAttentionAnimation(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string, metadataSubline string, metadataInactive string, attentionAnimation string) {
+	expectLoadConfigWithColorScheme(process, ctx, key, width, roots, closeAfterSwitch, autoSortRecent, metadataSubline, metadataInactive, attentionAnimation, "system\n")
+}
+
+func expectLoadConfigWithColorScheme(process *mocks.MockProcessPort, ctx context.Context, key string, width string, roots string, closeAfterSwitch string, autoSortRecent string, metadataSubline string, metadataInactive string, attentionAnimation string, colorScheme string) {
 	stdout := strings.Join([]string{
 		strings.TrimSpace(key),
 		strings.TrimSpace(width),
@@ -572,6 +616,7 @@ func expectLoadConfigWithAttentionAnimation(process *mocks.MockProcessPort, ctx 
 		strings.TrimSpace(autoSortRecent),
 		"auto",
 		"3",
+		strings.TrimSpace(colorScheme),
 		strings.TrimSpace(metadataSubline),
 		strings.TrimSpace(metadataInactive),
 	}, configQuerySeparator) + "\n"

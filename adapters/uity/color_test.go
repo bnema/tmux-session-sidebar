@@ -1,6 +1,10 @@
 package uity
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/bnema/tmux-session-sidebar/core/config"
+)
 
 func TestHeatColorGradient(t *testing.T) {
 	tests := map[string]struct {
@@ -26,9 +30,15 @@ func TestHeatColorGradient(t *testing.T) {
 	}
 }
 
-func TestInactiveSessionRGBDimANSI(t *testing.T) {
-	if got := inactiveSessionRGB.DimANSI(); got != "\033[2;38;2;75;85;99m" {
-		t.Fatalf("DimANSI() = %q, want inactive gray dim ANSI", got)
+func TestDarkSchemeInactiveSessionRGBDimANSI(t *testing.T) {
+	if got := colorScheme(config.ColorSchemeAppearanceDark).inactiveSessionRGB.DimANSI(); got != "\033[2;38;2;75;85;99m" {
+		t.Fatalf("dark scheme DimANSI() = %q, want inactive gray dim ANSI", got)
+	}
+}
+
+func TestLightSchemeInactiveSessionRGBDimANSI(t *testing.T) {
+	if got := colorScheme(config.ColorSchemeAppearanceLight).inactiveSessionRGB.DimANSI(); got != "\033[2;38;2;148;163;184m" {
+		t.Fatalf("light scheme DimANSI() = %q, want inactive gray dim ANSI", got)
 	}
 }
 

@@ -3,16 +3,21 @@ package uity
 import sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
 
 func (m *SidebarModel) reloadTreeItems() bool {
-	if m.actions.ReloadTreeItems == nil {
+	if m.actions.ReloadTree == nil {
 		return false
 	}
 	expanded := expandedCategorySet(m.treeItems)
-	next := m.actions.ReloadTreeItems()
-	if next == nil {
+	result := m.actions.ReloadTree()
+	if result == nil {
 		return false
 	}
-	preserveExpandedCategories(next, expanded)
-	m.treeItems = next
+	m.appearance = result.Appearance
+	items := result.Items
+	if items == nil {
+		items = []TreeItem{}
+	}
+	preserveExpandedCategories(items, expanded)
+	m.treeItems = items
 	if m.cursor >= len(m.selectableTreeItems()) {
 		m.cursor = max(len(m.selectableTreeItems())-1, 0)
 	}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -20,6 +21,7 @@ type RuntimeDependencies struct {
 	LockerFactory         func(dir string) ports.LockerPort
 	ActivityLoggerFactory func(path string, maxBytes int64) (ports.LoggerPort, io.Closer, error)
 	LogWriterFactory      func(path string, maxBytes int64) (ports.SyncWriteCloser, error)
+	SystemColorSchemePort ports.SystemColorSchemePort
 	SidebarUI             SidebarUIRunner
 }
 
@@ -120,11 +122,29 @@ func runtimeSidebarUI() SidebarUIRunner {
 	return deps.SidebarUI
 }
 
+func runtimeSystemColorScheme() ports.SystemColorSchemePort {
+	deps := runtimeDependencies()
+	if deps.SystemColorSchemePort == nil {
+		return missingSystemColorScheme{}
+	}
+	return deps.SystemColorSchemePort
+}
+
 func missingDependencyError(name string) error {
 	return fmt.Errorf("app runtime dependencies missing %s", name)
 }
 
 type missingReleaseChecker struct{}
+
+type missingSystemColorScheme struct{}
+
+func (missingSystemColorScheme) CurrentPreference(context.Context) (config.SystemColorSchemePreference, error) {
+	return config.SystemColorSchemeNoPreference, missingDependencyError("system color scheme port")
+}
+
+func (missingSystemColorScheme) Watch(context.Context) (<-chan config.SystemColorSchemePreference, <-chan error, error) {
+	return nil, nil, missingDependencyError("system color scheme port")
+}
 
 func (missingReleaseChecker) LatestReleaseTag(context.Context) (string, error) {
 	return "", missingDependencyError("release checker")

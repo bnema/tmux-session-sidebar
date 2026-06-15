@@ -26,3 +26,5 @@ packages:
       ProcessPort:
       LoggerPort:
       ReleaseCheckerPort:
+      SidebarRefresherPort:
+      SystemColorSchemePort:

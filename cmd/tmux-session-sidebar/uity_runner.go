@@ -20,6 +20,7 @@ func (uiRunner) Run(ctx context.Context, items []viewmodel.TreeItem, actions app
 		CheckUpdateAvailable:    options.CheckUpdateAvailable,
 		MetadataIconMode:        uity.MetadataIconMode(options.MetadataIconMode),
 		AgentAttentionAnimation: options.AgentAttentionAnimation,
+		Appearance:              options.Appearance,
 	})
 	program := tea.NewProgram(model, tea.WithOutput(stdout), tea.WithContext(ctx))
 	_, err := program.Run()
@@ -28,18 +29,27 @@ func (uiRunner) Run(ctx context.Context, items []viewmodel.TreeItem, actions app
 
 func toUIActions(actions app.SidebarUIActions) uity.Actions {
 	return uity.Actions{
-		SwitchSession:               actions.SwitchSession,
-		CreateProject:               actions.CreateProject,
-		CreateGitProject:            actions.CreateGitProject,
-		CreateAdhoc:                 actions.CreateAdhoc,
-		CreateNamedSession:          actions.CreateNamedSession,
-		KillSession:                 actions.KillSession,
-		TogglePinnedSession:         actions.TogglePinnedSession,
-		ColorSession:                actions.ColorSession,
-		ColorCategory:               actions.ColorCategory,
-		SetShowNumericItems:         actions.SetShowNumericItems,
-		LoadProjects:                actions.LoadProjects,
-		ReloadTreeItems:             actions.ReloadTreeItems,
+		SwitchSession:       actions.SwitchSession,
+		CreateProject:       actions.CreateProject,
+		CreateGitProject:    actions.CreateGitProject,
+		CreateAdhoc:         actions.CreateAdhoc,
+		CreateNamedSession:  actions.CreateNamedSession,
+		KillSession:         actions.KillSession,
+		TogglePinnedSession: actions.TogglePinnedSession,
+		ColorSession:        actions.ColorSession,
+		ColorCategory:       actions.ColorCategory,
+		SetShowNumericItems: actions.SetShowNumericItems,
+		LoadProjects:        actions.LoadProjects,
+		ReloadTree: func() *uity.ReloadResult {
+			if actions.ReloadTree == nil {
+				return nil
+			}
+			result := actions.ReloadTree()
+			if result == nil {
+				return nil
+			}
+			return &uity.ReloadResult{Items: result.Items, Appearance: result.Appearance}
+		},
 		CreateCategory:              actions.CreateCategory,
 		RenameCategory:              actions.RenameCategory,
 		CreateSpacer:                actions.CreateSpacer,

@@ -104,7 +104,7 @@ func (r treeRenderer) renderCategory(item TreeItem, selected bool) string {
 func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 	session := item.Session
 	branch := r.styles.treeGuide.Render(treeBranch(item))
-	currentMarker := currentSessionMarker(session)
+	currentMarker := currentSessionMarker(session, r.styles.appearance)
 	slot := slotPrefix(item.Slot)
 	marker := treeSessionMarker(session)
 	name := r.fitSessionName(item, currentMarker, slot, marker)
@@ -174,9 +174,9 @@ func (r treeRenderer) renderAttention(session SessionItem, selected bool) string
 	if !session.Attention {
 		return ""
 	}
-	style := animatedAttentionMarkerStyle(r.styles.active, r.animationStyle, r.animationFrame, defaultAttentionBackgroundRGB)
+	style := animatedAttentionMarkerStyle(r.styles.active, r.animationStyle, r.animationFrame, r.styles.scheme.attentionBackgroundRGB)
 	if selected {
-		style = style.Background(lipgloss.Color(selectedRowBackgroundRGB.Hex()))
+		style = style.Background(lipgloss.Color(r.styles.scheme.selectedRowBackgroundRGB.Hex()))
 	}
 	return style.Render(" " + animatedAttentionMarkerSymbol(attentionMarkerSymbol, r.animationStyle, r.animationFrame))
 }
@@ -198,7 +198,7 @@ func (r treeRenderer) renderMetadata(item TreeItem, selected bool) string {
 	if width <= 0 {
 		return ""
 	}
-	subline := RenderMetadataSubline(item.Session.Metadata, MetadataSublineRenderOptions{Icons: r.metadataIconMode, Width: width, Selected: selected, Active: metadataColorActive(item.Session), InactiveIntensity: item.Session.InactiveIntensity})
+	subline := RenderMetadataSubline(item.Session.Metadata, MetadataSublineRenderOptions{Icons: r.metadataIconMode, Width: width, Selected: selected, Active: metadataColorActive(item.Session), InactiveIntensity: item.Session.InactiveIntensity, Appearance: r.styles.appearance})
 	if subline == "" {
 		return ""
 	}
@@ -242,11 +242,11 @@ func metadataNameIndent(item TreeItem) int {
 	return max(indent, 0)
 }
 
-func currentSessionMarker(item SessionItem) string {
+func currentSessionMarker(item SessionItem, appearance config.ColorSchemeAppearance) string {
 	if !item.Current {
 		return ""
 	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(selectedRowBackgroundRGB.Hex())).Render("┃")
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorScheme(appearance).selectedRowBackgroundRGB.Hex())).Render("┃")
 }
 
 func treeSessionMarker(item SessionItem) string {

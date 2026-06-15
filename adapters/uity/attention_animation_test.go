@@ -7,7 +7,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/core/config"
 )
 
-func TestPulseAnimationBlendsFromBackgroundToWhite(t *testing.T) {
+func TestPulseAnimationDarkBackgroundPeaksTowardWhite(t *testing.T) {
 	background := rgbColor{red: 6, green: 95, blue: 70}
 	if _, ok := attentionAnimationColor(config.AgentAttentionAnimationPulse, 0, background); ok {
 		t.Fatal("transparent pulse frame returned a foreground color")
@@ -41,6 +41,18 @@ func TestPulseAnimationBlendsFromBackgroundToWhite(t *testing.T) {
 	cycle := time.Duration(attentionAnimationFrameCount(config.AgentAttentionAnimationPulse)) * interval
 	if cycle < 3500*time.Millisecond {
 		t.Fatalf("pulse cycle = %v, want at least 3.5s for calmer breathing", cycle)
+	}
+}
+
+func TestPulseAnimationLightBackgroundPeaksTowardBlack(t *testing.T) {
+	background := lightMode.attentionBackgroundRGB
+	peakFrame := attentionAnimationFrameCount(config.AgentAttentionAnimationPulse) / 2
+	peak, ok := attentionAnimationColor(config.AgentAttentionAnimationPulse, peakFrame, background)
+	if !ok {
+		t.Fatal("pulse animation did not return a peak color")
+	}
+	if peak != "#000000" {
+		t.Fatalf("peak pulse color = %q, want black", peak)
 	}
 }
 

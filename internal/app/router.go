@@ -442,7 +442,7 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 	}
 	persisted, _ := loadSidebarState(ctx)
 	actions := buildSidebarActions(ctx, flags, stdout, sidebar, ipcClient)
-	options := SidebarUIOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, runtimeReleaseChecker()), AgentAttentionAnimation: cfg.AgentAttentionAnimation}
+	options := SidebarUIOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, runtimeReleaseChecker()), AgentAttentionAnimation: cfg.AgentAttentionAnimation, Appearance: cfg.ColorSchemeAppearance}
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}
@@ -498,13 +498,14 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 			return runSelfUpdateBackground()
 		},
 		LoadProjects: func() []viewmodel.ProjectItem { return loadProjectItems(ctx) },
-		ReloadTreeItems: func() []viewmodel.TreeItem {
-			items, err := loadSidebarTreeItemsWithConfig(ctx, loadSidebarConfig(ctx))
+		ReloadTree: func() *SidebarReloadResult {
+			cfg := loadSidebarConfig(ctx)
+			items, err := loadSidebarTreeItemsWithConfig(ctx, cfg)
 			if err != nil {
 				handleActionError(ctx, "reload sidebar tree", err)
 				return nil
 			}
-			return items
+			return &SidebarReloadResult{Items: items, Appearance: cfg.ColorSchemeAppearance}
 		},
 		CreateCategory: func(name string) bool {
 			live, err := currentLiveSessionNames(ctx)

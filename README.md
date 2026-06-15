@@ -65,6 +65,7 @@ set -g @session-sidebar-agent-attention-animation 'pulse'
 set -g @session-sidebar-auto-sort-recent 'off'
 set -g @session-sidebar-restore-sessions 'auto'
 set -g @session-sidebar-continuum-grace-seconds '3'
+set -g @session-sidebar-color-scheme 'system'
 set -g @session-sidebar-metadata-subline 'on'
 set -g @session-sidebar-metadata-inactive 'on'
 ```
@@ -83,6 +84,7 @@ set -g @session-sidebar-metadata-inactive 'on'
 | `@session-sidebar-auto-sort-recent` | `off` | Relative interval for reordering sessions by most recent real pane activity, for example `10m`, `2h`, or `3d` |
 | `@session-sidebar-restore-sessions` | `auto` | Lightweight missing-session restore mode: `auto` skips during tmux-continuum startup restore, `on` always restores, `off` never restores |
 | `@session-sidebar-continuum-grace-seconds` | `3` | Extra seconds added to `@continuum-restore-max-delay` before lightweight restore resumes in `auto` mode |
+| `@session-sidebar-color-scheme` | `system` | Sidebar appearance mode: `system` follows the desktop portal color-scheme preference live, `light` forces light mode, and `dark` forces dark mode |
 | `@session-sidebar-metadata-subline` | `on` | Show an event-driven metadata line under each session when available; set to `off` to keep one-line session rows |
 | `@session-sidebar-metadata-inactive` | `on` | Show metadata lines outside the active category in the category tree layout; set to `off` for active-category-only metadata |
 

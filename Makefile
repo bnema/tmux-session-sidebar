@@ -27,6 +27,7 @@ test-runtime-bootstrap:
 	@bash scripts/remove-git-update-hook_test.sh
 	@bash scripts/daemon-control_test.sh
 	@bash scripts/restart-runtime_test.sh
+	@bash scripts/dev-runtime_test.sh
 
 lint:
 	@golangci-lint run --timeout=5m
@@ -58,6 +59,9 @@ dev-runtime:
 			exit 1; \
 		fi; \
 		touch .bin/.dev-runtime; \
+		if [ -x "$$runtime_bin" ]; then \
+			"$$runtime_bin" sidebar close >/dev/null 2>&1 || true; \
+		fi; \
 		pkill -f "$$runtime_bin daemon serve-ui" 2>/dev/null || true; \
 		pkill -f "$$runtime_bin daemon bootstrap" 2>/dev/null || true; \
 		pkill -f "$$runtime_bin daemon serve" 2>/dev/null || true; \

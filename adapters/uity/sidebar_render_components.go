@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	lipgloss "charm.land/lipgloss/v2"
+	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 )
 
@@ -54,6 +55,8 @@ func displayVersion(version string) string {
 }
 
 type sidebarStyles struct {
+	appearance      config.ColorSchemeAppearance
+	scheme          sidebarColorScheme
 	accent          lipgloss.Style
 	dim             lipgloss.Style
 	treeGuide       lipgloss.Style
@@ -67,17 +70,24 @@ type sidebarStyles struct {
 }
 
 func newSidebarStyles() sidebarStyles {
+	return newSidebarStylesForAppearance(config.ColorSchemeAppearanceDark)
+}
+
+func newSidebarStylesForAppearance(appearance config.ColorSchemeAppearance) sidebarStyles {
+	scheme := colorScheme(appearance)
 	return sidebarStyles{
-		accent:          lipgloss.NewStyle().Foreground(lipgloss.Color("#86efac")),
-		dim:             lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280")),
-		treeGuide:       lipgloss.NewStyle().Foreground(lipgloss.Color("#333333")),
-		active:          lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
-		selected:        lipgloss.NewStyle().Background(lipgloss.Color(selectedRowBackgroundRGB.Hex())).Foreground(lipgloss.Color("#ecfdf5")).Bold(true),
+		appearance:      appearance,
+		scheme:          scheme,
+		accent:          lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.accent)),
+		dim:             lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.dim)),
+		treeGuide:       lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.treeGuide)),
+		active:          lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.active)).Bold(true),
+		selected:        lipgloss.NewStyle().Background(lipgloss.Color(scheme.selectedRowBackgroundRGB.Hex())).Foreground(lipgloss.Color(scheme.selectedForeground)).Bold(true),
 		pinned:          lipgloss.NewStyle().Foreground(lipgloss.Color(defaultPinColor)).Bold(true),
-		warning:         lipgloss.NewStyle().Foreground(lipgloss.Color("#fbbf24")).Bold(true),
-		destructive:     lipgloss.NewStyle().Foreground(lipgloss.Color("#f87171")).Bold(true),
-		versionBadge:    lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#e0f2fe")).Bold(true),
-		updateIndicator: lipgloss.NewStyle().Background(lipgloss.Color("#334155")).Foreground(lipgloss.Color("#22c55e")).Bold(true),
+		warning:         lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.warning)).Bold(true),
+		destructive:     lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.destructive)).Bold(true),
+		versionBadge:    lipgloss.NewStyle().Background(lipgloss.Color(scheme.versionBadgeBackground)).Foreground(lipgloss.Color(scheme.versionBadgeForeground)).Bold(true),
+		updateIndicator: lipgloss.NewStyle().Background(lipgloss.Color(scheme.updateIndicatorBackground)).Foreground(lipgloss.Color(scheme.updateIndicatorForeground)).Bold(true),
 	}
 }
 
@@ -97,9 +107,9 @@ func baseSessionRowStyle(styles sidebarStyles, item SessionItem) lipgloss.Style 
 		return styles.active
 	}
 	if item.Heat == "" || item.Heat == string(heat.BucketStale) {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionColor(item.InactiveIntensity)))
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveSessionColorForAppearance(styles.appearance, item.InactiveIntensity)))
 	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(heatColor(item.HeatIntensity)))
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(heatColorForAppearance(styles.appearance, item.HeatIntensity)))
 }
 
 func pinColor(item SessionItem) string {
