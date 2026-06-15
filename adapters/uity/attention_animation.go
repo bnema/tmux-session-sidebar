@@ -23,10 +23,7 @@ const (
 	attentionRainbowLightness  = 0.62
 )
 
-var (
-	defaultAttentionBackgroundRGB = rgbColor{}
-	whiteRGB                      = rgbColor{red: 255, green: 255, blue: 255}
-)
+var whiteRGB = rgbColor{red: 255, green: 255, blue: 255}
 
 func normalizeAttentionAnimation(style config.AgentAttentionAnimation) config.AgentAttentionAnimation {
 	return config.ParseAgentAttentionAnimation(string(style))
@@ -132,11 +129,11 @@ func attentionAnimationColor(style config.AgentAttentionAnimation, frame int, ba
 	frame = positiveModulo(frame, attentionAnimationFrameCount(style))
 	switch style {
 	case config.AgentAttentionAnimationPulse:
-		return pulseFrameColor(background, whiteRGB, frame, pulseRampFrameCount).Hex(), true
+		return pulseFrameColor(background, pulsePeakColor(background), frame, pulseRampFrameCount).Hex(), true
 	case config.AgentAttentionAnimationRainbow:
 		return hslHex(float64(frame)*360/float64(attentionRainbowFrameCount), attentionRainbowSaturation, attentionRainbowLightness), true
 	case config.AgentAttentionAnimationBlink:
-		return pulseFrameColor(background, whiteRGB, frame, attentionBlinkFrameCount).Hex(), true
+		return pulseFrameColor(background, pulsePeakColor(background), frame, attentionBlinkFrameCount).Hex(), true
 	default:
 		return "", false
 	}
@@ -154,14 +151,22 @@ func attentionAnimationTransparentFrame(style config.AgentAttentionAnimation, fr
 func attentionAnimationColors(style config.AgentAttentionAnimation, background rgbColor) []string {
 	switch normalizeAttentionAnimation(style) {
 	case config.AgentAttentionAnimationPulse:
-		return pulseColorRamp(background, whiteRGB, pulseRampFrameCount)
+		return pulseColorRamp(background, pulsePeakColor(background), pulseRampFrameCount)
 	case config.AgentAttentionAnimationRainbow:
 		return hueWheelRamp(attentionRainbowFrameCount, attentionRainbowSaturation, attentionRainbowLightness)
 	case config.AgentAttentionAnimationBlink:
-		return pulseColorRamp(background, whiteRGB, attentionBlinkFrameCount)
+		return pulseColorRamp(background, pulsePeakColor(background), attentionBlinkFrameCount)
 	default:
 		return nil
 	}
+}
+
+func pulsePeakColor(background rgbColor) rgbColor {
+	luminance := float64(background.red+background.green+background.blue) / 3
+	if luminance > 127.5 {
+		return rgbColor{}
+	}
+	return whiteRGB
 }
 
 func pulseColorRamp(base rgbColor, peak rgbColor, frameCount int) []string {

@@ -43,6 +43,13 @@ const (
 
 type TreeItem = viewmodel.TreeItem
 
+// ReloadResult bundles tree items and appearance from a single reload so the
+// UI never reads config in two separate trips.
+type ReloadResult struct {
+	Items      []TreeItem
+	Appearance config.ColorSchemeAppearance
+}
+
 type Actions struct {
 	SwitchSession               func(string) bool
 	CreateProject               func(ProjectItem, string) bool
@@ -56,8 +63,7 @@ type Actions struct {
 	SetShowNumericItems         func(bool) bool
 	SelfUpdate                  func() tea.Cmd
 	LoadProjects                func() []ProjectItem
-	ReloadTreeItems             func() []TreeItem
-	LoadAppearance              func() config.ColorSchemeAppearance
+	ReloadTree                  func() *ReloadResult
 	CreateCategory              func(string) bool
 	RenameCategory              func(string, string) bool
 	CreateSpacer                func() bool

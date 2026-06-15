@@ -48,7 +48,13 @@ func (s *ColorSchemeService) Run(ctx context.Context) error {
 			}
 		case preference, ok := <-changes:
 			if !ok {
-				return nil
+				// If the context was cancelled (normal shutdown), return that.
+				// Otherwise the watcher dropped the connection without sending
+				// an error first — treat this as a failure.
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				return errors.New("color scheme watcher closed unexpectedly")
 			}
 			if preference == last {
 				continue

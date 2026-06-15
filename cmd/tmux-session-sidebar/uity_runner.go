@@ -7,7 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
-	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/internal/app"
 	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
 )
@@ -15,7 +14,7 @@ import (
 type uiRunner struct{}
 
 func (uiRunner) Run(ctx context.Context, items []viewmodel.TreeItem, actions app.SidebarUIActions, options app.SidebarUIOptions, stdout io.Writer) error {
-	model := uity.NewTreeSidebarModelWithOptions(items, toUIActions(actions, options), uity.SidebarOptions{
+	model := uity.NewTreeSidebarModelWithOptions(items, toUIActions(actions), uity.SidebarOptions{
 		ShowNumericItems:        options.ShowNumericItems,
 		Version:                 options.Version,
 		CheckUpdateAvailable:    options.CheckUpdateAvailable,
@@ -28,27 +27,29 @@ func (uiRunner) Run(ctx context.Context, items []viewmodel.TreeItem, actions app
 	return err
 }
 
-func toUIActions(actions app.SidebarUIActions, options app.SidebarUIOptions) uity.Actions {
-	loadAppearance := func() config.ColorSchemeAppearance {
-		if actions.LoadAppearance != nil {
-			return actions.LoadAppearance()
-		}
-		return options.Appearance
-	}
+func toUIActions(actions app.SidebarUIActions) uity.Actions {
 	return uity.Actions{
-		SwitchSession:               actions.SwitchSession,
-		CreateProject:               actions.CreateProject,
-		CreateGitProject:            actions.CreateGitProject,
-		CreateAdhoc:                 actions.CreateAdhoc,
-		CreateNamedSession:          actions.CreateNamedSession,
-		KillSession:                 actions.KillSession,
-		TogglePinnedSession:         actions.TogglePinnedSession,
-		ColorSession:                actions.ColorSession,
-		ColorCategory:               actions.ColorCategory,
-		SetShowNumericItems:         actions.SetShowNumericItems,
-		LoadProjects:                actions.LoadProjects,
-		ReloadTreeItems:             actions.ReloadTreeItems,
-		LoadAppearance:              loadAppearance,
+		SwitchSession:       actions.SwitchSession,
+		CreateProject:       actions.CreateProject,
+		CreateGitProject:    actions.CreateGitProject,
+		CreateAdhoc:         actions.CreateAdhoc,
+		CreateNamedSession:  actions.CreateNamedSession,
+		KillSession:         actions.KillSession,
+		TogglePinnedSession: actions.TogglePinnedSession,
+		ColorSession:        actions.ColorSession,
+		ColorCategory:       actions.ColorCategory,
+		SetShowNumericItems: actions.SetShowNumericItems,
+		LoadProjects:        actions.LoadProjects,
+		ReloadTree: func() *uity.ReloadResult {
+			if actions.ReloadTree == nil {
+				return nil
+			}
+			result := actions.ReloadTree()
+			if result == nil {
+				return nil
+			}
+			return &uity.ReloadResult{Items: result.Items, Appearance: result.Appearance}
+		},
 		CreateCategory:              actions.CreateCategory,
 		RenameCategory:              actions.RenameCategory,
 		CreateSpacer:                actions.CreateSpacer,

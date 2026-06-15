@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/core/config"
 	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
@@ -499,16 +498,14 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 			return runSelfUpdateBackground()
 		},
 		LoadProjects: func() []viewmodel.ProjectItem { return loadProjectItems(ctx) },
-		ReloadTreeItems: func() []viewmodel.TreeItem {
-			items, err := loadSidebarTreeItemsWithConfig(ctx, loadSidebarConfig(ctx))
+		ReloadTree: func() *SidebarReloadResult {
+			cfg := loadSidebarConfig(ctx)
+			items, err := loadSidebarTreeItemsWithConfig(ctx, cfg)
 			if err != nil {
 				handleActionError(ctx, "reload sidebar tree", err)
 				return nil
 			}
-			return items
-		},
-		LoadAppearance: func() config.ColorSchemeAppearance {
-			return loadSidebarConfig(ctx).ColorSchemeAppearance
+			return &SidebarReloadResult{Items: items, Appearance: cfg.ColorSchemeAppearance}
 		},
 		CreateCategory: func(name string) bool {
 			live, err := currentLiveSessionNames(ctx)

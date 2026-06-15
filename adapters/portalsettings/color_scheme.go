@@ -2,6 +2,7 @@ package portalsettings
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/godbus/dbus/v5"
@@ -27,7 +28,7 @@ func (s ColorSchemeSource) CurrentPreference(ctx context.Context) (config.System
 		return config.SystemColorSchemeNoPreference, err
 	}
 	defer conn.Close()
-	value, err := readPortalColorScheme(ctx, conn)
+	value, err := readPortalColorScheme(ctx, conn.Object(portalBusName, dbus.ObjectPath(portalObject)))
 	if err != nil {
 		return config.SystemColorSchemeNoPreference, err
 	}
@@ -65,6 +66,10 @@ func (s ColorSchemeSource) Watch(ctx context.Context) (<-chan config.SystemColor
 				return
 			case signal, ok := <-signals:
 				if !ok {
+					select {
+					case errs <- errors.New("color scheme watcher: dbus signal channel closed (connection lost)"):
+					default:
+					}
 					return
 				}
 				preference, ok, err := parseSettingChangedSignal(signal)
@@ -96,16 +101,34 @@ func (s ColorSchemeSource) connect() (*dbus.Conn, error) {
 	return dbus.ConnectSessionBus()
 }
 
-func readPortalColorScheme(ctx context.Context, conn *dbus.Conn) (uint32, error) {
-	object := conn.Object(portalBusName, dbus.ObjectPath(portalObject))
+// portalCaller is the subset of dbus.BusObject needed by readPortalColorScheme.
+type portalCaller interface {
+	CallWithContext(ctx context.Context, method string, flags dbus.Flags, args ...any) *dbus.Call
+}
+
+func readPortalColorScheme(ctx context.Context, obj portalCaller) (uint32, error) {
 	var value dbus.Variant
-	if err := object.CallWithContext(ctx, portalInterface+".ReadOne", 0, portalNamespace, portalKey).Store(&value); err == nil {
+	err := obj.CallWithContext(ctx, portalInterface+".ReadOne", 0, portalNamespace, portalKey).Store(&value)
+	if err == nil {
 		return variantUint32(value)
 	}
-	if err := object.CallWithContext(ctx, portalInterface+".Read", 0, portalNamespace, portalKey).Store(&value); err != nil {
-		return 0, err
+	// Only fall back to the deprecated Read method when the portal version
+	// predates ReadOne (UnknownMethod). Any other error is a real failure.
+	if isUnknownMethodError(err) {
+		if err := obj.CallWithContext(ctx, portalInterface+".Read", 0, portalNamespace, portalKey).Store(&value); err != nil {
+			return 0, err
+		}
+		return variantUint32(value)
 	}
-	return variantUint32(value)
+	return 0, err
+}
+
+func isUnknownMethodError(err error) bool {
+	dbusErr, ok := errors.AsType[dbus.Error](err)
+	if !ok {
+		return false
+	}
+	return dbusErr.Name == "org.freedesktop.DBus.Error.UnknownMethod"
 }
 
 func parseSettingChangedSignal(signal *dbus.Signal) (config.SystemColorSchemePreference, bool, error) {

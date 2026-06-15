@@ -83,12 +83,6 @@ var darkMode = sidebarColorScheme{
 	metadataSelectedActive:      metadataColors{compare: "#7dd3fc", ahead: "#86efac", behind: "#f87171", staged: "#93c5fd", unstaged: "#e4d987"},
 }
 
-var (
-	selectedRowBackgroundRGB    = darkMode.selectedRowBackgroundRGB
-	inactiveSessionRGB          = darkMode.inactiveSessionRGB
-	selectedInactiveMetadataRGB = darkMode.selectedInactiveMetadataRGB
-)
-
 var lightMode = sidebarColorScheme{
 	accent:                      "#166534",
 	dim:                         "#64748b",
@@ -228,7 +222,7 @@ func blendRGB(cool rgbColor, hot rgbColor, intensity float64) rgbColor {
 }
 
 func blendChannel(cool int, hot int, intensity float64) int {
-	return cool + int(float64(hot-cool)*intensity+0.5)
+	return int(math.Round(float64(cool) + float64(hot-cool)*intensity))
 }
 
 func clampIntensity(intensity float64) float64 {
