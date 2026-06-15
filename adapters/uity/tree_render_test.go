@@ -272,7 +272,7 @@ func TestTreeSidebarIgnoresOneWideResizeSpikeAfterSwitch(t *testing.T) {
 				{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true},
 				{Kind: TreeRowSession, ID: "category:default/session:alpha", CategoryID: "category:default", Session: SessionItem{Name: "alpha"}, Slot: 1, Depth: 1},
 				{Kind: TreeRowSession, ID: "category:default/session:beta", CategoryID: "category:default", Session: SessionItem{Name: "beta", Current: true, Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "feature/very-long-branch-name-that-would-overflow-during-switch", Modified: 3}}, Slot: 2, Depth: 1, LastChild: true, ShowMetadata: true},
-			},
+			}, Appearance: config.ColorSchemeAppearanceDark,
 			}
 		},
 	}, SidebarOptions{})
@@ -527,7 +527,7 @@ func TestTreeSidebarRendersAndTogglesMoreRow(t *testing.T) {
 			{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
 			{Kind: TreeRowSession, ID: "category:work/session:one", CategoryID: "category:work", Session: SessionItem{Name: "one"}, Depth: 1},
 			{Kind: TreeRowMore, ID: "category:work/more", CategoryID: "category:work", Depth: 1, LastChild: true, MoreExpanded: expanded},
-		},
+		}, Appearance: config.ColorSchemeAppearanceDark,
 		}
 	}}, SidebarOptions{})
 	model.cursor = 2
@@ -655,7 +655,7 @@ func TestTreeSidebarMoveReselectsSessionAfterCategoryChangesID(t *testing.T) {
 			return &ReloadResult{Items: []TreeItem{
 				{Kind: TreeRowCategory, ID: "category:other", CategoryID: "category:other", CategoryName: "Other", CategoryOpen: true},
 				{Kind: TreeRowSession, ID: "category:other/session:alpha", CategoryID: "category:other", Session: SessionItem{Name: "alpha"}, Depth: 1, LastChild: true},
-			},
+			}, Appearance: config.ColorSchemeAppearanceDark,
 			}
 		},
 	}, SidebarOptions{})

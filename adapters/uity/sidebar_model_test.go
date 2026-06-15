@@ -37,7 +37,7 @@ func reloadTestSessions(fn func() []SessionItem) func() *ReloadResult {
 		if items == nil {
 			return nil
 		}
-		return &ReloadResult{Items: testTreeItems(items)}
+		return &ReloadResult{Items: testTreeItems(items), Appearance: config.ColorSchemeAppearanceDark}
 	}
 }
 
@@ -274,7 +274,7 @@ func TestSidebarModelDeleteSelectedCategory(t *testing.T) {
 		deleted = item
 		return true
 	}, ReloadTree: func() *ReloadResult {
-		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true}}}
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true}}, Appearance: config.ColorSchemeAppearanceDark}
 	}}, SidebarOptions{})
 	updated, _ := model.Update(keyPress("d", 0))
 	model = requireSidebarModel(t, updated)
@@ -492,7 +492,7 @@ func TestSidebarModelColorizesSelectedCategoryWithC(t *testing.T) {
 		categoryID, categoryColor = id, color
 		return true
 	}, ReloadTree: func() *ReloadResult {
-		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true, Color: "#38bdf8"}}}
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true, Color: "#38bdf8"}}, Appearance: config.ColorSchemeAppearanceDark}
 	}}, SidebarOptions{})
 
 	updated, _ := model.Update(keyPress("C", tea.ModShift))
@@ -552,6 +552,24 @@ func TestSidebarModelRenderUsesConfiguredLightAppearancePalette(t *testing.T) {
 	}
 	if strings.Contains(view, "48;2;6;95;70") {
 		t.Fatalf("render still used dark selected background, view=%q", view)
+	}
+}
+
+func TestSidebarModelReloadTreePreservesLightAppearancePalette(t *testing.T) {
+	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Items: testTreeItems([]SessionItem{{Name: "alpha"}}), Appearance: config.ColorSchemeAppearanceLight}
+	}}, SidebarOptions{Appearance: config.ColorSchemeAppearanceLight})
+	if !model.reloadTreeItems() {
+		t.Fatal("reloadTreeItems() = false, want true")
+	}
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 12})
+	model = requireSidebarModel(t, updated)
+	view := model.Render()
+	if !strings.Contains(view, "48;2;167;243;208") {
+		t.Fatalf("render missing light selected background after reload, view=%q", view)
+	}
+	if strings.Contains(view, "48;2;6;95;70") {
+		t.Fatalf("render still used dark selected background after reload, view=%q", view)
 	}
 }
 

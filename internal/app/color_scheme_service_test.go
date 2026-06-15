@@ -48,9 +48,14 @@ func TestColorSchemeServiceRunIgnoresForcedModes(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			source := newFakeSystemColorSchemeSource()
 			var refreshes atomic.Int64
+			configLoaded := make(chan struct{}, 1)
 			svc := ColorSchemeService{
 				Source: source,
 				Tmux: colorSchemeConfigLoader(func(context.Context) (ports.ConfigSnapshot, error) {
+					select {
+					case configLoaded <- struct{}{}:
+					default:
+					}
 					return ports.ConfigSnapshot{ColorSchemeMode: mode}, nil
 				}),
 				Refresher: colorSchemeRefresher(func(context.Context) error {
@@ -66,7 +71,11 @@ func TestColorSchemeServiceRunIgnoresForcedModes(t *testing.T) {
 			source.waitStarted(t)
 
 			source.changes <- config.SystemColorSchemePreferLight
-			time.Sleep(20 * time.Millisecond)
+			select {
+			case <-configLoaded:
+			case <-time.After(time.Second):
+				t.Fatal("service did not load config for forced mode change")
+			}
 			if got := refreshes.Load(); got != 0 {
 				t.Fatalf("refreshes = %d, want 0", got)
 			}
