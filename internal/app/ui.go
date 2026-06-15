@@ -106,10 +106,50 @@ func sessionNames(views []sessions.View) []string {
 
 func loadSidebarConfig(ctx context.Context) ports.ConfigSnapshot {
 	cfg, err := runtimeTmux().LoadConfig(ctx)
-	if err == nil && cfg.Loaded {
-		return cfg
+	if err != nil || !cfg.Loaded {
+		cfg = defaultSidebarConfig()
 	}
-	return defaultSidebarConfig()
+	resolved := cfg
+	if err := withActivityDebugLogger(cfg, func(logger ports.LoggerPort) error {
+		resolved = withResolvedColorSchemeAppearance(ctx, cfg, logger)
+		return nil
+	}); err != nil {
+		return withResolvedColorSchemeAppearance(ctx, cfg, nil)
+	}
+	return resolved
+}
+
+func withResolvedColorSchemeAppearance(ctx context.Context, cfg ports.ConfigSnapshot, logger ports.LoggerPort) ports.ConfigSnapshot {
+	mode := config.ParseColorSchemeMode(string(cfg.ColorSchemeMode))
+	cfg.ColorSchemeMode = mode
+	system := config.SystemColorSchemeNoPreference
+	systemValue := any("skipped")
+	var systemErr error
+	if mode == config.ColorSchemeModeSystem {
+		systemValue = system
+		if source := runtimeSystemColorScheme(); source != nil {
+			preference, err := source.CurrentPreference(ctx)
+			if err == nil {
+				system = preference
+				systemValue = preference
+			} else {
+				systemErr = err
+			}
+		}
+	}
+	cfg.ColorSchemeAppearance = config.ResolveColorSchemeAppearance(mode, system)
+	if logger != nil {
+		fields := []ports.LogField{
+			{Key: "mode", Value: cfg.ColorSchemeMode},
+			{Key: "system", Value: systemValue},
+			{Key: "appearance", Value: cfg.ColorSchemeAppearance},
+		}
+		if systemErr != nil {
+			fields = append(fields, ports.LogField{Key: "system_error", Value: systemErr.Error()})
+		}
+		logger.Debug("color-scheme", fields)
+	}
+	return cfg
 }
 
 func defaultSidebarConfig() ports.ConfigSnapshot {
@@ -126,6 +166,8 @@ func defaultSidebarConfig() ports.ConfigSnapshot {
 		AutoSortRecentInterval:  0,
 		RestoreSessionsMode:     "auto",
 		ContinuumGraceSeconds:   3,
+		ColorSchemeMode:         config.ColorSchemeModeSystem,
+		ColorSchemeAppearance:   config.ColorSchemeAppearanceLight,
 		MetadataSublineEnabled:  true,
 		MetadataInactiveEnabled: true,
 	}

@@ -85,6 +85,7 @@ main() {
   set_default @session-sidebar-auto-sort-recent off
   set_default @session-sidebar-restore-sessions auto
   set_default @session-sidebar-continuum-grace-seconds 3
+  set_default @session-sidebar-color-scheme system
   set_default @session-sidebar-metadata-subline on
   set_default @session-sidebar-metadata-inactive on
 

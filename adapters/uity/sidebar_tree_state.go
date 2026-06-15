@@ -11,6 +11,9 @@ func (m *SidebarModel) reloadTreeItems() bool {
 	if next == nil {
 		return false
 	}
+	if m.actions.LoadAppearance != nil {
+		m.appearance = m.actions.LoadAppearance()
+	}
 	preserveExpandedCategories(next, expanded)
 	m.treeItems = next
 	if m.cursor >= len(m.selectableTreeItems()) {

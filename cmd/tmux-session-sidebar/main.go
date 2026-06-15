@@ -14,6 +14,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/adapters/ipcunix"
 	"github.com/bnema/tmux-session-sidebar/adapters/locker"
 	adapterlogger "github.com/bnema/tmux-session-sidebar/adapters/logger"
+	"github.com/bnema/tmux-session-sidebar/adapters/portalsettings"
 	"github.com/bnema/tmux-session-sidebar/adapters/process"
 	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/adapters/tmuxcli"
@@ -55,7 +56,8 @@ func buildRuntimeRouter(ctx context.Context, runner ports.ProcessPort) (app.Rout
 		LogWriterFactory: func(path string, maxBytes int64) (ports.SyncWriteCloser, error) {
 			return runtimelog.NewWriter(path, maxBytes)
 		},
-		SidebarUI: uiRunner{},
+		SystemColorSchemePort: portalsettings.ColorSchemeSource{},
+		SidebarUI:             uiRunner{},
 	})
 	scope := app.RuntimeScopeForProcess(ctx, runner)
 	app.SetRuntimeScope(scope)

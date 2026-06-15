@@ -8,7 +8,7 @@ func (m SidebarModel) availableTreeHeight() int {
 	}
 	height := m.height
 	height-- // leading blank line above the tree.
-	height -= len(m.statusBarLines(newSidebarStyles()))
+	height -= len(m.statusBarLines(newSidebarStylesForAppearance(m.appearance)))
 	if m.statusLine() != "" {
 		height -= 2 // blank separator plus status line.
 	}
@@ -42,7 +42,7 @@ func (m *SidebarModel) ensureTreeCursorVisible() {
 		return
 	}
 	m.cursor = min(max(m.cursor, 0), len(visible)-1)
-	styles := newSidebarStyles()
+	styles := newSidebarStylesForAppearance(m.appearance)
 	viewportHeight := m.availableTreeHeight()
 	renderedHeight := m.renderedTreeLineCount(styles)
 	if viewportHeight <= 0 || renderedHeight <= viewportHeight {
@@ -113,7 +113,7 @@ func (m SidebarModel) selectedRenderedTreeLine(styles sidebarStyles) int {
 }
 
 func (m SidebarModel) colorPickerOverlayY() int {
-	styles := newSidebarStyles()
+	styles := newSidebarStylesForAppearance(m.appearance)
 	paneHeight := lipgloss.Height(m.pinColorPicker.Render())
 	selectedLine := m.selectedRenderedTreeLine(styles) - m.normalizedTreeScroll(m.renderedTreeLineCount(styles), m.availableTreeHeight(), styles)
 	return min(selectedLine+2, max(m.height-paneHeight, 0))

@@ -112,6 +112,7 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	autoSortRecent := get("@session-sidebar-auto-sort-recent")
 	autoSortRecentInterval := parseAutoSortRecentInterval(autoSortRecent)
 	restoreSessionsMode := get("@session-sidebar-restore-sessions")
+	colorSchemeMode := get("@session-sidebar-color-scheme")
 	metadataSubline := get("@session-sidebar-metadata-subline")
 	metadataInactive := get("@session-sidebar-metadata-inactive")
 
@@ -133,6 +134,7 @@ func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 		AutoSortRecentInterval:  autoSortRecentInterval,
 		RestoreSessionsMode:     normalizeRestoreSessionsMode(restoreSessionsMode),
 		ContinuumGraceSeconds:   continuumGraceSeconds,
+		ColorSchemeMode:         config.ParseColorSchemeMode(colorSchemeMode),
 		MetadataSublineEnabled:  metadataSubline == "" || parseTmuxBool(metadataSubline),
 		MetadataInactiveEnabled: metadataInactive == "" || parseTmuxBool(metadataInactive),
 	}, nil
@@ -242,8 +244,12 @@ func (c Client) WindowID(ctx context.Context, target string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	trimmedTarget := strings.TrimSpace(target)
 	if windowID == "" {
-		return "", fmt.Errorf("resolve tmux window id for target %q: empty output", strings.TrimSpace(target))
+		if concreteTmuxTarget(trimmedTarget) {
+			return "", fmt.Errorf("resolve tmux window id for target %q: %w", trimmedTarget, ports.ErrTmuxTargetGone)
+		}
+		return "", fmt.Errorf("resolve tmux window id for target %q: empty output", trimmedTarget)
 	}
 	return windowID, nil
 }
@@ -630,6 +636,7 @@ var configOptionNames = []string{
 	"@session-sidebar-auto-sort-recent",
 	"@session-sidebar-restore-sessions",
 	"@session-sidebar-continuum-grace-seconds",
+	"@session-sidebar-color-scheme",
 	"@session-sidebar-metadata-subline",
 	"@session-sidebar-metadata-inactive",
 }
@@ -702,6 +709,11 @@ func tmuxTargetFlag(target string) string {
 		return "-c"
 	}
 	return "-t"
+}
+
+func concreteTmuxTarget(target string) bool {
+	target = strings.TrimSpace(target)
+	return strings.HasPrefix(target, "@") || strings.HasPrefix(target, "%") || strings.HasPrefix(target, "/dev/")
 }
 
 type tmuxError struct {

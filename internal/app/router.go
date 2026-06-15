@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bnema/tmux-session-sidebar/core/config"
 	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
@@ -442,7 +443,7 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 	}
 	persisted, _ := loadSidebarState(ctx)
 	actions := buildSidebarActions(ctx, flags, stdout, sidebar, ipcClient)
-	options := SidebarUIOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, runtimeReleaseChecker()), AgentAttentionAnimation: cfg.AgentAttentionAnimation}
+	options := SidebarUIOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, runtimeReleaseChecker()), AgentAttentionAnimation: cfg.AgentAttentionAnimation, Appearance: cfg.ColorSchemeAppearance}
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}
@@ -505,6 +506,9 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 				return nil
 			}
 			return items
+		},
+		LoadAppearance: func() config.ColorSchemeAppearance {
+			return loadSidebarConfig(ctx).ColorSchemeAppearance
 		},
 		CreateCategory: func(name string) bool {
 			live, err := currentLiveSessionNames(ctx)

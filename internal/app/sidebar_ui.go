@@ -17,6 +17,7 @@ type SidebarUIOptions struct {
 	CheckUpdateAvailable    func(currentVersion string) (bool, error)
 	MetadataIconMode        viewmodel.MetadataIconMode
 	AgentAttentionAnimation config.AgentAttentionAnimation
+	Appearance              config.ColorSchemeAppearance
 }
 
 // SidebarUIActions defines the app-layer callbacks that the sidebar UI may
@@ -37,6 +38,7 @@ type SidebarUIActions struct {
 	SelfUpdate                  func() error
 	LoadProjects                func() []viewmodel.ProjectItem
 	ReloadTreeItems             func() []viewmodel.TreeItem
+	LoadAppearance              func() config.ColorSchemeAppearance
 	CreateCategory              func(string) bool
 	RenameCategory              func(string, string) bool
 	CreateSpacer                func() bool

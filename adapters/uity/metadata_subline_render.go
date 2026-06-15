@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	lipgloss "charm.land/lipgloss/v2"
+	"github.com/bnema/tmux-session-sidebar/core/config"
 )
 
 type MetadataSublineRenderOptions struct {
@@ -12,6 +13,7 @@ type MetadataSublineRenderOptions struct {
 	Selected          bool
 	Active            bool
 	InactiveIntensity float64
+	Appearance        config.ColorSchemeAppearance
 }
 
 func RenderMetadataSubline(meta SessionMetadataSubline, options MetadataSublineRenderOptions) string {
@@ -42,66 +44,68 @@ func formatMetadataSublineParts(meta SessionMetadataSubline, options MetadataSub
 
 func renderMetadataParts(parts []metadataPart, options MetadataSublineRenderOptions) string {
 	if !options.Active {
-		return metadataInactiveSublineStyle(options.Selected, options.InactiveIntensity).Render(metadataPartText(parts))
+		return metadataInactiveSublineStyle(options.Appearance, options.Selected, options.InactiveIntensity).Render(metadataPartText(parts))
 	}
-	base := metadataSublineStyle()
+	base := metadataSublineStyle(options.Appearance)
 	var b strings.Builder
 	for i, part := range parts {
 		if i > 0 {
 			b.WriteString(base.Render(" "))
 		}
-		b.WriteString(renderMetadataPart(part, options.Selected))
+		b.WriteString(renderMetadataPart(part, options.Appearance, options.Selected))
 	}
 	return b.String()
 }
 
-func metadataSublineStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("#cccccc"))
+func metadataSublineStyle(appearance config.ColorSchemeAppearance) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorScheme(appearance).metadataBase))
 }
 
-func metadataInactiveSublineStyle(selected bool, intensity float64) lipgloss.Style {
+func metadataInactiveSublineStyle(appearance config.ColorSchemeAppearance, selected bool, intensity float64) lipgloss.Style {
+	scheme := colorScheme(appearance)
 	if selected {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(selectedInactiveMetadataRGB.Hex()))
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.selectedInactiveMetadataRGB.Hex()))
 	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveMetadataColor(intensity)))
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(inactiveMetadataColorForAppearance(appearance, intensity)))
 }
 
-func renderMetadataPart(part metadataPart, selected bool) string {
+func renderMetadataPart(part metadataPart, appearance config.ColorSchemeAppearance, selected bool) string {
 	if part.Role == metadataPartCompare {
-		return renderCompareMetadataPart(part.Text, selected)
+		return renderCompareMetadataPart(part.Text, appearance, selected)
 	}
 	if part.Role == metadataPartUpstream {
-		return renderUpstreamMetadataPart(part.Text, selected)
+		return renderUpstreamMetadataPart(part.Text, appearance, selected)
 	}
-	return metadataPartStyle(part.Role, selected).Render(part.Text)
+	return metadataPartStyle(part.Role, appearance, selected).Render(part.Text)
 }
 
-func renderCompareMetadataPart(text string, selected bool) string {
+func renderCompareMetadataPart(text string, appearance config.ColorSchemeAppearance, selected bool) string {
 	before, after, ok := strings.Cut(text, "/")
 	if !ok {
-		return metadataPartStyle(metadataPartCompare, selected).Render(text)
+		return metadataPartStyle(metadataPartCompare, appearance, selected).Render(text)
 	}
-	compare := metadataPartStyle(metadataPartCompare, selected)
-	separator := lipgloss.NewStyle().Foreground(lipgloss.Color("#64748b"))
+	compare := metadataPartStyle(metadataPartCompare, appearance, selected)
+	scheme := colorScheme(appearance)
+	separator := lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.metadataSeparator))
 	if selected {
-		separator = lipgloss.NewStyle().Foreground(lipgloss.Color("#94a3b8"))
+		separator = lipgloss.NewStyle().Foreground(lipgloss.Color(scheme.metadataSelectedSeparator))
 	}
 	return compare.Render(before) + separator.Render("/") + compare.Render(after)
 }
 
-func renderUpstreamMetadataPart(text string, selected bool) string {
+func renderUpstreamMetadataPart(text string, appearance config.ColorSchemeAppearance, selected bool) string {
 	behindIndex := strings.Index(text, MetadataGitBehind)
 	if behindIndex < 0 {
-		return metadataPartStyle(metadataPartAhead, selected).Render(text)
+		return metadataPartStyle(metadataPartAhead, appearance, selected).Render(text)
 	}
 	if behindIndex == 0 {
-		return metadataPartStyle(metadataPartBehind, selected).Render(text)
+		return metadataPartStyle(metadataPartBehind, appearance, selected).Render(text)
 	}
-	return metadataPartStyle(metadataPartAhead, selected).Render(text[:behindIndex]) + metadataPartStyle(metadataPartBehind, selected).Render(text[behindIndex:])
+	return metadataPartStyle(metadataPartAhead, appearance, selected).Render(text[:behindIndex]) + metadataPartStyle(metadataPartBehind, appearance, selected).Render(text[behindIndex:])
 }
 
-func metadataPartStyle(role metadataPartRole, selected bool) lipgloss.Style {
-	colors := metadataActivePartColors(selected)
+func metadataPartStyle(role metadataPartRole, appearance config.ColorSchemeAppearance, selected bool) lipgloss.Style {
+	colors := metadataActivePartColors(appearance, selected)
 	switch role {
 	case metadataPartCompare:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.compare))
@@ -115,9 +119,9 @@ func metadataPartStyle(role metadataPartRole, selected bool) lipgloss.Style {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(colors.unstaged))
 	default:
 		if selected {
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("#94a3b8"))
+			return lipgloss.NewStyle().Foreground(lipgloss.Color(colorScheme(appearance).metadataSelectedMuted))
 		}
-		return metadataSublineStyle()
+		return metadataSublineStyle(appearance)
 	}
 }
 
@@ -129,9 +133,10 @@ type metadataColors struct {
 	unstaged string
 }
 
-func metadataActivePartColors(selected bool) metadataColors {
+func metadataActivePartColors(appearance config.ColorSchemeAppearance, selected bool) metadataColors {
+	scheme := colorScheme(appearance)
 	if selected {
-		return metadataColors{compare: "#7dd3fc", ahead: "#86efac", behind: "#f87171", staged: "#93c5fd", unstaged: "#e4d987"}
+		return scheme.metadataSelectedActive
 	}
-	return metadataColors{compare: "#38bdf8", ahead: "#4ade80", behind: "#f87171", staged: "#60a5fa", unstaged: "#d6c86f"}
+	return scheme.metadataActive
 }

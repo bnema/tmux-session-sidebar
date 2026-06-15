@@ -4,11 +4,13 @@ import (
 	"context"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
 	"github.com/bnema/tmux-session-sidebar/core/attention"
+	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
@@ -138,6 +140,80 @@ esac
 		if item.Name == "alpha" && item.Pinned {
 			t.Fatalf("alpha Pinned = true, want false in %#v", items)
 		}
+	}
+}
+
+type fixedSystemColorSchemePort struct {
+	preference config.SystemColorSchemePreference
+	err        error
+}
+
+func (f fixedSystemColorSchemePort) CurrentPreference(context.Context) (config.SystemColorSchemePreference, error) {
+	return f.preference, f.err
+}
+
+func (fixedSystemColorSchemePort) Watch(context.Context) (<-chan config.SystemColorSchemePreference, <-chan error, error) {
+	return nil, nil, nil
+}
+
+func TestLoadSidebarConfigWritesColorSchemeResolutionToActivityLog(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-colors) printf 'on\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '60\n' ;;
+      @session-sidebar-heat-recent) printf '1h\n' ;;
+      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
+      @session-sidebar-activity-debug-log) printf 'on\n' ;;
+      @session-sidebar-agent-attention) printf 'off\n' ;;
+      @session-sidebar-agent-attention-animation) printf 'pulse\n' ;;
+      @session-sidebar-auto-sort-recent) printf 'off\n' ;;
+      @session-sidebar-restore-sessions) printf 'auto\n' ;;
+      @session-sidebar-continuum-grace-seconds) printf '3\n' ;;
+      @session-sidebar-color-scheme) printf 'system\n' ;;
+      @session-sidebar-metadata-subline) printf 'on\n' ;;
+      @session-sidebar-metadata-inactive) printf 'on\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  *) printf 'unexpected tmux command: %s\n' "$*" >&2; exit 1 ;;
+esac
+`)
+	deps := runtimeDependencies()
+	updatedDeps := deps
+	updatedDeps.SystemColorSchemePort = fixedSystemColorSchemePort{preference: config.SystemColorSchemePreferLight}
+	SetRuntimeDependencies(updatedDeps)
+	t.Cleanup(func() { SetRuntimeDependencies(deps) })
+
+	cfg := loadSidebarConfig(context.Background())
+	if cfg.ColorSchemeAppearance != config.ColorSchemeAppearanceLight {
+		t.Fatalf("ColorSchemeAppearance = %q, want %q", cfg.ColorSchemeAppearance, config.ColorSchemeAppearanceLight)
+	}
+
+	logPath := filepath.Join(os.Getenv("XDG_STATE_HOME"), "tmux-session-sidebar", "activity.log")
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read activity log: %v", err)
+	}
+	log := string(content)
+	if !strings.Contains(log, "debug: color-scheme") {
+		t.Fatalf("activity log missing color-scheme trace: %q", log)
+	}
+	if !strings.Contains(log, "mode=system") {
+		t.Fatalf("activity log missing mode: %q", log)
+	}
+	if !strings.Contains(log, "system=prefer-light") {
+		t.Fatalf("activity log missing detected system preference: %q", log)
+	}
+	if !strings.Contains(log, "appearance=light") {
+		t.Fatalf("activity log missing resolved appearance: %q", log)
 	}
 }
 

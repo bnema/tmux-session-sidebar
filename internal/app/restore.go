@@ -197,6 +197,12 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 	if err := resetTransientHeatStateOnStartup(ctx); err != nil {
 		return err
 	}
+	var colorSchemeWG sync.WaitGroup
+	colorSchemeWG.Go(func() {
+		if err := NewColorSchemeService().Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: color scheme watcher stopped: %v\n", err)
+		}
+	})
 	metadataReconcile := make(chan struct{}, 1)
 	var metadataWG sync.WaitGroup
 	metadataStarted := false
@@ -256,6 +262,7 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 			stopTimerBestEffort(timer)
 			ipcWG.Wait()
 			metadataWG.Wait()
+			colorSchemeWG.Wait()
 			return nil
 		case <-timer.C:
 		}

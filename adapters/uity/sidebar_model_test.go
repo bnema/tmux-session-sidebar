@@ -542,6 +542,19 @@ func TestSessionRowColorPreservesCurrentEmphasis(t *testing.T) {
 	}
 }
 
+func TestSidebarModelRenderUsesConfiguredLightAppearancePalette(t *testing.T) {
+	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Appearance: config.ColorSchemeAppearanceLight})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 12})
+	model = requireSidebarModel(t, updated)
+	view := model.Render()
+	if !strings.Contains(view, "48;2;167;243;208") {
+		t.Fatalf("render missing light selected background, view=%q", view)
+	}
+	if strings.Contains(view, "48;2;6;95;70") {
+		t.Fatalf("render still used dark selected background, view=%q", view)
+	}
+}
+
 func TestSidebarModelHelpToggleOpensBottomSheetCheatSheet(t *testing.T) {
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 12})

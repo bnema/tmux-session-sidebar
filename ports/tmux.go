@@ -26,6 +26,8 @@ type ConfigSnapshot struct {
 	AutoSortRecentInterval  time.Duration
 	RestoreSessionsMode     string
 	ContinuumGraceSeconds   int
+	ColorSchemeMode         config.ColorSchemeMode
+	ColorSchemeAppearance   config.ColorSchemeAppearance
 	MetadataSublineEnabled  bool
 	MetadataInactiveEnabled bool
 }
