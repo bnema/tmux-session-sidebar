@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
@@ -18,7 +17,7 @@ func loadSidebarState(ctx context.Context) (ports.PersistedState, error) {
 
 func snapshotSidebarState(ctx context.Context) (ports.PersistedState, error) {
 	var snapshot ports.PersistedState
-	err := withLoadedSidebarState(ctx, func(_ storefs.Store, state *ports.PersistedState) error {
+	err := withLoadedSidebarState(ctx, func(_ scopedStateStore, state *ports.PersistedState) error {
 		snapshot = clonePersistedState(*state)
 		return nil
 	})
@@ -165,7 +164,7 @@ func updateSidebarState(ctx context.Context, update func(*ports.PersistedState))
 
 func updateSidebarStateWithSnapshot(ctx context.Context, update func(*ports.PersistedState)) (ports.PersistedState, error) {
 	var previous ports.PersistedState
-	err := withLoadedSidebarState(ctx, func(store storefs.Store, state *ports.PersistedState) error {
+	err := withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
 		previous = clonePersistedState(*state)
 		update(state)
 		return saveLoadedSidebarState(ctx, store, *state)
@@ -189,16 +188,33 @@ func LegacyStateRoot() string {
 	return filepath.Join(base, "tmux-session-sidebar")
 }
 
-func sessionOrderStore() storefs.Store {
+type scopedStateStore struct {
+	scope RuntimeScope
+	store ports.StateStorePort
+}
+
+func (s scopedStateStore) Load(ctx context.Context, serverID string) (ports.PersistedState, error) {
+	return s.store.Load(ctx, serverID)
+}
+
+func (s scopedStateStore) Save(ctx context.Context, serverID string, state ports.PersistedState) error {
+	return s.store.Save(ctx, serverID, state)
+}
+
+func (s scopedStateStore) Dir() string {
+	return s.scope.Dir
+}
+
+func sessionOrderStore() scopedStateStore {
 	return storeForRuntimeScope(CurrentRuntimeScope())
 }
 
-func storeForRuntimeScope(scope RuntimeScope) storefs.Store {
-	return storefs.New(scope.Dir)
+func storeForRuntimeScope(scope RuntimeScope) scopedStateStore {
+	return scopedStateStore{scope: scope, store: runtimeStateStore(scope)}
 }
 
-func withLoadedSidebarState(ctx context.Context, fn func(store storefs.Store, state *ports.PersistedState) error) error {
-	return withLockedSidebarStore(ctx, func(store storefs.Store) error {
+func withLoadedSidebarState(ctx context.Context, fn func(store scopedStateStore, state *ports.PersistedState) error) error {
+	return withLockedSidebarStore(ctx, func(store scopedStateStore) error {
 		state, err := store.Load(ctx, "tmux")
 		if err != nil {
 			return err
@@ -207,7 +223,7 @@ func withLoadedSidebarState(ctx context.Context, fn func(store storefs.Store, st
 	})
 }
 
-func saveLoadedSidebarState(ctx context.Context, store storefs.Store, state ports.PersistedState) error {
+func saveLoadedSidebarState(ctx context.Context, store scopedStateStore, state ports.PersistedState) error {
 	return store.Save(ctx, "tmux", state)
 }
 

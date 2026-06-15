@@ -137,3 +137,17 @@ type TmuxMetadataPort interface {
 	LoadSessionMetadata(ctx context.Context, sessionName string) (SessionMetadata, error)
 	SaveSessionMetadata(ctx context.Context, sessionName string, metadata SessionMetadata) error
 }
+
+type TmuxCommandPort interface {
+	Run(ctx context.Context, args []string) (Result, error)
+}
+
+type TmuxRuntimePort interface {
+	TmuxConfigPort
+	TmuxQueryPort
+	TmuxControlPort
+	TmuxSidebarPort
+	TmuxMetadataPort
+	SidebarRefresherPort
+	TmuxCommandPort
+}

@@ -8,29 +8,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/process"
-	"github.com/bnema/tmux-session-sidebar/adapters/tmuxcli"
-	"github.com/bnema/tmux-session-sidebar/adapters/uity"
 	"github.com/bnema/tmux-session-sidebar/core/attention"
 	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/core/heat"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
+	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
-
-var newTmuxClient = func() tmuxcli.Client {
-	return tmuxcli.Client{Process: process.Runner{}}
-}
 
 func effectiveUIClient(ctx context.Context, flags map[string]string) string {
 	return newSidebarOwnerResolver().ResolveActionClient(ctx, flags)
 }
 
-func loadSessionItems(ctx context.Context) ([]uity.SessionItem, error) {
+func loadSessionItems(ctx context.Context) ([]viewmodel.SessionItem, error) {
 	return loadSessionItemsWithConfig(ctx, loadSidebarConfig(ctx))
 }
 
-func loadSessionItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) ([]uity.SessionItem, error) {
+func loadSessionItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) ([]viewmodel.SessionItem, error) {
 	current, err := tmux(ctx, "display-message", "-p", "#{session_name}")
 	if err != nil {
 		return nil, fmt.Errorf("getting current tmux session: %w", err)
@@ -55,9 +49,9 @@ func loadSessionItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) (
 	return items, nil
 }
 
-func gitStatusMetadataSubline(status ports.GitStatus) uity.SessionMetadataSubline {
-	return uity.SessionMetadataSubline{
-		Kind:            uity.MetadataKindGit,
+func gitStatusMetadataSubline(status ports.GitStatus) viewmodel.SessionMetadataSubline {
+	return viewmodel.SessionMetadataSubline{
+		Kind:            viewmodel.MetadataKindGit,
 		Branch:          status.Branch,
 		Clean:           status.Clean,
 		Ahead:           status.Ahead,
@@ -74,14 +68,14 @@ func gitStatusMetadataSubline(status ports.GitStatus) uity.SessionMetadataSublin
 	}
 }
 
-func loadProjectItems(ctx context.Context) []uity.ProjectItem {
+func loadProjectItems(ctx context.Context) []viewmodel.ProjectItem {
 	candidates, err := projectCandidates(ctx)
 	if err != nil {
-		return []uity.ProjectItem{}
+		return []viewmodel.ProjectItem{}
 	}
-	items := make([]uity.ProjectItem, 0, len(candidates))
+	items := make([]viewmodel.ProjectItem, 0, len(candidates))
 	for _, candidate := range candidates {
-		items = append(items, uity.ProjectItem{Name: filepath.Base(candidate.Path), Path: candidate.Path})
+		items = append(items, viewmodel.ProjectItem{Name: filepath.Base(candidate.Path), Path: candidate.Path})
 	}
 	return items
 }
@@ -111,7 +105,7 @@ func sessionNames(views []sessions.View) []string {
 }
 
 func loadSidebarConfig(ctx context.Context) ports.ConfigSnapshot {
-	cfg, err := newTmuxClient().LoadConfig(ctx)
+	cfg, err := runtimeTmux().LoadConfig(ctx)
 	if err == nil && cfg.Loaded {
 		return cfg
 	}

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/core/projects"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/ports"
@@ -231,7 +230,7 @@ func withPersistedSessionDuringTmuxAction(ctx context.Context, name string, meta
 	if !shouldPersistSessionName(name) {
 		return action()
 	}
-	return withLoadedSidebarState(ctx, func(store storefs.Store, state *ports.PersistedState) error {
+	return withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
 		previous := clonePersistedState(*state)
 		saveSessionMetadataState(state, name, metadata)
 		if err := saveLoadedSidebarState(ctx, store, *state); err != nil {
@@ -249,7 +248,7 @@ func withPersistedSessionDuringTmuxAction(ctx context.Context, name string, meta
 }
 
 func withRenamedPersistedSessionDuringTmuxAction(ctx context.Context, oldName string, newName string, action func() error) error {
-	return withLoadedSidebarState(ctx, func(store storefs.Store, state *ports.PersistedState) error {
+	return withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
 		previous := clonePersistedState(*state)
 		renameSessionState(state, oldName, newName)
 		if err := saveLoadedSidebarState(ctx, store, *state); err != nil {
@@ -270,7 +269,7 @@ func renameLiveStateSucceeded(ctx context.Context, oldName string, newName strin
 }
 
 func withRemovedPersistedSessionDuringTmuxAction(ctx context.Context, name string, action func() error) error {
-	return withLoadedSidebarState(ctx, func(store storefs.Store, state *ports.PersistedState) error {
+	return withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
 		previous := clonePersistedState(*state)
 		removeSessionState(state, name)
 		if err := saveLoadedSidebarState(ctx, store, *state); err != nil {
@@ -286,7 +285,7 @@ func withRemovedPersistedSessionDuringTmuxAction(ctx context.Context, name strin
 	})
 }
 
-func rollbackLoadedSidebarState(ctx context.Context, store storefs.Store, previous ports.PersistedState) {
+func rollbackLoadedSidebarState(ctx context.Context, store scopedStateStore, previous ports.PersistedState) {
 	// Best-effort restore; the primary operation error takes precedence over rollback failures.
 	if err := saveLoadedSidebarState(ctx, store, previous); err != nil {
 		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: rollback persisted sidebar state failed: %v\n", err)
@@ -294,8 +293,7 @@ func rollbackLoadedSidebarState(ctx context.Context, store storefs.Store, previo
 }
 
 func gitRoot(ctx context.Context, path string) (string, error) {
-	out, err := runCommand(ctx, "git", "-C", path, "rev-parse", "--show-toplevel")
-	return strings.TrimSpace(out), err
+	return runtimeGit().RepoRoot(ctx, path)
 }
 
 func commandPrompt(ctx context.Context, client string, prompt string, command string) error {

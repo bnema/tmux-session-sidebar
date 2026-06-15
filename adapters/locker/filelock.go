@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
 type FileLocker struct {
@@ -19,7 +21,7 @@ type Handle struct {
 	file *os.File
 }
 
-func (l FileLocker) Acquire(ctx context.Context, key string) (*Handle, error) {
+func (l FileLocker) Acquire(ctx context.Context, key string) (ports.LockHandle, error) {
 	if err := os.MkdirAll(l.Dir, 0o700); err != nil {
 		return nil, err
 	}

@@ -12,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/process"
-	"github.com/bnema/tmux-session-sidebar/adapters/tmuxcli"
 	"github.com/bnema/tmux-session-sidebar/core/projects"
 	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/core/sessions"
@@ -222,6 +220,6 @@ func runtimeService() *coreruntime.Service {
 }
 
 func runtimeServiceWithStore(store ports.StateStorePort) *coreruntime.Service {
-	tmux := tmuxcli.Client{Process: process.Runner{}}
+	tmux := runtimeTmux()
 	return coreruntime.NewService(tmux, tmux, tmux, store).WithMetadata(tmux)
 }
