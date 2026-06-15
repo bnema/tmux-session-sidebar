@@ -27,7 +27,7 @@ func (s ColorSchemeSource) CurrentPreference(ctx context.Context) (config.System
 	if err != nil {
 		return config.SystemColorSchemeNoPreference, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	value, err := readPortalColorScheme(ctx, conn.Object(portalBusName, dbus.ObjectPath(portalObject)))
 	if err != nil {
 		return config.SystemColorSchemeNoPreference, err
@@ -59,7 +59,7 @@ func (s ColorSchemeSource) Watch(ctx context.Context) (<-chan config.SystemColor
 		defer close(changes)
 		defer close(errs)
 		defer conn.RemoveSignal(signals)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		for {
 			select {
 			case <-ctx.Done():

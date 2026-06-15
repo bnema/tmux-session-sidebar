@@ -7,10 +7,10 @@ func TestParseColorSchemeMode(t *testing.T) {
 		raw  string
 		want ColorSchemeMode
 	}{
-		"empty defaults to system": {raw: "", want: ColorSchemeModeSystem},
-		"system":                   {raw: "system", want: ColorSchemeModeSystem},
-		"light":                    {raw: "light", want: ColorSchemeModeLight},
-		"dark":                     {raw: "dark", want: ColorSchemeModeDark},
+		"empty defaults to system":     {raw: "", want: ColorSchemeModeSystem},
+		"system":                       {raw: "system", want: ColorSchemeModeSystem},
+		"light":                        {raw: "light", want: ColorSchemeModeLight},
+		"dark":                         {raw: "dark", want: ColorSchemeModeDark},
 		"unknown falls back to system": {raw: "sepia", want: ColorSchemeModeSystem},
 	}
 	for name, tt := range tests {
@@ -24,9 +24,9 @@ func TestParseColorSchemeMode(t *testing.T) {
 
 func TestResolveColorSchemeAppearance(t *testing.T) {
 	tests := map[string]struct {
-		mode       ColorSchemeMode
-		system     SystemColorSchemePreference
-		want       ColorSchemeAppearance
+		mode   ColorSchemeMode
+		system SystemColorSchemePreference
+		want   ColorSchemeAppearance
 	}{
 		"system prefers light when unsupported": {mode: ColorSchemeModeSystem, system: SystemColorSchemeNoPreference, want: ColorSchemeAppearanceLight},
 		"system follows dark preference":        {mode: ColorSchemeModeSystem, system: SystemColorSchemePreferDark, want: ColorSchemeAppearanceDark},
@@ -48,9 +48,9 @@ func TestParseSystemColorSchemePreference(t *testing.T) {
 		raw  uint32
 		want SystemColorSchemePreference
 	}{
-		"no preference": {raw: 0, want: SystemColorSchemeNoPreference},
-		"prefer dark":   {raw: 1, want: SystemColorSchemePreferDark},
-		"prefer light":  {raw: 2, want: SystemColorSchemePreferLight},
+		"no preference":                   {raw: 0, want: SystemColorSchemeNoPreference},
+		"prefer dark":                     {raw: 1, want: SystemColorSchemePreferDark},
+		"prefer light":                    {raw: 2, want: SystemColorSchemePreferLight},
 		"unknown clamps to no preference": {raw: 99, want: SystemColorSchemeNoPreference},
 	}
 	for name, tt := range tests {

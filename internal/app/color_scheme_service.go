@@ -3,10 +3,13 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
+
+const colorSchemeWatchRetryDelay = 200 * time.Millisecond
 
 type ColorSchemeService struct {
 	Source    ports.SystemColorSchemePort
@@ -26,6 +29,18 @@ func (s *ColorSchemeService) Run(ctx context.Context) error {
 	if s == nil || s.Source == nil {
 		return nil
 	}
+	for {
+		err := s.runWatchCycle(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			return err
+		}
+		if err := waitColorSchemeWatchRetry(ctx); err != nil {
+			return err
+		}
+	}
+}
+
+func (s *ColorSchemeService) runWatchCycle(ctx context.Context) error {
 	changes, errs, err := s.Source.Watch(ctx)
 	if err != nil {
 		return err
@@ -74,5 +89,16 @@ func (s *ColorSchemeService) Run(ctx context.Context) error {
 				continue
 			}
 		}
+	}
+}
+
+func waitColorSchemeWatchRetry(ctx context.Context) error {
+	timer := time.NewTimer(colorSchemeWatchRetryDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }

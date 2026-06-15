@@ -573,6 +573,21 @@ func TestSidebarModelReloadTreePreservesLightAppearancePalette(t *testing.T) {
 	}
 }
 
+func TestSidebarModelReloadTreeWithNilItemsClearsTreeAndUpdatesAppearance(t *testing.T) {
+	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{ReloadTree: func() *ReloadResult {
+		return &ReloadResult{Appearance: config.ColorSchemeAppearanceLight}
+	}}, SidebarOptions{Appearance: config.ColorSchemeAppearanceDark})
+	if !model.reloadTreeItems() {
+		t.Fatal("reloadTreeItems() = false, want true")
+	}
+	if got := model.appearance; got != config.ColorSchemeAppearanceLight {
+		t.Fatalf("appearance = %q, want %q", got, config.ColorSchemeAppearanceLight)
+	}
+	if got := len(model.treeItems); got != 0 {
+		t.Fatalf("len(treeItems) = %d, want 0", got)
+	}
+}
+
 func TestSidebarModelHelpToggleOpensBottomSheetCheatSheet(t *testing.T) {
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 12})

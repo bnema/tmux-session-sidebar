@@ -8,12 +8,16 @@ func (m *SidebarModel) reloadTreeItems() bool {
 	}
 	expanded := expandedCategorySet(m.treeItems)
 	result := m.actions.ReloadTree()
-	if result == nil || result.Items == nil {
+	if result == nil {
 		return false
 	}
 	m.appearance = result.Appearance
-	preserveExpandedCategories(result.Items, expanded)
-	m.treeItems = result.Items
+	items := result.Items
+	if items == nil {
+		items = []TreeItem{}
+	}
+	preserveExpandedCategories(items, expanded)
+	m.treeItems = items
 	if m.cursor >= len(m.selectableTreeItems()) {
 		m.cursor = max(len(m.selectableTreeItems())-1, 0)
 	}

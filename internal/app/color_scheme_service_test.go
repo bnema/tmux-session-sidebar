@@ -9,30 +9,38 @@ import (
 
 	"github.com/bnema/tmux-session-sidebar/core/config"
 	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/ports/mocks"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestColorSchemeServiceRunRefreshesFollowSystemSidebars(t *testing.T) {
-	source := newFakeSystemColorSchemeSource()
+	source := mocks.NewMockSystemColorSchemePort(t)
+	tmux := mocks.NewMockTmuxConfigPort(t)
+	refresher := mocks.NewMockSidebarRefresherPort(t)
+	changes := make(chan config.SystemColorSchemePreference, 1)
+	errs := make(chan error)
+	watchStarted := make(chan struct{}, 1)
 	var refreshes atomic.Int64
-	svc := ColorSchemeService{
-		Source: source,
-		Tmux: colorSchemeConfigLoader(func(context.Context) (ports.ConfigSnapshot, error) {
-			return ports.ConfigSnapshot{ColorSchemeMode: config.ColorSchemeModeSystem}, nil
-		}),
-		Refresher: colorSchemeRefresher(func(context.Context) error {
-			refreshes.Add(1)
-			return nil
-		}),
-	}
 
+	source.EXPECT().Watch(mock.Anything).Run(func(context.Context) {
+		watchStarted <- struct{}{}
+	}).Return((<-chan config.SystemColorSchemePreference)(changes), (<-chan error)(errs), nil).Once()
+	source.EXPECT().CurrentPreference(mock.Anything).Return(config.SystemColorSchemeNoPreference, nil).Once()
+	tmux.EXPECT().LoadConfig(mock.Anything).Return(ports.ConfigSnapshot{ColorSchemeMode: config.ColorSchemeModeSystem}, nil).Once()
+	refresher.EXPECT().RefreshAllSidebars(mock.Anything).Run(func(context.Context) {
+		refreshes.Add(1)
+	}).Return(nil).Once()
+
+	svc := ColorSchemeService{Source: source, Tmux: tmux, Refresher: refresher}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- svc.Run(ctx) }()
-	source.waitStarted(t)
+	waitColorSchemeWatchStarted(t, watchStarted)
 
-	source.changes <- config.SystemColorSchemePreferDark
+	changes <- config.SystemColorSchemePreferDark
 	eventuallyColorScheme(t, func() bool { return refreshes.Load() == 1 })
+
 	cancel()
 	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run error: %v", err)
@@ -46,31 +54,30 @@ func TestColorSchemeServiceRunIgnoresForcedModes(t *testing.T) {
 	}
 	for name, mode := range tests {
 		t.Run(name, func(t *testing.T) {
-			source := newFakeSystemColorSchemeSource()
-			var refreshes atomic.Int64
+			source := mocks.NewMockSystemColorSchemePort(t)
+			tmux := mocks.NewMockTmuxConfigPort(t)
+			refresher := mocks.NewMockSidebarRefresherPort(t)
+			changes := make(chan config.SystemColorSchemePreference, 1)
+			errs := make(chan error)
+			watchStarted := make(chan struct{}, 1)
 			configLoaded := make(chan struct{}, 1)
-			svc := ColorSchemeService{
-				Source: source,
-				Tmux: colorSchemeConfigLoader(func(context.Context) (ports.ConfigSnapshot, error) {
-					select {
-					case configLoaded <- struct{}{}:
-					default:
-					}
-					return ports.ConfigSnapshot{ColorSchemeMode: mode}, nil
-				}),
-				Refresher: colorSchemeRefresher(func(context.Context) error {
-					refreshes.Add(1)
-					return nil
-				}),
-			}
+			var refreshes atomic.Int64
 
+			source.EXPECT().Watch(mock.Anything).Run(func(context.Context) {
+				watchStarted <- struct{}{}
+			}).Return((<-chan config.SystemColorSchemePreference)(changes), (<-chan error)(errs), nil).Once()
+			source.EXPECT().CurrentPreference(mock.Anything).Return(config.SystemColorSchemeNoPreference, nil).Once()
+			tmux.EXPECT().LoadConfig(mock.Anything).Run(func(context.Context) {
+				configLoaded <- struct{}{}
+			}).Return(ports.ConfigSnapshot{ColorSchemeMode: mode}, nil).Once()
+			svc := ColorSchemeService{Source: source, Tmux: tmux, Refresher: refresher}
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			done := make(chan error, 1)
 			go func() { done <- svc.Run(ctx) }()
-			source.waitStarted(t)
+			waitColorSchemeWatchStarted(t, watchStarted)
 
-			source.changes <- config.SystemColorSchemePreferLight
+			changes <- config.SystemColorSchemePreferLight
 			select {
 			case <-configLoaded:
 			case <-time.After(time.Second):
@@ -79,6 +86,7 @@ func TestColorSchemeServiceRunIgnoresForcedModes(t *testing.T) {
 			if got := refreshes.Load(); got != 0 {
 				t.Fatalf("refreshes = %d, want 0", got)
 			}
+
 			cancel()
 			if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
 				t.Fatalf("Run error: %v", err)
@@ -87,48 +95,72 @@ func TestColorSchemeServiceRunIgnoresForcedModes(t *testing.T) {
 	}
 }
 
-type fakeSystemColorSchemeSource struct {
-	changes chan config.SystemColorSchemePreference
-	errs    chan error
-	started chan struct{}
-}
+func TestColorSchemeServiceRunRestartsWatcherAfterSourceError(t *testing.T) {
+	source := mocks.NewMockSystemColorSchemePort(t)
+	tmux := mocks.NewMockTmuxConfigPort(t)
+	refresher := mocks.NewMockSidebarRefresherPort(t)
+	changes1 := make(chan config.SystemColorSchemePreference, 1)
+	errs1 := make(chan error, 1)
+	changes2 := make(chan config.SystemColorSchemePreference, 1)
+	errs2 := make(chan error)
+	watchCalls := make(chan int, 2)
+	var refreshes atomic.Int64
 
-func newFakeSystemColorSchemeSource() *fakeSystemColorSchemeSource {
-	return &fakeSystemColorSchemeSource{
-		changes: make(chan config.SystemColorSchemePreference, 8),
-		errs:    make(chan error, 1),
-		started: make(chan struct{}),
+	firstWatch := source.EXPECT().Watch(mock.Anything).Run(func(context.Context) {
+		watchCalls <- 1
+	}).Return((<-chan config.SystemColorSchemePreference)(changes1), (<-chan error)(errs1), nil)
+	firstWatch.Once()
+	firstCurrent := source.EXPECT().CurrentPreference(mock.Anything).Return(config.SystemColorSchemeNoPreference, nil)
+	firstCurrent.Once()
+	secondWatch := source.EXPECT().Watch(mock.Anything).Run(func(context.Context) {
+		watchCalls <- 2
+	}).Return((<-chan config.SystemColorSchemePreference)(changes2), (<-chan error)(errs2), nil)
+	secondWatch.Once()
+	secondCurrent := source.EXPECT().CurrentPreference(mock.Anything).Return(config.SystemColorSchemeNoPreference, nil)
+	secondCurrent.Once()
+	mock.InOrder(firstWatch.Call, firstCurrent.Call, secondWatch.Call, secondCurrent.Call)
+	tmux.EXPECT().LoadConfig(mock.Anything).Return(ports.ConfigSnapshot{ColorSchemeMode: config.ColorSchemeModeSystem}, nil).Once()
+	refresher.EXPECT().RefreshAllSidebars(mock.Anything).Run(func(context.Context) {
+		refreshes.Add(1)
+	}).Return(nil).Once()
+
+	svc := ColorSchemeService{Source: source, Tmux: tmux, Refresher: refresher}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- svc.Run(ctx) }()
+	waitColorSchemeWatchCall(t, watchCalls, 1)
+
+	errs1 <- errors.New("watch failed")
+	waitColorSchemeWatchCall(t, watchCalls, 2)
+	changes2 <- config.SystemColorSchemePreferDark
+	eventuallyColorScheme(t, func() bool { return refreshes.Load() == 1 })
+
+	cancel()
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run error: %v", err)
 	}
 }
 
-func (f *fakeSystemColorSchemeSource) CurrentPreference(context.Context) (config.SystemColorSchemePreference, error) {
-	return config.SystemColorSchemeNoPreference, nil
-}
-
-func (f *fakeSystemColorSchemeSource) Watch(context.Context) (<-chan config.SystemColorSchemePreference, <-chan error, error) {
-	close(f.started)
-	return f.changes, f.errs, nil
-}
-
-func (f *fakeSystemColorSchemeSource) waitStarted(t *testing.T) {
+func waitColorSchemeWatchStarted(t *testing.T, started <-chan struct{}) {
 	t.Helper()
 	select {
-	case <-f.started:
+	case <-started:
 	case <-time.After(time.Second):
 		t.Fatal("color scheme watcher did not start")
 	}
 }
 
-type colorSchemeConfigLoader func(context.Context) (ports.ConfigSnapshot, error)
-
-func (fn colorSchemeConfigLoader) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
-	return fn(ctx)
-}
-
-type colorSchemeRefresher func(context.Context) error
-
-func (fn colorSchemeRefresher) RefreshAllSidebars(ctx context.Context) error {
-	return fn(ctx)
+func waitColorSchemeWatchCall(t *testing.T, calls <-chan int, want int) {
+	t.Helper()
+	select {
+	case got := <-calls:
+		if got != want {
+			t.Fatalf("watch call = %d, want %d", got, want)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("watch call %d did not start", want)
+	}
 }
 
 func eventuallyColorScheme(t *testing.T, ok func() bool) {
