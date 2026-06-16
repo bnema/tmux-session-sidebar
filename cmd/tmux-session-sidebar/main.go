@@ -19,8 +19,8 @@ import (
 	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/adapters/tmuxcli"
 	"github.com/bnema/tmux-session-sidebar/internal/app"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 	"github.com/bnema/tmux-session-sidebar/internal/runtimelog"
-	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
 var (

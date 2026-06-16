@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func TestSessionMetadataCapturePathPrefersLivePathForCapturedSession(t *testing.T) {

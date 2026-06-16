@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/core/config"
+	"github.com/bnema/tmux-session-sidebar/internal/core/config"
 )
 
 func TestPulseAnimationDarkBackgroundPeaksTowardWhite(t *testing.T) {

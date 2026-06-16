@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
-	"github.com/bnema/tmux-session-sidebar/ports/mocks"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports/mocks"
 	"github.com/stretchr/testify/mock"
 )
 

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/core/attention"
+	"github.com/bnema/tmux-session-sidebar/internal/core/attention"
 )
 
 func TestInstallJSONHooksPreservesUserHooks(t *testing.T) {

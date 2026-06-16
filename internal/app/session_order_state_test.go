@@ -3,8 +3,8 @@ package app
 import (
 	"testing"
 
-	sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	sidebarlayout "github.com/bnema/tmux-session-sidebar/internal/core/sidebar"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func TestRenameSessionStateUpdatesSidebarLayoutRefs(t *testing.T) {

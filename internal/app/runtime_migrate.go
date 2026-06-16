@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/bnema/tmux-session-sidebar/core/persisted"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/core/persisted"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 // stateCandidate describes a sibling scope whose tmux.json is a candidate for

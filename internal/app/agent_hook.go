@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/core/attention"
-	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/core/attention"
+	coreruntime "github.com/bnema/tmux-session-sidebar/internal/core/runtime"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func recordAgentHookEvent(ctx context.Context, flags map[string]string) error {

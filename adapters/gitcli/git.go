@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 type Git struct {

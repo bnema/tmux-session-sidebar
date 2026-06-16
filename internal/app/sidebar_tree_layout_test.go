@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
-	"github.com/bnema/tmux-session-sidebar/core/sessions"
-	sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
+	sidebarlayout "github.com/bnema/tmux-session-sidebar/internal/core/sidebar"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func TestSidebarLayoutPersistenceRoundTrip(t *testing.T) {

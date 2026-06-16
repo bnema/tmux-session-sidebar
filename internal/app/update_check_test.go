@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/bnema/tmux-session-sidebar/ports/mocks"
+	"github.com/bnema/tmux-session-sidebar/internal/ports/mocks"
 	"github.com/stretchr/testify/mock"
 )
 

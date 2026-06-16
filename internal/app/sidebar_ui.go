@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/bnema/tmux-session-sidebar/core/config"
+	"github.com/bnema/tmux-session-sidebar/internal/core/config"
 	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
 )
 

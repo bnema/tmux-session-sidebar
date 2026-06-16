@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/core/attention"
-	"github.com/bnema/tmux-session-sidebar/core/heat"
-	"github.com/bnema/tmux-session-sidebar/core/sessions"
-	sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
+	"github.com/bnema/tmux-session-sidebar/internal/core/attention"
+	"github.com/bnema/tmux-session-sidebar/internal/core/heat"
+	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
+	sidebarlayout "github.com/bnema/tmux-session-sidebar/internal/core/sidebar"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
-	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
 func loadSidebarTreeItemsWithConfig(ctx context.Context, cfg ports.ConfigSnapshot) ([]viewmodel.TreeItem, error) {

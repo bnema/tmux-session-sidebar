@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 	"github.com/bnema/tmux-session-sidebar/internal/runtimefs"
-	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
 // Launcher asks tmux to start the background daemon asynchronously. The daemon

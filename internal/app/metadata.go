@@ -3,7 +3,7 @@ package app
 import (
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 var metadataGitStatusTimeout = time.Second

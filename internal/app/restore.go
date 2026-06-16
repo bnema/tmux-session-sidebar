@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 const maxSidebarLogBytes = 1024 * 1024

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/core/heat"
-	"github.com/bnema/tmux-session-sidebar/core/sessions"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/core/heat"
+	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func TestSessionItemsFromStateAssignsInactiveIntensityByActualRecency(t *testing.T) {

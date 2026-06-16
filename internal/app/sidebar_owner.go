@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 type sidebarOwnerResolver struct {

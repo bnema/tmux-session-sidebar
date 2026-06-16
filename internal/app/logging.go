@@ -5,7 +5,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func newRotatingLogWriter(path string, maxBytes int64) (ports.SyncWriteCloser, error) {

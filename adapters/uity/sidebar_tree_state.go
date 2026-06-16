@@ -1,6 +1,6 @@
 package uity
 
-import sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
+import sidebarlayout "github.com/bnema/tmux-session-sidebar/internal/core/sidebar"
 
 func (m *SidebarModel) reloadTreeItems() bool {
 	if m.actions.ReloadTree == nil {
