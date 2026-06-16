@@ -13,15 +13,15 @@ const colorSchemeWatchRetryDelay = 200 * time.Millisecond
 
 type ColorSchemeService struct {
 	Source    ports.SystemColorSchemePort
-	Tmux      ports.TmuxConfigPort
+	Config    ports.ConfigPort
 	Refresher ports.SidebarRefresherPort
 }
 
 func NewColorSchemeService() *ColorSchemeService {
 	return &ColorSchemeService{
 		Source:    runtimeSystemColorScheme(),
-		Tmux:      runtimeTmux(),
-		Refresher: runtimeTmux(),
+		Config:    runtimeMultiplexer(),
+		Refresher: runtimeMultiplexer(),
 	}
 }
 
@@ -75,10 +75,10 @@ func (s *ColorSchemeService) runWatchCycle(ctx context.Context) error {
 				continue
 			}
 			last = preference
-			if s.Tmux == nil || s.Refresher == nil {
+			if s.Config == nil || s.Refresher == nil {
 				continue
 			}
-			cfg, err := s.Tmux.LoadConfig(ctx)
+			cfg, err := s.Config.LoadConfig(ctx)
 			if err != nil {
 				continue
 			}

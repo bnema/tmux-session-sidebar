@@ -39,7 +39,7 @@ esac
 		t.Fatalf("OwnerClient = %q, want unchanged without sidebar port", state.OwnerClient)
 	}
 
-	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	tmuxPort := mocks.NewMockSidebarPort(t)
 	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
 	tmuxPort.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 	tmuxPort.EXPECT().AttachSingletonSidebar(ctx, "=gamma:", "%9", mock.Anything).Return(ports.PaneRef{PaneID: "%9", WindowID: "@3"}, nil)
@@ -63,7 +63,7 @@ func TestSwitchClientPrepositionsGlobalSidebarBeforeSwitchingSession(t *testing.
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
-	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	tmuxPort := mocks.NewMockSidebarPort(t)
 	var ops []string
 
 	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
@@ -101,7 +101,7 @@ func TestCreateProjectSwitchPrepositionsGlobalSidebarBeforeSwitchingSession(t *t
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
-	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	tmuxPort := mocks.NewMockSidebarPort(t)
 	var ops []string
 	var logPath string
 
@@ -158,7 +158,7 @@ func TestSwitchClientRestoresSidebarIfPrepositionedSwitchFails(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
-	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	tmuxPort := mocks.NewMockSidebarPort(t)
 	var ops []string
 
 	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
@@ -202,7 +202,7 @@ func TestWithSidebarFollowPreservesGlobalSidebarWhenConfiguredToStayOpen(t *test
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
-	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	tmuxPort := mocks.NewMockSidebarPort(t)
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
 		if name != "tmux" {
 			t.Fatalf("command name = %q, want tmux", name)
@@ -248,7 +248,7 @@ func TestWithSidebarFollowReopensGlobalSidebarWhenConfiguredToStayOpen(t *testin
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
-	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	tmuxPort := mocks.NewMockSidebarPort(t)
 	restore := stubCommandRunner(t, func(_ context.Context, _ string, _ ...string) (string, error) {
 		return "", nil
 	})
@@ -282,7 +282,7 @@ func TestWithSidebarFollowClosesOpenSidebarWhenConfiguredCloseAfterSwitch(t *tes
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
-	tmuxPort := mocks.NewMockTmuxSidebarPort(t)
+	tmuxPort := mocks.NewMockSidebarPort(t)
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
 		return "", nil

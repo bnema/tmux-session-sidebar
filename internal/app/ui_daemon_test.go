@@ -12,7 +12,7 @@ func TestServeSidebarUIRunsUI(t *testing.T) {
 	uiRan := false
 	oldRunSidebarUI := runSidebarUI
 	defer func() { runSidebarUI = oldRunSidebarUI }()
-	runSidebarUI = func(context.Context, map[string]string, io.Writer, ports.TmuxSidebarPort, ports.IPCClientPort) error {
+	runSidebarUI = func(context.Context, map[string]string, io.Writer, ports.SidebarPort, ports.IPCClientPort) error {
 		uiRan = true
 		return nil
 	}

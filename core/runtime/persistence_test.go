@@ -23,8 +23,8 @@ func TestRestorePersistedSessions(t *testing.T) {
 	boom := errors.New("boom")
 
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
-	control := mocks.NewMockTmuxControlPort(t)
+	query := mocks.NewMockQueryPort(t)
+	control := mocks.NewMockControlPort(t)
 
 	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{Sessions: map[string]ports.SessionMetadata{
 		"alpha":    {ProjectPath: root},
@@ -37,7 +37,7 @@ func TestRestorePersistedSessions(t *testing.T) {
 		"fallback": {LastPath: root + "/missing"},
 		"fail":     {LastPath: root},
 	}}, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "live"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "live"}}, nil)
 	control.EXPECT().CreateSession(ctx, "alpha", root).Return(nil)
 	control.EXPECT().CreateSession(ctx, "beta", root).Return(nil)
 	control.EXPECT().CreateSession(ctx, "fallback", home).Return(nil)
@@ -59,8 +59,8 @@ func TestRestorePersistedSessionsFallsBackToDotWhenNoUsefulPath(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
-	control := mocks.NewMockTmuxControlPort(t)
+	query := mocks.NewMockQueryPort(t)
+	control := mocks.NewMockControlPort(t)
 
 	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{Sessions: map[string]ports.SessionMetadata{
 		"alpha": {ProjectPath: "relative", LastPath: ""},
@@ -82,8 +82,8 @@ func TestRestorePersistedSessionsReportsInfrastructureFailures(t *testing.T) {
 
 	t.Run("store load", func(t *testing.T) {
 		store := mocks.NewMockStateStorePort(t)
-		query := mocks.NewMockTmuxQueryPort(t)
-		control := mocks.NewMockTmuxControlPort(t)
+		query := mocks.NewMockQueryPort(t)
+		control := mocks.NewMockControlPort(t)
 		store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, boom)
 
 		report := NewService(nil, query, control, store).RestorePersistedSessions(ctx, serverID, t.TempDir())
@@ -97,8 +97,8 @@ func TestRestorePersistedSessionsReportsInfrastructureFailures(t *testing.T) {
 
 	t.Run("list sessions", func(t *testing.T) {
 		store := mocks.NewMockStateStorePort(t)
-		query := mocks.NewMockTmuxQueryPort(t)
-		control := mocks.NewMockTmuxControlPort(t)
+		query := mocks.NewMockQueryPort(t)
+		control := mocks.NewMockControlPort(t)
 		store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{Sessions: map[string]ports.SessionMetadata{"alpha": {LastPath: t.TempDir()}}}, nil)
 		query.EXPECT().ListSessions(ctx).Return(nil, boom)
 
@@ -120,7 +120,7 @@ func TestCaptureLiveSessions(t *testing.T) {
 	missingPath := t.TempDir() + "/missing"
 
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	initial := ports.PersistedState{
 		Sessions: map[string]ports.SessionMetadata{
@@ -130,7 +130,7 @@ func TestCaptureLiveSessions(t *testing.T) {
 		SessionOrder: []string{"absent", "beta"},
 	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{
 		{Name: "alpha"},
 		{Name: "beta"},
 		{Name: "123"},
@@ -161,7 +161,7 @@ func TestCaptureLiveSessions(t *testing.T) {
 }
 
 func TestReconcilePinColorsKeepsNilMapNil(t *testing.T) {
-	if got := reconcilePinColors(nil, []ports.TmuxSessionSnapshot{{Name: "alpha"}}); got != nil {
+	if got := reconcilePinColors(nil, []ports.SessionSnapshot{{Name: "alpha"}}); got != nil {
 		t.Fatalf("reconcilePinColors(nil) = %#v, want nil", got)
 	}
 }
@@ -170,7 +170,7 @@ func TestCaptureLiveSessionsPrunesOrphanSessionColors(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	initial := ports.PersistedState{
 		Sessions:       map[string]ports.SessionMetadata{},
@@ -178,7 +178,7 @@ func TestCaptureLiveSessionsPrunesOrphanSessionColors(t *testing.T) {
 		PinColors:      map[string]string{"alpha": "#38bdf8", "missing": "#f87171"},
 	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "alpha"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "alpha"}}, nil)
 	query.EXPECT().SessionPath(ctx, "alpha").Return(t.TempDir(), nil)
 	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
@@ -195,14 +195,14 @@ func TestCaptureLiveSessionsPreservesOrderForNonPersistableLiveSessions(t *testi
 	serverID := "server"
 	alphaPath := t.TempDir()
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	initial := ports.PersistedState{
 		Sessions:     map[string]ports.SessionMetadata{"alpha": {Kind: "project", ProjectPath: "/projects/alpha", LastPath: "/projects/alpha"}},
 		SessionOrder: []string{"2", "alpha", "__scratch", "1"},
 	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "1"}, {Name: "alpha"}, {Name: "2"}, {Name: "__scratch"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "1"}, {Name: "alpha"}, {Name: "2"}, {Name: "__scratch"}}, nil)
 	query.EXPECT().SessionPath(ctx, "alpha").Return(alphaPath, nil)
 	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
@@ -221,10 +221,10 @@ func TestCaptureLiveSessionsIgnoresSessionPathErrors(t *testing.T) {
 	serverID := "server"
 	alphaPath := t.TempDir()
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "fail"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "alpha"}, {Name: "fail"}}, nil)
 	query.EXPECT().SessionPath(ctx, "alpha").Return(alphaPath, nil)
 	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	query.EXPECT().SessionPath(ctx, "fail").Return("", errors.New("pane gone"))
@@ -243,11 +243,11 @@ func TestCaptureLiveSessionsStillSavesMetadataWhenHeatCollectionFails(t *testing
 	alphaPath := t.TempDir()
 	boom := errors.New("list clients failed")
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	initial := ports.PersistedState{Heat: map[string][]byte{"alpha": []byte(`{"Score":600}`)}}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "alpha"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "alpha"}}, nil)
 	query.EXPECT().SessionPath(ctx, "alpha").Return(alphaPath, nil)
 	query.EXPECT().ListClients(ctx).Return(nil, boom)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
@@ -269,7 +269,7 @@ func TestApplyRecentSessionOrderUsesLastActiveAt(t *testing.T) {
 			"gamma": {LastVisitedAt: now},
 		}),
 	}
-	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}
+	live := []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}
 
 	applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now)
 
@@ -296,7 +296,7 @@ func TestApplyRecentSessionOrderReordersSidebarLayoutCategories(t *testing.T) {
 			"delta": {LastActiveAt: now.Add(-10 * time.Minute)},
 		}),
 	}
-	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"}}
+	live := []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"}}
 
 	applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now)
 
@@ -322,7 +322,7 @@ func TestApplyRecentSessionOrderPartialCaptureIgnoresStaleRefsWhenCheckingCatego
 			"gamma": {LastActiveAt: now.Add(-10 * time.Minute)},
 		}),
 	}
-	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}
+	live := []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}
 
 	applyRecentSessionOrderAfterCapture(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now, heatCaptureResult{
 		captured: true,
@@ -358,7 +358,7 @@ func TestApplyRecentSessionOrderKeepsPinnedSessionsAtCategoryPositions(t *testin
 			"delta": {LastActiveAt: now.Add(-10 * time.Minute)},
 		}),
 	}
-	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"}}
+	live := []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"}}
 
 	applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now)
 
@@ -382,7 +382,7 @@ func TestApplyRecentSessionOrderKeepsPinnedSessionsAtTheirPositions(t *testing.T
 			"delta": {LastActiveAt: now.Add(-5 * time.Minute)},
 		}),
 	}
-	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"}}
+	live := []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"}}
 
 	applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now)
 
@@ -393,7 +393,7 @@ func TestApplyRecentSessionOrderKeepsPinnedSessionsAtTheirPositions(t *testing.T
 
 func TestApplyRecentSessionOrderHonorsConfiguredInterval(t *testing.T) {
 	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
-	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}
+	live := []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}}
 	heatState := encodeHeatStateMap(map[string]heat.State{
 		"alpha": {LastActiveAt: now},
 		"beta":  {LastActiveAt: now.Add(-time.Hour)},
@@ -453,7 +453,7 @@ func TestApplyRecentSessionOrderSkipsWhenDisabled(t *testing.T) {
 			"alpha": {LastActiveAt: now},
 		}),
 	}
-	live := []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}
+	live := []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}}
 
 	applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{}, now)
 
@@ -474,7 +474,7 @@ func TestCaptureLiveSessionsWithConfigReconcilesLiveSessionsBeforeRecentOrder(t 
 	now := time.Now()
 	store := mocks.NewMockStateStorePort(t)
 	query := runtimeTestQuery{
-		live: []ports.TmuxSessionSnapshot{
+		live: []ports.SessionSnapshot{
 			{ID: "$1", Name: "alpha"},
 			{ID: "$2", Name: "beta"},
 			{ID: "$3", Name: "delta"},
@@ -514,7 +514,7 @@ func TestCaptureSessionHeatWithConfigDoesNotConsumeRecentOrderWhenHeatCaptureFai
 	serverID := "server"
 	boom := errors.New("list clients failed")
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	initial := ports.PersistedState{
 		SessionOrder: []string{"beta", "alpha"},
@@ -524,7 +524,7 @@ func TestCaptureSessionHeatWithConfigDoesNotConsumeRecentOrderWhenHeatCaptureFai
 		}),
 	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, nil)
 	query.EXPECT().ListClients(ctx).Return(nil, boom)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		return reflect.DeepEqual(state.SessionOrder, []string{"beta", "alpha"}) && state.Sidebar == nil
@@ -541,9 +541,9 @@ func TestCaptureSessionHeatWithConfigDoesNotConsumeRecentOrderWhenPaneSampleFail
 	now := time.Now()
 	store := mocks.NewMockStateStorePort(t)
 	query := runtimeTestQuery{
-		live:          []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}, {ID: "$2", Name: "beta"}},
-		clients:       []ports.TmuxClientSnapshot{},
-		panes:         []ports.TmuxPaneSnapshot{{PaneID: "%1", SessionID: "$1", SessionName: "alpha"}},
+		live:          []ports.SessionSnapshot{{ID: "$1", Name: "alpha"}, {ID: "$2", Name: "beta"}},
+		clients:       []ports.ClientSnapshot{},
+		panes:         []ports.PaneSnapshot{{PaneID: "%1", SessionID: "$1", SessionName: "alpha"}},
 		captureErrors: map[string]error{"%1": errors.New("capture-pane failed")},
 	}
 
@@ -570,13 +570,13 @@ func TestCaptureSessionHeatWithConfigAutoSortsCompleteCategoriesWhenAnotherCateg
 	now := time.Now()
 	store := mocks.NewMockStateStorePort(t)
 	query := runtimeTestQuery{
-		live: []ports.TmuxSessionSnapshot{
+		live: []ports.SessionSnapshot{
 			{ID: "$1", Name: "alpha"},
 			{ID: "$2", Name: "beta"},
 			{ID: "$3", Name: "gamma"},
 		},
-		clients: []ports.TmuxClientSnapshot{},
-		panes: []ports.TmuxPaneSnapshot{
+		clients: []ports.ClientSnapshot{},
+		panes: []ports.PaneSnapshot{
 			{PaneID: "%1", SessionID: "$1", SessionName: "alpha"},
 			{PaneID: "%2", SessionID: "$2", SessionName: "beta"},
 			{PaneID: "%3", SessionID: "$3", SessionName: "gamma"},
@@ -651,10 +651,10 @@ func TestCaptureLiveSessionsReturnsSaveError(t *testing.T) {
 	alphaPath := t.TempDir()
 	boom := errors.New("boom")
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "alpha"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "alpha"}}, nil)
 	query.EXPECT().SessionPath(ctx, "alpha").Return(alphaPath, nil)
 	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	store.EXPECT().Save(ctx, serverID, mock.Anything).Return(boom)
@@ -671,7 +671,7 @@ func TestCaptureLiveSessionsProtectedSkipsWhenOnlyNonPersistableLive(t *testing.
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	initial := ports.PersistedState{
 		Sessions: map[string]ports.SessionMetadata{
@@ -682,7 +682,7 @@ func TestCaptureLiveSessionsProtectedSkipsWhenOnlyNonPersistableLive(t *testing.
 	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
 	// Only non-persistable sessions visible (__startup is hidden, 123 is numeric).
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{
 		{Name: "__startup"},
 		{Name: "123"},
 	}, nil)
@@ -701,7 +701,7 @@ func TestCaptureLiveSessionsProtectedSkipsWhenLiveEmptyWithRichState(t *testing.
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	initial := ports.PersistedState{
 		Sessions: map[string]ports.SessionMetadata{
@@ -731,14 +731,14 @@ func TestCaptureLiveSessionsProtectedSkipsWhenOnlyPinsWouldBePruned(t *testing.T
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	initial := ports.PersistedState{
 		PinnedSessions: []string{"alpha"},
 		PinColors:      map[string]string{"alpha": "red"},
 	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "__startup"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "__startup"}}, nil)
 	// No Save expectation — guardrail prevents pruning pins/colors.
 
 	captured, err := NewService(nil, query, nil, store).CaptureLiveSessionsProtected(ctx, serverID)
@@ -754,11 +754,11 @@ func TestCaptureLiveSessionsProtectedAllowsWhenStateEmpty(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	// Empty persisted state: nothing to lose, so capture should proceed even on protected path.
 	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "__startup"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "__startup"}}, nil)
 	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	store.EXPECT().Save(ctx, serverID, mock.Anything).Return(nil)
 
@@ -776,7 +776,7 @@ func TestCaptureLiveSessionsProtectedAllowsWhenPersistableSessionsExist(t *testi
 	serverID := "server"
 	alphaPath := t.TempDir()
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	initial := ports.PersistedState{
 		Sessions: map[string]ports.SessionMetadata{
@@ -786,7 +786,7 @@ func TestCaptureLiveSessionsProtectedAllowsWhenPersistableSessionsExist(t *testi
 	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
 	// Mix of non-persistable and real persistable sessions — should reconcile.
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{
 		{Name: "__startup"},
 		{Name: "alpha"},
 	}, nil)
@@ -809,7 +809,7 @@ func TestCaptureLiveSessionsWithConfigProtectedSkipsWhenOnlyNonPersistableLive(t
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	initial := ports.PersistedState{
 		Sessions: map[string]ports.SessionMetadata{
@@ -818,7 +818,7 @@ func TestCaptureLiveSessionsWithConfigProtectedSkipsWhenOnlyNonPersistableLive(t
 		SessionOrder: []string{"alpha"},
 	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "__startup"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "__startup"}}, nil)
 	// No ListClients, Save expectations → guardrail prevents save.
 
 	captured, err := NewService(nil, query, nil, store).CaptureLiveSessionsWithConfigProtected(ctx, serverID, ports.ConfigSnapshot{})
@@ -836,7 +836,7 @@ func TestCaptureLiveSessionsPerformsReconciliationWhenOnlyNonPersistableLive(t *
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	// Rich persisted state with meaningful Sessions and SessionOrder.
 	initial := ports.PersistedState{
@@ -848,7 +848,7 @@ func TestCaptureLiveSessionsPerformsReconciliationWhenOnlyNonPersistableLive(t *
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
 	// Only non-persistable sessions visible — unprotected CaptureLiveSessions
 	// should still reconcile (prune alpha from Sessions/SessionOrder).
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{
 		{Name: "__startup"},
 		{Name: "123"},
 	}, nil)
@@ -868,7 +868,7 @@ func TestCaptureLiveSessionsWithConfigPerformsReconciliationWhenOnlyNonPersistab
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	initial := ports.PersistedState{
 		Sessions: map[string]ports.SessionMetadata{
@@ -877,7 +877,7 @@ func TestCaptureLiveSessionsWithConfigPerformsReconciliationWhenOnlyNonPersistab
 		SessionOrder: []string{"alpha"},
 	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{Name: "__startup"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "__startup"}}, nil)
 	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	// Unprotected CaptureLiveSessionsWithConfig should reconcile even when only
 	// non-persistable sessions are live — alpha should be pruned.
@@ -910,9 +910,9 @@ func sidebarLayoutSessionNames(refs []ports.SidebarLayoutSessionRef) []string {
 }
 
 type runtimeTestQuery struct {
-	live          []ports.TmuxSessionSnapshot
-	clients       []ports.TmuxClientSnapshot
-	panes         []ports.TmuxPaneSnapshot
+	live          []ports.SessionSnapshot
+	clients       []ports.ClientSnapshot
+	panes         []ports.PaneSnapshot
 	sessionPaths  map[string]string
 	captureText   string
 	captureError  error
@@ -923,11 +923,11 @@ func (q runtimeTestQuery) ServerID(context.Context) (string, error) {
 	return "server", nil
 }
 
-func (q runtimeTestQuery) ListSessions(context.Context) ([]ports.TmuxSessionSnapshot, error) {
+func (q runtimeTestQuery) ListSessions(context.Context) ([]ports.SessionSnapshot, error) {
 	return q.live, nil
 }
 
-func (q runtimeTestQuery) ListClients(context.Context) ([]ports.TmuxClientSnapshot, error) {
+func (q runtimeTestQuery) ListClients(context.Context) ([]ports.ClientSnapshot, error) {
 	return q.clients, nil
 }
 
@@ -943,7 +943,7 @@ func (q runtimeTestQuery) PaneSize(context.Context, string) (ports.PaneSize, err
 	return ports.PaneSize{}, nil
 }
 
-func (q runtimeTestQuery) ListPanes(context.Context) ([]ports.TmuxPaneSnapshot, error) {
+func (q runtimeTestQuery) ListPanes(context.Context) ([]ports.PaneSnapshot, error) {
 	return q.panes, nil
 }
 

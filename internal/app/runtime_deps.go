@@ -13,7 +13,7 @@ import (
 // RuntimeDependencies holds the runtime-injected ports and factories used by
 // the app layer.
 type RuntimeDependencies struct {
-	Tmux                  ports.TmuxRuntimePort
+	Multiplexer           ports.RuntimePort
 	Git                   ports.GitPort
 	ReleaseChecker        ports.ReleaseCheckerPort
 	WatcherFactory        func() ports.FileWatcherPort
@@ -50,12 +50,12 @@ func runtimeDependencies() RuntimeDependencies {
 	return runtimeDependenciesState.deps
 }
 
-func runtimeTmux() ports.TmuxRuntimePort {
+func runtimeMultiplexer() ports.RuntimePort {
 	deps := runtimeDependencies()
-	if deps.Tmux == nil {
-		return missingTmuxRuntime{}
+	if deps.Multiplexer == nil {
+		return missingRuntime{}
 	}
-	return deps.Tmux
+	return deps.Multiplexer
 }
 
 func runtimeGit() ports.GitPort {
@@ -190,100 +190,100 @@ func (missingLocker) Acquire(context.Context, string) (ports.LockHandle, error) 
 	return nil, missingDependencyError("locker factory")
 }
 
-type missingTmuxRuntime struct{}
+type missingRuntime struct{}
 
-func (missingTmuxRuntime) LoadConfig(context.Context) (ports.ConfigSnapshot, error) {
-	return ports.ConfigSnapshot{}, missingDependencyError("tmux port")
+func (missingRuntime) LoadConfig(context.Context) (ports.ConfigSnapshot, error) {
+	return ports.ConfigSnapshot{}, missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) ServerID(context.Context) (string, error) {
-	return "", missingDependencyError("tmux port")
+func (missingRuntime) ServerID(context.Context) (string, error) {
+	return "", missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) ListSessions(context.Context) ([]ports.TmuxSessionSnapshot, error) {
-	return nil, missingDependencyError("tmux port")
+func (missingRuntime) ListSessions(context.Context) ([]ports.SessionSnapshot, error) {
+	return nil, missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) ListClients(context.Context) ([]ports.TmuxClientSnapshot, error) {
-	return nil, missingDependencyError("tmux port")
+func (missingRuntime) ListClients(context.Context) ([]ports.ClientSnapshot, error) {
+	return nil, missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) CurrentPanePath(context.Context, string) (string, error) {
-	return "", missingDependencyError("tmux port")
+func (missingRuntime) CurrentPanePath(context.Context, string) (string, error) {
+	return "", missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) SessionPath(context.Context, string) (string, error) {
-	return "", missingDependencyError("tmux port")
+func (missingRuntime) SessionPath(context.Context, string) (string, error) {
+	return "", missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) PaneSize(context.Context, string) (ports.PaneSize, error) {
-	return ports.PaneSize{}, missingDependencyError("tmux port")
+func (missingRuntime) PaneSize(context.Context, string) (ports.PaneSize, error) {
+	return ports.PaneSize{}, missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) SwitchClientSession(context.Context, string, string) error {
-	return missingDependencyError("tmux port")
+func (missingRuntime) SwitchClientSession(context.Context, string, string) error {
+	return missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) DisplayMessage(context.Context, string, string) error {
-	return missingDependencyError("tmux port")
+func (missingRuntime) DisplayMessage(context.Context, string, string) error {
+	return missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) CreateSession(context.Context, string, string) error {
-	return missingDependencyError("tmux port")
+func (missingRuntime) CreateSession(context.Context, string, string) error {
+	return missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) RenameSession(context.Context, string, string) error {
-	return missingDependencyError("tmux port")
+func (missingRuntime) RenameSession(context.Context, string, string) error {
+	return missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) KillSession(context.Context, string) error {
-	return missingDependencyError("tmux port")
+func (missingRuntime) KillSession(context.Context, string) error {
+	return missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) CloseAfterSwitch(context.Context) (bool, error) {
-	return false, missingDependencyError("tmux port")
+func (missingRuntime) CloseAfterSwitch(context.Context) (bool, error) {
+	return false, missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) FindSidebarPane(context.Context, string) (ports.PaneRef, error) {
-	return ports.PaneRef{}, missingDependencyError("tmux port")
+func (missingRuntime) FindSidebarPane(context.Context, string) (ports.PaneRef, error) {
+	return ports.PaneRef{}, missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) FindSingletonSidebar(context.Context) (ports.PaneRef, error) {
-	return ports.PaneRef{}, missingDependencyError("tmux port")
+func (missingRuntime) FindSingletonSidebar(context.Context) (ports.PaneRef, error) {
+	return ports.PaneRef{}, missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) EnsureSingletonSidebar(context.Context, []string) (ports.PaneRef, error) {
-	return ports.PaneRef{}, missingDependencyError("tmux port")
+func (missingRuntime) EnsureSingletonSidebar(context.Context, []string) (ports.PaneRef, error) {
+	return ports.PaneRef{}, missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) AttachSingletonSidebar(context.Context, string, string, string) (ports.PaneRef, error) {
-	return ports.PaneRef{}, missingDependencyError("tmux port")
+func (missingRuntime) AttachSingletonSidebar(context.Context, string, string, string) (ports.PaneRef, error) {
+	return ports.PaneRef{}, missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) ParkSingletonSidebar(context.Context, string) error {
-	return missingDependencyError("tmux port")
+func (missingRuntime) ParkSingletonSidebar(context.Context, string) error {
+	return missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) RefreshSidebar(context.Context, string) error {
-	return missingDependencyError("tmux port")
+func (missingRuntime) RefreshSidebar(context.Context, string) error {
+	return missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) ScheduleSidebarRestoreOnExit(context.Context, string, string) error {
-	return missingDependencyError("tmux port")
+func (missingRuntime) ScheduleSidebarRestoreOnExit(context.Context, string, string) error {
+	return missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) LoadSessionMetadata(context.Context, string) (ports.SessionMetadata, error) {
-	return ports.SessionMetadata{}, missingDependencyError("tmux port")
+func (missingRuntime) LoadSessionMetadata(context.Context, string) (ports.SessionMetadata, error) {
+	return ports.SessionMetadata{}, missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) SaveSessionMetadata(context.Context, string, ports.SessionMetadata) error {
-	return missingDependencyError("tmux port")
+func (missingRuntime) SaveSessionMetadata(context.Context, string, ports.SessionMetadata) error {
+	return missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) RefreshAllSidebars(context.Context) error {
-	return missingDependencyError("tmux port")
+func (missingRuntime) RefreshAllSidebars(context.Context) error {
+	return missingDependencyError("multiplexer port")
 }
 
-func (missingTmuxRuntime) Run(context.Context, []string) (ports.Result, error) {
-	return ports.Result{}, missingDependencyError("tmux port")
+func (missingRuntime) Run(context.Context, []string) (ports.Result, error) {
+	return ports.Result{}, missingDependencyError("multiplexer port")
 }

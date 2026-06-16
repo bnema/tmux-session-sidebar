@@ -15,8 +15,8 @@ func TestSnapshotLoadsLiveTmuxState(t *testing.T) {
 	tests := []struct {
 		name       string
 		config     ports.ConfigSnapshot
-		sessions   []ports.TmuxSessionSnapshot
-		clients    []ports.TmuxClientSnapshot
+		sessions   []ports.SessionSnapshot
+		clients    []ports.ClientSnapshot
 		configErr  error
 		sessionErr error
 		clientErr  error
@@ -25,10 +25,10 @@ func TestSnapshotLoadsLiveTmuxState(t *testing.T) {
 		{
 			name:   "single client and session",
 			config: ports.ConfigSnapshot{KeyBinding: "b", Width: "20"},
-			sessions: []ports.TmuxSessionSnapshot{
+			sessions: []ports.SessionSnapshot{
 				{ID: "$1", Name: "alpha", WindowCount: 2, AttachedCount: 1},
 			},
-			clients: []ports.TmuxClientSnapshot{
+			clients: []ports.ClientSnapshot{
 				{ID: "%1", CurrentSessionID: "$1", CurrentWindowID: "@1", CurrentPaneID: "%9", Attached: true},
 			},
 		},
@@ -40,8 +40,8 @@ func TestSnapshotLoadsLiveTmuxState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			config := mocks.NewMockTmuxConfigPort(t)
-			query := mocks.NewMockTmuxQueryPort(t)
+			config := mocks.NewMockConfigPort(t)
+			query := mocks.NewMockQueryPort(t)
 			config.EXPECT().LoadConfig(ctx).Return(tt.config, tt.configErr)
 			if tt.configErr == nil {
 				query.EXPECT().ListSessions(ctx).Return(tt.sessions, tt.sessionErr)

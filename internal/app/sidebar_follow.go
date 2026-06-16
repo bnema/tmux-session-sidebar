@@ -9,7 +9,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-func withSidebarFollow(ctx context.Context, client string, sidebar ports.TmuxSidebarPort, action func() error) error {
+func withSidebarFollow(ctx context.Context, client string, sidebar ports.SidebarPort, action func() error) error {
 	if action == nil {
 		return nil
 	}
@@ -29,7 +29,7 @@ func withSidebarFollow(ctx context.Context, client string, sidebar ports.TmuxSid
 	return applySidebarVisibilityForClient(ctx, client, sidebar)
 }
 
-func reconcileSidebarVisibilityForClient(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
+func reconcileSidebarVisibilityForClient(ctx context.Context, client string, sidebar ports.SidebarPort) error {
 	if strings.TrimSpace(client) == "" || sidebar == nil {
 		return nil
 	}
@@ -43,14 +43,14 @@ func reconcileSidebarVisibilityForClient(ctx context.Context, client string, sid
 	return applySidebarVisibilityForClient(ctx, client, sidebar)
 }
 
-func applySidebarVisibilityForClient(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
+func applySidebarVisibilityForClient(ctx context.Context, client string, sidebar ports.SidebarPort) error {
 	if closeAfterSwitch(ctx, sidebar) {
 		return closeSidebar(ctx, sidebar)
 	}
 	return openSidebarForClientWithoutFocus(ctx, client, "", "", sidebar)
 }
 
-func closeAfterSwitch(ctx context.Context, sidebar ports.TmuxSidebarPort) bool {
+func closeAfterSwitch(ctx context.Context, sidebar ports.SidebarPort) bool {
 	shouldClose, err := sidebar.CloseAfterSwitch(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: read close-after-switch failed: %v\n", err)

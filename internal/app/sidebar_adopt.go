@@ -7,7 +7,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-func adoptPersistedOpenSidebar(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
+func adoptPersistedOpenSidebar(ctx context.Context, client string, sidebar ports.SidebarPort) error {
 	client = strings.TrimSpace(client)
 	if client == "" || sidebar == nil {
 		return nil

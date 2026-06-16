@@ -105,7 +105,7 @@ func sessionNames(views []sessions.View) []string {
 }
 
 func loadSidebarConfig(ctx context.Context) ports.ConfigSnapshot {
-	cfg, err := runtimeTmux().LoadConfig(ctx)
+	cfg, err := runtimeMultiplexer().LoadConfig(ctx)
 	if err != nil || !cfg.Loaded {
 		cfg = defaultSidebarConfig()
 	}

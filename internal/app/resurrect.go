@@ -130,6 +130,8 @@ func resurrectLiveSidebarPanes(ctx context.Context) (map[resurrectPaneKey]bool, 
 	return panes, windows
 }
 
+// resurrectTmuxBool parses a tmux boolean format-string value (1/yes/true/on).
+// Part of the transitional tmux command seam.
 func resurrectTmuxBool(raw string) bool {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "1", "yes", "true", "on":

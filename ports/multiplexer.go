@@ -32,14 +32,14 @@ type ConfigSnapshot struct {
 	MetadataInactiveEnabled bool
 }
 
-type TmuxSessionSnapshot struct {
+type SessionSnapshot struct {
 	ID            string
 	Name          string
 	WindowCount   int
 	AttachedCount int
 }
 
-type TmuxClientSnapshot struct {
+type ClientSnapshot struct {
 	ID               string
 	CurrentSessionID string
 	CurrentWindowID  string
@@ -47,7 +47,7 @@ type TmuxClientSnapshot struct {
 	Attached         bool
 }
 
-type TmuxPaneSnapshot struct {
+type PaneSnapshot struct {
 	PaneID      string
 	SessionID   string
 	SessionName string
@@ -64,7 +64,7 @@ type PaneSize struct {
 	Height int
 }
 
-var ErrTmuxTargetGone = errors.New("tmux target gone")
+var ErrMultiplexerTargetGone = errors.New("multiplexer target gone")
 
 type PaneRef struct {
 	PaneID   string
@@ -77,20 +77,20 @@ type SessionMetadata struct {
 	LastPath    string `json:"lastPath,omitempty"`
 }
 
-type TmuxConfigPort interface {
+type ConfigPort interface {
 	LoadConfig(ctx context.Context) (ConfigSnapshot, error)
 }
 
-type TmuxQueryPort interface {
+type QueryPort interface {
 	ServerID(ctx context.Context) (string, error)
-	ListSessions(ctx context.Context) ([]TmuxSessionSnapshot, error)
-	ListClients(ctx context.Context) ([]TmuxClientSnapshot, error)
+	ListSessions(ctx context.Context) ([]SessionSnapshot, error)
+	ListClients(ctx context.Context) ([]ClientSnapshot, error)
 	CurrentPanePath(ctx context.Context, clientID string) (string, error)
 	SessionPath(ctx context.Context, sessionName string) (string, error)
 	PaneSize(ctx context.Context, paneID string) (PaneSize, error)
 }
 
-type TmuxControlPort interface {
+type ControlPort interface {
 	SwitchClientSession(ctx context.Context, clientID string, sessionName string) error
 	DisplayMessage(ctx context.Context, clientID string, message string) error
 	CreateSession(ctx context.Context, sessionName string, path string) error
@@ -98,7 +98,7 @@ type TmuxControlPort interface {
 	KillSession(ctx context.Context, sessionName string) error
 }
 
-type TmuxSidebarPort interface {
+type SidebarPort interface {
 	CloseAfterSwitch(ctx context.Context) (bool, error)
 	FindSidebarPane(ctx context.Context, target string) (PaneRef, error)
 	FindSingletonSidebar(ctx context.Context) (PaneRef, error)
@@ -109,21 +109,21 @@ type TmuxSidebarPort interface {
 	ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error
 }
 
-type TmuxSidebarSwitchPort interface {
+type SidebarSwitchPort interface {
 	// AttachSingletonSidebarAndSwitchClient moves the sidebar to sessionName,
 	// switches the client there, and leaves focus on the work pane next to the
 	// sidebar instead of focusing the sidebar pane itself.
 	AttachSingletonSidebarAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error
 }
 
-type TmuxSidebarFollowPort interface {
+type SidebarFollowPort interface {
 	// AttachSingletonSidebarWithoutFocus attaches the sidebar while preserving
 	// focus in the work pane. Callers may fall back to AttachSingletonSidebar
 	// when an adapter does not implement this optional behavior.
 	AttachSingletonSidebarWithoutFocus(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
 }
 
-type TmuxSidebarResizePort interface {
+type SidebarResizePort interface {
 	// CaptureAttachedSidebarWidthBaseline records the current sidebar-open
 	// top-level work-group proportions when the attached layout is in a stable
 	// shape. Intended for non-resize layout-change hooks and post-attach capture.
@@ -135,21 +135,21 @@ type TmuxSidebarResizePort interface {
 	SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string) error
 }
 
-type TmuxMetadataPort interface {
+type MetadataPort interface {
 	LoadSessionMetadata(ctx context.Context, sessionName string) (SessionMetadata, error)
 	SaveSessionMetadata(ctx context.Context, sessionName string, metadata SessionMetadata) error
 }
 
-type TmuxCommandPort interface {
+type CommandPort interface {
 	Run(ctx context.Context, args []string) (Result, error)
 }
 
-type TmuxRuntimePort interface {
-	TmuxConfigPort
-	TmuxQueryPort
-	TmuxControlPort
-	TmuxSidebarPort
-	TmuxMetadataPort
+type RuntimePort interface {
+	ConfigPort
+	QueryPort
+	ControlPort
+	SidebarPort
+	MetadataPort
 	SidebarRefresherPort
-	TmuxCommandPort
+	CommandPort
 }

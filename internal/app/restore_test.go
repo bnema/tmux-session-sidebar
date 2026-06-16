@@ -703,7 +703,7 @@ case "$1" in
 esac
 `)
 
-	if err := (runtimeRouter{sidebar: runtimeTmux()}).Handle(context.Background(), Route{Path: "hook/client-attached", Flags: map[string]string{"client": "/dev/popup", "session": "__floating-popup-1"}}, nil, nil); err != nil {
+	if err := (runtimeRouter{sidebar: runtimeMultiplexer()}).Handle(context.Background(), Route{Path: "hook/client-attached", Flags: map[string]string{"client": "/dev/popup", "session": "__floating-popup-1"}}, nil, nil); err != nil {
 		t.Fatalf("hook client-attached error: %v\nlog=%q", err, readLog(t, logPath))
 	}
 	log := readLog(t, logPath)
@@ -756,7 +756,7 @@ case "$1" in
 esac
 `)
 
-	if err := (runtimeRouter{sidebar: runtimeTmux()}).Handle(context.Background(), Route{Path: "hook/client-attached", Flags: map[string]string{"client": "/dev/new", "session": "alpha"}}, nil, nil); err != nil {
+	if err := (runtimeRouter{sidebar: runtimeMultiplexer()}).Handle(context.Background(), Route{Path: "hook/client-attached", Flags: map[string]string{"client": "/dev/new", "session": "alpha"}}, nil, nil); err != nil {
 		t.Fatalf("hook client-attached error: %v\nlog=%q", err, readLog(t, logPath))
 	}
 	log := readLog(t, logPath)
@@ -820,7 +820,7 @@ case "$1" in
 esac
 `)
 
-	if err := (runtimeRouter{sidebar: runtimeTmux()}).Handle(context.Background(), Route{Path: "hook/client-attached", Flags: map[string]string{"client": "/dev/new"}}, nil, nil); err != nil {
+	if err := (runtimeRouter{sidebar: runtimeMultiplexer()}).Handle(context.Background(), Route{Path: "hook/client-attached", Flags: map[string]string{"client": "/dev/new"}}, nil, nil); err != nil {
 		t.Fatalf("hook client-attached error: %v\nlog=%q", err, readLog(t, logPath))
 	}
 	log := readLog(t, logPath)

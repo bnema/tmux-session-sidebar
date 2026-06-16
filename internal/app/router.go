@@ -19,14 +19,14 @@ import (
 )
 
 type runtimeRouter struct {
-	sidebar        ports.TmuxSidebarPort
+	sidebar        ports.SidebarPort
 	ipcClient      ports.IPCClientPort
 	ipcServer      ports.IPCServerPort
 	daemonLauncher ports.DaemonLauncherPort
 }
 
 type RuntimeRouterSnapshot struct {
-	Sidebar        ports.TmuxSidebarPort
+	Sidebar        ports.SidebarPort
 	IPCClient      ports.IPCClientPort
 	IPCServer      ports.IPCServerPort
 	DaemonLauncher ports.DaemonLauncherPort
@@ -41,19 +41,19 @@ func InspectRuntimeRouter(router Router) (RuntimeRouterSnapshot, bool) {
 }
 
 // NewRouter composes the production command router used by the tmux bootstrap.
-func NewRouter(sidebar ports.TmuxSidebarPort) Router {
+func NewRouter(sidebar ports.SidebarPort) Router {
 	return runtimeRouter{sidebar: sidebar}
 }
 
-func NewRuntimeRouter(sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort, ipcServer ports.IPCServerPort) Router {
+func NewRuntimeRouter(sidebar ports.SidebarPort, ipcClient ports.IPCClientPort, ipcServer ports.IPCServerPort) Router {
 	return NewRuntimeRouterWithDaemon(sidebar, ipcClient, ipcServer, nil)
 }
 
-func NewRuntimeRouterWithDaemon(sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort, ipcServer ports.IPCServerPort, daemonLauncher ports.DaemonLauncherPort) Router {
+func NewRuntimeRouterWithDaemon(sidebar ports.SidebarPort, ipcClient ports.IPCClientPort, ipcServer ports.IPCServerPort, daemonLauncher ports.DaemonLauncherPort) Router {
 	return runtimeRouter{sidebar: sidebar, ipcClient: ipcClient, ipcServer: ipcServer, daemonLauncher: daemonLauncher}
 }
 
-func NewDaemonRouter(sidebar ports.TmuxSidebarPort, ipcServer ports.IPCServerPort) Router {
+func NewDaemonRouter(sidebar ports.SidebarPort, ipcServer ports.IPCServerPort) Router {
 	return NewRuntimeRouterWithDaemon(sidebar, nil, ipcServer, nil)
 }
 
@@ -224,7 +224,7 @@ func routeRequiresSidebar(path string) bool {
 	}
 }
 
-func toggleSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+func toggleSidebar(ctx context.Context, flags map[string]string, sidebar ports.SidebarPort) error {
 	client := strings.TrimSpace(flags["client"])
 	logical, err := persistedSidebarState(ctx)
 	if err != nil {
@@ -252,23 +252,23 @@ func cloneStringMap(values map[string]string) map[string]string {
 	return maps.Clone(values)
 }
 
-func openSidebar(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+func openSidebar(ctx context.Context, flags map[string]string, sidebar ports.SidebarPort) error {
 	return openSidebarForClient(ctx, flags["client"], flags["attach-target"], flags["width"], sidebar)
 }
 
-func openSidebarForClient(ctx context.Context, client string, attachTarget string, width string, sidebar ports.TmuxSidebarPort) error {
+func openSidebarForClient(ctx context.Context, client string, attachTarget string, width string, sidebar ports.SidebarPort) error {
 	return openSidebarForClientWith(ctx, client, attachTarget, width, sidebar, sidebar.AttachSingletonSidebar)
 }
 
-func openSidebarForClientWithoutFocus(ctx context.Context, client string, attachTarget string, width string, sidebar ports.TmuxSidebarPort) error {
+func openSidebarForClientWithoutFocus(ctx context.Context, client string, attachTarget string, width string, sidebar ports.SidebarPort) error {
 	attach := sidebar.AttachSingletonSidebar
-	if follower, ok := sidebar.(ports.TmuxSidebarFollowPort); ok {
+	if follower, ok := sidebar.(ports.SidebarFollowPort); ok {
 		attach = follower.AttachSingletonSidebarWithoutFocus
 	}
 	return openSidebarForClientWith(ctx, client, attachTarget, width, sidebar, attach)
 }
 
-func openSidebarForClientWith(ctx context.Context, client string, attachTarget string, width string, sidebar ports.TmuxSidebarPort, attach func(context.Context, string, string, string) (ports.PaneRef, error)) error {
+func openSidebarForClientWith(ctx context.Context, client string, attachTarget string, width string, sidebar ports.SidebarPort, attach func(context.Context, string, string, string) (ports.PaneRef, error)) error {
 	if err := saveSidebarVisibility(ctx, true, client); err != nil {
 		return err
 	}
@@ -299,7 +299,7 @@ func rollbackSidebarVisibility(ctx context.Context, client string, original erro
 	}
 }
 
-func closeSidebar(ctx context.Context, sidebar ports.TmuxSidebarPort) error {
+func closeSidebar(ctx context.Context, sidebar ports.SidebarPort) error {
 	singleton, err := sidebar.FindSingletonSidebar(ctx)
 	if err != nil {
 		return err
@@ -310,7 +310,7 @@ func closeSidebar(ctx context.Context, sidebar ports.TmuxSidebarPort) error {
 	return saveSidebarVisibility(ctx, false, "")
 }
 
-func ensureSingletonSidebarPane(ctx context.Context, sidebar ports.TmuxSidebarPort) (ports.PaneRef, error) {
+func ensureSingletonSidebarPane(ctx context.Context, sidebar ports.SidebarPort) (ports.PaneRef, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return ports.PaneRef{}, err
@@ -318,14 +318,14 @@ func ensureSingletonSidebarPane(ctx context.Context, sidebar ports.TmuxSidebarPo
 	return sidebar.EnsureSingletonSidebar(ctx, []string{exe, "daemon", "serve-ui"})
 }
 
-func parkVisibleSidebar(ctx context.Context, sidebar ports.TmuxSidebarPort, paneID string) error {
+func parkVisibleSidebar(ctx context.Context, sidebar ports.SidebarPort, paneID string) error {
 	if strings.TrimSpace(paneID) == "" {
 		return nil
 	}
 	return sidebar.ParkSingletonSidebar(ctx, paneID)
 }
 
-func syncSidebarWidth(ctx context.Context, _ string, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+func syncSidebarWidth(ctx context.Context, _ string, flags map[string]string, sidebar ports.SidebarPort) error {
 	if sidebar == nil {
 		return nil
 	}
@@ -343,17 +343,17 @@ func syncSidebarWidth(ctx context.Context, _ string, flags map[string]string, si
 	if err != nil {
 		return err
 	}
-	if syncer, ok := sidebar.(ports.TmuxSidebarResizePort); ok {
+	if syncer, ok := sidebar.(ports.SidebarResizePort); ok {
 		return syncer.SyncAttachedSidebarWidth(ctx, ref.WindowID, ref.PaneID, width)
 	}
 	return resizeSidebarPaneToWidth(ctx, ref.PaneID, width)
 }
 
-func captureSidebarWidthBaseline(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+func captureSidebarWidthBaseline(ctx context.Context, flags map[string]string, sidebar ports.SidebarPort) error {
 	if sidebar == nil {
 		return nil
 	}
-	capturer, ok := sidebar.(ports.TmuxSidebarResizePort)
+	capturer, ok := sidebar.(ports.SidebarResizePort)
 	if !ok {
 		return nil
 	}
@@ -374,7 +374,7 @@ func captureSidebarWidthBaseline(ctx context.Context, flags map[string]string, s
 	return capturer.CaptureAttachedSidebarWidthBaseline(ctx, ref.WindowID, ref.PaneID, width)
 }
 
-func findSidebarForHook(ctx context.Context, sidebar ports.TmuxSidebarPort, flags map[string]string) (ports.PaneRef, error) {
+func findSidebarForHook(ctx context.Context, sidebar ports.SidebarPort, flags map[string]string) (ports.PaneRef, error) {
 	target := firstNonEmpty(strings.TrimSpace(flags["pane"]), strings.TrimSpace(flags["window"]), strings.TrimSpace(flags["client"]))
 	if target == "" {
 		return ports.PaneRef{}, nil
@@ -406,9 +406,11 @@ func resizeSidebarPaneToWidth(ctx context.Context, paneID string, width string) 
 }
 
 func isIgnoredResizeHookError(err error) bool {
-	return errors.Is(err, ports.ErrTmuxTargetGone)
+	return errors.Is(err, ports.ErrMultiplexerTargetGone)
 }
 
+// tmuxCommandError wraps a tmux command error with the action context and any
+// captured stderr output. Part of the transitional tmux command seam.
 func tmuxCommandError(action string, output string, err error) error {
 	output = strings.TrimSpace(output)
 	if output == "" {
@@ -417,6 +419,9 @@ func tmuxCommandError(action string, output string, err error) error {
 	return fmt.Errorf("%s: %w (output: %s)", action, err, output)
 }
 
+// tmuxTargetGoneOutput checks whether a tmux command output indicates a
+// disappeared target (window, pane, or client), mapping to ErrMultiplexerTargetGone.
+// Part of the transitional tmux command seam.
 func tmuxTargetGoneOutput(output string) bool {
 	message := strings.ToLower(output)
 	return strings.Contains(message, "no such window") ||
@@ -429,11 +434,11 @@ func tmuxTargetGoneOutput(output string) bool {
 
 var runSidebarUI = runUI
 
-func serveSidebarUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort) error {
+func serveSidebarUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.SidebarPort, ipcClient ports.IPCClientPort) error {
 	return runSidebarUI(ctx, flags, stdout, sidebar, ipcClient)
 }
 
-func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort) error {
+func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.SidebarPort, ipcClient ports.IPCClientPort) error {
 	defer scheduleSidebarLayoutRestoreOnExit(ctx, flags, sidebar)
 	cfg := loadSidebarConfig(ctx)
 	items, err := loadSidebarTreeItemsWithConfig(ctx, cfg)
@@ -449,7 +454,7 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 	return runtimeSidebarUI().Run(ctx, items, actions, options, stdout)
 }
 
-func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort, ipcClient ports.IPCClientPort) SidebarUIActions {
+func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.SidebarPort, ipcClient ports.IPCClientPort) SidebarUIActions {
 	currentClient := func() string { return effectiveUIClient(ctx, flags) }
 	return SidebarUIActions{
 		SwitchSession: func(name string) bool {
@@ -571,7 +576,7 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 	}
 }
 
-func scheduleSidebarLayoutRestoreOnExit(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) {
+func scheduleSidebarLayoutRestoreOnExit(ctx context.Context, flags map[string]string, sidebar ports.SidebarPort) {
 	pane := strings.TrimSpace(flags["pane"])
 	if pane == "" {
 		pane = strings.TrimSpace(os.Getenv("TMUX_PANE"))
@@ -606,7 +611,7 @@ func handleActionError(ctx context.Context, action string, err error) bool {
 	return false
 }
 
-func captureLiveSidebarSessionsAndRefresh(ctx context.Context, client string, session string, sidebar ports.TmuxSidebarPort, reconcile bool) error {
+func captureLiveSidebarSessionsAndRefresh(ctx context.Context, client string, session string, sidebar ports.SidebarPort, reconcile bool) error {
 	if err := captureLiveSidebarSessions(ctx); err != nil {
 		return err
 	}
@@ -624,7 +629,7 @@ func isInternalHookSession(session string) bool {
 	return strings.HasPrefix(session, "__") || session == "tmux-session-sidebar"
 }
 
-func quickSwitch(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+func quickSwitch(ctx context.Context, flags map[string]string, sidebar ports.SidebarPort) error {
 	slot, err := strconv.Atoi(flags["slot"])
 	if err != nil || slot <= 0 {
 		return fmt.Errorf("invalid quick-switch slot %q", flags["slot"])
@@ -669,6 +674,13 @@ func contextualQuickSwitchTarget(ctx context.Context, state ports.PersistedState
 	return coreruntime.QuickSwitchTarget(ordered, slot)
 }
 
+// tmux is the transitional tmux command seam. It shells out raw tmux CLI
+// commands for operations not yet migrated behind the generic port interfaces.
+//
+// All callers of this function are explicitly tmux-specific and are NOT
+// part of the generic multiplexer abstraction. Future adapters (Zellij,
+// etc.) must model equivalent behaviour through the appropriate port
+// (SidebarPort, ControlPort, QueryPort) instead.
 func tmux(ctx context.Context, args ...string) (string, error) {
 	return runCommand(ctx, "tmux", args...)
 }
@@ -677,13 +689,14 @@ func runCommand(ctx context.Context, name string, args ...string) (string, error
 	return commandRunner(ctx, name, args...)
 }
 
+// commandRunner is the transitional tmux command seam executor. It routes the
+// "tmux" name through the Multiplexer runtime port and rejects all other
+// command names — those must be modeled behind explicit runtime ports.
 var commandRunner = func(ctx context.Context, name string, args ...string) (string, error) {
-	// Only tmux goes through this legacy command hook; other external commands
-	// must be modeled behind explicit runtime ports.
 	if name != "tmux" {
 		return "", fmt.Errorf("unsupported runtime command %q", name)
 	}
-	result, err := runtimeTmux().Run(ctx, args)
+	result, err := runtimeMultiplexer().Run(ctx, args)
 	if err != nil {
 		if strings.TrimSpace(result.Stderr) != "" {
 			return result.Stderr, err
