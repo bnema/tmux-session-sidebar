@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	coreversion "github.com/bnema/tmux-session-sidebar/core/version"
+	coreversion "github.com/bnema/tmux-session-sidebar/internal/core/version"
 )
 
 const updateCheckInterval = 5 * time.Minute

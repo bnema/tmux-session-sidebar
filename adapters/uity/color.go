@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/bnema/tmux-session-sidebar/core/config"
+	"github.com/bnema/tmux-session-sidebar/internal/core/config"
 )
 
 type rgbColor struct {

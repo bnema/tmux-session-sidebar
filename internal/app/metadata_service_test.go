@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/gitcli"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func TestMetadataServiceCaptureAcceptsFreshLiveResultWithoutPersistedSession(t *testing.T) {

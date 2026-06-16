@@ -12,10 +12,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bnema/tmux-session-sidebar/core/projects"
-	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
-	"github.com/bnema/tmux-session-sidebar/core/sessions"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/core/projects"
+	coreruntime "github.com/bnema/tmux-session-sidebar/internal/core/runtime"
+	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func createProject(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.SidebarPort) error {

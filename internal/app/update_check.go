@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 
-	coreversion "github.com/bnema/tmux-session-sidebar/core/version"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	coreversion "github.com/bnema/tmux-session-sidebar/internal/core/version"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func newUpdateAvailableCheck(ctx context.Context, checker ports.ReleaseCheckerPort) func(string) (bool, error) {

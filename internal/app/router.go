@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	coreruntime "github.com/bnema/tmux-session-sidebar/core/runtime"
-	"github.com/bnema/tmux-session-sidebar/core/sessions"
-	sidebarlayout "github.com/bnema/tmux-session-sidebar/core/sidebar"
+	coreruntime "github.com/bnema/tmux-session-sidebar/internal/core/runtime"
+	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
+	sidebarlayout "github.com/bnema/tmux-session-sidebar/internal/core/sidebar"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
-	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
 type runtimeRouter struct {

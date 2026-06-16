@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func shouldSkipSidebarSessionRestoreForContinuum(ctx context.Context, cfg ports.ConfigSnapshot) bool {

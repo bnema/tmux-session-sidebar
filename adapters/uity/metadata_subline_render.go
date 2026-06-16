@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	lipgloss "charm.land/lipgloss/v2"
-	"github.com/bnema/tmux-session-sidebar/core/config"
+	"github.com/bnema/tmux-session-sidebar/internal/core/config"
 )
 
 type MetadataSublineRenderOptions struct {

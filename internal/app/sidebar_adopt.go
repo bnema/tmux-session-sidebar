@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func adoptPersistedOpenSidebar(ctx context.Context, client string, sidebar ports.SidebarPort) error {

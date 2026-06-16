@@ -6,8 +6,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/bnema/tmux-session-sidebar/core/config"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/core/config"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 // RuntimeDependencies holds the runtime-injected ports and factories used by

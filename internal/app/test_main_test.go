@@ -14,9 +14,9 @@ import (
 	"github.com/bnema/tmux-session-sidebar/adapters/process"
 	"github.com/bnema/tmux-session-sidebar/adapters/storefs"
 	"github.com/bnema/tmux-session-sidebar/adapters/tmuxcli"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 	"github.com/bnema/tmux-session-sidebar/internal/runtimelog"
 	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
-	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
 type testSidebarUIRunner struct{}

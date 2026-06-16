@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/core/attention"
-	"github.com/bnema/tmux-session-sidebar/core/config"
-	"github.com/bnema/tmux-session-sidebar/core/heat"
-	"github.com/bnema/tmux-session-sidebar/core/sessions"
+	"github.com/bnema/tmux-session-sidebar/internal/core/attention"
+	"github.com/bnema/tmux-session-sidebar/internal/core/config"
+	"github.com/bnema/tmux-session-sidebar/internal/core/heat"
+	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
-	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
 func effectiveUIClient(ctx context.Context, flags map[string]string) string {

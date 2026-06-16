@@ -9,7 +9,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/adapters/daemonctl"
 	"github.com/bnema/tmux-session-sidebar/adapters/ipcunix"
 	"github.com/bnema/tmux-session-sidebar/internal/app"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 type mainScopeProcess struct{ stdout string }

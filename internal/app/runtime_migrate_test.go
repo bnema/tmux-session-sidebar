@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/locker"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 // writeTmuxJSON writes a tmux.json to dir with the given PersistedState.

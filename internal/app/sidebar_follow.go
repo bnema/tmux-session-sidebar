@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func withSidebarFollow(ctx context.Context, client string, sidebar ports.SidebarPort, action func() error) error {

@@ -3,7 +3,7 @@ package uity
 import (
 	"testing"
 
-	"github.com/bnema/tmux-session-sidebar/core/config"
+	"github.com/bnema/tmux-session-sidebar/internal/core/config"
 )
 
 func TestHeatColorGradient(t *testing.T) {

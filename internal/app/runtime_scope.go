@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 // RuntimeScope describes the filesystem namespace used by one sidebar runtime.

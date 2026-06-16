@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/bnema/tmux-session-sidebar/adapters/uity"
-	"github.com/bnema/tmux-session-sidebar/core/attention"
-	"github.com/bnema/tmux-session-sidebar/core/config"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/core/attention"
+	"github.com/bnema/tmux-session-sidebar/internal/core/config"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func TestEffectiveUIClientFallsBackToPersistedSidebarOwner(t *testing.T) {

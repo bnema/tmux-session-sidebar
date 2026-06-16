@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/core/heat"
-	"github.com/bnema/tmux-session-sidebar/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/core/heat"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 type delayedIPCServer struct {
