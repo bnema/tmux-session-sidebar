@@ -13,7 +13,7 @@ import (
 )
 
 type resizeSyncSidebarPort struct {
-	*mocks.MockTmuxSidebarPort
+	*mocks.MockSidebarPort
 	syncCalls    []string
 	captureCalls []string
 }
@@ -31,7 +31,7 @@ func (d *resizeSyncSidebarPort) SyncAttachedSidebarWidth(_ context.Context, wind
 func TestOpenSidebarAttachesSingletonPaneToClient(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 
 	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Run(func(context.Context, []string) {
 		state, err := loadSidebarState(ctx)
@@ -60,7 +60,7 @@ func TestOpenSidebarRollsBackVisibilityWhenEnsureFails(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	boom := errors.New("ensure failed")
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{}, boom)
 
 	err := openSidebar(ctx, map[string]string{"client": "client-1", "width": "20"}, tmux)
@@ -80,7 +80,7 @@ func TestOpenSidebarRollsBackVisibilityWhenAttachFails(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	boom := errors.New("attach failed")
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
 	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "20").Return(ports.PaneRef{}, boom)
 
@@ -105,7 +105,7 @@ func TestToggleSidebarOpensWhenPersistedOpenStateHasNoVisiblePane(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 
 	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{WindowID: "@1"}, nil)
 	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
@@ -131,7 +131,7 @@ func TestCloseSidebarParksGlobalSingletonPane(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 
 	tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
 	tmux.EXPECT().ParkSingletonSidebar(ctx, "%10").Return(nil)
@@ -157,7 +157,7 @@ func TestHookClientSessionChangedSkipsSidebarReconcileForInternalHookSession(t *
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
 	installFakeTmux(t, fakeHookCaptureTmuxScript())
-	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar := mocks.NewMockSidebarPort(t)
 
 	err := (runtimeRouter{sidebar: sidebar}).Handle(ctx, Route{
 		Path:  "hook/client-session-changed",
@@ -177,7 +177,7 @@ func TestHookClientDetachedDoesNotReconcileSidebarForDetachingClient(t *testing.
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
 	installFakeTmux(t, fakeHookCaptureTmuxScript())
-	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar := mocks.NewMockSidebarPort(t)
 
 	err := (runtimeRouter{sidebar: sidebar}).Handle(ctx, Route{
 		Path:  "hook/client-detached",
@@ -266,7 +266,7 @@ case "$1" in
   *) ;;
 esac
 `)
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 	tmux.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
 	tmux.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
 	tmux.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", "30").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
@@ -307,7 +307,7 @@ func TestRuntimeRouterUsesDirectFallbackForUnavailableIPCSocket(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	ipc := mocks.NewMockIPCClientPort(t)
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, ports.ErrIPCConnectionRefused)
 	tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 	tmux.EXPECT().ParkSingletonSidebar(ctx, "%9").Return(nil)
@@ -322,7 +322,7 @@ func TestRuntimeRouterUsesDirectFallbackForStaleScopedIPC(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	ipc := mocks.NewMockIPCClientPort(t)
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{OK: false, Message: "daemon tmux server identity is stale", ErrorCode: ports.IPCErrorStaleScope}, nil)
 	tmux.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 	tmux.EXPECT().ParkSingletonSidebar(ctx, "%9").Return(nil)
@@ -337,7 +337,7 @@ func TestRuntimeRouterEnsuresDaemonBeforeDirectFallbackForUnavailableIPC(t *test
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	ipc := mocks.NewMockIPCClientPort(t)
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 	daemon := mocks.NewMockDaemonLauncherPort(t)
 	mock.InOrder(
 		ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, ports.ErrIPCSocketMissing).Call,
@@ -392,7 +392,7 @@ func TestResizeHooksWithoutTargetAreNoops(t *testing.T) {
 
 func TestWindowResizedHookResizesProvidedSidebarPaneToConfiguredWidth(t *testing.T) {
 	ctx := t.Context()
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 	tmux.EXPECT().FindSidebarPane(ctx, "%9").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
@@ -418,7 +418,7 @@ func TestWindowResizedHookResizesProvidedSidebarPaneToConfiguredWidth(t *testing
 
 func TestClientResizedHookUsesClientToFindMarkedSidebarPane(t *testing.T) {
 	ctx := t.Context()
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
@@ -444,7 +444,7 @@ func TestClientResizedHookUsesClientToFindMarkedSidebarPane(t *testing.T) {
 
 func TestWindowResizedHookDoesNothingWhenSidebarIsMissing(t *testing.T) {
 	ctx := t.Context()
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 	tmux.EXPECT().FindSidebarPane(ctx, "@1").Return(ports.PaneRef{WindowID: "@1"}, nil)
 
 	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"window": "@1"}}, nil, nil); err != nil {
@@ -454,7 +454,7 @@ func TestWindowResizedHookDoesNothingWhenSidebarIsMissing(t *testing.T) {
 
 func TestWindowLayoutChangedHookDelegatesToSidebarBaselineCaptureWhenAvailable(t *testing.T) {
 	ctx := t.Context()
-	tmux := &resizeSyncSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t)}
+	tmux := &resizeSyncSidebarPort{MockSidebarPort: mocks.NewMockSidebarPort(t)}
 	tmux.EXPECT().FindSidebarPane(ctx, "%9").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
@@ -481,7 +481,7 @@ func TestWindowLayoutChangedHookDelegatesToSidebarBaselineCaptureWhenAvailable(t
 
 func TestWindowResizedHookDelegatesToSidebarResizeSyncWhenAvailable(t *testing.T) {
 	ctx := t.Context()
-	tmux := &resizeSyncSidebarPort{MockTmuxSidebarPort: mocks.NewMockTmuxSidebarPort(t)}
+	tmux := &resizeSyncSidebarPort{MockSidebarPort: mocks.NewMockSidebarPort(t)}
 	tmux.EXPECT().FindSidebarPane(ctx, "%9").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
@@ -508,8 +508,8 @@ func TestWindowResizedHookDelegatesToSidebarResizeSyncWhenAvailable(t *testing.T
 
 func TestWindowResizedHookIgnoresMissingWindowTarget(t *testing.T) {
 	ctx := t.Context()
-	tmux := mocks.NewMockTmuxSidebarPort(t)
-	tmux.EXPECT().FindSidebarPane(ctx, "@1").Return(ports.PaneRef{}, ports.ErrTmuxTargetGone)
+	tmux := mocks.NewMockSidebarPort(t)
+	tmux.EXPECT().FindSidebarPane(ctx, "@1").Return(ports.PaneRef{}, ports.ErrMultiplexerTargetGone)
 
 	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/window-resized", Flags: map[string]string{"window": "@1"}}, nil, nil); err != nil {
 		t.Fatalf("Handle error: %v", err)
@@ -518,8 +518,8 @@ func TestWindowResizedHookIgnoresMissingWindowTarget(t *testing.T) {
 
 func TestClientResizedHookIgnoresMissingClientTarget(t *testing.T) {
 	ctx := t.Context()
-	tmux := mocks.NewMockTmuxSidebarPort(t)
-	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, ports.ErrTmuxTargetGone)
+	tmux := mocks.NewMockSidebarPort(t)
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, ports.ErrMultiplexerTargetGone)
 
 	if err := (runtimeRouter{sidebar: tmux}).Handle(ctx, Route{Path: "hook/client-resized", Flags: map[string]string{"client": "client-1"}}, nil, nil); err != nil {
 		t.Fatalf("Handle error: %v", err)
@@ -528,7 +528,7 @@ func TestClientResizedHookIgnoresMissingClientTarget(t *testing.T) {
 
 func TestWindowResizedHookIgnoresSidebarPaneThatDisappearsBeforeResize(t *testing.T) {
 	ctx := t.Context()
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 	tmux.EXPECT().FindSidebarPane(ctx, "%9").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
@@ -554,7 +554,7 @@ func TestWindowResizedHookIgnoresSidebarPaneThatDisappearsBeforeResize(t *testin
 
 func TestScheduleSidebarLayoutRestoreOnExitUsesProvidedPane(t *testing.T) {
 	ctx := t.Context()
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 
 	tmux.EXPECT().ScheduleSidebarRestoreOnExit(ctx, "", "%9").Return(nil)
 
@@ -563,7 +563,7 @@ func TestScheduleSidebarLayoutRestoreOnExitUsesProvidedPane(t *testing.T) {
 
 func TestScheduleSidebarLayoutRestoreOnExitUsesTmuxPaneFallback(t *testing.T) {
 	ctx := t.Context()
-	tmux := mocks.NewMockTmuxSidebarPort(t)
+	tmux := mocks.NewMockSidebarPort(t)
 	t.Setenv("TMUX_PANE", "%8")
 
 	tmux.EXPECT().ScheduleSidebarRestoreOnExit(ctx, "client-1", "%8").Return(nil)

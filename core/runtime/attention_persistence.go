@@ -73,8 +73,8 @@ func (s *Service) CaptureVisitedAgentAttention(ctx context.Context, serverID str
 	if s.store == nil {
 		return ErrMissingStateStore
 	}
-	if s.tmuxQuery == nil {
-		return ErrMissingTmuxQuery
+	if s.query == nil {
+		return ErrMissingQuery
 	}
 
 	state, err := s.store.Load(ctx, serverID)
@@ -82,7 +82,7 @@ func (s *Service) CaptureVisitedAgentAttention(ctx context.Context, serverID str
 		return err
 	}
 
-	live, err := s.tmuxQuery.ListSessions(ctx)
+	live, err := s.query.ListSessions(ctx)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (s *Service) CaptureVisitedAgentAttention(ctx context.Context, serverID str
 
 	decoded := attention.DecodeStateMap(state.AgentAttention)
 	changed := pruneAgentAttentionSessions(decoded, liveSessionIDs)
-	clients, err := s.tmuxQuery.ListClients(ctx)
+	clients, err := s.query.ListClients(ctx)
 	if err != nil {
 		if !changed && len(state.Clients) == 0 {
 			return nil
@@ -133,10 +133,10 @@ func (s *Service) CaptureVisitedAgentAttention(ctx context.Context, serverID str
 }
 
 func (s *Service) liveSessionIDs(ctx context.Context) (map[string]bool, bool) {
-	if s == nil || s.tmuxQuery == nil {
+	if s == nil || s.query == nil {
 		return nil, false
 	}
-	live, err := s.tmuxQuery.ListSessions(ctx)
+	live, err := s.query.ListSessions(ctx)
 	if err != nil {
 		return nil, false
 	}
@@ -171,10 +171,10 @@ func shouldSuppressEventAttentionWhileSessionIsCurrent(state attention.State) bo
 }
 
 func (s *Service) sessionCurrentlyAttached(ctx context.Context, sessionID string) bool {
-	if s == nil || s.tmuxQuery == nil || strings.TrimSpace(sessionID) == "" {
+	if s == nil || s.query == nil || strings.TrimSpace(sessionID) == "" {
 		return false
 	}
-	clients, err := s.tmuxQuery.ListClients(ctx)
+	clients, err := s.query.ListClients(ctx)
 	if err != nil {
 		if s.logger != nil {
 			s.logger.Error("agent-attention-list-clients-failed", []ports.LogField{{Key: "sessionID", Value: sessionID}, {Key: "error", Value: err.Error()}})
@@ -189,7 +189,7 @@ func (s *Service) sessionCurrentlyAttached(ctx context.Context, sessionID string
 	return false
 }
 
-func attachedClientSessions(clients []ports.TmuxClientSnapshot) map[string]string {
+func attachedClientSessions(clients []ports.ClientSnapshot) map[string]string {
 	attached := make(map[string]string, len(clients))
 	for _, client := range clients {
 		if !client.Attached || strings.TrimSpace(client.ID) == "" || strings.TrimSpace(client.CurrentSessionID) == "" {

@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 	// This wiring intentionally stays local to app tests so the test package does
 	// not depend on the cmd composition root.
 	SetRuntimeDependencies(RuntimeDependencies{
-		Tmux:           tmux,
+		Multiplexer:    tmux,
 		Git:            git,
 		ReleaseChecker: githubrelease.Client{},
 		WatcherFactory: func() ports.FileWatcherPort { return watchfsnotify.Watcher{} },

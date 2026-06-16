@@ -19,7 +19,7 @@ func ensureRestoredAndCaptured(ctx context.Context) error {
 	return ensureRestoredAndCapturedWithOptions(ctx, false)
 }
 
-func ensureRestoredAndCapturedAndRefresh(ctx context.Context, client string, session string, sidebar ports.TmuxSidebarPort) error {
+func ensureRestoredAndCapturedAndRefresh(ctx context.Context, client string, session string, sidebar ports.SidebarPort) error {
 	if err := ensureRestoredAndCaptured(ctx); err != nil {
 		return err
 	}

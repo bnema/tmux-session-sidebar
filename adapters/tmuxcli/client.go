@@ -51,6 +51,13 @@ const (
 	singletonSidebarWindowName  = "sidebar"
 )
 
+// Compile-time interface assertions verifying tmuxcli.Client satisfies the
+// multiplexer-generic port interfaces. These catch interface drift early.
+var _ ports.RuntimePort = Client{}
+var _ ports.SidebarSwitchPort = Client{}
+var _ ports.SidebarFollowPort = Client{}
+var _ ports.SidebarResizePort = Client{}
+
 type Client struct {
 	Process ports.ProcessPort
 }
@@ -144,12 +151,12 @@ func (c Client) ServerID(ctx context.Context) (string, error) {
 	return c.display(ctx, "#{socket_path}")
 }
 
-func (c Client) ListSessions(ctx context.Context) ([]ports.TmuxSessionSnapshot, error) {
+func (c Client) ListSessions(ctx context.Context) ([]ports.SessionSnapshot, error) {
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{"list-sessions", "-F", "#{session_id}\t#{session_name}\t#{session_windows}\t#{session_attached}"})
 	if err != nil {
 		return nil, err
 	}
-	var sessions []ports.TmuxSessionSnapshot
+	var sessions []ports.SessionSnapshot
 	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
 		if line == "" {
 			continue
@@ -166,17 +173,17 @@ func (c Client) ListSessions(ctx context.Context) ([]ports.TmuxSessionSnapshot, 
 		if err != nil {
 			continue
 		}
-		sessions = append(sessions, ports.TmuxSessionSnapshot{ID: fields[0], Name: fields[1], WindowCount: windows, AttachedCount: attached})
+		sessions = append(sessions, ports.SessionSnapshot{ID: fields[0], Name: fields[1], WindowCount: windows, AttachedCount: attached})
 	}
 	return sessions, nil
 }
 
-func (c Client) ListClients(ctx context.Context) ([]ports.TmuxClientSnapshot, error) {
+func (c Client) ListClients(ctx context.Context) ([]ports.ClientSnapshot, error) {
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{"list-clients", "-F", "#{client_name}\t#{session_id}\t#{window_id}\t#{pane_id}\t#{client_session}"})
 	if err != nil {
 		return nil, err
 	}
-	var clients []ports.TmuxClientSnapshot
+	var clients []ports.ClientSnapshot
 	for line := range strings.SplitSeq(strings.TrimRight(result.Stdout, "\n"), "\n") {
 		if line == "" {
 			continue
@@ -185,17 +192,17 @@ func (c Client) ListClients(ctx context.Context) ([]ports.TmuxClientSnapshot, er
 		if len(fields) < 5 {
 			continue
 		}
-		clients = append(clients, ports.TmuxClientSnapshot{ID: fields[0], CurrentSessionID: fields[1], CurrentWindowID: fields[2], CurrentPaneID: fields[3], Attached: fields[4] != ""})
+		clients = append(clients, ports.ClientSnapshot{ID: fields[0], CurrentSessionID: fields[1], CurrentWindowID: fields[2], CurrentPaneID: fields[3], Attached: fields[4] != ""})
 	}
 	return clients, nil
 }
 
-func (c Client) ListPanes(ctx context.Context) ([]ports.TmuxPaneSnapshot, error) {
+func (c Client) ListPanes(ctx context.Context) ([]ports.PaneSnapshot, error) {
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-F", "#{pane_id}\t#{session_id}\t#{session_name}\t#{window_id}\t#{pane_current_path}\t#{pane_current_command}\t#{pane_dead}\t#{pane_dead_status}\t#{@session-sidebar-pane}"})
 	if err != nil {
 		return nil, err
 	}
-	var panes []ports.TmuxPaneSnapshot
+	var panes []ports.PaneSnapshot
 	for line := range strings.SplitSeq(strings.TrimRight(result.Stdout, "\n"), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -204,7 +211,7 @@ func (c Client) ListPanes(ctx context.Context) ([]ports.TmuxPaneSnapshot, error)
 		if len(fields) < 9 {
 			continue
 		}
-		panes = append(panes, ports.TmuxPaneSnapshot{
+		panes = append(panes, ports.PaneSnapshot{
 			PaneID:      fields[0],
 			SessionID:   fields[1],
 			SessionName: fields[2],
@@ -247,7 +254,7 @@ func (c Client) WindowID(ctx context.Context, target string) (string, error) {
 	trimmedTarget := strings.TrimSpace(target)
 	if windowID == "" {
 		if concreteTmuxTarget(trimmedTarget) {
-			return "", fmt.Errorf("resolve tmux window id for target %q: %w", trimmedTarget, ports.ErrTmuxTargetGone)
+			return "", fmt.Errorf("resolve tmux window id for target %q: %w", trimmedTarget, ports.ErrMultiplexerTargetGone)
 		}
 		return "", fmt.Errorf("resolve tmux window id for target %q: empty output", trimmedTarget)
 	}
@@ -730,7 +737,7 @@ func (e tmuxError) Unwrap() error {
 }
 
 func (e tmuxError) Is(target error) bool {
-	return target == ports.ErrTmuxTargetGone && tmuxTargetGoneMessage(e.result.Stderr+e.result.Stdout)
+	return target == ports.ErrMultiplexerTargetGone && tmuxTargetGoneMessage(e.result.Stderr+e.result.Stdout)
 }
 
 func wrapTmuxError(result ports.Result, err error) error {
@@ -741,7 +748,7 @@ func wrapTmuxError(result ports.Result, err error) error {
 }
 
 func isTmuxTargetGone(err error) bool {
-	return errors.Is(err, ports.ErrTmuxTargetGone)
+	return errors.Is(err, ports.ErrMultiplexerTargetGone)
 }
 
 func tmuxTargetGoneMessage(output string) bool {

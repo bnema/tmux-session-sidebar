@@ -13,20 +13,20 @@ import (
 )
 
 func (s *Service) SwitchSession(ctx context.Context, clientID string, sessionName string) error {
-	if s.tmuxCtl == nil {
-		return ErrMissingTmuxControl
+	if s.control == nil {
+		return ErrMissingControl
 	}
 	if err := sessions.ValidateName(sessionName); err != nil {
 		return err
 	}
-	return s.tmuxCtl.SwitchClientSession(ctx, clientID, sessionName)
+	return s.control.SwitchClientSession(ctx, clientID, sessionName)
 }
 
 func (s *Service) SessionViews(ctx context.Context) ([]sessions.View, error) {
-	if s.tmuxQuery == nil {
-		return nil, ErrMissingTmuxQuery
+	if s.query == nil {
+		return nil, ErrMissingQuery
 	}
-	snapshots, err := s.tmuxQuery.ListSessions(ctx)
+	snapshots, err := s.query.ListSessions(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -38,32 +38,32 @@ func (s *Service) SessionViews(ctx context.Context) ([]sessions.View, error) {
 }
 
 func (s *Service) CreateProjectSession(ctx context.Context, clientID string, existing []sessions.View, candidate projects.Candidate) error {
-	if s.tmuxCtl == nil {
-		return ErrMissingTmuxControl
+	if s.control == nil {
+		return ErrMissingControl
 	}
 	plan := ProjectSessionDecision(existing, candidate)
 	if err := s.CreateDetachedProjectSession(ctx, existing, plan); err != nil {
 		return err
 	}
-	return s.tmuxCtl.SwitchClientSession(ctx, clientID, plan.SessionName)
+	return s.control.SwitchClientSession(ctx, clientID, plan.SessionName)
 }
 
 func (s *Service) CreateDetachedProjectSession(ctx context.Context, existing []sessions.View, plan ProjectSessionPlan) error {
 	if !plan.Create {
 		return sessions.ValidateName(plan.SessionName)
 	}
-	if s.tmuxCtl == nil {
-		return ErrMissingTmuxControl
+	if s.control == nil {
+		return ErrMissingControl
 	}
 	if err := ValidateCreateSession(existing, plan.SessionName); err != nil {
 		return err
 	}
-	if err := s.tmuxCtl.CreateSession(ctx, plan.SessionName, plan.ProjectPath); err != nil {
+	if err := s.control.CreateSession(ctx, plan.SessionName, plan.ProjectPath); err != nil {
 		return err
 	}
-	if s.tmuxMeta != nil {
+	if s.meta != nil {
 		metadata := ports.SessionMetadata{Kind: "project", ProjectPath: plan.ProjectPath}
-		if err := s.tmuxMeta.SaveSessionMetadata(ctx, plan.SessionName, metadata); err != nil {
+		if err := s.meta.SaveSessionMetadata(ctx, plan.SessionName, metadata); err != nil {
 			return s.rollbackCreatedSession(ctx, plan.SessionName, fmt.Errorf("save project metadata for %s: %w", plan.SessionName, err))
 		}
 	}
@@ -71,29 +71,29 @@ func (s *Service) CreateDetachedProjectSession(ctx context.Context, existing []s
 }
 
 func (s *Service) CreateAdhocSession(ctx context.Context, clientID string, existing []sessions.View, name string, path string) error {
-	if s.tmuxCtl == nil {
-		return ErrMissingTmuxControl
+	if s.control == nil {
+		return ErrMissingControl
 	}
 	if err := ValidateCreateSession(existing, name); err != nil {
 		if errors.Is(err, coreerrors.ErrDuplicateSession) {
-			return s.tmuxCtl.SwitchClientSession(ctx, clientID, name)
+			return s.control.SwitchClientSession(ctx, clientID, name)
 		}
 		return err
 	}
-	if err := s.tmuxCtl.CreateSession(ctx, name, path); err != nil {
+	if err := s.control.CreateSession(ctx, name, path); err != nil {
 		return err
 	}
-	if s.tmuxMeta != nil {
-		if err := s.tmuxMeta.SaveSessionMetadata(ctx, name, ports.SessionMetadata{Kind: "adhoc"}); err != nil {
+	if s.meta != nil {
+		if err := s.meta.SaveSessionMetadata(ctx, name, ports.SessionMetadata{Kind: "adhoc"}); err != nil {
 			return s.rollbackCreatedSession(ctx, name, fmt.Errorf("save adhoc metadata for %s: %w", name, err))
 		}
 	}
-	return s.tmuxCtl.SwitchClientSession(ctx, clientID, name)
+	return s.control.SwitchClientSession(ctx, clientID, name)
 }
 
 func (s *Service) RenameSession(ctx context.Context, existing []sessions.View, oldName string, newName string) error {
-	if s.tmuxCtl == nil {
-		return ErrMissingTmuxControl
+	if s.control == nil {
+		return ErrMissingControl
 	}
 	if err := ValidateRenameSession(existing, oldName, newName); err != nil {
 		return err
@@ -101,11 +101,11 @@ func (s *Service) RenameSession(ctx context.Context, existing []sessions.View, o
 	if !sessionNameExists(existing, oldName) {
 		return fmt.Errorf("%w: %s", coreerrors.ErrMissingSession, oldName)
 	}
-	return s.tmuxCtl.RenameSession(ctx, oldName, newName)
+	return s.control.RenameSession(ctx, oldName, newName)
 }
 
 func (s *Service) rollbackCreatedSession(ctx context.Context, sessionName string, original error) error {
-	if err := s.tmuxCtl.KillSession(ctx, sessionName); err != nil {
+	if err := s.control.KillSession(ctx, sessionName); err != nil {
 		return fmt.Errorf("%w (rollback failed for %s: %v)", original, sessionName, err)
 	}
 	return original
@@ -121,13 +121,13 @@ func sessionNameExists(existing []sessions.View, name string) bool {
 }
 
 func (s *Service) KillSession(ctx context.Context, existing []sessions.View, target string) error {
-	if s.tmuxCtl == nil {
-		return ErrMissingTmuxControl
+	if s.control == nil {
+		return ErrMissingControl
 	}
 	if err := ValidateKillSession(existing, target); err != nil {
 		return err
 	}
-	return s.tmuxCtl.KillSession(ctx, target)
+	return s.control.KillSession(ctx, target)
 }
 
 type ProjectSessionPlan struct {

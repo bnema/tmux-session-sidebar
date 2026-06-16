@@ -136,7 +136,7 @@ case "$1" in
 esac
 `)
 
-	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar := mocks.NewMockSidebarPort(t)
 
 	if err := createAdhoc(t.Context(), map[string]string{"client": "/dev/pts/99"}, sidebar); err != nil {
 		t.Fatalf("createAdhoc returned error: %v", err)
@@ -425,7 +425,7 @@ case "$1" in
     ;;
 esac
 `)
-	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar := mocks.NewMockSidebarPort(t)
 	sidebar.EXPECT().RefreshSidebar(t.Context(), "").Return(nil)
 
 	renameErrCh := make(chan error, 1)
@@ -555,7 +555,7 @@ case "$1" in
   rename-session) exit `+tt.renameExit+` ;;
 esac
 `)
-			sidebar := mocks.NewMockTmuxSidebarPort(t)
+			sidebar := mocks.NewMockSidebarPort(t)
 			if !tt.wantErr {
 				sidebar.EXPECT().RefreshSidebar(t.Context(), "").Return(nil)
 			}
@@ -586,7 +586,7 @@ case "$1" in
   list-sessions) printf '$1\talpha\t1\t1\n$2\tbeta\t1\t0\n' ;;
 esac
 `)
-	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar := mocks.NewMockSidebarPort(t)
 	sidebar.EXPECT().RefreshSidebar(t.Context(), "").Return(nil)
 
 	if err := killSession(t.Context(), map[string]string{"session": "alpha", "confirmed": "yes"}, sidebar); err != nil {
@@ -648,7 +648,7 @@ case "$1" in
     ;;
 esac
 `)
-	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar := mocks.NewMockSidebarPort(t)
 	sidebar.EXPECT().RefreshSidebar(t.Context(), "").Return(nil)
 
 	if err := killSession(t.Context(), map[string]string{"session": "alpha", "confirmed": "yes"}, sidebar); err != nil {
@@ -741,7 +741,7 @@ case "$1" in
     ;;
 esac
 `)
-	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar := mocks.NewMockSidebarPort(t)
 	sidebar.EXPECT().RefreshSidebar(t.Context(), "").Return(nil)
 
 	killErrCh := make(chan error, 1)
@@ -824,7 +824,7 @@ case "$1" in
     ;;
 esac
 `)
-	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar := mocks.NewMockSidebarPort(t)
 	sidebar.EXPECT().RefreshSidebar(ctx, "").Return(nil)
 	if err := killSession(ctx, map[string]string{"session": "alpha", "confirmed": "yes"}, sidebar); err != nil {
 		t.Fatalf("killSession returned error: %v", err)
@@ -885,7 +885,7 @@ case "$1" in
     ;;
 esac
 `)
-	sidebar := mocks.NewMockTmuxSidebarPort(t)
+	sidebar := mocks.NewMockSidebarPort(t)
 	sidebar.EXPECT().RefreshSidebar(ctx, "").Return(nil)
 	if err := killSession(ctx, map[string]string{"session": "alpha", "confirmed": "yes"}, sidebar); err != nil {
 		t.Fatalf("killSession returned error: %v", err)
@@ -947,7 +947,7 @@ esac
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			ctx := t.Context()
 			logPath := installFakeTmux(t, tt.script)
-			sidebar := mocks.NewMockTmuxSidebarPort(t)
+			sidebar := mocks.NewMockSidebarPort(t)
 			sidebar.EXPECT().RefreshSidebar(ctx, "/dev/pts/99").Return(errors.New("refresh failure"))
 			err := killSession(ctx, map[string]string{"client": "/dev/pts/99", "session": "alpha", "confirmed": "yes"}, sidebar)
 			if err != nil {

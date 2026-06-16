@@ -21,7 +21,7 @@ const (
 
 type MetadataService struct {
 	Store                  ports.StateStorePort
-	Tmux                   ports.TmuxQueryPort
+	Query                  ports.QueryPort
 	Git                    ports.GitPort
 	Watcher                ports.FileWatcherPort
 	Refresher              ports.SidebarRefresherPort
@@ -46,10 +46,10 @@ type MetadataRepoSubscription struct {
 }
 
 func NewMetadataService() *MetadataService {
-	tmux := runtimeTmux()
+	tmux := runtimeMultiplexer()
 	return &MetadataService{
 		Store:                  sessionOrderStore(),
-		Tmux:                   tmux,
+		Query:                  tmux,
 		Git:                    runtimeGit(),
 		Watcher:                runtimeWatcher(),
 		Refresher:              tmux,
@@ -86,7 +86,7 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 	if !cfg.MetadataSublineEnabled {
 		return false, nil
 	}
-	if s.Store == nil || s.Tmux == nil || s.Git == nil {
+	if s.Store == nil || s.Query == nil || s.Git == nil {
 		return false, errors.New("metadata service missing dependency")
 	}
 	lockStore := s.LockStore
@@ -106,14 +106,14 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 	if err != nil {
 		return false, err
 	}
-	live, err := s.Tmux.ListSessions(ctx)
+	live, err := s.Query.ListSessions(ctx)
 	if err != nil {
 		return false, err
 	}
 
 	livePaths := make(map[string]string, len(live))
 	for _, session := range live {
-		if path, err := s.Tmux.SessionPath(ctx, session.Name); err == nil {
+		if path, err := s.Query.SessionPath(ctx, session.Name); err == nil {
 			livePaths[session.Name] = path
 		}
 	}
@@ -442,20 +442,20 @@ func (s *MetadataService) Reconcile(ctx context.Context, cfg ports.ConfigSnapsho
 	if !cfg.MetadataSublineEnabled {
 		return nil, nil
 	}
-	if s.Store == nil || s.Tmux == nil || s.Git == nil {
+	if s.Store == nil || s.Query == nil || s.Git == nil {
 		return nil, errors.New("metadata service missing dependency")
 	}
 	state, err := s.Store.Load(ctx, "tmux")
 	if err != nil {
 		return nil, err
 	}
-	live, err := s.Tmux.ListSessions(ctx)
+	live, err := s.Query.ListSessions(ctx)
 	if err != nil {
 		return nil, err
 	}
 	livePaths := make(map[string]string, len(live))
 	for _, session := range live {
-		if path, pathErr := s.Tmux.SessionPath(ctx, session.Name); pathErr == nil {
+		if path, pathErr := s.Query.SessionPath(ctx, session.Name); pathErr == nil {
 			livePaths[session.Name] = path
 		}
 	}

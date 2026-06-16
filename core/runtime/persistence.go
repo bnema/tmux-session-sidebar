@@ -40,11 +40,11 @@ type paneObservation struct {
 	Sampled     bool
 }
 
-// paneActivityQuery is an optional extension over ports.TmuxQueryPort that enables
+// paneActivityQuery is an optional extension over ports.QueryPort that enables
 // pane sampling. collectPaneObservations gracefully degrades to nil observations when
 // the query does not implement it.
 type paneActivityQuery interface {
-	ListPanes(ctx context.Context) ([]ports.TmuxPaneSnapshot, error)
+	ListPanes(ctx context.Context) ([]ports.PaneSnapshot, error)
 	CapturePaneText(ctx context.Context, paneID string, tailLines int) (string, error)
 }
 
@@ -65,12 +65,12 @@ func (s *Service) RestorePersistedSessions(ctx context.Context, serverID string,
 		report.SystemFailures["store"] = ErrMissingStateStore
 		return report
 	}
-	if s.tmuxQuery == nil {
-		report.SystemFailures["query"] = ErrMissingTmuxQuery
+	if s.query == nil {
+		report.SystemFailures["query"] = ErrMissingQuery
 		return report
 	}
-	if s.tmuxCtl == nil {
-		report.SystemFailures["control"] = ErrMissingTmuxControl
+	if s.control == nil {
+		report.SystemFailures["control"] = ErrMissingControl
 		return report
 	}
 
@@ -79,7 +79,7 @@ func (s *Service) RestorePersistedSessions(ctx context.Context, serverID string,
 		report.SystemFailures["load"] = err
 		return report
 	}
-	live, err := s.tmuxQuery.ListSessions(ctx)
+	live, err := s.query.ListSessions(ctx)
 	if err != nil {
 		report.SystemFailures["list"] = err
 		return report
@@ -96,7 +96,7 @@ func (s *Service) RestorePersistedSessions(ctx context.Context, serverID string,
 			continue
 		}
 		path := restorePath(metadata, home)
-		if err := s.tmuxCtl.CreateSession(ctx, name, path); err != nil {
+		if err := s.control.CreateSession(ctx, name, path); err != nil {
 			report.Failed[name] = err
 			continue
 		}
@@ -118,15 +118,15 @@ func (s *Service) CaptureSessionHeat(ctx context.Context, serverID string) error
 	if s.store == nil {
 		return ErrMissingStateStore
 	}
-	if s.tmuxQuery == nil {
-		return ErrMissingTmuxQuery
+	if s.query == nil {
+		return ErrMissingQuery
 	}
 
 	state, err := s.store.Load(ctx, serverID)
 	if err != nil {
 		return err
 	}
-	live, err := s.tmuxQuery.ListSessions(ctx)
+	live, err := s.query.ListSessions(ctx)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func (s *Service) CaptureLiveSessionsWithConfigProtected(ctx context.Context, se
 // captureLiveSessions is the shared implementation for all CaptureLiveSessions variants.
 // snapshot controls heat config and recent-session-order behavior: non-nil activates
 // captureHeatIntoState with the provided config and applyRecentSessionOrderAfterCapture;
-// nil loads heat config from tmux and skips recent-session-order.
+// nil loads heat config from multiplexer and skips recent-session-order.
 // protectEmpty controls whether a destructive-empty skip is applied: when true and no
 // persistable sessions are live but the persisted state is meaningful, the capture is
 // skipped to guard against overwriting restored state during startup/restore windows.
@@ -154,22 +154,22 @@ func (s *Service) captureLiveSessions(ctx context.Context, serverID string, snap
 	if s.store == nil {
 		return false, ErrMissingStateStore
 	}
-	if s.tmuxQuery == nil {
-		return false, ErrMissingTmuxQuery
+	if s.query == nil {
+		return false, ErrMissingQuery
 	}
 
 	state, err := s.store.Load(ctx, serverID)
 	if err != nil {
 		return false, err
 	}
-	live, err := s.tmuxQuery.ListSessions(ctx)
+	live, err := s.query.ListSessions(ctx)
 	if err != nil {
 		return false, err
 	}
 	if protectEmpty && persistableSessionCount(live) == 0 && persisted.IsMeaningful(state) {
 		return false, nil
 	}
-	state.Sessions = reconcileLiveSessionMetadata(ctx, s.tmuxQuery, live, state.Sessions)
+	state.Sessions = reconcileLiveSessionMetadata(ctx, s.query, live, state.Sessions)
 	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
 	state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
 	state.PinColors = reconcilePinColors(state.PinColors, live)
@@ -186,15 +186,15 @@ func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID str
 	if s.store == nil {
 		return ErrMissingStateStore
 	}
-	if s.tmuxQuery == nil {
-		return ErrMissingTmuxQuery
+	if s.query == nil {
+		return ErrMissingQuery
 	}
 
 	state, err := s.store.Load(ctx, serverID)
 	if err != nil {
 		return err
 	}
-	live, err := s.tmuxQuery.ListSessions(ctx)
+	live, err := s.query.ListSessions(ctx)
 	if err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func (s *Service) ResetTransientHeatState(ctx context.Context, serverID string) 
 	return nil
 }
 
-func reconcileLiveSessionMetadata(ctx context.Context, query ports.TmuxQueryPort, live []ports.TmuxSessionSnapshot, current map[string]ports.SessionMetadata) map[string]ports.SessionMetadata {
+func reconcileLiveSessionMetadata(ctx context.Context, query ports.QueryPort, live []ports.SessionSnapshot, current map[string]ports.SessionMetadata) map[string]ports.SessionMetadata {
 	next := make(map[string]ports.SessionMetadata, len(live))
 	for _, session := range live {
 		if !sessions.IsPersistableName(session.Name) {
@@ -246,7 +246,7 @@ func reconcileLiveSessionMetadata(ctx context.Context, query ports.TmuxQueryPort
 	return next
 }
 
-func reconcileSessionOrder(order []string, live []ports.TmuxSessionSnapshot) []string {
+func reconcileSessionOrder(order []string, live []ports.SessionSnapshot) []string {
 	liveNames := make([]string, 0, len(live))
 	for _, session := range live {
 		liveNames = append(liveNames, session.Name)
@@ -254,7 +254,7 @@ func reconcileSessionOrder(order []string, live []ports.TmuxSessionSnapshot) []s
 	return sessions.ApplyOrder(liveNames, order)
 }
 
-func reconcilePinnedSessions(pinned []string, live []ports.TmuxSessionSnapshot) []string {
+func reconcilePinnedSessions(pinned []string, live []ports.SessionSnapshot) []string {
 	liveNames := make([]string, 0, len(live))
 	for _, session := range live {
 		liveNames = append(liveNames, session.Name)
@@ -262,7 +262,7 @@ func reconcilePinnedSessions(pinned []string, live []ports.TmuxSessionSnapshot) 
 	return sessions.ReconcilePinned(pinned, liveNames)
 }
 
-func reconcilePinColors(colors map[string]string, live []ports.TmuxSessionSnapshot) map[string]string {
+func reconcilePinColors(colors map[string]string, live []ports.SessionSnapshot) map[string]string {
 	liveNames := make([]string, 0, len(live))
 	for _, session := range live {
 		liveNames = append(liveNames, session.Name)
@@ -272,7 +272,7 @@ func reconcilePinColors(colors map[string]string, live []ports.TmuxSessionSnapsh
 
 // persistableSessionCount returns the number of live sessions whose name
 // qualifies for persistence (valid, non-hidden, non-numeric).
-func persistableSessionCount(live []ports.TmuxSessionSnapshot) int {
+func persistableSessionCount(live []ports.SessionSnapshot) int {
 	count := 0
 	for _, s := range live {
 		if sessions.IsPersistableName(s.Name) {
@@ -291,11 +291,11 @@ func orderedPersistedSessionNames(state ports.PersistedState) []string {
 	return sessions.ApplyOrder(names, state.SessionOrder)
 }
 
-func applyRecentSessionOrder(state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg ports.ConfigSnapshot, now time.Time) {
+func applyRecentSessionOrder(state *ports.PersistedState, live []ports.SessionSnapshot, cfg ports.ConfigSnapshot, now time.Time) {
 	applyRecentSessionOrderAfterCapture(state, live, cfg, now, heatCaptureResult{captured: true, complete: true})
 }
 
-func applyRecentSessionOrderAfterCapture(state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg ports.ConfigSnapshot, now time.Time, capture heatCaptureResult) {
+func applyRecentSessionOrderAfterCapture(state *ports.PersistedState, live []ports.SessionSnapshot, cfg ports.ConfigSnapshot, now time.Time, capture heatCaptureResult) {
 	if state == nil || cfg.AutoSortRecentInterval <= 0 || !capture.captured {
 		return
 	}
@@ -399,7 +399,7 @@ func autoSortRecentLastRunAt(sidebar ports.SidebarState) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-func orderSessionsByRecentActivityPinned(order []string, live []ports.TmuxSessionSnapshot, heatStates map[string]heat.State, pinned []string) []string {
+func orderSessionsByRecentActivityPinned(order []string, live []ports.SessionSnapshot, heatStates map[string]heat.State, pinned []string) []string {
 	ordered := reconcileSessionOrder(order, live)
 	anchor := append([]string(nil), ordered...)
 	sort.SliceStable(ordered, func(i, j int) bool {
@@ -444,12 +444,12 @@ func usefulPath(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.PersistedState, live []ports.TmuxSessionSnapshot, cfg heatConfig) heatCaptureResult {
+func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.PersistedState, live []ports.SessionSnapshot, cfg heatConfig) heatCaptureResult {
 	if state == nil {
 		return heatCaptureResult{}
 	}
-	clients, clientsErr := s.tmuxQuery.ListClients(ctx)
-	observations, observationsErr := collectPaneObservations(ctx, s.tmuxQuery)
+	clients, clientsErr := s.query.ListClients(ctx)
+	observations, observationsErr := collectPaneObservations(ctx, s.query)
 	// Heat collection is best-effort: if ListClients or collectPaneObservations fails,
 	// return early so only reconcileLiveSessionHeat, state.Heat updates, and trace logging
 	// are skipped. Session metadata (Sessions, SessionOrder) is still persisted by callers.
@@ -472,7 +472,7 @@ func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.Persist
 	return heatCaptureResult{captured: true, complete: paneObservationsComplete(observations), completeSessions: paneObservationCompleteSessions(live, observations)}
 }
 
-func paneObservationCompleteSessions(live []ports.TmuxSessionSnapshot, observations []paneObservation) map[string]bool {
+func paneObservationCompleteSessions(live []ports.SessionSnapshot, observations []paneObservation) map[string]bool {
 	complete := make(map[string]bool, len(live))
 	for _, session := range live {
 		complete[session.Name] = true
@@ -521,17 +521,17 @@ func heatConfigFromSnapshot(snapshot ports.ConfigSnapshot) heatConfig {
 
 func (s *Service) loadHeatConfig(ctx context.Context) heatConfig {
 	cfg := heatConfigFromSnapshot(ports.ConfigSnapshot{})
-	if s.tmuxConfig == nil {
+	if s.config == nil {
 		return cfg
 	}
-	snapshot, err := s.tmuxConfig.LoadConfig(ctx)
+	snapshot, err := s.config.LoadConfig(ctx)
 	if err != nil {
 		return cfg
 	}
 	return heatConfigFromSnapshot(snapshot)
 }
 
-func collectPaneObservations(ctx context.Context, query ports.TmuxQueryPort) ([]paneObservation, error) {
+func collectPaneObservations(ctx context.Context, query ports.QueryPort) ([]paneObservation, error) {
 	sampler, ok := any(query).(paneActivityQuery)
 	if !ok {
 		return nil, nil
@@ -563,7 +563,7 @@ func fingerprintPaneText(text string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.TmuxSessionSnapshot, clients []ports.TmuxClientSnapshot, observations []paneObservation, now time.Time, halfLife time.Duration, staleAfter time.Duration) (map[string]heat.State, map[string]heat.Trace) {
+func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.SessionSnapshot, clients []ports.ClientSnapshot, observations []paneObservation, now time.Time, halfLife time.Duration, staleAfter time.Duration) (map[string]heat.State, map[string]heat.Trace) {
 	next := make(map[string]heat.State, len(current)+len(live))
 	traces := make(map[string]heat.Trace, len(live))
 	for name, state := range current {
@@ -610,7 +610,7 @@ func applyPaneObservations(state *heat.State, observations []paneObservation) bo
 	return heat.ApplyPaneObservations(state, paneObservations)
 }
 
-func visitedSessionNames(clients []ports.TmuxClientSnapshot, sessionNamesByID map[string]string) map[string]bool {
+func visitedSessionNames(clients []ports.ClientSnapshot, sessionNamesByID map[string]string) map[string]bool {
 	visited := make(map[string]bool, len(clients))
 	for _, client := range clients {
 		if !client.Attached {

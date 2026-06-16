@@ -76,6 +76,9 @@ func RuntimeScopeForProcess(ctx context.Context, process ports.ProcessPort) Runt
 	return runtimeScopeFromTmuxEnv(root, tmuxEnv)
 }
 
+// runtimeScopeFromTmuxEnv derives a RuntimeScope from the $TMUX environment
+// variable format (socket_path,pid). Part of the transitional tmux command
+// seam — this parses tmux-specific environment conventions.
 func runtimeScopeFromTmuxEnv(root string, tmuxEnv string) RuntimeScope {
 	fields := strings.Split(tmuxEnv, ",")
 	if len(fields) >= 2 && strings.TrimSpace(fields[0]) != "" && strings.TrimSpace(fields[1]) != "" {
@@ -113,6 +116,9 @@ func runtimeScopeFromIdentity(root string, socketPath string, pid string, identi
 	}
 }
 
+// queryTmuxServerIdentity shells out to tmux display-message to discover the
+// server socket path and PID for the current session. Part of the transitional
+// tmux command seam.
 func queryTmuxServerIdentity(ctx context.Context, process ports.ProcessPort) (string, string, bool) {
 	result, err := process.Exec(ctx, "tmux", []string{"display-message", "-p", "#{socket_path}\t#{pid}"})
 	if err != nil {

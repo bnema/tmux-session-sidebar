@@ -15,7 +15,7 @@ import (
 
 func TestColorSchemeServiceRunRefreshesFollowSystemSidebars(t *testing.T) {
 	source := mocks.NewMockSystemColorSchemePort(t)
-	tmux := mocks.NewMockTmuxConfigPort(t)
+	tmux := mocks.NewMockConfigPort(t)
 	refresher := mocks.NewMockSidebarRefresherPort(t)
 	changes := make(chan config.SystemColorSchemePreference, 1)
 	errs := make(chan error)
@@ -31,7 +31,7 @@ func TestColorSchemeServiceRunRefreshesFollowSystemSidebars(t *testing.T) {
 		refreshes.Add(1)
 	}).Return(nil).Once()
 
-	svc := ColorSchemeService{Source: source, Tmux: tmux, Refresher: refresher}
+	svc := ColorSchemeService{Source: source, Config: tmux, Refresher: refresher}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
@@ -55,7 +55,7 @@ func TestColorSchemeServiceRunIgnoresForcedModes(t *testing.T) {
 	for name, mode := range tests {
 		t.Run(name, func(t *testing.T) {
 			source := mocks.NewMockSystemColorSchemePort(t)
-			tmux := mocks.NewMockTmuxConfigPort(t)
+			tmux := mocks.NewMockConfigPort(t)
 			refresher := mocks.NewMockSidebarRefresherPort(t)
 			changes := make(chan config.SystemColorSchemePreference, 1)
 			errs := make(chan error)
@@ -70,7 +70,7 @@ func TestColorSchemeServiceRunIgnoresForcedModes(t *testing.T) {
 			tmux.EXPECT().LoadConfig(mock.Anything).Run(func(context.Context) {
 				configLoaded <- struct{}{}
 			}).Return(ports.ConfigSnapshot{ColorSchemeMode: mode}, nil).Once()
-			svc := ColorSchemeService{Source: source, Tmux: tmux, Refresher: refresher}
+			svc := ColorSchemeService{Source: source, Config: tmux, Refresher: refresher}
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			done := make(chan error, 1)
@@ -97,7 +97,7 @@ func TestColorSchemeServiceRunIgnoresForcedModes(t *testing.T) {
 
 func TestColorSchemeServiceRunRestartsWatcherAfterSourceError(t *testing.T) {
 	source := mocks.NewMockSystemColorSchemePort(t)
-	tmux := mocks.NewMockTmuxConfigPort(t)
+	tmux := mocks.NewMockConfigPort(t)
 	refresher := mocks.NewMockSidebarRefresherPort(t)
 	changes1 := make(chan config.SystemColorSchemePreference, 1)
 	errs1 := make(chan error, 1)
@@ -124,7 +124,7 @@ func TestColorSchemeServiceRunRestartsWatcherAfterSourceError(t *testing.T) {
 		refreshes.Add(1)
 	}).Return(nil).Once()
 
-	svc := ColorSchemeService{Source: source, Tmux: tmux, Refresher: refresher}
+	svc := ColorSchemeService{Source: source, Config: tmux, Refresher: refresher}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)

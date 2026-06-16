@@ -74,8 +74,8 @@ func TestServiceActionsRequireTmuxControl(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.act(&Service{}); !errors.Is(err, ErrMissingTmuxControl) {
-				t.Fatalf("action error = %v, want %v", err, ErrMissingTmuxControl)
+			if err := tt.act(&Service{}); !errors.Is(err, ErrMissingControl) {
+				t.Fatalf("action error = %v, want %v", err, ErrMissingControl)
 			}
 		})
 	}
@@ -104,8 +104,8 @@ func TestCreateSessionRollsBackWhenMetadataSaveFails(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			control := mocks.NewMockTmuxControlPort(t)
-			meta := mocks.NewMockTmuxMetadataPort(t)
+			control := mocks.NewMockControlPort(t)
+			meta := mocks.NewMockMetadataPort(t)
 			name := tt.name
 			path := "/tmp"
 			if tt.name == "project" {
@@ -125,8 +125,8 @@ func TestCreateSessionRollsBackWhenMetadataSaveFails(t *testing.T) {
 
 func TestCreateDetachedProjectSessionDoesNotSwitchClient(t *testing.T) {
 	ctx := context.Background()
-	control := mocks.NewMockTmuxControlPort(t)
-	meta := mocks.NewMockTmuxMetadataPort(t)
+	control := mocks.NewMockControlPort(t)
+	meta := mocks.NewMockMetadataPort(t)
 	plan := ProjectSessionPlan{SessionName: "project", ProjectPath: "/tmp/project", Create: true}
 
 	control.EXPECT().CreateSession(ctx, "project", "/tmp/project").Return(nil)
@@ -139,7 +139,7 @@ func TestCreateDetachedProjectSessionDoesNotSwitchClient(t *testing.T) {
 
 func TestRenameSessionRequiresExistingOldName(t *testing.T) {
 	ctx := context.Background()
-	control := mocks.NewMockTmuxControlPort(t)
+	control := mocks.NewMockControlPort(t)
 	service := NewService(nil, nil, control, nil)
 	err := service.RenameSession(ctx, []sessions.View{{Name: "alpha"}, {Name: "beta"}}, "missing", "gamma")
 	if !errors.Is(err, coreerrors.ErrMissingSession) {

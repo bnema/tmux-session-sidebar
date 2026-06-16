@@ -21,11 +21,11 @@ func TestCaptureVisitedAgentAttentionPersistsAttachedClientBaselineWithoutAttent
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 
 	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
-	query.EXPECT().ListClients(ctx).Return([]ports.TmuxClientSnapshot{{ID: "%client", CurrentSessionID: "$1", Attached: true}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
+	query.EXPECT().ListClients(ctx).Return([]ports.ClientSnapshot{{ID: "%client", CurrentSessionID: "$1", Attached: true}}, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		return decodePersistedClientSessionsForTest(t, state.Clients)["%client"] == "$1" && len(state.AgentAttention) == 0
 	})).Return(nil)
@@ -39,7 +39,7 @@ func TestCaptureVisitedAgentAttentionDoesNotClearAlreadyCurrentSession(t *testin
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 	initial := ports.PersistedState{
 		AgentAttention: attention.EncodeStateMap(map[string]attention.State{
 			"$1": {Attention: true, UpdatedAt: time.Now().UTC()},
@@ -48,8 +48,8 @@ func TestCaptureVisitedAgentAttentionDoesNotClearAlreadyCurrentSession(t *testin
 	}
 
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
-	query.EXPECT().ListClients(ctx).Return([]ports.TmuxClientSnapshot{{ID: "%client", CurrentSessionID: "$1", Attached: true}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
+	query.EXPECT().ListClients(ctx).Return([]ports.ClientSnapshot{{ID: "%client", CurrentSessionID: "$1", Attached: true}}, nil)
 
 	if err := NewService(nil, query, nil, store).CaptureVisitedAgentAttention(ctx, serverID); err != nil {
 		t.Fatalf("CaptureVisitedAgentAttention error: %v", err)
@@ -60,13 +60,13 @@ func TestCaptureVisitedAgentAttentionClearsAfterLaterRevisit(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 	initial := ports.PersistedState{AgentAttention: attention.EncodeStateMap(map[string]attention.State{
 		"$live": {Attention: true},
 	}), Clients: encodePersistedClientSessionsForTest(t, map[string]string{"%client": "$other"})}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{ID: "$live", Name: "alpha"}, {ID: "$other", Name: "beta"}}, nil)
-	query.EXPECT().ListClients(ctx).Return([]ports.TmuxClientSnapshot{{ID: "%client", CurrentSessionID: "$live", Attached: true}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{ID: "$live", Name: "alpha"}, {ID: "$other", Name: "beta"}}, nil)
+	query.EXPECT().ListClients(ctx).Return([]ports.ClientSnapshot{{ID: "%client", CurrentSessionID: "$live", Attached: true}}, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		decoded := attention.DecodeStateMap(state.AgentAttention)
 		sessionState, ok := decoded["$live"]
@@ -82,8 +82,8 @@ func TestRecordAgentAttentionEventKeysBySessionIDAndLatchesWhileViewedInitially(
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
+	query := mocks.NewMockQueryPort(t)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
 	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		decoded := attention.DecodeStateMap(state.AgentAttention)
@@ -110,7 +110,7 @@ func TestRecordAgentAttentionEventDoesNotRelatchAfterRevisitWhileCurrent(t *test
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 	visitedAt := time.Now().UTC().Add(-time.Minute)
 	updatedAt := visitedAt.Add(30 * time.Second)
 	initial := ports.PersistedState{AgentAttention: attention.EncodeStateMap(map[string]attention.State{
@@ -122,8 +122,8 @@ func TestRecordAgentAttentionEventDoesNotRelatchAfterRevisitWhileCurrent(t *test
 			Panes:               map[string]attention.PaneState{"%2": {Agent: "codex", UpdatedAt: visitedAt}},
 		},
 	})}
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
-	query.EXPECT().ListClients(ctx).Return([]ports.TmuxClientSnapshot{{ID: "%client", CurrentSessionID: "$1", Attached: true}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
+	query.EXPECT().ListClients(ctx).Return([]ports.ClientSnapshot{{ID: "%client", CurrentSessionID: "$1", Attached: true}}, nil)
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		decoded := attention.DecodeStateMap(state.AgentAttention)
@@ -150,13 +150,13 @@ func TestCaptureVisitedAgentAttentionRearmsCurrentAcknowledgedOnLaterRevisit(t *
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 	initial := ports.PersistedState{AgentAttention: attention.EncodeStateMap(map[string]attention.State{
 		"$1": {CurrentAcknowledged: false},
 	}), Clients: encodePersistedClientSessionsForTest(t, map[string]string{"%client": "$2"})}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}, {ID: "$2", Name: "beta"}}, nil)
-	query.EXPECT().ListClients(ctx).Return([]ports.TmuxClientSnapshot{{ID: "%client", CurrentSessionID: "$1", Attached: true}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}, {ID: "$2", Name: "beta"}}, nil)
+	query.EXPECT().ListClients(ctx).Return([]ports.ClientSnapshot{{ID: "%client", CurrentSessionID: "$1", Attached: true}}, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		decoded := attention.DecodeStateMap(state.AgentAttention)
 		sessionState := decoded["$1"]
@@ -172,10 +172,10 @@ func TestCaptureVisitedAgentAttentionClearsClientBaselineOnListClientsError(t *t
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 	initial := ports.PersistedState{Clients: encodePersistedClientSessionsForTest(t, map[string]string{"%client": "$1"})}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
 	query.EXPECT().ListClients(ctx).Return(nil, errors.New("tmux unavailable"))
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		return state.Clients == nil
@@ -190,13 +190,13 @@ func TestCaptureVisitedAgentAttentionPrunesMissingSessions(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
-	query := mocks.NewMockTmuxQueryPort(t)
+	query := mocks.NewMockQueryPort(t)
 	initial := ports.PersistedState{AgentAttention: attention.EncodeStateMap(map[string]attention.State{
 		"$live": {Attention: true},
 		"$gone": {Attention: true},
 	})}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
-	query.EXPECT().ListSessions(ctx).Return([]ports.TmuxSessionSnapshot{{ID: "$live", Name: "alpha"}}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{ID: "$live", Name: "alpha"}}, nil)
 	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
 		decoded := attention.DecodeStateMap(state.AgentAttention)

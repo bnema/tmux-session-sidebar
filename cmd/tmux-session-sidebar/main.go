@@ -33,10 +33,10 @@ var (
 )
 
 func buildRuntimeRouter(ctx context.Context, runner ports.ProcessPort) (app.Router, app.RuntimeScope) {
-	tmux := tmuxcli.Client{Process: runner}
+	tmuxClient := tmuxcli.Client{Process: runner}
 	git := gitcli.Git{Process: runner}
 	app.SetRuntimeDependencies(app.RuntimeDependencies{
-		Tmux:           tmux,
+		Multiplexer:    tmuxClient,
 		Git:            git,
 		ReleaseChecker: githubrelease.Client{},
 		WatcherFactory: func() ports.FileWatcherPort { return watchfsnotify.Watcher{} },
@@ -62,7 +62,7 @@ func buildRuntimeRouter(ctx context.Context, runner ports.ProcessPort) (app.Rout
 	scope := app.RuntimeScopeForProcess(ctx, runner)
 	app.SetRuntimeScope(scope)
 	daemonLauncher := daemonctl.Launcher{Process: runner, StateDir: scope.Dir}
-	return app.NewRuntimeRouterWithDaemon(tmux, ipcunix.NewClient(scope.IPCSocketPath), ipcunix.NewServer(scope.IPCSocketPath), daemonLauncher), scope
+	return app.NewRuntimeRouterWithDaemon(tmuxClient, ipcunix.NewClient(scope.IPCSocketPath), ipcunix.NewServer(scope.IPCSocketPath), daemonLauncher), scope
 }
 
 func run(args []string, stdout io.Writer, stderr io.Writer) int {

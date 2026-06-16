@@ -10,29 +10,29 @@ import (
 )
 
 var (
-	ErrMissingTmuxConfig  = errors.New("missing tmux config dependency")
-	ErrMissingTmuxQuery   = errors.New("missing tmux query dependency")
-	ErrMissingTmuxControl = errors.New("missing tmux control dependency")
-	ErrMissingTmuxSidebar = errors.New("missing tmux sidebar dependency")
-	ErrMissingStateStore  = errors.New("missing state store dependency")
+	ErrMissingConfig     = errors.New("missing config dependency")
+	ErrMissingQuery      = errors.New("missing query dependency")
+	ErrMissingControl    = errors.New("missing control dependency")
+	ErrMissingSidebar    = errors.New("missing sidebar dependency")
+	ErrMissingStateStore = errors.New("missing state store dependency")
 )
 
 func (s *Service) Snapshot(ctx context.Context) (State, error) {
-	if s.tmuxConfig == nil {
-		return State{}, ErrMissingTmuxConfig
+	if s.config == nil {
+		return State{}, ErrMissingConfig
 	}
-	if s.tmuxQuery == nil {
-		return State{}, ErrMissingTmuxQuery
+	if s.query == nil {
+		return State{}, ErrMissingQuery
 	}
-	cfg, err := s.tmuxConfig.LoadConfig(ctx)
+	cfg, err := s.config.LoadConfig(ctx)
 	if err != nil {
 		return State{}, err
 	}
-	liveSessions, err := s.tmuxQuery.ListSessions(ctx)
+	liveSessions, err := s.query.ListSessions(ctx)
 	if err != nil {
 		return State{}, err
 	}
-	liveClients, err := s.tmuxQuery.ListClients(ctx)
+	liveClients, err := s.query.ListClients(ctx)
 	if err != nil {
 		return State{}, err
 	}

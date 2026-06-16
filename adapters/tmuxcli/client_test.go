@@ -54,10 +54,10 @@ func TestListSessionsParsesTmuxRows(t *testing.T) {
 	tests := []struct {
 		name string
 		out  string
-		want []ports.TmuxSessionSnapshot
+		want []ports.SessionSnapshot
 	}{
-		{name: "one row", out: "$1\talpha\t2\t1\n", want: []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha", WindowCount: 2, AttachedCount: 1}}},
-		{name: "skips malformed", out: "bad\n$2\tbeta\t1\t0\n$3\tbad\tx\t0\n", want: []ports.TmuxSessionSnapshot{{ID: "$2", Name: "beta", WindowCount: 1, AttachedCount: 0}}},
+		{name: "one row", out: "$1\talpha\t2\t1\n", want: []ports.SessionSnapshot{{ID: "$1", Name: "alpha", WindowCount: 2, AttachedCount: 1}}},
+		{name: "skips malformed", out: "bad\n$2\tbeta\t1\t0\n$3\tbad\tx\t0\n", want: []ports.SessionSnapshot{{ID: "$2", Name: "beta", WindowCount: 1, AttachedCount: 0}}},
 	}
 
 	for _, tt := range tests {
@@ -79,10 +79,10 @@ func TestListClientsParsesTmuxRows(t *testing.T) {
 	tests := []struct {
 		name string
 		out  string
-		want []ports.TmuxClientSnapshot
+		want []ports.ClientSnapshot
 	}{
-		{name: "attached client", out: "%1\t$1\t@1\t%9\talpha\n", want: []ports.TmuxClientSnapshot{{ID: "%1", CurrentSessionID: "$1", CurrentWindowID: "@1", CurrentPaneID: "%9", Attached: true}}},
-		{name: "detached client", out: "%1\t$1\t@1\t%9\t\n", want: []ports.TmuxClientSnapshot{{ID: "%1", CurrentSessionID: "$1", CurrentWindowID: "@1", CurrentPaneID: "%9", Attached: false}}},
+		{name: "attached client", out: "%1\t$1\t@1\t%9\talpha\n", want: []ports.ClientSnapshot{{ID: "%1", CurrentSessionID: "$1", CurrentWindowID: "@1", CurrentPaneID: "%9", Attached: true}}},
+		{name: "detached client", out: "%1\t$1\t@1\t%9\t\n", want: []ports.ClientSnapshot{{ID: "%1", CurrentSessionID: "$1", CurrentWindowID: "@1", CurrentPaneID: "%9", Attached: false}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -102,19 +102,19 @@ func TestListPanesParsesTmuxRows(t *testing.T) {
 	tests := []struct {
 		name string
 		out  string
-		want []ports.TmuxPaneSnapshot
+		want []ports.PaneSnapshot
 	}{
 		{
 			name: "valid rows",
 			out:  "%9\t$1\talpha\t@1\t/tmp/alpha\tbash\t0\t\t0\n%10\t$2\tbeta\t@2\t/tmp/beta\tpi\t1\t130\t1\n",
-			want: []ports.TmuxPaneSnapshot{
+			want: []ports.PaneSnapshot{
 				{PaneID: "%9", SessionID: "$1", SessionName: "alpha", WindowID: "@1", CurrentPath: "/tmp/alpha", CurrentCmd: "bash", Dead: false, Sidebar: false},
 				{PaneID: "%10", SessionID: "$2", SessionName: "beta", WindowID: "@2", CurrentPath: "/tmp/beta", CurrentCmd: "pi", Dead: true, DeadStatus: "130", Sidebar: true},
 			},
 		},
 		{name: "empty output", out: "", want: nil},
-		{name: "skips malformed rows", out: "%9\t$1\talpha\n%10\t$2\tbeta\t@2\t/tmp/beta\tpi\t1\t130\t1\n", want: []ports.TmuxPaneSnapshot{{PaneID: "%10", SessionID: "$2", SessionName: "beta", WindowID: "@2", CurrentPath: "/tmp/beta", CurrentCmd: "pi", Dead: true, DeadStatus: "130", Sidebar: true}}},
-		{name: "mixed valid and malformed rows", out: "bad\n%9\t$1\talpha\t@1\t/tmp/alpha\tbash\t0\t\t0\nshort\trow\n", want: []ports.TmuxPaneSnapshot{{PaneID: "%9", SessionID: "$1", SessionName: "alpha", WindowID: "@1", CurrentPath: "/tmp/alpha", CurrentCmd: "bash", Dead: false, Sidebar: false}}},
+		{name: "skips malformed rows", out: "%9\t$1\talpha\n%10\t$2\tbeta\t@2\t/tmp/beta\tpi\t1\t130\t1\n", want: []ports.PaneSnapshot{{PaneID: "%10", SessionID: "$2", SessionName: "beta", WindowID: "@2", CurrentPath: "/tmp/beta", CurrentCmd: "pi", Dead: true, DeadStatus: "130", Sidebar: true}}},
+		{name: "mixed valid and malformed rows", out: "bad\n%9\t$1\talpha\t@1\t/tmp/alpha\tbash\t0\t\t0\nshort\trow\n", want: []ports.PaneSnapshot{{PaneID: "%9", SessionID: "$1", SessionName: "alpha", WindowID: "@1", CurrentPath: "/tmp/alpha", CurrentCmd: "bash", Dead: false, Sidebar: false}}},
 	}
 
 	for _, tt := range tests {
@@ -237,8 +237,8 @@ func TestWindowIDTreatsEmptyOutputForConcreteWindowTargetAsTargetGone(t *testing
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@351", "#{window_id}"}).Return(ports.Result{Stdout: "\n"}, nil)
 
 	_, err := (Client{Process: process}).WindowID(ctx, "@351")
-	if !errors.Is(err, ports.ErrTmuxTargetGone) {
-		t.Fatalf("WindowID error = %v, want ErrTmuxTargetGone", err)
+	if !errors.Is(err, ports.ErrMultiplexerTargetGone) {
+		t.Fatalf("WindowID error = %v, want ErrMultiplexerTargetGone", err)
 	}
 }
 
@@ -1915,7 +1915,7 @@ func TestFindSingletonSidebarCleansUpDeadPaneReferences(t *testing.T) {
 	}
 }
 
-func assertSessions(t *testing.T, got []ports.TmuxSessionSnapshot, want []ports.TmuxSessionSnapshot) {
+func assertSessions(t *testing.T, got []ports.SessionSnapshot, want []ports.SessionSnapshot) {
 	t.Helper()
 	if len(got) != len(want) {
 		t.Fatalf("len = %d, want %d", len(got), len(want))
@@ -1927,7 +1927,7 @@ func assertSessions(t *testing.T, got []ports.TmuxSessionSnapshot, want []ports.
 	}
 }
 
-func assertClients(t *testing.T, got []ports.TmuxClientSnapshot, want []ports.TmuxClientSnapshot) {
+func assertClients(t *testing.T, got []ports.ClientSnapshot, want []ports.ClientSnapshot) {
 	t.Helper()
 	if len(got) != len(want) {
 		t.Fatalf("len = %d, want %d", len(got), len(want))

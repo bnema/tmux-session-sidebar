@@ -16,7 +16,7 @@ const (
 func TestReconcileLiveSessionHeatDoesNotTreatFirstPaneObservationAsActivity(t *testing.T) {
 	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
 	got, traces := reconcileLiveSessionHeat(nil,
-		[]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}},
+		[]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}},
 		nil,
 		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true}},
 		now,
@@ -45,7 +45,7 @@ func TestReconcileLiveSessionHeatRecordsPaneActivity(t *testing.T) {
 		"alpha": {UpdatedAt: now.Add(-time.Minute), Panes: map[string]heat.PaneState{"%1": {Fingerprint: "fp-0"}}},
 	}
 	got, traces := reconcileLiveSessionHeat(current,
-		[]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}},
+		[]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}},
 		nil,
 		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true}},
 		now,
@@ -82,7 +82,7 @@ func TestReconcileLiveSessionHeatDoesNotTreatQuietOutputAsActivity(t *testing.T)
 			Panes:            map[string]heat.PaneState{"%1": {Fingerprint: "fp-1"}},
 		},
 	}
-	live := []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}
+	live := []ports.SessionSnapshot{{ID: "$1", Name: "alpha"}}
 	observations := []paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true}}
 
 	got, traces := reconcileLiveSessionHeat(current, live, nil, observations, now.Add(3*time.Minute), testHalfLife, testStaleAfter)
@@ -106,8 +106,8 @@ func TestReconcileLiveSessionHeatUpdatesVisitSignal(t *testing.T) {
 			Panes:            map[string]heat.PaneState{"%2": {Fingerprint: "fp-2"}},
 		},
 	}
-	live := []ports.TmuxSessionSnapshot{{ID: "$2", Name: "beta"}}
-	clients := []ports.TmuxClientSnapshot{{ID: "%client", CurrentSessionID: "$2", Attached: true}}
+	live := []ports.SessionSnapshot{{ID: "$2", Name: "beta"}}
+	clients := []ports.ClientSnapshot{{ID: "%client", CurrentSessionID: "$2", Attached: true}}
 	observations := []paneObservation{{SessionID: "$2", SessionName: "beta", PaneID: "%2", Fingerprint: "fp-2", Sampled: true}}
 
 	got, traces := reconcileLiveSessionHeat(current, live, clients, observations, now.Add(3*time.Minute), testHalfLife, testStaleAfter)
@@ -162,7 +162,7 @@ func TestReconcileLiveSessionHeatBootstrapsExistingStateWithoutFalseActivity(t *
 	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
 	got, _ := reconcileLiveSessionHeat(
 		map[string]heat.State{"alpha": {Score: 600, UpdatedAt: now, LastActiveAt: now}},
-		[]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}},
+		[]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}},
 		nil,
 		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Fingerprint: "fp-1", Sampled: true}},
 		now,
@@ -179,7 +179,7 @@ func TestReconcileLiveSessionHeatKeepsUnsampledPaneBaseline(t *testing.T) {
 	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
 	got, _ := reconcileLiveSessionHeat(
 		map[string]heat.State{"alpha": {UpdatedAt: now, Panes: map[string]heat.PaneState{"%1": {Fingerprint: "fp-1"}}}},
-		[]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}},
+		[]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}},
 		nil,
 		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%1", Sampled: false}},
 		now.Add(time.Minute),
@@ -194,7 +194,7 @@ func TestReconcileLiveSessionHeatKeepsUnsampledPaneBaseline(t *testing.T) {
 
 func TestReconcileLiveSessionHeatContinuesTrackingPaneChangesAcrossPersistedTicks(t *testing.T) {
 	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
-	live := []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}
+	live := []ports.SessionSnapshot{{ID: "$1", Name: "alpha"}}
 
 	first, _ := reconcileLiveSessionHeat(
 		nil,
@@ -230,7 +230,7 @@ func TestReconcileLiveSessionHeatContinuesTrackingPaneChangesAcrossPersistedTick
 
 func TestReconcileLiveSessionHeatDoesNotPreserveQuietTimerAcrossPersistedTicks(t *testing.T) {
 	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
-	live := []ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}}
+	live := []ports.SessionSnapshot{{ID: "$1", Name: "alpha"}}
 
 	first, _ := reconcileLiveSessionHeat(
 		nil,
@@ -274,7 +274,7 @@ func TestReconcileLiveSessionHeatPrunesMissingPaneFingerprints(t *testing.T) {
 	}
 
 	got, _ := reconcileLiveSessionHeat(current,
-		[]ports.TmuxSessionSnapshot{{ID: "$1", Name: "alpha"}},
+		[]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}},
 		nil,
 		[]paneObservation{{SessionID: "$1", SessionName: "alpha", PaneID: "%live", Fingerprint: "same", Sampled: true}},
 		now.Add(time.Minute),

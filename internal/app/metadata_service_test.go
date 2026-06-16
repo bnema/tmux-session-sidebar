@@ -18,11 +18,11 @@ func TestMetadataServiceCaptureAcceptsFreshLiveResultWithoutPersistedSession(t *
 		Sessions: map[string]ports.SessionMetadata{},
 		Metadata: map[string]ports.GitStatus{"gone": {RepoRoot: "/old", Branch: "main", Modified: 1}},
 	}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
 	git := metadataFakeGit{statuses: map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "feat", Modified: 1}}}
 	svc := MetadataService{
 		Store:                store,
-		Tmux:                 tmux,
+		Query:                tmux,
 		Git:                  git,
 		LockStore:            metadataDirectLock(store),
 		GitStatusTimeout:     time.Second,
@@ -49,12 +49,12 @@ func TestMetadataServiceCaptureUsesProjectPathWhenLivePathTemporarilyLeavesRepo(
 		Sessions: map[string]ports.SessionMetadata{"alpha": {Kind: "project", ProjectPath: "/repo", LastPath: "/home/user/Downloads"}},
 		Metadata: map[string]ports.GitStatus{"alpha": {RepoRoot: "/repo", Branch: "old", Clean: true}},
 	}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/home/user/Downloads"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/home/user/Downloads"}}
 	git := metadataFakeGit{
 		statuses:   map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "main", Clean: true}},
 		statusErrs: map[string]error{"/home/user/Downloads": ports.ErrNotGitRepository},
 	}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
 
 	changed, err := svc.Capture(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
 	if err != nil {
@@ -84,13 +84,13 @@ func TestNewMetadataServiceUsesCLIGitBackend(t *testing.T) {
 
 func TestMetadataServiceCaptureAndRefreshPublishesReadyMetadataBeforeSlowRepoFinishes(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, paths: map[string]string{"alpha": "/fast", "beta": "/slow"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, paths: map[string]string{"alpha": "/fast", "beta": "/slow"}}
 	git := newBlockingMetadataGit(map[string]ports.GitStatus{
 		"/fast": {RepoRoot: "/fast", Branch: "main", Modified: 1},
 		"/slow": {RepoRoot: "/slow", Branch: "dev", Modified: 2},
 	}, "/slow")
 	refresher := &metadataFakeRefresher{}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, Refresher: refresher, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 2}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, Refresher: refresher, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 2}
 
 	done := make(chan error, 1)
 	go func() { done <- svc.CaptureAndRefresh(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true}) }()
@@ -138,9 +138,9 @@ func TestMetadataServiceCapturePersistsStaleMetadataPruneWhenLiveStatusUnchanged
 		"alpha": {RepoRoot: "/repo", Branch: "main", Modified: 1},
 		"gone":  {RepoRoot: "/gone", Branch: "old", Modified: 9},
 	}}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
 	git := metadataFakeGit{statuses: map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "main", Modified: 1}}}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
 
 	changed, err := svc.Capture(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
 	if err != nil {
@@ -164,7 +164,7 @@ func TestMetadataServiceCapturePrunesStaleMetadataWithoutStatusResults(t *testin
 	}}}
 	tmux := metadataFakeTmux{sessions: nil, paths: map[string]string{}}
 	git := metadataFakeGit{}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
 
 	changed, err := svc.Capture(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
 	if err != nil {
@@ -183,10 +183,10 @@ func TestMetadataServiceCapturePrunesStaleMetadataWithoutStatusResults(t *testin
 
 func TestMetadataServiceCaptureAndRefreshCleansNotifierOnSaveError(t *testing.T) {
 	store := &metadataFailingSaveStore{metadataFakeStore: metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
 	git := metadataFakeGit{statuses: map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "main", Modified: 1}}}
 	refresher := &metadataFakeRefresher{}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, Refresher: refresher, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, Refresher: refresher, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
 
 	if err := svc.CaptureAndRefresh(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true}); err == nil {
 		t.Fatal("CaptureAndRefresh error = nil, want save error")
@@ -199,7 +199,7 @@ func TestMetadataServiceCaptureAndRefreshCleansNotifierOnSaveError(t *testing.T)
 func TestMetadataServiceCaptureAndRefreshDoesNotBlockResultDrainOnSlowRefresh(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}
 	tmux := metadataFakeTmux{
-		sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}},
+		sessions: []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}},
 		paths:    map[string]string{"alpha": "/alpha", "beta": "/beta", "gamma": "/gamma"},
 	}
 	git := metadataFakeGit{statuses: map[string]ports.GitStatus{
@@ -208,7 +208,7 @@ func TestMetadataServiceCaptureAndRefreshDoesNotBlockResultDrainOnSlowRefresh(t 
 		"/gamma": {RepoRoot: "/gamma", Branch: "feat", Modified: 3},
 	}}
 	refresher := newBlockingMetadataRefresher()
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, Refresher: refresher, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 3}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, Refresher: refresher, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 3}
 
 	done := make(chan error, 1)
 	go func() { done <- svc.CaptureAndRefresh(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true}) }()
@@ -234,10 +234,10 @@ func TestMetadataServiceCaptureAndRefreshDoesNotBlockResultDrainOnSlowRefresh(t 
 
 func TestMetadataServiceCaptureAndRefreshRefreshesOnlyWhenMetadataChanges(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Metadata: map[string]ports.GitStatus{}}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
 	git := metadataFakeGit{statuses: map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "feat", Modified: 1}}}
 	refresher := &metadataFakeRefresher{}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, Refresher: refresher, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, Refresher: refresher, LockStore: metadataDirectLock(store), GitStatusTimeout: time.Second, GitStatusConcurrency: 1}
 
 	if err := svc.CaptureAndRefresh(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true}); err != nil {
 		t.Fatalf("CaptureAndRefresh first error: %v", err)
@@ -317,15 +317,15 @@ func metadataDirectLock(store ports.StateStorePort) func(context.Context, func(p
 }
 
 type metadataFakeTmux struct {
-	sessions []ports.TmuxSessionSnapshot
+	sessions []ports.SessionSnapshot
 	paths    map[string]string
 }
 
 func (t metadataFakeTmux) ServerID(ctx context.Context) (string, error) { return "tmux", nil }
-func (t metadataFakeTmux) ListSessions(ctx context.Context) ([]ports.TmuxSessionSnapshot, error) {
+func (t metadataFakeTmux) ListSessions(ctx context.Context) ([]ports.SessionSnapshot, error) {
 	return t.sessions, nil
 }
-func (t metadataFakeTmux) ListClients(ctx context.Context) ([]ports.TmuxClientSnapshot, error) {
+func (t metadataFakeTmux) ListClients(ctx context.Context) ([]ports.ClientSnapshot, error) {
 	return nil, nil
 }
 func (t metadataFakeTmux) CurrentPanePath(ctx context.Context, clientID string) (string, error) {
@@ -468,7 +468,7 @@ func (r *blockingMetadataRefresher) release() {
 
 func TestMetadataServiceReconcileBuildsRepoSubscriptions(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, paths: map[string]string{"alpha": "/repo/a", "beta": "/repo/b"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, paths: map[string]string{"alpha": "/repo/a", "beta": "/repo/b"}}
 	git := metadataFakeGit{infos: map[string]ports.GitRepoInfo{
 		"/repo/a": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"},
 		"/repo/b": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"},
@@ -476,7 +476,7 @@ func TestMetadataServiceReconcileBuildsRepoSubscriptions(t *testing.T) {
 		"/repo/a": {RepoRoot: "/repo", WorktreeRoot: "/repo", Files: []string{"/repo/.git/HEAD"}, Dirs: []string{"/repo"}},
 		"/repo/b": {RepoRoot: "/repo", WorktreeRoot: "/repo", Files: []string{"/repo/.git/HEAD"}, Dirs: []string{"/repo"}},
 	}}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store)}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, LockStore: metadataDirectLock(store)}
 
 	subs, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
 	if err != nil {
@@ -494,13 +494,13 @@ func TestMetadataServiceReconcileUsesProjectPathWhenLivePathTemporarilyLeavesRep
 	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{
 		"alpha": {Kind: "project", ProjectPath: "/repo", LastPath: "/home/user/Downloads"},
 	}}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/home/user/Downloads"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/home/user/Downloads"}}
 	git := metadataFakeGit{
 		infoErrs: map[string]error{"/home/user/Downloads": ports.ErrNotGitRepository},
 		infos:    map[string]ports.GitRepoInfo{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"}},
 		targets:  map[string]ports.GitWatchTargets{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", Dirs: []string{"/repo"}}},
 	}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store)}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, LockStore: metadataDirectLock(store)}
 
 	subs, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
 	if err != nil {
@@ -535,7 +535,7 @@ func TestMetadataServiceCaptureRepoUpdatesMappedSessionsAndRefreshesOnChange(t *
 
 func TestMetadataServiceRunWatchesDebouncesAndCapturesRepo(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
 	git := metadataFakeGit{
 		infos:    map[string]ports.GitRepoInfo{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"}},
 		targets:  map[string]ports.GitWatchTargets{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", Files: []string{"/repo/.git/HEAD"}, Dirs: []string{"/repo"}}},
@@ -543,7 +543,7 @@ func TestMetadataServiceRunWatchesDebouncesAndCapturesRepo(t *testing.T) {
 	}
 	watcher := newMetadataFakeWatcher()
 	refresher := &metadataFakeRefresher{}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, Watcher: watcher, Refresher: refresher, LockStore: metadataDirectLock(store), Debounce: time.Millisecond}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, Watcher: watcher, Refresher: refresher, LockStore: metadataDirectLock(store), Debounce: time.Millisecond}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
@@ -601,7 +601,7 @@ func eventually(t *testing.T, ok func() bool) {
 
 func TestMetadataServiceRunCoalescesBurstEventsIntoOneRepoCapture(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
 	var statusCalls atomic.Int64
 	git := metadataFakeGit{
 		infos:       map[string]ports.GitRepoInfo{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"}},
@@ -611,7 +611,7 @@ func TestMetadataServiceRunCoalescesBurstEventsIntoOneRepoCapture(t *testing.T) 
 	}
 	watcher := newMetadataFakeWatcher()
 	refresher := &metadataFakeRefresher{}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, Watcher: watcher, Refresher: refresher, LockStore: metadataDirectLock(store), Debounce: 10 * time.Millisecond}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, Watcher: watcher, Refresher: refresher, LockStore: metadataDirectLock(store), Debounce: 10 * time.Millisecond}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
@@ -763,13 +763,13 @@ func TestMetadataServiceCaptureRepoDeletesMetadataWhenRepoDisappears(t *testing.
 
 func TestMetadataServiceReconcileSkipsUnexpectedRepoInfoErrors(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, paths: map[string]string{"alpha": "/bad", "beta": "/good"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, paths: map[string]string{"alpha": "/bad", "beta": "/good"}}
 	git := metadataFakeGit{
 		infoErrs: map[string]error{"/bad": errors.New("boom")},
 		infos:    map[string]ports.GitRepoInfo{"/good": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"}},
 		targets:  map[string]ports.GitWatchTargets{"/good": {RepoRoot: "/repo", WorktreeRoot: "/repo", Dirs: []string{"/repo"}}},
 	}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store)}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, LockStore: metadataDirectLock(store)}
 
 	subs, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
 	if err != nil {
@@ -782,13 +782,13 @@ func TestMetadataServiceReconcileSkipsUnexpectedRepoInfoErrors(t *testing.T) {
 
 func TestMetadataServiceReconcileSkipsUnexpectedWatchTargetErrors(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
-	tmux := metadataFakeTmux{sessions: []ports.TmuxSessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, paths: map[string]string{"alpha": "/bad", "beta": "/good"}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, paths: map[string]string{"alpha": "/bad", "beta": "/good"}}
 	git := metadataFakeGit{
 		infos:      map[string]ports.GitRepoInfo{"/bad": {RepoRoot: "/bad", WorktreeRoot: "/bad"}, "/good": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"}},
 		targetErrs: map[string]error{"/bad": errors.New("boom")},
 		targets:    map[string]ports.GitWatchTargets{"/good": {RepoRoot: "/repo", WorktreeRoot: "/repo", Dirs: []string{"/repo"}}},
 	}
-	svc := MetadataService{Store: store, Tmux: tmux, Git: git, LockStore: metadataDirectLock(store)}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, LockStore: metadataDirectLock(store)}
 
 	subs, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
 	if err != nil {

@@ -8,11 +8,11 @@ pkgname: mocks
 packages:
   github.com/bnema/tmux-session-sidebar/ports:
     interfaces:
-      TmuxConfigPort:
-      TmuxQueryPort:
-      TmuxControlPort:
-      TmuxSidebarPort:
-      TmuxMetadataPort:
+      ConfigPort:
+      QueryPort:
+      ControlPort:
+      SidebarPort:
+      MetadataPort:
       IPCClientPort:
       IPCServerPort:
       IPCHandler:

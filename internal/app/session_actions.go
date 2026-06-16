@@ -13,7 +13,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-func createCurrentGitProject(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+func createCurrentGitProject(ctx context.Context, flags map[string]string, sidebar ports.SidebarPort) error {
 	path := flags["source-path"]
 	if path == "" {
 		var err error
@@ -33,7 +33,7 @@ func createCurrentGitProject(ctx context.Context, flags map[string]string, sideb
 	return createOrSwitchProject(ctx, flags["client"], projects.CandidateFromPath(root), flags["category-id"], sidebar)
 }
 
-func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.SidebarPort) error {
 	path := flags["source-path"]
 	if path == "" {
 		var err error
@@ -115,7 +115,7 @@ func currentPanePathForAction(ctx context.Context, client string) (string, error
 	return strings.TrimSpace(out), err
 }
 
-func renameSession(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+func renameSession(ctx context.Context, flags map[string]string, sidebar ports.SidebarPort) error {
 	session := flags["session"]
 	newName := strings.TrimSpace(flags["name"])
 	if session == "" {
@@ -143,7 +143,7 @@ func renameSession(ctx context.Context, flags map[string]string, sidebar ports.T
 	return nil
 }
 
-func killSession(ctx context.Context, flags map[string]string, sidebar ports.TmuxSidebarPort) error {
+func killSession(ctx context.Context, flags map[string]string, sidebar ports.SidebarPort) error {
 	session := flags["session"]
 	if session == "" {
 		return fmt.Errorf("missing session")
@@ -177,7 +177,7 @@ func killSession(ctx context.Context, flags map[string]string, sidebar ports.Tmu
 	return nil
 }
 
-func switchAwayBeforeKillingCurrentSession(ctx context.Context, client string, target string, existing []sessions.View, sidebar ports.TmuxSidebarPort) error {
+func switchAwayBeforeKillingCurrentSession(ctx context.Context, client string, target string, existing []sessions.View, sidebar ports.SidebarPort) error {
 	current, err := currentSessionForKill(ctx, client, existing)
 	if err != nil {
 		return err
@@ -226,6 +226,10 @@ func replacementSessionForKill(existing []sessions.View, target string) string {
 	return ""
 }
 
+// withPersistedSessionDuringTmuxAction persists session metadata into the
+// sidebar store before executing action, rolling back on failure. Part of the
+// transitional tmux command seam — the "DuringTmuxAction" suffix indicates
+// this wraps operations that invoke raw tmux commands.
 func withPersistedSessionDuringTmuxAction(ctx context.Context, name string, metadata ports.SessionMetadata, action func() error) error {
 	if !shouldPersistSessionName(name) {
 		return action()
@@ -247,6 +251,9 @@ func withPersistedSessionDuringTmuxAction(ctx context.Context, name string, meta
 	})
 }
 
+// withRenamedPersistedSessionDuringTmuxAction persists a session rename into
+// the sidebar store before executing action, rolling back on failure.
+// Part of the transitional tmux command seam.
 func withRenamedPersistedSessionDuringTmuxAction(ctx context.Context, oldName string, newName string, action func() error) error {
 	return withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
 		previous := clonePersistedState(*state)
@@ -268,6 +275,9 @@ func renameLiveStateSucceeded(ctx context.Context, oldName string, newName strin
 	return !liveSessionExists(ctx, oldName) && liveSessionExists(ctx, newName)
 }
 
+// withRemovedPersistedSessionDuringTmuxAction removes persisted session
+// metadata from the sidebar store before executing action, rolling back on
+// failure. Part of the transitional tmux command seam.
 func withRemovedPersistedSessionDuringTmuxAction(ctx context.Context, name string, action func() error) error {
 	return withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
 		previous := clonePersistedState(*state)
@@ -321,7 +331,7 @@ func confirmBefore(ctx context.Context, client string, prompt string, command st
 	return err
 }
 
-func refreshSidebar(ctx context.Context, client string, sidebar ports.TmuxSidebarPort) error {
+func refreshSidebar(ctx context.Context, client string, sidebar ports.SidebarPort) error {
 	return sidebar.RefreshSidebar(ctx, client)
 }
 

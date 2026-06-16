@@ -18,7 +18,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/ports"
 )
 
-func createProject(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.TmuxSidebarPort) error {
+func createProject(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.SidebarPort) error {
 	projectPath := flags["project-path"]
 	if projectPath == "" {
 		selected, err := pickProject(ctx, stdout)
@@ -122,7 +122,7 @@ func pickProjectNumbered(stdout io.Writer, candidates []projects.Candidate) (str
 	return candidates[index-1].Path, nil
 }
 
-func createOrSwitchProject(ctx context.Context, client string, candidate projects.Candidate, categoryID string, sidebar ports.TmuxSidebarPort) error {
+func createOrSwitchProject(ctx context.Context, client string, candidate projects.Candidate, categoryID string, sidebar ports.SidebarPort) error {
 	existing, err := loadSessionViews(ctx)
 	if err != nil {
 		return err
@@ -140,7 +140,7 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 	return switchClient(ctx, client, plan.SessionName, sidebar)
 }
 
-func switchClient(ctx context.Context, client string, sessionName string, sidebar ports.TmuxSidebarPort) error {
+func switchClient(ctx context.Context, client string, sessionName string, sidebar ports.SidebarPort) error {
 	if err := sessions.ValidateName(sessionName); err != nil {
 		return err
 	}
@@ -171,7 +171,7 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 					return err
 				}
 			}
-			if mover, ok := sidebar.(ports.TmuxSidebarSwitchPort); ok {
+			if mover, ok := sidebar.(ports.SidebarSwitchPort); ok {
 				if err := mover.AttachSingletonSidebarAndSwitchClient(ctx, client, sessionName, singleton.PaneID, cfg.Width); err != nil {
 					return fmt.Errorf("preposition sidebar and switch to %q: %w", sessionName, err)
 				}
@@ -220,6 +220,6 @@ func runtimeService() *coreruntime.Service {
 }
 
 func runtimeServiceWithStore(store ports.StateStorePort) *coreruntime.Service {
-	tmux := runtimeTmux()
-	return coreruntime.NewService(tmux, tmux, tmux, store).WithMetadata(tmux)
+	multiplexer := runtimeMultiplexer()
+	return coreruntime.NewService(multiplexer, multiplexer, multiplexer, store).WithMetadata(multiplexer)
 }
