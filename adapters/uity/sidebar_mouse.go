@@ -1,10 +1,6 @@
 package uity
 
-import (
-	"strings"
-
-	tea "charm.land/bubbletea/v2"
-)
+import tea "charm.land/bubbletea/v2"
 
 func (m *SidebarModel) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	mouse := msg.Mouse()
@@ -79,20 +75,10 @@ func (m SidebarModel) sessionNameClickBounds(item TreeItem) (int, int, bool) {
 	if name == "" {
 		return 0, 0, false
 	}
-	prefixWidth := 0
-	if currentMarker == "" {
-		prefixWidth++ // leading body space before non-current session names.
-	}
-	if trimmedSlot := strings.TrimSpace(slot); trimmedSlot != "" {
-		prefixWidth += metadataDisplayWidth(trimmedSlot) + 1
-	}
-	if trimmedMarker := strings.TrimSpace(marker); trimmedMarker != "" {
-		prefixWidth += metadataDisplayWidth(trimmedMarker) + 1
-	}
 	start := 1 // horizontal padding added by padSidebarContentLines.
 	start += metadataDisplayWidth(treeBranch(item))
 	start += metadataDisplayWidth(currentMarker)
-	start += prefixWidth
+	start += sessionBodyPrefixWidth(slot, marker, currentMarker != "")
 	end := start + metadataDisplayWidth(name)
 	return start, end, end > start
 }
