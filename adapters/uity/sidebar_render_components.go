@@ -40,10 +40,17 @@ func (m SidebarModel) collapsedHelpLine(styles sidebarStyles) string {
 	if version == "" {
 		return styles.dim.Render("? keys")
 	}
-	if m.updateCheck.available {
-		return styles.versionBadge.Render(" "+version) + styles.updateIndicator.Render(updateAvailableSymbol+" ") + styles.dim.Render(" ? keys")
+	versionBadge := styles.versionBadge
+	updateIndicator := styles.updateIndicator
+	if m.focused {
+		focusedBackground := lipgloss.Color(styles.scheme.selectedRowBackgroundRGB.Hex())
+		versionBadge = versionBadge.Background(focusedBackground)
+		updateIndicator = updateIndicator.Background(focusedBackground)
 	}
-	return styles.versionBadge.Render(" "+version+" ") + styles.dim.Render(" ? keys")
+	if m.updateCheck.available {
+		return versionBadge.Render(" "+version) + updateIndicator.Render(updateAvailableSymbol+" ") + styles.dim.Render(" ? keys")
+	}
+	return versionBadge.Render(" "+version+" ") + styles.dim.Render(" ? keys")
 }
 
 func displayVersion(version string) string {

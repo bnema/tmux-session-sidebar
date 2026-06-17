@@ -116,6 +116,7 @@ type SidebarModel struct {
 	pinColorPicker                   PinColorPicker
 	colorTarget                      colorTarget
 	appearance                       config.ColorSchemeAppearance
+	focused                          bool
 	attentionAnimationStyle          config.AgentAttentionAnimation
 	attentionAnimationFrame          int
 	attentionAnimationTickPending    bool
@@ -217,6 +218,14 @@ func (m SidebarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.attentionAnimationFrame = nextAttentionAnimationFrame(m.attentionAnimationStyle, m.attentionAnimationFrame)
 		return m, m.startAttentionAnimationCmd()
+	case tea.FocusMsg:
+		m.focused = true
+		return m, nil
+	case tea.BlurMsg:
+		m.focused = false
+		return m, nil
+	case tea.MouseClickMsg:
+		return m.handleMouseClick(msg)
 	case tea.MouseWheelMsg:
 		m.handleMouseWheel(msg)
 		return m, nil
@@ -561,10 +570,13 @@ func (m *SidebarModel) switchItem(item SessionItem) {
 	if item.Current || m.actions.SwitchSession == nil {
 		return
 	}
-	if m.actions.SwitchSession(item.Name) && m.reloadTreeItems() {
-		m.ignoreNextWideWidthSpike = true
-		if !m.selectSessionIfExists(item.Name) {
-			m.selectSession(m.currentSessionName())
+	if m.actions.SwitchSession(item.Name) {
+		m.focused = false
+		if m.reloadTreeItems() {
+			m.ignoreNextWideWidthSpike = true
+			if !m.selectSessionIfExists(item.Name) {
+				m.selectSession(m.currentSessionName())
+			}
 		}
 	}
 }
@@ -845,6 +857,7 @@ func (m *SidebarModel) appendPrintable(msg tea.KeyPressMsg) {
 func (m SidebarModel) View() tea.View {
 	view := tea.NewView(m.Render())
 	view.MouseMode = tea.MouseModeCellMotion
+	view.ReportFocus = true
 	return view
 }
 

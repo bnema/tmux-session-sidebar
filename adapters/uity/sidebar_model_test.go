@@ -1,6 +1,7 @@
 package uity
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -53,6 +54,166 @@ func TestSidebarModelViewEnablesMouseWheelEvents(t *testing.T) {
 	view := model.View()
 	if view.MouseMode != tea.MouseModeCellMotion {
 		t.Fatalf("View().MouseMode = %v, want %v", view.MouseMode, tea.MouseModeCellMotion)
+	}
+	if !view.ReportFocus {
+		t.Fatal("View().ReportFocus = false, want true")
+	}
+}
+
+func TestSidebarModelFocusChangesReleaseBadgeBackgroundOnly(t *testing.T) {
+	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "1.2.3", Appearance: config.ColorSchemeAppearanceDark})
+	model.updateCheck.available = true
+	styles := newSidebarStylesForAppearance(config.ColorSchemeAppearanceDark)
+	unfocusedLine := model.statusBarLines(styles)[0]
+
+	updated, _ := model.Update(tea.FocusMsg{})
+	model = requireSidebarModel(t, updated)
+	focusedLine := model.statusBarLines(styles)[0]
+
+	if focusedLine == unfocusedLine {
+		t.Fatal("focused status line matched unfocused line, want release badge background change")
+	}
+	if stripANSI(focusedLine) != stripANSI(unfocusedLine) {
+		t.Fatalf("focused status text = %q, want unchanged %q", stripANSI(focusedLine), stripANSI(unfocusedLine))
+	}
+	if !strings.Contains(focusedLine, "48;2;6;95;70m v1.2.3") {
+		t.Fatalf("focused release badge missing selected session background ANSI: %q", focusedLine)
+	}
+	if !strings.Contains(focusedLine, "48;2;6;95;70m"+updateAvailableSymbol+" ") {
+		t.Fatalf("focused update indicator missing selected session background ANSI: %q", focusedLine)
+	}
+	if strings.Contains(focusedLine, "48;2;51;65;85m v1.2.3") {
+		t.Fatalf("focused release badge kept inactive version background: %q", focusedLine)
+	}
+	if strings.Contains(focusedLine, "48;2;6;95;70m ? keys") {
+		t.Fatalf("focused status background leaked past release badge: %q", focusedLine)
+	}
+}
+
+func TestSidebarModelMouseClickSessionNameSwitchesTargetSession(t *testing.T) {
+	clicked := ""
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{
+		SwitchSession: func(name string) bool {
+			clicked = name
+			return true
+		},
+	})
+	updated, _ := model.Update(tea.MouseClickMsg(tea.Mouse{X: 4, Y: 3, Button: tea.MouseLeft}))
+	model = requireSidebarModel(t, updated)
+
+	if clicked != "beta" {
+		t.Fatalf("clicked session = %q, want beta", clicked)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
+		t.Fatalf("selected session after click = %#v ok=%v, want beta", item, ok)
+	}
+	if model.focused {
+		t.Fatal("focused after successful click switch = true, want false")
+	}
+}
+
+func TestSidebarModelMouseClickOutsideSessionNameDoesNotSwitch(t *testing.T) {
+	clicked := ""
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{
+		SwitchSession: func(name string) bool {
+			clicked = name
+			return true
+		},
+	})
+	updated, _ := model.Update(tea.MouseClickMsg(tea.Mouse{X: 1, Y: 3, Button: tea.MouseLeft}))
+	model = requireSidebarModel(t, updated)
+
+	if clicked != "" {
+		t.Fatalf("clicked session = %q, want no switch", clicked)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+		t.Fatalf("selected session after outside click = %#v ok=%v, want unchanged alpha", item, ok)
+	}
+}
+
+func TestSidebarModelMouseClickScrolledSessionNameSwitchesVisibleTarget(t *testing.T) {
+	clicked := ""
+	items := make([]SessionItem, 0, 8)
+	for i := 1; i <= 8; i++ {
+		items = append(items, SessionItem{Name: fmt.Sprintf("session-%02d", i)})
+	}
+	model := newTestSidebarModel(items, Actions{
+		SwitchSession: func(name string) bool {
+			clicked = name
+			return true
+		},
+	})
+	model.cursor = 7
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 30, Height: 4})
+	model = requireSidebarModel(t, updated)
+	if model.treeScroll == 0 {
+		t.Fatal("precondition failed: tree did not scroll")
+	}
+
+	updated, _ = model.Update(tea.MouseClickMsg(tea.Mouse{X: 4, Y: 2, Button: tea.MouseLeft}))
+	requireSidebarModel(t, updated)
+	if clicked != "session-07" {
+		t.Fatalf("clicked scrolled session = %q, want session-07", clicked)
+	}
+}
+
+func TestSidebarModelMouseClickMetadataSublineDoesNotSwitch(t *testing.T) {
+	clicked := ""
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:default/session:alpha", CategoryID: "category:default", Session: SessionItem{Name: "alpha", Metadata: SessionMetadataSubline{Kind: MetadataKindGit, Branch: "main", Modified: 1}}, Depth: 1, ShowMetadata: true},
+		{Kind: TreeRowSession, ID: "category:default/session:beta", CategoryID: "category:default", Session: SessionItem{Name: "beta"}, Depth: 1, LastChild: true},
+	}, Actions{
+		SwitchSession: func(name string) bool {
+			clicked = name
+			return true
+		},
+	}, SidebarOptions{})
+	model.cursor = 1
+
+	updated, _ := model.Update(tea.MouseClickMsg(tea.Mouse{X: 4, Y: 3, Button: tea.MouseLeft}))
+	model = requireSidebarModel(t, updated)
+	if clicked != "" {
+		t.Fatalf("clicked metadata subline switched %q, want no switch", clicked)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+		t.Fatalf("selected session after metadata click = %#v ok=%v, want unchanged alpha", item, ok)
+	}
+}
+
+func TestSidebarModelMouseClickNonLeftButtonDoesNotFocusOrSwitch(t *testing.T) {
+	clicked := ""
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{
+		SwitchSession: func(name string) bool {
+			clicked = name
+			return true
+		},
+	})
+	updated, _ := model.Update(tea.MouseClickMsg(tea.Mouse{X: 4, Y: 3, Button: tea.MouseRight}))
+	model = requireSidebarModel(t, updated)
+	if clicked != "" {
+		t.Fatalf("right click switched %q, want no switch", clicked)
+	}
+	if model.focused {
+		t.Fatal("right click focused sidebar, want unchanged false")
+	}
+}
+
+func TestSidebarModelMouseClickCurrentSessionDoesNotSwitch(t *testing.T) {
+	clicked := ""
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha", Current: true}}, Actions{
+		SwitchSession: func(name string) bool {
+			clicked = name
+			return true
+		},
+	})
+	updated, _ := model.Update(tea.MouseClickMsg(tea.Mouse{X: 4, Y: 2, Button: tea.MouseLeft}))
+	model = requireSidebarModel(t, updated)
+	if clicked != "" {
+		t.Fatalf("current session click switched %q, want no switch", clicked)
+	}
+	if !model.focused {
+		t.Fatal("left click on current session should focus sidebar")
 	}
 }
 
@@ -190,8 +351,13 @@ func TestSidebarModelSwitchSelectedReloadsAndKeepsSwitchedSessionSelected(t *tes
 		}),
 	}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationPulse})
 	model.cursor = 2
+	updated, _ := model.Update(tea.FocusMsg{})
+	model = requireSidebarModel(t, updated)
 	updated, cmd := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = requireSidebarModel(t, updated)
+	if model.focused {
+		t.Fatal("focused after successful switch = true, want false")
+	}
 	if cmd == nil {
 		t.Fatal("switch reload did not schedule attention animation tick")
 	}
