@@ -409,7 +409,7 @@ case "$1" in
 esac
 `)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- (runtimeRouter{}).Handle(ctx, Route{Path: "daemon/serve", Flags: map[string]string{}}, nil, nil)
@@ -497,15 +497,25 @@ esac
 `)
 
 	server := &delayedIPCServer{started: make(chan struct{}), done: make(chan struct{}), delay: 25 * time.Millisecond}
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
-	defer cancel()
-	if err := serveSidebarDaemon(ctx, server, runtimeRouter{}); err != nil {
-		t.Fatalf("serveSidebarDaemon error: %v", err)
-	}
+	ctx, cancel := context.WithCancel(t.Context())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- serveSidebarDaemon(ctx, server, runtimeRouter{})
+	}()
 	select {
 	case <-server.started:
-	default:
+	case <-time.After(5 * time.Second):
+		cancel()
 		t.Fatal("ipc server never started")
+	}
+	cancel()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("serveSidebarDaemon error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serveSidebarDaemon did not stop after context cancellation")
 	}
 	select {
 	case <-server.done:

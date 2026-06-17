@@ -21,24 +21,26 @@ type stateCandidate struct {
 	mtime        int64 // unix nano for deterministic comparison
 }
 
-// ensureRuntimeStateMigrated copies the tmux.json from a prior tmux server
-// instance that used the same socket but a different PID (i.e., a full tmux
-// server restart). It only migrates when the current scope's tmux.json is
-// missing or not meaningful, preserving any active state.
+// ensureRuntimeStateMigrated copies tmux.json from the old PID-scoped server
+// directory into the durable socket-scoped state directory. It only migrates
+// when the durable tmux.json is missing or not meaningful, preserving any
+// active state.
 //
-// It must be called while holding the daemon lock, and internally acquires
-// the tmux-sidebar-state lock for the current scope to prevent a
-// check-then-write race with concurrent startup commands that may write
-// meaningful state into tmux.json between the candidate selection and the
-// final copy.
+// It internally acquires the tmux-sidebar-state lock for the durable state
+// directory to prevent a check-then-write race with concurrent startup commands
+// that may write meaningful state into tmux.json between candidate selection
+// and the final copy.
 func ensureRuntimeStateMigrated(ctx context.Context, scope RuntimeScope) error {
+	if err := EnsureRuntimeDirPrivate(scope.StateDir); err != nil {
+		return err
+	}
 	// Only scoped (non-legacy) runtimes participate in migration. Legacy
 	// state is always at the root and carries no server identity.
 	if scope.Legacy || scope.IdentityKey == "" {
 		return nil
 	}
 
-	currentPath := filepath.Join(scope.Dir, "tmux.json")
+	currentPath := filepath.Join(scope.StateDir, "tmux.json")
 
 	// Quick bail-out: if current tmux.json already has meaningful state,
 	// do nothing. The true serialised check happens below under the state
@@ -51,8 +53,7 @@ func ensureRuntimeStateMigrated(ctx context.Context, scope RuntimeScope) error {
 		return nil
 	}
 
-	// Find sibling scopes sharing the same socket path but with a different
-	// directory (different PID from a prior server incarnation).
+	// Find old PID-scoped server directories sharing the same socket path.
 	candidates, err := findSiblingStateCandidates(scope)
 	if err != nil {
 		return fmt.Errorf("find sibling state candidates: %w", err)
@@ -61,8 +62,12 @@ func ensureRuntimeStateMigrated(ctx context.Context, scope RuntimeScope) error {
 		return nil
 	}
 
-	// Pick the newest candidate by file modification time.
+	// Pick the newest candidate by file modification time, with a stable
+	// path tie-breaker for filesystems with coarse timestamp precision.
 	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].mtime == candidates[j].mtime {
+			return candidates[i].tmuxJSONPath < candidates[j].tmuxJSONPath
+		}
 		return candidates[i].mtime > candidates[j].mtime
 	})
 
@@ -73,7 +78,7 @@ func ensureRuntimeStateMigrated(ctx context.Context, scope RuntimeScope) error {
 	// Acquire the same state-level lock used by withLockedSidebarStore so
 	// that no concurrent startup command can write meaningful tmux.json into
 	// our current scope between our meaningfulness check and the final copy.
-	lock, err := runtimeLocker(filepath.Join(scope.Dir, "locks")).Acquire(ctx, "tmux-sidebar-state")
+	lock, err := runtimeLocker(filepath.Join(scope.StateDir, "locks")).Acquire(ctx, "tmux-sidebar-state")
 	if err != nil {
 		return fmt.Errorf("acquire state lock for migration: %w", err)
 	}
@@ -114,21 +119,20 @@ func ensureRuntimeStateMigrated(ctx context.Context, scope RuntimeScope) error {
 	return nil
 }
 
-// findSiblingStateCandidates returns sibling server directories whose
-// server.json references the same canonical socketPath as scope but whose
-// directory is different from the current scope.
+// findSiblingStateCandidates returns old PID-scoped server directories whose
+// tmux.json may be migrated into the durable socket-scoped state directory.
 func findSiblingStateCandidates(scope RuntimeScope) ([]stateCandidate, error) {
 	serversDir := filepath.Join(scope.RootDir, "servers")
 	entries, err := os.ReadDir(serversDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
+			return oldStateCandidateForDir(scope.Dir), nil
 		}
 		return nil, err
 	}
 
 	canonicalCurrentSocket := canonicalPath(scope.SocketPath)
-	var candidates []stateCandidate
+	candidates := oldStateCandidateForDir(scope.Dir)
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -150,28 +154,22 @@ func findSiblingStateCandidates(scope RuntimeScope) ([]stateCandidate, error) {
 			continue
 		}
 
-		tmuxPath := filepath.Join(siblingDir, "tmux.json")
-		info, err := os.Stat(tmuxPath)
-		if err != nil {
-			continue
-		}
-		if !info.Mode().IsRegular() {
-			continue
-		}
-
-		// Only include candidates whose tmux.json is itself meaningful.
-		meaningful, err := tmuxJSONIsMeaningful(tmuxPath)
-		if err != nil || !meaningful {
-			continue
-		}
-
-		candidates = append(candidates, stateCandidate{
-			dir:          siblingDir,
-			tmuxJSONPath: tmuxPath,
-			mtime:        info.ModTime().UnixNano(),
-		})
+		candidates = append(candidates, oldStateCandidateForDir(siblingDir)...)
 	}
 	return candidates, nil
+}
+
+func oldStateCandidateForDir(dir string) []stateCandidate {
+	tmuxPath := filepath.Join(dir, "tmux.json")
+	info, err := os.Stat(tmuxPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil
+	}
+	meaningful, err := tmuxJSONIsMeaningful(tmuxPath)
+	if err != nil || !meaningful {
+		return nil
+	}
+	return []stateCandidate{{dir: dir, tmuxJSONPath: tmuxPath, mtime: info.ModTime().UnixNano()}}
 }
 
 // tmuxJSONIsMeaningful returns true if the file at path exists, is valid JSON,

@@ -41,7 +41,7 @@ func buildRuntimeRouter(ctx context.Context, runner ports.ProcessPort) (app.Rout
 		ReleaseChecker: githubrelease.Client{},
 		WatcherFactory: func() ports.FileWatcherPort { return watchfsnotify.Watcher{} },
 		StateStoreFactory: func(scope app.RuntimeScope) ports.StateStorePort {
-			return storefs.New(scope.Dir)
+			return storefs.New(scope.StateDir)
 		},
 		LockerFactory: func(dir string) ports.LockerPort {
 			return locker.FileLocker{Dir: dir}

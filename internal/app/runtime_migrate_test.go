@@ -15,6 +15,9 @@ import (
 // writeTmuxJSON writes a tmux.json to dir with the given PersistedState.
 func writeTmuxJSON(t *testing.T, dir string, state ports.PersistedState) {
 	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("mkdir tmux.json dir %s: %v", dir, err)
+	}
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal state: %v", err)
@@ -55,6 +58,7 @@ func TestEnsureRuntimeStateMigrated_SameSocketNewPID(t *testing.T) {
 	mustWriteRuntimeScopeMetadata(t, oldScope)
 	writeTmuxJSON(t, oldScope.Dir, ports.PersistedState{
 		SessionOrder: []string{"alpha", "beta"},
+		PinColors:    map[string]string{"alpha": "#38bdf8"},
 		Sessions:     map[string]ports.SessionMetadata{},
 	})
 
@@ -65,12 +69,12 @@ func TestEnsureRuntimeStateMigrated_SameSocketNewPID(t *testing.T) {
 	}
 	mustWriteRuntimeScopeMetadata(t, newScope)
 
-	// Current tmux.json does not exist yet -> migration should copy from old.
+	// Durable tmux.json does not exist yet -> migration should copy from old PID-scoped state.
 	if err := ensureRuntimeStateMigrated(context.Background(), newScope); err != nil {
 		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
 	}
 
-	// Switch to the new scope to verify migrated state.
+	// Switch to the new scope to verify migrated state is read from durable StateDir.
 	SetRuntimeScope(newScope)
 	state, err := loadSidebarState(context.Background())
 	if err != nil {
@@ -78,6 +82,59 @@ func TestEnsureRuntimeStateMigrated_SameSocketNewPID(t *testing.T) {
 	}
 	if len(state.SessionOrder) != 2 || state.SessionOrder[0] != "alpha" || state.SessionOrder[1] != "beta" {
 		t.Fatalf("migrated SessionOrder = %#v, want [alpha beta]", state.SessionOrder)
+	}
+	if got := state.PinColors["alpha"]; got != "#38bdf8" {
+		t.Fatalf("migrated PinColors[alpha] = %q, want #38bdf8", got)
+	}
+	if !fileExists(filepath.Join(newScope.StateDir, "tmux.json")) {
+		t.Fatalf("migrated tmux.json missing from durable state dir %q", newScope.StateDir)
+	}
+}
+
+func TestEnsureRuntimeStateMigrated_CurrentPIDLegacyState(t *testing.T) {
+	root := t.TempDir()
+	defer ResetRuntimeScopeForTest()
+
+	scope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "111")
+	if err := os.MkdirAll(scope.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteRuntimeScopeMetadata(t, scope)
+	writeTmuxJSON(t, scope.Dir, ports.PersistedState{
+		SessionOrder: []string{"alpha"},
+		PinColors:    map[string]string{"alpha": "#38bdf8"},
+	})
+
+	if err := ensureRuntimeStateMigrated(context.Background(), scope); err != nil {
+		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
+	}
+
+	SetRuntimeScope(scope)
+	state, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if got := state.PinColors["alpha"]; got != "#38bdf8" {
+		t.Fatalf("PinColors[alpha] = %q, want #38bdf8", got)
+	}
+	if !fileExists(filepath.Join(scope.StateDir, "tmux.json")) {
+		t.Fatalf("expected current PID legacy state to migrate into %q", scope.StateDir)
+	}
+}
+
+func TestEnsureRuntimeStateMigratedRejectsUnsafeStateDir(t *testing.T) {
+	root := t.TempDir()
+	scope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "111")
+	if err := os.MkdirAll(scope.StateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(scope.StateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := ensureRuntimeStateMigrated(context.Background(), scope)
+	if err == nil {
+		t.Fatal("ensureRuntimeStateMigrated() error = nil, want unsafe StateDir error")
 	}
 }
 
@@ -145,8 +202,8 @@ func TestEnsureRuntimeStateMigrated_CurrentMeaningfulNotOverwritten(t *testing.T
 		t.Fatal(err)
 	}
 	mustWriteRuntimeScopeMetadata(t, newScope)
-	// Already has meaningful state — should not be overwritten.
-	writeTmuxJSON(t, newScope.Dir, ports.PersistedState{
+	// Already has meaningful durable state — should not be overwritten.
+	writeTmuxJSON(t, newScope.StateDir, ports.PersistedState{
 		SessionOrder: []string{"current-state"},
 		Sessions:     map[string]ports.SessionMetadata{},
 	})
@@ -193,8 +250,8 @@ func TestEnsureRuntimeStateMigrated_EmptyPriorIgnored(t *testing.T) {
 
 	// No migration should have occurred since the candidate was not meaningful.
 	// New scope should still have no tmux.json or empty one.
-	if fileExists(filepath.Join(newScope.Dir, "tmux.json")) {
-		t.Fatal("expected no tmux.json to be created for empty prior")
+	if fileExists(filepath.Join(newScope.StateDir, "tmux.json")) {
+		t.Fatal("expected no durable tmux.json to be created for empty prior")
 	}
 }
 
@@ -223,8 +280,8 @@ func TestEnsureRuntimeStateMigrated_EmptyDefaultJSONIgnored(t *testing.T) {
 		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
 	}
 
-	if fileExists(filepath.Join(newScope.Dir, "tmux.json")) {
-		t.Fatal("expected no tmux.json for empty JSON prior")
+	if fileExists(filepath.Join(newScope.StateDir, "tmux.json")) {
+		t.Fatal("expected no durable tmux.json for empty JSON prior")
 	}
 }
 
@@ -403,7 +460,7 @@ func TestEnsureRuntimeStateMigrated_MissingServerJSON(t *testing.T) {
 		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
 	}
 
-	if fileExists(filepath.Join(newScope.Dir, "tmux.json")) {
+	if fileExists(filepath.Join(newScope.StateDir, "tmux.json")) {
 		t.Fatal("orphan sibling without server.json should be silently skipped")
 	}
 }
@@ -517,7 +574,7 @@ func TestEnsureRuntimeStateMigrated_RecheckCatchesLateState(t *testing.T) {
 	// Acquire the state lock externally. The migration goroutine will
 	// block trying to acquire this same lock after passing the initial
 	// check and finding candidates.
-	stateLock, err := (locker.FileLocker{Dir: filepath.Join(targetScope.Dir, "locks")}).Acquire(
+	stateLock, err := (locker.FileLocker{Dir: filepath.Join(targetScope.StateDir, "locks")}).Acquire(
 		context.Background(), "tmux-sidebar-state",
 	)
 	if err != nil {
@@ -547,7 +604,7 @@ func TestEnsureRuntimeStateMigrated_RecheckCatchesLateState(t *testing.T) {
 	// state to the target scope — this simulates the race where another
 	// startup command creates tmux.json between our candidate selection
 	// and the protected write.
-	writeTmuxJSON(t, targetScope.Dir, ports.PersistedState{
+	writeTmuxJSON(t, targetScope.StateDir, ports.PersistedState{
 		SessionOrder: []string{"concurrent-write"},
 	})
 
@@ -601,8 +658,8 @@ func TestEnsureRuntimeStateMigrated_NewStateBeforeLockSkips(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustWriteRuntimeScopeMetadata(t, targetScope)
-	// Target already has meaningful state before migration runs.
-	writeTmuxJSON(t, targetScope.Dir, ports.PersistedState{
+	// Target already has meaningful durable state before migration runs.
+	writeTmuxJSON(t, targetScope.StateDir, ports.PersistedState{
 		SessionOrder: []string{"current-state"},
 	})
 

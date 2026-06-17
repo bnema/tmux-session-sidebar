@@ -27,8 +27,8 @@ func TestRuntimeScopeUsesLegacyRootOutsideTmux(t *testing.T) {
 	scope := RuntimeScopeForProcess(t.Context(), nil)
 
 	wantRoot := filepath.Join(stateHome, "tmux-session-sidebar")
-	if scope.RootDir != wantRoot || scope.Dir != wantRoot || !scope.Legacy {
-		t.Fatalf("scope = %#v, want legacy root/dir %q", scope, wantRoot)
+	if scope.RootDir != wantRoot || scope.Dir != wantRoot || scope.StateDir != wantRoot || !scope.Legacy {
+		t.Fatalf("scope = %#v, want legacy root/dir/state dir %q", scope, wantRoot)
 	}
 	if scope.IPCSocketPath != filepath.Join(wantRoot, "sidebar.sock") || scope.PIDPath != filepath.Join(wantRoot, "daemon.pid") || scope.ErrorsLogPath != filepath.Join(wantRoot, "errors.log") || scope.LocksDir != filepath.Join(wantRoot, "locks") {
 		t.Fatalf("scope paths = %#v", scope)
@@ -53,8 +53,17 @@ func TestRuntimeScopeIncludesSocketPathAndPID(t *testing.T) {
 	if a.Dir == b.Dir {
 		t.Fatalf("same socket with different pid produced same dir: %q", a.Dir)
 	}
+	if a.StateDir != again.StateDir {
+		t.Fatalf("same socket and pid produced different state dirs: %q vs %q", a.StateDir, again.StateDir)
+	}
+	if a.StateDir != b.StateDir {
+		t.Fatalf("same socket with different pid produced different state dirs: %q vs %q", a.StateDir, b.StateDir)
+	}
 	if !strings.HasPrefix(a.Dir, filepath.Join(stateHome, "tmux-session-sidebar", "servers")+string(filepath.Separator)) {
 		t.Fatalf("scoped dir %q not under servers root", a.Dir)
+	}
+	if !strings.HasPrefix(a.StateDir, filepath.Join(stateHome, "tmux-session-sidebar", "state")+string(filepath.Separator)) {
+		t.Fatalf("state dir %q not under state root", a.StateDir)
 	}
 }
 
@@ -73,6 +82,9 @@ func TestRuntimeScopeFallsBackToScopedTmuxEnvWhenIdentityQueryFails(t *testing.T
 	}
 	if !strings.HasPrefix(scope.Dir, filepath.Join(stateHome, "tmux-session-sidebar", "servers")+string(filepath.Separator)) {
 		t.Fatalf("fallback dir = %q, want scoped server dir", scope.Dir)
+	}
+	if !strings.HasPrefix(scope.StateDir, filepath.Join(stateHome, "tmux-session-sidebar", "state")+string(filepath.Separator)) {
+		t.Fatalf("fallback state dir = %q, want scoped state dir", scope.StateDir)
 	}
 }
 

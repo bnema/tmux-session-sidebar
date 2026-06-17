@@ -13,7 +13,11 @@ import (
 )
 
 func loadSidebarState(ctx context.Context) (ports.PersistedState, error) {
-	return sessionOrderStore().Load(ctx, "tmux")
+	store := sessionOrderStore()
+	if err := ensureRuntimeStateMigrated(ctx, store.scope); err != nil {
+		return ports.PersistedState{}, err
+	}
+	return store.Load(ctx, "tmux")
 }
 
 func snapshotSidebarState(ctx context.Context) (ports.PersistedState, error) {
@@ -181,8 +185,12 @@ func updateSidebarStateWithSnapshot(ctx context.Context, update func(*ports.Pers
 	return previous, err
 }
 
-func StateDir() string {
+func RuntimeDir() string {
 	return CurrentRuntimeScope().Dir
+}
+
+func StateDir() string {
+	return CurrentRuntimeScope().StateDir
 }
 
 func LegacyStateRoot() string {
@@ -207,11 +215,14 @@ func (s scopedStateStore) Load(ctx context.Context, serverID string) (ports.Pers
 }
 
 func (s scopedStateStore) Save(ctx context.Context, serverID string, state ports.PersistedState) error {
+	if err := EnsureRuntimeDirPrivate(s.scope.StateDir); err != nil {
+		return err
+	}
 	return s.store.Save(ctx, serverID, state)
 }
 
 func (s scopedStateStore) Dir() string {
-	return s.scope.Dir
+	return s.scope.StateDir
 }
 
 func sessionOrderStore() scopedStateStore {

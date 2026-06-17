@@ -306,7 +306,7 @@ func withActivityDebugLogger(cfg ports.ConfigSnapshot, fn func(logger ports.Logg
 	if !cfg.ActivityDebugLog {
 		return fn(nil)
 	}
-	logPath := filepath.Join(StateDir(), "activity.log")
+	logPath := filepath.Join(RuntimeDir(), "activity.log")
 	logger, closer, err := runtimeActivityLogger(logPath, maxSidebarLogBytes)
 	if err != nil {
 		return err
@@ -324,6 +324,9 @@ func sidebarRefreshIntervalFromConfig(cfg ports.ConfigSnapshot) time.Duration {
 
 func withLockedSidebarStore(ctx context.Context, fn func(scopedStateStore) error) error {
 	store := sessionOrderStore()
+	if err := ensureRuntimeStateMigrated(ctx, store.scope); err != nil {
+		return err
+	}
 	lock, err := runtimeLocker(filepath.Join(store.Dir(), "locks")).Acquire(ctx, "tmux-sidebar-state")
 	if err != nil {
 		return err

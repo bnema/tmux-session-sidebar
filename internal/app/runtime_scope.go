@@ -20,6 +20,7 @@ import (
 type RuntimeScope struct {
 	RootDir       string
 	Dir           string
+	StateDir      string
 	IPCSocketPath string
 	PIDPath       string
 	ErrorsLogPath string
@@ -98,13 +99,23 @@ func runtimeScopeFromDir(root string, legacy bool, socketPath string, pid string
 
 func runtimeScopeFromIdentity(root string, socketPath string, pid string, identityKey string) RuntimeScope {
 	dir := root
+	stateDir := root
 	legacy := identityKey == ""
 	if !legacy {
+		// Runtime files are volatile and tied to one tmux server process, so
+		// include the PID. Durable sidebar state is socket-scoped so user
+		// preferences survive tmux server restarts that change the PID.
 		dir = filepath.Join(root, "servers", boundedScopeHash(identityKey))
+		stateIdentity := socketPath
+		if stateIdentity == "" {
+			stateIdentity = identityKey
+		}
+		stateDir = filepath.Join(root, "state", boundedScopeHash(stateIdentity))
 	}
 	return RuntimeScope{
 		RootDir:       root,
 		Dir:           dir,
+		StateDir:      stateDir,
 		IPCSocketPath: filepath.Join(dir, "sidebar.sock"),
 		PIDPath:       filepath.Join(dir, "daemon.pid"),
 		ErrorsLogPath: filepath.Join(dir, "errors.log"),
