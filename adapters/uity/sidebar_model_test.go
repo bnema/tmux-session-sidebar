@@ -54,6 +54,80 @@ func TestSidebarModelViewEnablesMouseWheelEvents(t *testing.T) {
 	if view.MouseMode != tea.MouseModeCellMotion {
 		t.Fatalf("View().MouseMode = %v, want %v", view.MouseMode, tea.MouseModeCellMotion)
 	}
+	if !view.ReportFocus {
+		t.Fatal("View().ReportFocus = false, want true")
+	}
+}
+
+func TestSidebarModelFocusChangesReleaseBadgeBackgroundOnly(t *testing.T) {
+	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "1.2.3", Appearance: config.ColorSchemeAppearanceDark})
+	model.updateCheck.available = true
+	styles := newSidebarStylesForAppearance(config.ColorSchemeAppearanceDark)
+	unfocusedLine := model.statusBarLines(styles)[0]
+
+	updated, _ := model.Update(tea.FocusMsg{})
+	model = requireSidebarModel(t, updated)
+	focusedLine := model.statusBarLines(styles)[0]
+
+	if focusedLine == unfocusedLine {
+		t.Fatal("focused status line matched unfocused line, want release badge background change")
+	}
+	if stripANSI(focusedLine) != stripANSI(unfocusedLine) {
+		t.Fatalf("focused status text = %q, want unchanged %q", stripANSI(focusedLine), stripANSI(unfocusedLine))
+	}
+	if !strings.Contains(focusedLine, "48;2;6;95;70m v1.2.3") {
+		t.Fatalf("focused release badge missing selected session background ANSI: %q", focusedLine)
+	}
+	if !strings.Contains(focusedLine, "48;2;6;95;70m"+updateAvailableSymbol+" ") {
+		t.Fatalf("focused update indicator missing selected session background ANSI: %q", focusedLine)
+	}
+	if strings.Contains(focusedLine, "48;2;51;65;85m v1.2.3") {
+		t.Fatalf("focused release badge kept inactive version background: %q", focusedLine)
+	}
+	if strings.Contains(focusedLine, "48;2;6;95;70m ? keys") {
+		t.Fatalf("focused status background leaked past release badge: %q", focusedLine)
+	}
+}
+
+func TestSidebarModelMouseClickSessionNameSwitchesTargetSession(t *testing.T) {
+	clicked := ""
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{
+		SwitchSession: func(name string) bool {
+			clicked = name
+			return true
+		},
+	})
+	updated, _ := model.Update(tea.MouseClickMsg(tea.Mouse{X: 4, Y: 3, Button: tea.MouseLeft}))
+	model = requireSidebarModel(t, updated)
+
+	if clicked != "beta" {
+		t.Fatalf("clicked session = %q, want beta", clicked)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
+		t.Fatalf("selected session after click = %#v ok=%v, want beta", item, ok)
+	}
+	if model.focused {
+		t.Fatal("focused after successful click switch = true, want false")
+	}
+}
+
+func TestSidebarModelMouseClickOutsideSessionNameDoesNotSwitch(t *testing.T) {
+	clicked := ""
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{
+		SwitchSession: func(name string) bool {
+			clicked = name
+			return true
+		},
+	})
+	updated, _ := model.Update(tea.MouseClickMsg(tea.Mouse{X: 1, Y: 3, Button: tea.MouseLeft}))
+	model = requireSidebarModel(t, updated)
+
+	if clicked != "" {
+		t.Fatalf("clicked session = %q, want no switch", clicked)
+	}
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+		t.Fatalf("selected session after outside click = %#v ok=%v, want unchanged alpha", item, ok)
+	}
 }
 
 func TestSidebarModelMouseWheelNavigatesTreeSessions(t *testing.T) {
@@ -190,8 +264,13 @@ func TestSidebarModelSwitchSelectedReloadsAndKeepsSwitchedSessionSelected(t *tes
 		}),
 	}, SidebarOptions{AgentAttentionAnimation: config.AgentAttentionAnimationPulse})
 	model.cursor = 2
+	updated, _ := model.Update(tea.FocusMsg{})
+	model = requireSidebarModel(t, updated)
 	updated, cmd := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	model = requireSidebarModel(t, updated)
+	if model.focused {
+		t.Fatal("focused after successful switch = true, want false")
+	}
 	if cmd == nil {
 		t.Fatal("switch reload did not schedule attention animation tick")
 	}
