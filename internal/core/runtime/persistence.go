@@ -204,6 +204,21 @@ func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID str
 }
 
 func (s *Service) ResetTransientHeatState(ctx context.Context, serverID string) error {
+	return s.resetTransientHeatState(ctx, serverID, nil)
+}
+
+func (s *Service) ResetTransientHeatStateForSessions(ctx context.Context, serverID string, sessionNames []string) error {
+	if len(sessionNames) == 0 {
+		return nil
+	}
+	only := make(map[string]bool, len(sessionNames))
+	for _, name := range sessionNames {
+		only[strings.TrimSpace(name)] = true
+	}
+	return s.resetTransientHeatState(ctx, serverID, only)
+}
+
+func (s *Service) resetTransientHeatState(ctx context.Context, serverID string, only map[string]bool) error {
 	if s.store == nil {
 		return ErrMissingStateStore
 	}
@@ -214,6 +229,9 @@ func (s *Service) ResetTransientHeatState(ctx context.Context, serverID string) 
 	}
 	decoded := decodeHeatStateMap(state.Heat)
 	for name, heatState := range decoded {
+		if only != nil && !only[name] {
+			continue
+		}
 		decoded[name] = clearTransientHeatState(heatState)
 	}
 	state.Heat = encodeHeatStateMap(decoded)

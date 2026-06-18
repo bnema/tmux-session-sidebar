@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/uity"
+	"github.com/bnema/tmux-session-sidebar/internal/adapters/uity"
 	"github.com/bnema/tmux-session-sidebar/internal/core/attention"
 	"github.com/bnema/tmux-session-sidebar/internal/core/config"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"

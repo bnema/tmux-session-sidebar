@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/uity"
+	"github.com/bnema/tmux-session-sidebar/internal/adapters/uity"
 	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
 	sidebarlayout "github.com/bnema/tmux-session-sidebar/internal/core/sidebar"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"

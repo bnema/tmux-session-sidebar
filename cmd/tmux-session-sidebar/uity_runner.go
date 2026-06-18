@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/uity"
+	"github.com/bnema/tmux-session-sidebar/internal/adapters/uity"
 	"github.com/bnema/tmux-session-sidebar/internal/app"
 	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
 )
