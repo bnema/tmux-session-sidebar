@@ -166,13 +166,13 @@ The sidebar is category-first. The top level contains categories, separators, an
 ▾ Work
 ├─┃1 tmux-session-sidebar 󰂞
 │     feature/category-tree… *2
-└─ 2 pi-coding-agent
+└─2 pi-coding-agent
 
 ────────────────────────
 
 ▾ Default
-└─ 1 scratch
-      ~/tmp/scratch
+└─1 scratch
+     ~/tmp/scratch
 ```
 
 On first run after upgrading, the runtime creates a `Default` category and places existing sessions there using the saved session order. Category layout is saved in the plugin state file.

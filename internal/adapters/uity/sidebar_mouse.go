@@ -76,9 +76,10 @@ func (m SidebarModel) sessionNameClickBounds(item TreeItem) (int, int, bool) {
 		return 0, 0, false
 	}
 	start := 1 // horizontal padding added by padSidebarContentLines.
-	start += metadataDisplayWidth(treeBranch(item))
+	branch := treeBranch(item)
+	start += metadataDisplayWidth(branch)
 	start += metadataDisplayWidth(currentMarker)
-	start += sessionBodyPrefixWidth(slot, marker, currentMarker != "")
+	start += sessionBodyPrefixWidth(slot, marker, currentMarker != "", branch)
 	end := start + metadataDisplayWidth(name)
 	return start, end, end > start
 }

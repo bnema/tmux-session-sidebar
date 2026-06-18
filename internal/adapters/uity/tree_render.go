@@ -103,13 +103,14 @@ func (r treeRenderer) renderCategory(item TreeItem, selected bool) string {
 
 func (r treeRenderer) renderSession(item TreeItem, selected bool) string {
 	session := item.Session
-	branch := r.styles.treeGuide.Render(treeBranch(item))
+	branchText := treeBranch(item)
+	branch := r.styles.treeGuide.Render(branchText)
 	currentMarker := currentSessionMarker(session, r.styles.appearance)
 	slot := slotPrefix(item.Slot)
 	marker := treeSessionMarker(session)
 	name := r.fitSessionName(item, currentMarker, slot, marker)
 	bodyText := sessionBodyText(slot, marker, name)
-	if currentMarker != "" {
+	if currentMarker != "" || compactSlotAfterTreeBranch(slot, branchText) {
 		bodyText = strings.TrimPrefix(bodyText, " ")
 	}
 	if selected {
@@ -130,10 +131,11 @@ func (r treeRenderer) fitSessionName(item TreeItem, currentMarker string, slot s
 	if width <= 0 {
 		return name
 	}
+	branch := treeBranch(item)
 	budget := width - 2 // account for sidebar horizontal padding added after tree rendering.
-	budget -= metadataDisplayWidth(treeBranch(item))
+	budget -= metadataDisplayWidth(branch)
 	budget -= metadataDisplayWidth(currentMarker)
-	budget -= sessionBodyPrefixWidth(slot, marker, currentMarker != "")
+	budget -= sessionBodyPrefixWidth(slot, marker, currentMarker != "", branch)
 	if item.Session.Attention {
 		budget -= metadataDisplayWidth(" ") + metadataDisplayWidth(attentionMarkerSymbol)
 	}
@@ -143,9 +145,9 @@ func (r treeRenderer) fitSessionName(item TreeItem, currentMarker string, slot s
 	return fitMetadataText(name, budget, r.metadataIconMode)
 }
 
-func sessionBodyPrefixWidth(slot string, marker string, current bool) int {
+func sessionBodyPrefixWidth(slot string, marker string, current bool, branch string) int {
 	width := 1 // leading space before the row body.
-	if current {
+	if current || compactSlotAfterTreeBranch(slot, branch) {
 		width--
 	}
 	if strings.TrimSpace(slot) != "" {
@@ -155,6 +157,10 @@ func sessionBodyPrefixWidth(slot string, marker string, current bool) int {
 		width += metadataDisplayWidth(strings.TrimSpace(marker)) + 1
 	}
 	return max(width, 0)
+}
+
+func compactSlotAfterTreeBranch(slot string, branch string) bool {
+	return strings.TrimSpace(slot) != "" && branch != ""
 }
 
 func (r treeRenderer) renderMore(item TreeItem, selected bool) string {
@@ -227,18 +233,17 @@ func treeMetadataPrefix(item TreeItem) string {
 }
 
 func metadataNameIndent(item TreeItem) int {
-	indent := metadataDisplayWidth(treeBranch(item))
-	if item.Session.Current {
-		indent += metadataDisplayWidth("┃")
-	} else {
-		indent++
+	branch := treeBranch(item)
+	current := item.Session.Current
+	currentMarker := ""
+	if current {
+		currentMarker = "┃"
 	}
-	if slot := slotPrefix(item.Slot); strings.TrimSpace(slot) != "" {
-		indent += metadataDisplayWidth(strings.TrimSpace(slot)) + 1
-	}
-	if marker := treeSessionMarker(item.Session); strings.TrimSpace(marker) != "" {
-		indent += metadataDisplayWidth(strings.TrimSpace(marker)) + 1
-	}
+	slot := slotPrefix(item.Slot)
+	marker := treeSessionMarker(item.Session)
+	indent := metadataDisplayWidth(branch)
+	indent += metadataDisplayWidth(currentMarker)
+	indent += sessionBodyPrefixWidth(slot, marker, current, branch)
 	return max(indent, 0)
 }
 
