@@ -213,7 +213,14 @@ func (s *Service) ResetTransientHeatStateForSessions(ctx context.Context, server
 	}
 	only := make(map[string]bool, len(sessionNames))
 	for _, name := range sessionNames {
-		only[strings.TrimSpace(name)] = true
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		only[trimmed] = true
+	}
+	if len(only) == 0 {
+		return nil
 	}
 	return s.resetTransientHeatState(ctx, serverID, only)
 }

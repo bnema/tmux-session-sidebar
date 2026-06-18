@@ -612,6 +612,33 @@ func TestCaptureSessionHeatWithConfigAutoSortsCompleteCategoriesWhenAnotherCateg
 	}
 }
 
+func TestResetTransientHeatStateForSessionsIgnoresBlankNames(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
+	store := mocks.NewMockStateStorePort(t)
+	initial := ports.PersistedState{Heat: encodeHeatStateMap(map[string]heat.State{
+		"":      {RecentActivityAt: now, LastVisitedAt: now, Panes: map[string]heat.PaneState{"%blank": {Fingerprint: "blank"}}},
+		"alpha": {RecentActivityAt: now, LastVisitedAt: now, Panes: map[string]heat.PaneState{"%1": {Fingerprint: "alpha"}}},
+	})}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		decoded := decodeHeatStateMap(state.Heat)
+		blank := decoded[""]
+		alpha := decoded["alpha"]
+		return blank.RecentActivityAt.Equal(now) &&
+			blank.LastVisitedAt.Equal(now) &&
+			blank.Panes["%blank"].Fingerprint == "blank" &&
+			alpha.RecentActivityAt.IsZero() &&
+			alpha.LastVisitedAt.IsZero() &&
+			len(alpha.Panes) == 0
+	})).Return(nil)
+
+	if err := NewService(nil, nil, nil, store).ResetTransientHeatStateForSessions(ctx, serverID, []string{"  ", "\t", "alpha"}); err != nil {
+		t.Fatalf("ResetTransientHeatStateForSessions error = %v", err)
+	}
+}
+
 func TestResetTransientHeatStateWrapsInfrastructureErrors(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
