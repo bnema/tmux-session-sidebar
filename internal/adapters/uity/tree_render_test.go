@@ -19,11 +19,32 @@ func TestTreeSidebarRenderUsesCompactSlotsTreeGuidesAndAttentionRight(t *testing
 	model.attentionAnimationFrame = 1
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "▾ Work") || !strings.Contains(view, "├─┃1 alpha "+attentionMarkerSymbol) || !strings.Contains(view, "└─ 2 beta") {
+	if !strings.Contains(view, "▾ Work") || !strings.Contains(view, "├─┃1 alpha "+attentionMarkerSymbol) || !strings.Contains(view, "└─2 beta") {
 		t.Fatalf("tree render missing compact slots, guides, or right attention marker: %q", view)
 	}
 	if strings.Contains(view, "[1]") || strings.Contains(view, "[2]") {
 		t.Fatalf("tree render should not use bracketed slots: %q", view)
+	}
+}
+
+func TestTreeSidebarRenderSelectedSlotHighlightsTextWithoutBranchGap(t *testing.T) {
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Slot: 1, Depth: 1},
+		{Kind: TreeRowSession, ID: "category:work/session:beta", CategoryID: "category:work", Session: SessionItem{Name: "beta"}, Slot: 2, Depth: 1, LastChild: true},
+	}, Actions{}, SidebarOptions{})
+	model.cursor = 2
+
+	view := model.Render()
+	plain := stripANSI(view)
+	if !strings.Contains(plain, "└─2 beta") || strings.Contains(plain, "└─ 2 beta") {
+		t.Fatalf("selected session should not render a gap between branch and slot: %q", plain)
+	}
+	if strings.Contains(view, "48;2;6;95;70m└─") {
+		t.Fatalf("selected session should not highlight the tree branch: %q", view)
+	}
+	if !strings.Contains(view, "48;2;6;95;70m2 beta") {
+		t.Fatalf("selected session should start highlight at the slot text: %q", view)
 	}
 }
 
@@ -175,7 +196,7 @@ func TestTreeSidebarRenderDisplaysContinuousDoubleDigitSlots(t *testing.T) {
 		{Kind: TreeRowSession, ID: "category:work/session:lambda", CategoryID: "category:work", Session: SessionItem{Name: "lambda"}, Slot: 11, Depth: 1, LastChild: true},
 	}, Actions{}, SidebarOptions{})
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "├─ 10 kappa") || !strings.Contains(view, "└─ 11 lambda") {
+	if !strings.Contains(view, "├─10 kappa") || !strings.Contains(view, "└─11 lambda") {
 		t.Fatalf("tree render missing continuous double-digit slots: %q", view)
 	}
 	if strings.Contains(view, " 0 ") {
@@ -1042,7 +1063,7 @@ func TestTreeSidebarRenderShowsMetadataAsTreeChild(t *testing.T) {
 	model = requireSidebarModel(t, updated)
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "└─ 1 alpha") || !strings.Contains(view, "      feature/category-tree *2") {
+	if !strings.Contains(view, "└─1 alpha") || !strings.Contains(view, "     feature/category-tree *2") {
 		t.Fatalf("tree render missing session metadata aligned under session name: %q", view)
 	}
 }
@@ -1057,7 +1078,7 @@ func TestTreeSidebarRenderPreservesMetadataContinuationGuide(t *testing.T) {
 	model = requireSidebarModel(t, updated)
 
 	view := stripANSI(model.Render())
-	if !strings.Contains(view, "├─┃1 alpha") || !strings.Contains(view, "│     feature/category-tree *2") || !strings.Contains(view, "└─ 2 beta") {
+	if !strings.Contains(view, "├─┃1 alpha") || !strings.Contains(view, "│     feature/category-tree *2") || !strings.Contains(view, "└─2 beta") {
 		t.Fatalf("tree render should preserve metadata continuation guide for non-last session: %q", view)
 	}
 }

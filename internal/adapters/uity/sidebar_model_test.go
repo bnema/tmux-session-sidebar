@@ -112,6 +112,19 @@ func TestSidebarModelMouseClickSessionNameSwitchesTargetSession(t *testing.T) {
 	}
 }
 
+func TestSidebarModelSessionNameClickBoundsUseCompactSlotSpacing(t *testing.T) {
+	item := TreeItem{Kind: TreeRowSession, ID: "category:default/session:beta", CategoryID: "category:default", Session: SessionItem{Name: "beta"}, Slot: 2, Depth: 1, LastChild: true}
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:default", CategoryID: "category:default", CategoryName: "Default", CategoryOpen: true},
+		item,
+	}, Actions{}, SidebarOptions{})
+
+	start, end, ok := model.sessionNameClickBounds(item)
+	if !ok || start != 5 || end != 9 {
+		t.Fatalf("session name click bounds = (%d, %d, %v), want (5, 9, true)", start, end, ok)
+	}
+}
+
 func TestSidebarModelMouseClickOutsideSessionNameDoesNotSwitch(t *testing.T) {
 	clicked := ""
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}}, Actions{
