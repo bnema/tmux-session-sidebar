@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	processadapter "github.com/bnema/tmux-session-sidebar/adapters/process"
+	processadapter "github.com/bnema/tmux-session-sidebar/internal/adapters/process"
 )
 
 func TestAttachSingletonSidebarPreservesGroupedHorizontalWorkSplitAcrossToggle(t *testing.T) {

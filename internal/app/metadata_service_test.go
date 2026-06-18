@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/gitcli"
+	"github.com/bnema/tmux-session-sidebar/internal/adapters/gitcli"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 

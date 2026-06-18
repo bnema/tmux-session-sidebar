@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bnema/tmux-session-sidebar/adapters/locker"
+	"github.com/bnema/tmux-session-sidebar/internal/adapters/locker"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 

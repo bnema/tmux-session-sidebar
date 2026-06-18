@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -438,6 +439,124 @@ func waitForLogContains(t *testing.T, path string, needle string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %q in fake tmux log: %q", needle, readLog(t, path))
+}
+
+func TestFirstReopenAfterTmuxKillServerDoesNotHeatRestoredSessions(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaPath := t.TempDir()
+	betaPath := t.TempDir()
+	gammaPath := t.TempDir()
+	store := sessionOrderStore()
+	state, err := store.Load(t.Context(), "tmux")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	base := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
+	state.Sessions = map[string]ports.SessionMetadata{
+		"alpha": {Kind: "captured", LastPath: alphaPath},
+		"beta":  {Kind: "captured", LastPath: betaPath},
+		"gamma": {Kind: "captured", LastPath: gammaPath},
+	}
+	state.SessionOrder = []string{"gamma", "beta", "alpha"}
+	state.Heat = map[string][]byte{
+		"alpha": mustMarshalHeatState(t, heat.State{UpdatedAt: base, LastActiveAt: base.Add(-3 * time.Hour), Panes: map[string]heat.PaneState{"%old-alpha": {Fingerprint: "old-alpha"}}}),
+		"beta":  mustMarshalHeatState(t, heat.State{UpdatedAt: base, LastActiveAt: base.Add(-2 * time.Hour), Panes: map[string]heat.PaneState{"%old-beta": {Fingerprint: "old-beta"}}}),
+		"gamma": mustMarshalHeatState(t, heat.State{UpdatedAt: base, LastActiveAt: base.Add(-10 * time.Minute)}),
+	}
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	listCountPath := filepath.Join(t.TempDir(), "list-sessions-count")
+	t.Setenv("TEST_LIST_COUNT", listCountPath)
+	t.Setenv("ALPHA_PATH", alphaPath)
+	t.Setenv("BETA_PATH", betaPath)
+	t.Setenv("GAMMA_PATH", gammaPath)
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "${@: -1}" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-colors) printf 'on\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-heat-recent) printf '1h\n' ;;
+      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'on\n' ;;
+      @session-sidebar-agent-attention-animation) printf 'pulse\n' ;;
+      @session-sidebar-auto-sort-recent) printf '24h\n' ;;
+      @session-sidebar-restore-sessions) printf 'on\n' ;;
+      @session-sidebar-continuum-grace-seconds) printf '0\n' ;;
+      @session-sidebar-color-scheme) printf 'system\n' ;;
+      @session-sidebar-metadata-subline) printf 'off\n' ;;
+      @session-sidebar-metadata-inactive) printf 'off\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions)
+    count=0
+    [ -f "$TEST_LIST_COUNT" ] && count="$(cat "$TEST_LIST_COUNT")"
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$TEST_LIST_COUNT"
+    if [ "$count" -eq 1 ]; then
+      printf '$3\tgamma\t1\t0\n'
+    else
+      printf '$3\tgamma\t1\t0\n$1\talpha\t1\t0\n$2\tbeta\t1\t0\n'
+    fi ;;
+  new-session) ;;
+  list-clients) ;;
+  list-panes) printf '%%gamma\t$3\tgamma\t@gamma\t%s\tvim\t0\t\t0\n%%alpha-new\t$1\talpha\t@alpha\t%s\tvim\t0\t\t0\n%%beta-new\t$2\tbeta\t@beta\t%s\tvim\t0\t\t0\n' "$GAMMA_PATH" "$ALPHA_PATH" "$BETA_PATH" ;;
+  capture-pane)
+    case "$*" in
+      *%alpha-new*) printf 'alpha restored baseline\n' ;;
+      *%beta-new*) printf 'beta restored baseline\n' ;;
+      *%gamma*) printf 'gamma unchanged\n' ;;
+    esac ;;
+  display-message)
+    case "$*" in
+      *'#{pane_current_path}'*)
+        case "$*" in
+          *alpha*) printf '%s\n' "$ALPHA_PATH" ;;
+          *beta*) printf '%s\n' "$BETA_PATH" ;;
+          *gamma*) printf '%s\n' "$GAMMA_PATH" ;;
+          *) printf '%s\n' "$GAMMA_PATH" ;;
+        esac ;;
+      *) printf 'bad-config\n' ;;
+    esac ;;
+esac
+`)
+
+	if err := ensureRestoredAndCaptured(context.Background()); err != nil {
+		t.Fatalf("ensureRestoredAndCaptured error: %v", err)
+	}
+
+	next, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if got, want := next.SessionOrder, []string{"gamma", "beta", "alpha"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("SessionOrder = %#v, want prior recent order %#v", got, want)
+	}
+	decoded := decodePersistedHeat(next.Heat)
+	if got, want := decoded["alpha"].LastActiveAt, base.Add(-3*time.Hour); !got.Equal(want) {
+		t.Fatalf("alpha LastActiveAt = %v, want restored baseline to preserve %v", got, want)
+	}
+	if got, want := decoded["beta"].LastActiveAt, base.Add(-2*time.Hour); !got.Equal(want) {
+		t.Fatalf("beta LastActiveAt = %v, want restored baseline to preserve %v", got, want)
+	}
+}
+
+func mustMarshalHeatState(t *testing.T, state heat.State) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	return encoded
 }
 
 func TestDaemonServeClearsTransientHeatStateOnStartup(t *testing.T) {

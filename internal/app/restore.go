@@ -61,6 +61,9 @@ func ensureRestoredAndCapturedWithOptions(ctx context.Context, resetTransientHea
 			for name, restoreErr := range report.Failed {
 				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: restore %s failed (session): %v\n", name, restoreErr)
 			}
+			if err := service.ResetTransientHeatStateForSessions(ctx, "tmux", report.Restored); err != nil {
+				return err
+			}
 		}
 		if skipRestore {
 			// shouldSkipSidebarSessionRestoreForContinuum means Continuum/Resurrect
