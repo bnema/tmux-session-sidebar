@@ -196,7 +196,7 @@ Generated names are lowercased and normalized to letters, digits, `_`, and `-`. 
 
 ### Rename, kill, and reorder
 
-`r` renames the selected category inline. `x` asks for inline confirmation before killing the selected session, and the runtime refuses to kill the last remaining session. Reordering is saved in the plugin state file.
+`r` renames the selected session or category. Categories rename inline; sessions use the tmux rename prompt. `x` asks for inline confirmation before killing the selected session, and the runtime refuses to kill the last remaining session. Reordering is saved in the plugin state file.
 
 ## Session restore
 

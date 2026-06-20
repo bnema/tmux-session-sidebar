@@ -56,6 +56,7 @@ type Actions struct {
 	CreateGitProject            func(string) bool
 	CreateAdhoc                 func(string) bool
 	CreateNamedSession          func(string, string) bool
+	RenameSession               func(string) bool
 	KillSession                 func(string) bool
 	TogglePinnedSession         func(string) bool
 	ColorSession                func(string, string) bool
@@ -402,7 +403,7 @@ func (m SidebarModel) updateBrowseKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 			m.reloadSessionsSelectingCurrent()
 		}
 	case "r":
-		m.startRenameSelectedCategory()
+		m.startRenameSelected()
 		return m.finishInteractiveUpdate()
 	case "x":
 		m.openKillConfirmation()
@@ -437,11 +438,20 @@ func (m *SidebarModel) toggleNumericItems() (tea.Model, tea.Cmd) {
 	return m.finishInteractiveUpdate()
 }
 
-func (m *SidebarModel) startRenameSelectedCategory() {
-	if item, ok := m.selectedTreeItem(); ok && item.Kind == TreeRowCategory {
+func (m *SidebarModel) startRenameSelected() {
+	item, ok := m.selectedTreeItem()
+	if !ok {
+		return
+	}
+	switch item.Kind {
+	case TreeRowCategory:
 		m.mode = ModeRenameCategory
 		m.renameCategoryID = item.ID
 		m.renameCategoryInput = item.CategoryName
+	case TreeRowSession:
+		if m.actions.RenameSession != nil && m.actions.RenameSession(item.Session.Name) {
+			m.reloadSessions()
+		}
 	}
 }
 

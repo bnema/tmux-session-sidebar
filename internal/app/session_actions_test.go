@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	coreerrors "github.com/bnema/tmux-session-sidebar/internal/core/errors"
 	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 	"github.com/bnema/tmux-session-sidebar/internal/ports/mocks"
@@ -77,6 +78,9 @@ printf '%s\n' "$*" >> "$TMUX_LOG"
 				t.Fatalf("prompt action error: %v", err)
 			}
 			log := readLog(t, logPath)
+			if !strings.Contains(log, "run-shell -b") {
+				t.Fatalf("expected prompt command to run in background, log=%q", log)
+			}
 			if !strings.Contains(log, "--name") || !strings.Contains(log, "%%") {
 				t.Fatalf("expected quoted tmux input placeholder, log=%q", log)
 			}
@@ -469,6 +473,25 @@ esac
 	}
 	if want := []string{"beta", "gamma"}; !reflect.DeepEqual(state.SessionOrder, want) {
 		t.Fatalf("SessionOrder = %#v, want %#v", state.SessionOrder, want)
+	}
+}
+
+func TestRenameSessionDisplaysInvalidNameFailure(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions) printf '$1\talpha\t1\t1\n' ;;
+esac
+`)
+
+	err := renameSession(t.Context(), map[string]string{"client": "/dev/pts/99", "session": "alpha", "name": "bad,name"}, nil)
+	if !errors.Is(err, coreerrors.ErrInvalidSessionName) {
+		t.Fatalf("renameSession error = %v, want invalid session name", err)
+	}
+	log := readLog(t, logPath)
+	if !strings.Contains(log, "display-message -t /dev/pts/99 tmux-session-sidebar: rename session failed: invalid session name") {
+		t.Fatalf("expected invalid rename display-message, log=%q", log)
 	}
 }
 

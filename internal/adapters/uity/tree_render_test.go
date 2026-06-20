@@ -777,6 +777,46 @@ func TestTreeSidebarRPromptsAndRenamesSelectedCategory(t *testing.T) {
 	}
 }
 
+func TestTreeSidebarRRenamesSelectedSession(t *testing.T) {
+	renamed := ""
+	reloaded := false
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowSession, ID: "session:alpha", Session: SessionItem{Name: "alpha"}},
+	}, Actions{RenameSession: func(name string) bool {
+		renamed = name
+		return true
+	}, ReloadTree: func() *ReloadResult {
+		reloaded = true
+		return &ReloadResult{Items: []TreeItem{{Kind: TreeRowSession, ID: "session:alpha", Session: SessionItem{Name: "alpha"}}}}
+	}}, SidebarOptions{})
+
+	updated, _ := model.Update(keyPress("r", 0))
+	model = requireSidebarModel(t, updated)
+	if renamed != "alpha" || !reloaded || model.mode != ModeBrowse {
+		t.Fatalf("renamed=%q reloaded=%v mode=%s, want session rename reload browse", renamed, reloaded, model.mode)
+	}
+}
+
+func TestTreeSidebarRDoesNothingForNonRenamableRow(t *testing.T) {
+	renameSessionCalled := false
+	renameCategoryCalled := false
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowSeparator, ID: "separator:one"},
+	}, Actions{RenameSession: func(name string) bool {
+		renameSessionCalled = true
+		return true
+	}, RenameCategory: func(id string, name string) bool {
+		renameCategoryCalled = true
+		return true
+	}}, SidebarOptions{})
+
+	updated, _ := model.Update(keyPress("r", 0))
+	model = requireSidebarModel(t, updated)
+	if renameSessionCalled || renameCategoryCalled || model.mode != ModeBrowse {
+		t.Fatalf("sessionCalled=%v categoryCalled=%v mode=%s, want no-op browse", renameSessionCalled, renameCategoryCalled, model.mode)
+	}
+}
+
 func TestTreeSidebarFilterNoMatchShowsNoSessions(t *testing.T) {
 	model := NewTreeSidebarModelWithOptions([]TreeItem{
 		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},

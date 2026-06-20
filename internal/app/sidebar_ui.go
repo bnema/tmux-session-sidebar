@@ -35,6 +35,7 @@ type SidebarUIActions struct {
 	CreateGitProject    func(string) bool
 	CreateAdhoc         func(string) bool
 	CreateNamedSession  func(string, string) bool
+	RenameSession       func(string) bool
 	KillSession         func(string) bool
 	TogglePinnedSession func(string) bool
 	ColorSession        func(string, string) bool

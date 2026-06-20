@@ -34,6 +34,7 @@ func toUIActions(actions app.SidebarUIActions) uity.Actions {
 		CreateGitProject:    actions.CreateGitProject,
 		CreateAdhoc:         actions.CreateAdhoc,
 		CreateNamedSession:  actions.CreateNamedSession,
+		RenameSession:       actions.RenameSession,
 		KillSession:         actions.KillSession,
 		TogglePinnedSession: actions.TogglePinnedSession,
 		ColorSession:        actions.ColorSession,
