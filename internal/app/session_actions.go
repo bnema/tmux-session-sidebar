@@ -135,6 +135,7 @@ func renameSession(ctx context.Context, flags map[string]string, sidebar ports.S
 	if err := withRenamedPersistedSessionDuringTmuxAction(ctx, session, newName, func() error {
 		return runtimeService().RenameSession(ctx, existing, session, newName)
 	}); err != nil {
+		displayActionFailure(ctx, flags["client"], "rename session", err)
 		return err
 	}
 	if err := refreshSidebar(ctx, flags["client"], sidebar); err != nil {
@@ -316,7 +317,7 @@ func commandPrompt(ctx context.Context, client string, prompt string, command st
 	if client != "" {
 		args = append(args, "-t", client)
 	}
-	args = append(args, "-p", prompt, "run-shell "+shellQuote(full))
+	args = append(args, "-p", prompt, "run-shell -b "+shellQuote(full))
 	_, err = tmux(ctx, args...)
 	return err
 }
@@ -333,6 +334,15 @@ func confirmBefore(ctx context.Context, client string, prompt string, command st
 
 func refreshSidebar(ctx context.Context, client string, sidebar ports.SidebarPort) error {
 	return sidebar.RefreshSidebar(ctx, client)
+}
+
+func displayActionFailure(ctx context.Context, client string, action string, err error) {
+	args := []string{"display-message"}
+	if strings.TrimSpace(client) != "" {
+		args = append(args, "-t", client)
+	}
+	args = append(args, fmt.Sprintf("tmux-session-sidebar: %s failed: %v", action, err))
+	_, _ = tmux(ctx, args...)
 }
 
 func shellQuote(value string) string {
