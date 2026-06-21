@@ -712,6 +712,28 @@ func TestTreeSidebarJMovesSelectedTreeItemAndReloads(t *testing.T) {
 	}
 }
 
+func TestTreeSidebarKMovesSelectedTreeItemUpAndReloads(t *testing.T) {
+	movedID := ""
+	delta := 0
+	model := NewTreeSidebarModelWithOptions([]TreeItem{
+		{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true},
+		{Kind: TreeRowSession, ID: "category:work/session:alpha", CategoryID: "category:work", Session: SessionItem{Name: "alpha"}, Depth: 1, LastChild: true},
+	}, Actions{
+		MoveTreeItem: func(id string, d int) bool { movedID, delta = id, d; return true },
+		ReloadTree: func() *ReloadResult {
+			return &ReloadResult{Items: []TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}}
+		},
+	}, SidebarOptions{})
+	model.cursor = 1
+
+	updated, _ := model.Update(keyPress("K", tea.ModShift))
+	model = requireSidebarModel(t, updated)
+
+	if movedID != "category:work/session:alpha" || delta != -1 || len(model.treeItems) != 1 {
+		t.Fatalf("move tree item id=%q delta=%d tree=%#v", movedID, delta, model.treeItems)
+	}
+}
+
 func TestTreeSidebarToggleNumericReloadsTree(t *testing.T) {
 	reloaded := false
 	model := NewTreeSidebarModelWithOptions([]TreeItem{{Kind: TreeRowCategory, ID: "category:work", CategoryID: "category:work", CategoryName: "Work", CategoryOpen: true}}, Actions{

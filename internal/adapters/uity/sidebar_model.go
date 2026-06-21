@@ -297,16 +297,16 @@ func (m SidebarModel) updateSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m.movePage(delta)
 		return m.finishInteractiveUpdate()
 	}
+	if delta, ok := navigationKeyDelta(msg); ok {
+		m.move(delta)
+		return m.finishInteractiveUpdate()
+	}
 	switch msg.Keystroke() {
 	case "esc":
 		m.mode = ModeBrowse
 		m.filter = ""
 	case "enter":
 		m.mode = ModeBrowse
-	case "j", "down":
-		m.move(1)
-	case "k", "up":
-		m.move(-1)
 	case "backspace":
 		if m.filter != "" {
 			m.filter = trimLastRune(m.filter)
@@ -322,15 +322,15 @@ func (m SidebarModel) updateSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 }
 
 func (m SidebarModel) updateMenuKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if delta, ok := navigationKeyDelta(msg); ok {
+		m.moveMenu(delta)
+		return m.finishInteractiveUpdate()
+	}
 	switch msg.Keystroke() {
 	case "esc":
 		m.closeMenu()
 	case "enter":
 		m.chooseMenuItem()
-	case "j", "down":
-		m.moveMenu(1)
-	case "k", "up":
-		m.moveMenu(-1)
 	case "backspace":
 		m.backspaceMenuFilter()
 	case "f5":
@@ -370,6 +370,10 @@ func (m SidebarModel) updateBrowseKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m.switchSlot(slot)
 		return m.finishInteractiveUpdate()
 	}
+	if delta, ok := navigationKeyDelta(msg); ok {
+		m.move(delta)
+		return m.finishInteractiveUpdate()
+	}
 
 	switch msg.Keystroke() {
 	case "esc":
@@ -386,10 +390,6 @@ func (m SidebarModel) updateBrowseKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m.mode = ModeSearch
 	case "enter":
 		m.activateSelected()
-	case "j", "down":
-		m.move(1)
-	case "k", "up":
-		m.move(-1)
 	case "n":
 		m.startCreateNamed()
 	case "c":
@@ -929,6 +929,27 @@ func pageKeyDelta(msg tea.KeyPressMsg) (int, bool) {
 	case tea.KeyPgDown:
 		return 1, true
 	case tea.KeyPgUp:
+		return -1, true
+	default:
+		return 0, false
+	}
+}
+
+func navigationKeyDelta(msg tea.KeyPressMsg) (int, bool) {
+	key := msg.Key()
+	if key.Mod != 0 && !key.Mod.Contains(tea.ModAlt) {
+		return 0, false
+	}
+	switch key.Code {
+	case tea.KeyDown:
+		return 1, true
+	case tea.KeyUp:
+		return -1, true
+	}
+	switch {
+	case key.Text == "j" || key.Code == 'j':
+		return 1, true
+	case key.Text == "k" || key.Code == 'k':
 		return -1, true
 	default:
 		return 0, false
