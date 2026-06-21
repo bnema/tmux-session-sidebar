@@ -239,6 +239,95 @@ func TestSidebarModelMouseWheelNavigatesTreeSessions(t *testing.T) {
 	}
 }
 
+func TestSidebarModelAltJKNavigateBrowseSearchAndProjectMenu(t *testing.T) {
+	t.Run("browse", func(t *testing.T) {
+		model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}, Actions{})
+		updated, _ := model.Update(altKeyPress("j"))
+		model = requireSidebarModel(t, updated)
+		if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
+			t.Fatalf("selection after alt+j = %#v ok=%v, want beta", item, ok)
+		}
+
+		updated, _ = model.Update(altKeyPress("k"))
+		model = requireSidebarModel(t, updated)
+		if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+			t.Fatalf("selection after alt+k = %#v ok=%v, want alpha", item, ok)
+		}
+	})
+
+	t.Run("search", func(t *testing.T) {
+		model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}, Actions{})
+		updated, _ := model.Update(keyPress("/", 0))
+		model = requireSidebarModel(t, updated)
+		updated, _ = model.Update(altKeyPress("j"))
+		model = requireSidebarModel(t, updated)
+		if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
+			t.Fatalf("search selection after alt+j = %#v ok=%v, want beta", item, ok)
+		}
+		if model.filter != "" {
+			t.Fatalf("search filter after alt+j = %q, want unchanged empty filter", model.filter)
+		}
+
+		updated, _ = model.Update(altKeyPress("k"))
+		model = requireSidebarModel(t, updated)
+		if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+			t.Fatalf("search selection after alt+k = %#v ok=%v, want alpha", item, ok)
+		}
+		if model.filter != "" {
+			t.Fatalf("search filter after alt+k = %q, want unchanged empty filter", model.filter)
+		}
+	})
+
+	t.Run("project menu", func(t *testing.T) {
+		model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+			LoadProjects: func() []ProjectItem {
+				return []ProjectItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}
+			},
+		})
+		model.openProjectMenu()
+		updated, _ := model.Update(altKeyPress("j"))
+		model = requireSidebarModel(t, updated)
+		if visible := model.visibleMenuItems(); model.menu.Cursor != 1 || visible[model.menu.Cursor].Label != "beta" {
+			t.Fatalf("project menu after alt+j cursor=%d visible=%#v, want beta at cursor 1", model.menu.Cursor, visible)
+		}
+		if model.menu.Filter != "" {
+			t.Fatalf("project menu filter after alt+j = %q, want unchanged empty filter", model.menu.Filter)
+		}
+
+		updated, _ = model.Update(altKeyPress("k"))
+		model = requireSidebarModel(t, updated)
+		if visible := model.visibleMenuItems(); model.menu.Cursor != 0 || visible[model.menu.Cursor].Label != "alpha" {
+			t.Fatalf("project menu after alt+k cursor=%d visible=%#v, want alpha at cursor 0", model.menu.Cursor, visible)
+		}
+		if model.menu.Filter != "" {
+			t.Fatalf("project menu filter after alt+k = %q, want unchanged empty filter", model.menu.Filter)
+		}
+	})
+}
+
+func TestSidebarModelPlainJKNavigateSearchWithoutMutatingFilter(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}, Actions{})
+	updated, _ := model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("j", 0))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
+		t.Fatalf("search selection after j = %#v ok=%v, want beta", item, ok)
+	}
+	if model.filter != "" {
+		t.Fatalf("search filter after j = %q, want unchanged empty filter", model.filter)
+	}
+
+	updated, _ = model.Update(keyPress("k", 0))
+	model = requireSidebarModel(t, updated)
+	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
+		t.Fatalf("search selection after k = %#v ok=%v, want alpha", item, ok)
+	}
+	if model.filter != "" {
+		t.Fatalf("search filter after k = %q, want unchanged empty filter", model.filter)
+	}
+}
+
 func TestSidebarModelSearchFiltersTreeSessions(t *testing.T) {
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}, Actions{})
 	updated, _ := model.Update(keyPress("/", 0))
@@ -836,6 +925,10 @@ func TestBestEffortMetadataIconModeUsesASCIIForASCIILocale(t *testing.T) {
 
 func keyPress(text string, mod tea.KeyMod) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Text: text, Code: []rune(text)[0], Mod: mod})
+}
+
+func altKeyPress(text string) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: []rune(text)[0], Mod: tea.ModAlt})
 }
 
 var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
