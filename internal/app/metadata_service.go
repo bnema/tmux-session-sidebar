@@ -562,22 +562,34 @@ type metadataWatchTargetsResult struct {
 }
 
 func metadataLiveSessionPaths(ctx context.Context, query ports.QueryPort, live []ports.SessionSnapshot) map[string]string {
+	livePaths := make(map[string]string, len(live))
+	missing := live
 	if batchQuery, ok := query.(metadataSessionPathsQuery); ok {
 		names := make([]string, 0, len(live))
 		for _, session := range live {
 			names = append(names, session.Name)
 		}
 		if paths, err := batchQuery.SessionPaths(ctx, names); err == nil {
-			return paths
+			maps.Copy(livePaths, paths)
+			missing = missingSessionsWithoutPaths(live, livePaths)
 		}
 	}
-	livePaths := make(map[string]string, len(live))
-	for _, session := range live {
+	for _, session := range missing {
 		if path, err := query.SessionPath(ctx, session.Name); err == nil {
 			livePaths[session.Name] = path
 		}
 	}
 	return livePaths
+}
+
+func missingSessionsWithoutPaths(live []ports.SessionSnapshot, paths map[string]string) []ports.SessionSnapshot {
+	missing := make([]ports.SessionSnapshot, 0)
+	for _, session := range live {
+		if strings.TrimSpace(paths[session.Name]) == "" {
+			missing = append(missing, session)
+		}
+	}
+	return missing
 }
 
 func metadataPathCacheKey(path string) string {
