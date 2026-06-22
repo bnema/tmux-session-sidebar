@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bnema/tmux-session-sidebar/internal/core/persisted"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
@@ -32,8 +33,10 @@ func TestStoreLoadSave(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Load error: %v", err)
 			}
-			if !reflect.DeepEqual(got, tt.state) {
-				t.Fatalf("loaded state = %#v, want %#v", got, tt.state)
+			want := tt.state
+			persisted.InitializeState(&want)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("loaded state = %#v, want %#v", got, want)
 			}
 		})
 	}
@@ -59,8 +62,10 @@ func TestStoreLoadSaveSessionRestoreMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load error: %v", err)
 	}
-	if !reflect.DeepEqual(got, state) {
-		t.Fatalf("loaded state = %#v, want %#v", got, state)
+	want := state
+	persisted.InitializeState(&want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("loaded state = %#v, want %#v", got, want)
 	}
 }
 

@@ -63,6 +63,9 @@ func ensureRuntimeStateMigratedAndLoad(ctx context.Context, scope RuntimeScope) 
 		if !current.exists {
 			return emptyPersistedState(), true, nil
 		}
+		// Malformed current state is not reusable. Defer to the canonical store
+		// load path so callers still receive the same parse error they did before
+		// migration/load reuse existed.
 		return ports.PersistedState{}, false, nil
 	}
 
@@ -111,6 +114,9 @@ func ensureRuntimeStateMigratedAndLoad(ctx context.Context, scope RuntimeScope) 
 		if !current.exists {
 			return emptyPersistedState(), true, nil
 		}
+		// Malformed current state is not reusable. Defer to the canonical store
+		// load path so callers still receive the same parse error they did before
+		// migration/load reuse existed.
 		return ports.PersistedState{}, false, nil
 	}
 

@@ -49,8 +49,12 @@ func TestGitStatusUsesInjectedDivergenceCounter(t *testing.T) {
 	if counter.calls != 1 || counter.repoRoot != repo || counter.branch != "main" {
 		t.Fatalf("Divergence calls = %d repo = %q branch = %q, want one reusable upstream call for %q main", counter.calls, counter.repoRoot, counter.branch, repo)
 	}
-	if status.UpstreamConfigured || status.Ahead != 2 || status.Behind != 3 || status.Clean {
+	if status.UpstreamConfigured || status.Ahead != 2 || status.Behind != 3 {
 		t.Fatalf("Status divergence = %#v, want injected comparison 2 ahead 3 behind and no upstream without configured tracking branch", status)
+	}
+	// Clean includes divergence counts, not only working-tree changes.
+	if status.Clean {
+		t.Fatalf("Clean = true, want false when injected divergence is non-zero: %#v", status)
 	}
 }
 

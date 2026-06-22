@@ -39,11 +39,23 @@ func InitializeState(state *ports.PersistedState) {
 	if state.SessionOrder == nil {
 		state.SessionOrder = []string{}
 	}
+	if state.PinnedSessions == nil {
+		state.PinnedSessions = []string{}
+	}
+	if state.PinColors == nil {
+		state.PinColors = map[string]string{}
+	}
 	if state.Clients == nil {
 		state.Clients = map[string][]byte{}
 	}
 	if state.Heat == nil {
 		state.Heat = map[string][]byte{}
+	}
+	if state.AgentAttention == nil {
+		state.AgentAttention = map[string][]byte{}
+	}
+	if state.Metadata == nil {
+		state.Metadata = map[string]ports.GitStatus{}
 	}
 }
 
