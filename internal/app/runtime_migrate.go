@@ -103,10 +103,7 @@ func ensureRuntimeStateMigratedAndLoad(ctx context.Context, scope RuntimeScope) 
 	if err != nil {
 		return ports.PersistedState{}, false, fmt.Errorf("read candidate tmux.json %s under lock: %w", best.tmuxJSONPath, err)
 	}
-	candidate, err := reusablePersistedStateFromData(data)
-	if err != nil {
-		return ports.PersistedState{}, false, fmt.Errorf("check candidate tmux.json %s under lock: %w", best.tmuxJSONPath, err)
-	}
+	candidate := reusablePersistedStateFromData(data)
 	if !candidate.meaningful {
 		if current.reusable {
 			return current.state, true, nil
@@ -145,9 +142,9 @@ func readReusablePersistedState(path string) (reusablePersistedState, error) {
 	return reusablePersistedState{state: state, exists: true, reusable: reusable, meaningful: meaningful}, nil
 }
 
-func reusablePersistedStateFromData(data []byte) (reusablePersistedState, error) {
+func reusablePersistedStateFromData(data []byte) reusablePersistedState {
 	state, reusable, meaningful := decodeReusablePersistedState(data)
-	return reusablePersistedState{state: state, exists: true, reusable: reusable, meaningful: meaningful}, nil
+	return reusablePersistedState{state: state, exists: true, reusable: reusable, meaningful: meaningful}
 }
 
 func decodeReusablePersistedState(data []byte) (ports.PersistedState, bool, bool) {
