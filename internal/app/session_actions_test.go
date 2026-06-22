@@ -257,6 +257,33 @@ esac
 	assertPersistedOrder(t, []string{"alpha", "scratch", "gamma"})
 }
 
+func TestCreateAdhocCreateFailureWithLiveRaceRestoresPreviousMetadata(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	previous := ports.SessionMetadata{Kind: "captured", LastPath: "/tmp/existing/scratch"}
+	seedPersistedState(t, map[string]ports.SessionMetadata{"scratch": previous}, []string{"alpha", "scratch", "gamma"})
+	counter := filepath.Join(t.TempDir(), "list-count")
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  display-message) printf '/tmp/worktree/scratch\n' ;;
+  list-sessions)
+    count=0
+    if [[ -f "`+counter+`" ]]; then count=$(cat "`+counter+`"); fi
+    count=$((count + 1))
+    printf '%s' "$count" > "`+counter+`"
+    if [[ "$count" -ge 2 ]]; then printf '$9\tscratch\t1\t0\n'; fi
+    ;;
+  new-session) exit 1 ;;
+esac
+`)
+
+	if err := createAdhoc(t.Context(), map[string]string{}, nil); err == nil {
+		t.Fatal("createAdhoc returned nil, want create error")
+	}
+	assertPersistedMetadata(t, "scratch", previous)
+	assertPersistedOrder(t, []string{"alpha", "scratch", "gamma"})
+}
+
 func TestCreateAdhocSwitchFailureKeepsNewMetadataWhenSessionExists(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	seedSidebarLayout(t, &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
@@ -300,6 +327,32 @@ esac
 
 	if err := createProject(t.Context(), map[string]string{"project-path": "/tmp/worktree/project"}, nil, nil); err == nil {
 		t.Fatal("createProject returned nil, want error")
+	}
+	assertPersistedMetadata(t, "project", previous)
+	assertPersistedOrder(t, []string{"alpha", "project", "gamma"})
+}
+
+func TestCreateProjectCreateFailureWithLiveRaceRestoresPreviousMetadata(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	previous := ports.SessionMetadata{Kind: "captured", LastPath: "/tmp/existing/project"}
+	seedPersistedState(t, map[string]ports.SessionMetadata{"project": previous}, []string{"alpha", "project", "gamma"})
+	counter := filepath.Join(t.TempDir(), "list-count")
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  list-sessions)
+    count=0
+    if [[ -f "`+counter+`" ]]; then count=$(cat "`+counter+`"); fi
+    count=$((count + 1))
+    printf '%s' "$count" > "`+counter+`"
+    if [[ "$count" -ge 2 ]]; then printf '$1\tproject\t1\t0\n'; fi
+    ;;
+  new-session) exit 1 ;;
+esac
+`)
+
+	if err := createProject(t.Context(), map[string]string{"project-path": "/tmp/worktree/project"}, nil, nil); err == nil {
+		t.Fatal("createProject returned nil, want create error")
 	}
 	assertPersistedMetadata(t, "project", previous)
 	assertPersistedOrder(t, []string{"alpha", "project", "gamma"})

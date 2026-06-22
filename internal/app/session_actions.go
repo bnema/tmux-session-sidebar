@@ -253,9 +253,6 @@ func withPersistedSessionDuringTmuxAction(ctx context.Context, name string, meta
 			return err
 		}
 		if err := action(); err != nil {
-			if liveSessionExists(ctx, name) {
-				return err
-			}
 			rollbackLoadedSidebarState(ctx, store, previous)
 			return err
 		}
