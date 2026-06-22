@@ -91,6 +91,124 @@ func TestEnsureRuntimeStateMigrated_SameSocketNewPID(t *testing.T) {
 	}
 }
 
+func TestEnsureRuntimeStateMigratedAndLoadReturnsCurrentMeaningfulState(t *testing.T) {
+	root := t.TempDir()
+	scope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "111")
+	if err := os.MkdirAll(scope.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteRuntimeScopeMetadata(t, scope)
+	writeTmuxJSON(t, scope.StateDir, ports.PersistedState{SessionOrder: []string{"current"}})
+
+	state, loaded, err := ensureRuntimeStateMigratedAndLoad(context.Background(), scope)
+	if err != nil {
+		t.Fatalf("ensureRuntimeStateMigratedAndLoad error: %v", err)
+	}
+	if !loaded {
+		t.Fatal("loaded = false, want current state returned for load reuse")
+	}
+	if len(state.SessionOrder) != 1 || state.SessionOrder[0] != "current" {
+		t.Fatalf("SessionOrder = %#v, want [current]", state.SessionOrder)
+	}
+}
+
+func TestEnsureRuntimeStateMigratedAndLoadReturnsMigratedCandidateState(t *testing.T) {
+	root := t.TempDir()
+	oldScope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "111")
+	if err := os.MkdirAll(oldScope.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteRuntimeScopeMetadata(t, oldScope)
+	writeTmuxJSON(t, oldScope.Dir, ports.PersistedState{SessionOrder: []string{"old"}})
+	newScope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "222")
+	if err := os.MkdirAll(newScope.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteRuntimeScopeMetadata(t, newScope)
+
+	state, loaded, err := ensureRuntimeStateMigratedAndLoad(context.Background(), newScope)
+	if err != nil {
+		t.Fatalf("ensureRuntimeStateMigratedAndLoad error: %v", err)
+	}
+	if !loaded {
+		t.Fatal("loaded = false, want migrated state returned for load reuse")
+	}
+	if len(state.SessionOrder) != 1 || state.SessionOrder[0] != "old" {
+		t.Fatalf("SessionOrder = %#v, want [old]", state.SessionOrder)
+	}
+}
+
+func TestEnsureRuntimeStateMigratedAndLoadReturnsDefaultForMissingState(t *testing.T) {
+	root := t.TempDir()
+	scope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "111")
+	if err := os.MkdirAll(scope.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteRuntimeScopeMetadata(t, scope)
+
+	state, loaded, err := ensureRuntimeStateMigratedAndLoad(context.Background(), scope)
+	if err != nil {
+		t.Fatalf("ensureRuntimeStateMigratedAndLoad error: %v", err)
+	}
+	if !loaded {
+		t.Fatal("loaded = false, want initialized empty state for missing tmux.json")
+	}
+	if state.Sessions == nil {
+		t.Fatal("state.Sessions not initialized")
+	}
+	if state.SessionOrder == nil {
+		t.Fatal("state.SessionOrder not initialized")
+	}
+	if state.PinnedSessions == nil {
+		t.Fatal("state.PinnedSessions not initialized")
+	}
+	if state.PinColors == nil {
+		t.Fatal("state.PinColors not initialized")
+	}
+	if state.Clients == nil {
+		t.Fatal("state.Clients not initialized")
+	}
+	if state.Heat == nil {
+		t.Fatal("state.Heat not initialized")
+	}
+	if state.AgentAttention == nil {
+		t.Fatal("state.AgentAttention not initialized")
+	}
+	if state.Metadata == nil {
+		t.Fatal("state.Metadata not initialized")
+	}
+}
+
+func TestEnsureRuntimeStateMigratedAndLoadDefersMalformedCurrentStateToCanonicalLoad(t *testing.T) {
+	root := t.TempDir()
+	defer ResetRuntimeScopeForTest()
+
+	scope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "111")
+	if err := os.MkdirAll(scope.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteRuntimeScopeMetadata(t, scope)
+	if err := os.MkdirAll(scope.StateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scope.StateDir, "tmux.json"), []byte("{invalid json"), 0o600); err != nil {
+		t.Fatalf("write malformed tmux.json: %v", err)
+	}
+
+	state, loaded, err := ensureRuntimeStateMigratedAndLoad(context.Background(), scope)
+	if err != nil {
+		t.Fatalf("ensureRuntimeStateMigratedAndLoad error = %v, want defer to canonical load", err)
+	}
+	if loaded {
+		t.Fatalf("loaded = true with state %#v, want false for malformed current state", state)
+	}
+
+	SetRuntimeScope(scope)
+	if _, err := loadSidebarState(context.Background()); err == nil {
+		t.Fatal("loadSidebarState error = nil, want canonical parse error for malformed current state")
+	}
+}
+
 func TestEnsureRuntimeStateMigrated_CurrentPIDLegacyState(t *testing.T) {
 	root := t.TempDir()
 	defer ResetRuntimeScopeForTest()

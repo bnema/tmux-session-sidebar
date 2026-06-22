@@ -37,7 +37,56 @@ func TestCaptureSessionHeatWithConfigPrunesHeatForNonLiveSessions(t *testing.T) 
 		return !stale
 	})).Return(nil)
 
+	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{HeatColorsEnabled: true}); err != nil {
+		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
+	}
+}
+
+func TestCaptureSessionHeatWithConfigSkipsWhenHeatColorsAndAutoSortDisabled(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockQueryPort(t)
+
 	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{}); err != nil {
+		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
+	}
+	store.AssertNotCalled(t, "Load")
+	store.AssertNotCalled(t, "Save")
+	query.AssertNotCalled(t, "ListSessions")
+	query.AssertNotCalled(t, "ListClients")
+}
+
+func TestCaptureSessionHeatWithConfigCapturesWhenHeatColorsEnabled(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockQueryPort(t)
+	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, nil)
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		return len(state.Heat) == 1
+	})).Return(nil)
+
+	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{HeatColorsEnabled: true}); err != nil {
+		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
+	}
+}
+
+func TestCaptureSessionHeatWithConfigCapturesWhenAutoSortRecentEnabled(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockQueryPort(t)
+	store.EXPECT().Load(ctx, serverID).Return(ports.PersistedState{}, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
+	query.EXPECT().ListClients(ctx).Return(nil, nil)
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		return len(state.Heat) == 1 && state.Sidebar != nil && state.Sidebar.AutoSortRecentRunAt != ""
+	})).Return(nil)
+
+	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: time.Hour}); err != nil {
 		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
 	}
 }

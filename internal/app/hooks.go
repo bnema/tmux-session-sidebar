@@ -177,7 +177,7 @@ func installManagedFile(stdout io.Writer, def agentHookDef, content string, assu
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := writeHookFileAtomic(path, []byte(content), 0o644); err != nil {
 		return err
 	}
 	return writef(stdout, "    %s hooks installed at %s\n", def.DisplayName, path)

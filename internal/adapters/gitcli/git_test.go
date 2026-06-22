@@ -53,6 +53,11 @@ func TestGitStatusCollectsBranchDivergenceAndWorkingTreeCounts(t *testing.T) {
 	if status.Clean {
 		t.Fatal("Status Clean = true, want false")
 	}
+	for _, call := range process.calls {
+		if len(call.args) >= 4 && call.args[2] == "status" && slices.Contains(call.args, "--branch") {
+			t.Fatalf("status command args = %#v, want porcelain status without unused --branch header", call.args)
+		}
+	}
 }
 
 func TestGitStatusComparesWorkingBranchWithDefaultRemoteBranch(t *testing.T) {
@@ -93,8 +98,9 @@ func TestGitStatusComparesDefaultBranchWithUpstreamFallback(t *testing.T) {
 	if !status.ComparisonConfigured || !status.UpstreamConfigured || status.Ahead != 1 || status.Behind != 0 {
 		t.Fatalf("Status divergence = %#v, want upstream comparison 1/0", status)
 	}
-	if got := process.revListTargets[0]; got != "HEAD...@{upstream}" {
-		t.Fatalf("first rev-list target = %q, want HEAD...@{upstream}", got)
+	wantTargets := []string{"HEAD...@{upstream}"}
+	if !slices.Equal(process.revListTargets, wantTargets) {
+		t.Fatalf("rev-list targets = %#v, want %#v", process.revListTargets, wantTargets)
 	}
 }
 
@@ -107,7 +113,7 @@ func TestGitStatusComparesDefaultBranchWithDefaultRemoteWhenUpstreamMissing(t *t
 	if !status.ComparisonConfigured || status.UpstreamConfigured || status.Ahead != 4 || status.Behind != 1 {
 		t.Fatalf("Status divergence = %#v, want fallback comparison 4/1 without real upstream", status)
 	}
-	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main", "HEAD...@{upstream}"}
+	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main"}
 	if !slices.Equal(process.revListTargets, wantTargets) {
 		t.Fatalf("rev-list targets = %#v, want %#v", process.revListTargets, wantTargets)
 	}
@@ -122,7 +128,7 @@ func TestGitStatusIgnoresStaleDefaultRemoteBranch(t *testing.T) {
 	if status.UpstreamConfigured || status.Ahead != 0 || status.Behind != 0 || !status.Clean {
 		t.Fatalf("Status divergence = %#v, want clean status without upstream when origin/main is missing", status)
 	}
-	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main", "HEAD...@{upstream}"}
+	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main"}
 	if !slices.Equal(process.revListTargets, wantTargets) {
 		t.Fatalf("rev-list targets = %#v, want %#v", process.revListTargets, wantTargets)
 	}
@@ -137,7 +143,7 @@ func TestGitStatusIgnoresStaleUpstreamBranch(t *testing.T) {
 	if status.UpstreamConfigured || status.Ahead != 0 || status.Behind != 0 || !status.Clean {
 		t.Fatalf("Status divergence = %#v, want clean status without upstream when tracked origin/main is missing", status)
 	}
-	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main", "HEAD...@{upstream}"}
+	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main"}
 	if !slices.Equal(process.revListTargets, wantTargets) {
 		t.Fatalf("rev-list targets = %#v, want %#v", process.revListTargets, wantTargets)
 	}

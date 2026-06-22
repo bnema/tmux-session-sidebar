@@ -31,39 +31,44 @@ type stateCandidate struct {
 // that may write meaningful state into tmux.json between candidate selection
 // and the final copy.
 func ensureRuntimeStateMigrated(ctx context.Context, scope RuntimeScope) error {
+	_, _, err := ensureRuntimeStateMigratedAndLoad(ctx, scope)
+	return err
+}
+
+func ensureRuntimeStateMigratedAndLoad(ctx context.Context, scope RuntimeScope) (ports.PersistedState, bool, error) {
 	if err := EnsureRuntimeDirPrivate(scope.StateDir); err != nil {
-		return err
+		return ports.PersistedState{}, false, err
 	}
-	// Only scoped (non-legacy) runtimes participate in migration. Legacy
-	// state is always at the root and carries no server identity.
 	if scope.Legacy || scope.IdentityKey == "" {
-		return nil
+		return ports.PersistedState{}, false, nil
 	}
 
 	currentPath := filepath.Join(scope.StateDir, "tmux.json")
-
-	// Quick bail-out: if current tmux.json already has meaningful state,
-	// do nothing. The true serialised check happens below under the state
-	// lock, but this avoids an unnecessary sibling scan in the common case.
-	meaningful, err := tmuxJSONIsMeaningful(currentPath)
+	current, err := readReusablePersistedState(currentPath)
 	if err != nil {
-		return fmt.Errorf("check current tmux.json: %w", err)
+		return ports.PersistedState{}, false, fmt.Errorf("check current tmux.json: %w", err)
 	}
-	if meaningful {
-		return nil
+	if current.meaningful {
+		return current.state, true, nil
 	}
 
-	// Find old PID-scoped server directories sharing the same socket path.
 	candidates, err := findSiblingStateCandidates(scope)
 	if err != nil {
-		return fmt.Errorf("find sibling state candidates: %w", err)
+		return ports.PersistedState{}, false, fmt.Errorf("find sibling state candidates: %w", err)
 	}
 	if len(candidates) == 0 {
-		return nil
+		if current.reusable {
+			return current.state, true, nil
+		}
+		if !current.exists {
+			return emptyPersistedState(), true, nil
+		}
+		// Malformed current state is not reusable. Defer to the canonical store
+		// load path so callers still receive the same parse error they did before
+		// migration/load reuse existed.
+		return ports.PersistedState{}, false, nil
 	}
 
-	// Pick the newest candidate by file modification time, with a stable
-	// path tie-breaker for filesystems with coarse timestamp precision.
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].mtime == candidates[j].mtime {
 			return candidates[i].tmuxJSONPath < candidates[j].tmuxJSONPath
@@ -75,12 +80,9 @@ func ensureRuntimeStateMigrated(ctx context.Context, scope RuntimeScope) error {
 		beforeMigrationStateLockForTest()
 	}
 
-	// Acquire the same state-level lock used by withLockedSidebarStore so
-	// that no concurrent startup command can write meaningful tmux.json into
-	// our current scope between our meaningfulness check and the final copy.
 	lock, err := runtimeLocker(filepath.Join(scope.StateDir, "locks")).Acquire(ctx, "tmux-sidebar-state")
 	if err != nil {
-		return fmt.Errorf("acquire state lock for migration: %w", err)
+		return ports.PersistedState{}, false, fmt.Errorf("acquire state lock for migration: %w", err)
 	}
 	defer func() {
 		if relErr := lock.Release(); relErr != nil {
@@ -88,35 +90,73 @@ func ensureRuntimeStateMigrated(ctx context.Context, scope RuntimeScope) error {
 		}
 	}()
 
-	// Re-check: another process may have written meaningful state between
-	// the initial check above and acquiring the lock. If so, do not
-	// overwrite it with stale candidate data.
-	meaningful, err = tmuxJSONIsMeaningful(currentPath)
+	current, err = readReusablePersistedState(currentPath)
 	if err != nil {
-		return fmt.Errorf("recheck current tmux.json under lock: %w", err)
+		return ports.PersistedState{}, false, fmt.Errorf("recheck current tmux.json under lock: %w", err)
 	}
-	if meaningful {
-		return nil
+	if current.meaningful {
+		return current.state, true, nil
 	}
 
 	best := candidates[0]
 	data, err := os.ReadFile(best.tmuxJSONPath)
 	if err != nil {
-		return fmt.Errorf("read candidate tmux.json %s under lock: %w", best.tmuxJSONPath, err)
+		return ports.PersistedState{}, false, fmt.Errorf("read candidate tmux.json %s under lock: %w", best.tmuxJSONPath, err)
 	}
-	meaningful, err = stateDataIsMeaningful(data)
-	if err != nil {
-		return fmt.Errorf("check candidate tmux.json %s under lock: %w", best.tmuxJSONPath, err)
-	}
-	if !meaningful {
-		return nil
+	candidate := reusablePersistedStateFromData(data)
+	if !candidate.meaningful {
+		if current.reusable {
+			return current.state, true, nil
+		}
+		if !current.exists {
+			return emptyPersistedState(), true, nil
+		}
+		// Malformed current state is not reusable. Defer to the canonical store
+		// load path so callers still receive the same parse error they did before
+		// migration/load reuse existed.
+		return ports.PersistedState{}, false, nil
 	}
 
-	// Atomic write via temp file + rename to prevent partial-file reads.
 	if err := atomicWriteFile(currentPath, data, 0o600); err != nil {
-		return fmt.Errorf("write migrated tmux.json: %w", err)
+		return ports.PersistedState{}, false, fmt.Errorf("write migrated tmux.json: %w", err)
 	}
-	return nil
+	return candidate.state, true, nil
+}
+
+type reusablePersistedState struct {
+	state      ports.PersistedState
+	exists     bool
+	reusable   bool
+	meaningful bool
+}
+
+func readReusablePersistedState(path string) (reusablePersistedState, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return reusablePersistedState{}, nil
+		}
+		return reusablePersistedState{}, err
+	}
+	state, reusable, meaningful := decodeReusablePersistedState(data)
+	return reusablePersistedState{state: state, exists: true, reusable: reusable, meaningful: meaningful}, nil
+}
+
+func reusablePersistedStateFromData(data []byte) reusablePersistedState {
+	state, reusable, meaningful := decodeReusablePersistedState(data)
+	return reusablePersistedState{state: state, exists: true, reusable: reusable, meaningful: meaningful}
+}
+
+func decodeReusablePersistedState(data []byte) (ports.PersistedState, bool, bool) {
+	state, err := persisted.DecodeState(data)
+	if err != nil {
+		return ports.PersistedState{}, false, false
+	}
+	return state, true, persisted.IsMeaningful(state)
+}
+
+func emptyPersistedState() ports.PersistedState {
+	return persisted.EmptyState()
 }
 
 // findSiblingStateCandidates returns old PID-scoped server directories whose

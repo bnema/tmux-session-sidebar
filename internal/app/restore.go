@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	coreruntime "github.com/bnema/tmux-session-sidebar/internal/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
@@ -116,13 +117,17 @@ func captureLiveSidebarSessionsWithConfigProtected(ctx context.Context, cfg port
 	return captured, err
 }
 
-func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) error {
-	return withLockedSidebarStore(ctx, func(store scopedStateStore) error {
+func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) (bool, error) {
+	if !coreruntime.SessionHeatCaptureRequired(cfg) {
+		return false, nil
+	}
+	err := withLockedSidebarStore(ctx, func(store scopedStateStore) error {
 		return withActivityDebugLogger(cfg, func(logger ports.LoggerPort) error {
 			service := runtimeServiceWithStore(store).WithLogger(logger)
 			return service.CaptureSessionHeatWithConfig(ctx, "tmux", cfg)
 		})
 	})
+	return err == nil, err
 }
 
 func bootstrapSidebarDaemon(ctx context.Context, _ io.Writer, ipcServer ports.IPCServerPort, router Router) error {
@@ -288,9 +293,9 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 			}
 			continue
 		}
-		if err := captureLiveSidebarHeat(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
+		if captured, err := captureLiveSidebarHeat(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
-		} else {
+		} else if captured {
 			refreshAllSidebarPanesBestEffort(ctx)
 		}
 	}

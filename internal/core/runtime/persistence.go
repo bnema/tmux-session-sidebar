@@ -59,6 +59,10 @@ type heatCaptureResult struct {
 	completeSessions map[string]bool
 }
 
+func SessionHeatCaptureRequired(snapshot ports.ConfigSnapshot) bool {
+	return snapshot.HeatColorsEnabled || snapshot.AutoSortRecentInterval > 0
+}
+
 func (s *Service) RestorePersistedSessions(ctx context.Context, serverID string, home string) RestoreReport {
 	report := RestoreReport{Failed: map[string]error{}, SystemFailures: map[string]error{}}
 	if s.store == nil {
@@ -174,7 +178,10 @@ func (s *Service) captureLiveSessions(ctx context.Context, serverID string, snap
 	state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
 	state.PinColors = reconcilePinColors(state.PinColors, live)
 	if snapshot != nil {
-		capture := s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(*snapshot))
+		capture := heatCaptureResult{}
+		if SessionHeatCaptureRequired(*snapshot) {
+			capture = s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(*snapshot))
+		}
 		applyRecentSessionOrderAfterCapture(&state, live, *snapshot, time.Now(), capture)
 	} else {
 		_ = s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
@@ -183,6 +190,9 @@ func (s *Service) captureLiveSessions(ctx context.Context, serverID string, snap
 }
 
 func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID string, snapshot ports.ConfigSnapshot) error {
+	if !SessionHeatCaptureRequired(snapshot) {
+		return nil
+	}
 	if s.store == nil {
 		return ErrMissingStateStore
 	}

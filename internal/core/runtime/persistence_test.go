@@ -905,7 +905,6 @@ func TestCaptureLiveSessionsWithConfigPerformsReconciliationWhenOnlyNonPersistab
 	}
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
 	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "__startup"}}, nil)
-	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	// Unprotected CaptureLiveSessionsWithConfig should reconcile even when only
 	// non-persistable sessions are live — alpha should be pruned.
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {

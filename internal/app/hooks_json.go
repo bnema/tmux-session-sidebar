@@ -111,7 +111,7 @@ func installJSONHooks(stdout io.Writer, def agentHookDef, assumeYes bool) error 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(newString), 0o644); err != nil {
+	if err := writeHookFileAtomic(path, []byte(newString), 0o644); err != nil {
 		return err
 	}
 	return writef(stdout, "    %s hooks installed at %s\n", def.DisplayName, path)
@@ -199,7 +199,7 @@ func uninstallJSONHooks(stdout io.Writer, def agentHookDef) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(newString), 0o644); err != nil {
+	if err := writeHookFileAtomic(path, []byte(newString), 0o644); err != nil {
 		return err
 	}
 	return writef(stdout, "    Removed %s hooks from %s\n", def.DisplayName, path)

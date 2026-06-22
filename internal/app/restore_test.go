@@ -643,6 +643,29 @@ esac
 	}
 }
 
+func TestCaptureLiveSidebarHeatSkipsWhenNoFeatureNeedsHeat(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  *) ;;
+esac
+`)
+
+	captured, err := captureLiveSidebarHeat(context.Background(), ports.ConfigSnapshot{})
+	if err != nil {
+		t.Fatalf("captureLiveSidebarHeat error: %v", err)
+	}
+	if captured {
+		t.Fatal("captureLiveSidebarHeat captured = true, want false when heat colors and auto-sort are disabled")
+	}
+	if content, err := os.ReadFile(logPath); err == nil && strings.TrimSpace(string(content)) != "" {
+		t.Fatalf("heat capture touched tmux despite disabled features, log=%q", string(content))
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read fake tmux log: %v", err)
+	}
+}
+
 func TestCaptureLiveSidebarHeatWritesActivityDebugLogWhenEnabled(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	installFakeTmux(t, `#!/usr/bin/env bash
@@ -655,9 +678,13 @@ case "$1" in
 esac
 `)
 
-	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, ActivityDebugLog: true}
-	if err := captureLiveSidebarHeat(context.Background(), cfg); err != nil {
+	cfg := ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, ActivityDebugLog: true}
+	captured, err := captureLiveSidebarHeat(context.Background(), cfg)
+	if err != nil {
 		t.Fatalf("captureLiveSidebarHeat error: %v", err)
+	}
+	if !captured {
+		t.Fatal("captureLiveSidebarHeat captured = false, want true")
 	}
 
 	logPath := filepath.Join(os.Getenv("XDG_STATE_HOME"), "tmux-session-sidebar", "activity.log")
@@ -689,9 +716,13 @@ esac
 		t.Fatalf("seed oversized activity log: %v", err)
 	}
 
-	cfg := ports.ConfigSnapshot{HeatHalfLifeHours: 8, HeatStaleHours: 24, ActivityDebugLog: true}
-	if err := captureLiveSidebarHeat(context.Background(), cfg); err != nil {
+	cfg := ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, ActivityDebugLog: true}
+	captured, err := captureLiveSidebarHeat(context.Background(), cfg)
+	if err != nil {
 		t.Fatalf("captureLiveSidebarHeat error: %v", err)
+	}
+	if !captured {
+		t.Fatal("captureLiveSidebarHeat captured = false, want true")
 	}
 
 	content, err := os.ReadFile(logPath)

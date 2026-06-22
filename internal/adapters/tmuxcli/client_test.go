@@ -270,6 +270,21 @@ func TestSessionPathUsesExactSessionWindowTarget(t *testing.T) {
 	}
 }
 
+func TestSessionPathsUsesOneListPanesCallForActivePanePaths(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-a", "-F", "#{session_name}\t#{window_active}\t#{pane_active}\t#{pane_current_path}"}).Return(ports.Result{Stdout: "alpha\t1\t0\t/tmp/not-active-pane\nalpha\t1\t1\t/tmp/alpha\nbeta\t0\t1\t/tmp/not-active-window\nbeta\t1\t1\t/tmp/beta\ngamma\t1\t1\t/tmp/gamma\nmalformed\n"}, nil)
+
+	got, err := (Client{Process: process}).SessionPaths(ctx, []string{"alpha", "beta", "missing"})
+	if err != nil {
+		t.Fatalf("SessionPaths error: %v", err)
+	}
+	want := map[string]string{"alpha": "/tmp/alpha", "beta": "/tmp/beta"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("SessionPaths = %#v, want %#v", got, want)
+	}
+}
+
 func TestSwitchClientSessionUsesExactSessionTarget(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
