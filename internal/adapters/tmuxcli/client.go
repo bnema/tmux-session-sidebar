@@ -246,6 +246,38 @@ func (c Client) SessionPath(ctx context.Context, sessionName string) (string, er
 	return c.displayTarget(ctx, exactSessionWindowTarget(sessionName), formatPaneCurrentPath)
 }
 
+func (c Client) SessionPaths(ctx context.Context, sessionNames []string) (map[string]string, error) {
+	requested := make(map[string]struct{}, len(sessionNames))
+	for _, name := range sessionNames {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			requested[name] = struct{}{}
+		}
+	}
+	if len(requested) == 0 {
+		return map[string]string{}, nil
+	}
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-F", "#{session_name}\t#{window_active}\t#{pane_active}\t#{pane_current_path}"})
+	if err != nil {
+		return nil, wrapTmuxError(result, err)
+	}
+	paths := make(map[string]string, len(requested))
+	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
+		fields := strings.SplitN(line, "\t", 4)
+		if len(fields) < 4 || fields[1] != "1" || fields[2] != "1" {
+			continue
+		}
+		name := fields[0]
+		if _, ok := requested[name]; !ok {
+			continue
+		}
+		if path := strings.TrimSpace(fields[3]); path != "" {
+			paths[name] = path
+		}
+	}
+	return paths, nil
+}
+
 func (c Client) WindowID(ctx context.Context, target string) (string, error) {
 	windowID, err := c.displayTarget(ctx, target, formatWindowID)
 	if err != nil {

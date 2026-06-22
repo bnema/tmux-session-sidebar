@@ -6,12 +6,77 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/bnema/tmux-session-sidebar/internal/core/attention"
 )
+
+func TestInstallJSONHooksFailsWithoutClobberingExistingConfigWhenDirectoryCannotCreateTemp(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory write permissions do not block temp file creation consistently on Windows")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	def, ok := agentHookDefNamed("codex")
+	if !ok {
+		t.Fatal("missing codex hook definition")
+	}
+	configDir := def.resolvedConfigDir()
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	path := def.configPath()
+	original := []byte("{\n  \"hooks\": {}\n}\n")
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatalf("write seed config: %v", err)
+	}
+	if err := os.Chmod(configDir, 0o500); err != nil {
+		t.Fatalf("chmod config dir read-only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(configDir, 0o700) })
+
+	err := installJSONHooks(new(bytes.Buffer), def, true)
+	if err == nil {
+		t.Fatal("installJSONHooks succeeded with unwritable config directory; want atomic temp-file error")
+	}
+	content, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("read config after failed install: %v", readErr)
+	}
+	if !bytes.Equal(content, original) {
+		t.Fatalf("config was clobbered after failed install:\ngot:\n%s\nwant:\n%s", content, original)
+	}
+}
+
+func TestInstallJSONHooksPreservesExistingConfigPermissions(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	def, ok := agentHookDefNamed("codex")
+	if !ok {
+		t.Fatal("missing codex hook definition")
+	}
+	configDir := def.resolvedConfigDir()
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	path := def.configPath()
+	if err := os.WriteFile(path, []byte("{\n  \"hooks\": {}\n}\n"), 0o600); err != nil {
+		t.Fatalf("write seed config: %v", err)
+	}
+
+	if err := installJSONHooks(new(bytes.Buffer), def, true); err != nil {
+		t.Fatalf("installJSONHooks error: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat config: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("config permissions = %v, want 0600", got)
+	}
+}
 
 func TestInstallJSONHooksPreservesUserHooks(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())

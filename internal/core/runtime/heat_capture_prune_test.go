@@ -37,7 +37,7 @@ func TestCaptureSessionHeatWithConfigPrunesHeatForNonLiveSessions(t *testing.T) 
 		return !stale
 	})).Return(nil)
 
-	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{}); err != nil {
+	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{HeatColorsEnabled: true}); err != nil {
 		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
 	}
 }

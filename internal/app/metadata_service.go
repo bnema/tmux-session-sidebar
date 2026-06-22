@@ -22,6 +22,7 @@ const (
 type MetadataService struct {
 	Store                  ports.StateStorePort
 	Query                  ports.QueryPort
+	Config                 ports.ConfigPort
 	Git                    ports.GitPort
 	Watcher                ports.FileWatcherPort
 	Refresher              ports.SidebarRefresherPort
@@ -45,11 +46,16 @@ type MetadataRepoSubscription struct {
 	WatchDirs    []string
 }
 
+type metadataSessionPathsQuery interface {
+	SessionPaths(ctx context.Context, sessionNames []string) (map[string]string, error)
+}
+
 func NewMetadataService() *MetadataService {
 	tmux := runtimeMultiplexer()
 	return &MetadataService{
 		Store:                  sessionOrderStore(),
 		Query:                  tmux,
+		Config:                 tmux,
 		Git:                    runtimeGit(),
 		Watcher:                runtimeWatcher(),
 		Refresher:              tmux,
@@ -111,12 +117,7 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 		return false, err
 	}
 
-	livePaths := make(map[string]string, len(live))
-	for _, session := range live {
-		if path, err := s.Query.SessionPath(ctx, session.Name); err == nil {
-			livePaths[session.Name] = path
-		}
-	}
+	livePaths := metadataLiveSessionPaths(ctx, s.Query, live)
 	liveNames := make(map[string]struct{}, len(live))
 	sessionPaths := make(map[string]string, len(live))
 	terminalDeletes := make(map[string]struct{})
@@ -307,16 +308,29 @@ var errMetadataReconcile = errors.New("metadata reconcile requested")
 var errMetadataFallback = errors.New("metadata watcher fallback")
 
 func (s *MetadataService) Run(ctx context.Context, cfg ports.ConfigSnapshot) error {
+	current := cfg
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		err := s.runWatchOnce(ctx, cfg)
+		loaded, err := s.loadRunConfig(ctx, current)
+		if err != nil {
+			return err
+		}
+		current = loaded
+		if !current.MetadataSublineEnabled {
+			if err := s.waitMetadataReconcile(ctx); errors.Is(err, errMetadataReconcile) {
+				continue
+			} else {
+				return err
+			}
+		}
+		err = s.runWatchOnce(ctx, current)
 		switch {
 		case errors.Is(err, errMetadataReconcile):
 			continue
 		case errors.Is(err, errMetadataFallback):
-			if err := s.runFallbackPoll(ctx, cfg); errors.Is(err, errMetadataReconcile) {
+			if err := s.runFallbackPoll(ctx, current); errors.Is(err, errMetadataReconcile) {
 				continue
 			} else {
 				return err
@@ -324,6 +338,34 @@ func (s *MetadataService) Run(ctx context.Context, cfg ports.ConfigSnapshot) err
 		default:
 			return err
 		}
+	}
+}
+
+func (s *MetadataService) loadRunConfig(ctx context.Context, fallback ports.ConfigSnapshot) (ports.ConfigSnapshot, error) {
+	if s.Config == nil {
+		return fallback, nil
+	}
+	cfg, err := s.Config.LoadConfig(ctx)
+	if err != nil {
+		return ports.ConfigSnapshot{}, err
+	}
+	return cfg, nil
+}
+
+func (s *MetadataService) waitMetadataReconcile(ctx context.Context) error {
+	interval := s.ReconcileInterval
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.ReconcileRequests:
+		return errMetadataReconcile
+	case <-timer.C:
+		return errMetadataReconcile
 	}
 }
 
@@ -453,34 +495,45 @@ func (s *MetadataService) Reconcile(ctx context.Context, cfg ports.ConfigSnapsho
 	if err != nil {
 		return nil, err
 	}
-	livePaths := make(map[string]string, len(live))
-	for _, session := range live {
-		if path, pathErr := s.Query.SessionPath(ctx, session.Name); pathErr == nil {
-			livePaths[session.Name] = path
-		}
-	}
+	livePaths := metadataLiveSessionPaths(ctx, s.Query, live)
 	subs := map[string]MetadataRepoSubscription{}
+	infos := map[string]metadataRepoInfoResult{}
+	targetsByWorktree := map[string]metadataWatchTargetsResult{}
 	for _, session := range live {
 		path, ok := sessionMetadataCapturePath(session.Name, state.Sessions[session.Name], livePaths)
 		if !ok {
 			continue
 		}
-		info, err := s.Git.RepoInfo(ctx, path)
-		if err != nil {
-			if errors.Is(err, ports.ErrNotGitRepository) || errors.Is(err, ports.ErrGitPathMissing) {
+		pathKey := metadataPathCacheKey(path)
+		infoResult, ok := infos[pathKey]
+		if !ok {
+			info, err := s.Git.RepoInfo(ctx, path)
+			infoResult = metadataRepoInfoResult{info: info, err: err}
+			infos[pathKey] = infoResult
+		}
+		if infoResult.err != nil {
+			if errors.Is(infoResult.err, ports.ErrNotGitRepository) || errors.Is(infoResult.err, ports.ErrGitPathMissing) {
 				continue
 			}
-			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata repo info failed for session %q path %q: %v\n", session.Name, path, err)
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata repo info failed for session %q path %q: %v\n", session.Name, path, infoResult.err)
 			continue
 		}
-		targets, err := s.Git.WatchTargets(ctx, path)
-		if err != nil {
-			if errors.Is(err, ports.ErrNotGitRepository) || errors.Is(err, ports.ErrGitPathMissing) {
+		info := infoResult.info
+		worktreeKey := metadataWorktreeCacheKey(info)
+		targetResult, ok := targetsByWorktree[worktreeKey]
+		if !ok {
+			targets, err := s.Git.WatchTargets(ctx, path)
+			targetResult = metadataWatchTargetsResult{targets: targets, err: err}
+			targetsByWorktree[worktreeKey] = targetResult
+		}
+		if targetResult.err != nil {
+			if errors.Is(targetResult.err, ports.ErrNotGitRepository) || errors.Is(targetResult.err, ports.ErrGitPathMissing) {
 				continue
 			}
-			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata watch targets failed for session %q path %q: %v\n", session.Name, path, err)
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata watch targets failed for session %q path %q: %v\n", session.Name, path, targetResult.err)
 			continue
 		}
+		targets := targetResult.targets
 		sub := subs[info.RepoRoot]
 		if sub.RepoRoot == "" {
 			sub.RepoRoot = info.RepoRoot
@@ -492,6 +545,54 @@ func (s *MetadataService) Reconcile(ctx context.Context, cfg ports.ConfigSnapsho
 		subs[info.RepoRoot] = sub
 	}
 	return subs, nil
+}
+
+type metadataRepoInfoResult struct {
+	info ports.GitRepoInfo
+	err  error
+}
+
+type metadataWatchTargetsResult struct {
+	targets ports.GitWatchTargets
+	err     error
+}
+
+func metadataLiveSessionPaths(ctx context.Context, query ports.QueryPort, live []ports.SessionSnapshot) map[string]string {
+	if batchQuery, ok := query.(metadataSessionPathsQuery); ok {
+		names := make([]string, 0, len(live))
+		for _, session := range live {
+			names = append(names, session.Name)
+		}
+		if paths, err := batchQuery.SessionPaths(ctx, names); err == nil {
+			return paths
+		}
+	}
+	livePaths := make(map[string]string, len(live))
+	for _, session := range live {
+		if path, err := query.SessionPath(ctx, session.Name); err == nil {
+			livePaths[session.Name] = path
+		}
+	}
+	return livePaths
+}
+
+func metadataPathCacheKey(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		return filepath.Clean(abs)
+	}
+	return filepath.Clean(path)
+}
+
+func metadataWorktreeCacheKey(info ports.GitRepoInfo) string {
+	path := info.WorktreeRoot
+	if strings.TrimSpace(path) == "" {
+		path = info.RepoRoot
+	}
+	return metadataPathCacheKey(path)
 }
 
 func (s *MetadataService) gitStatusTimeout() time.Duration {

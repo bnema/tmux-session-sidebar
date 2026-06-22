@@ -92,24 +92,28 @@ func (g Git) Status(ctx context.Context, path string) (ports.GitStatus, error) {
 	}
 	status := ports.GitStatus{RepoRoot: repoRoot, Branch: branch}
 	defaultRemote, _ := g.defaultRemoteBranch(ctx, repoRoot)
-	ahead, behind, upstreamConfigured, err := g.Divergence(ctx, repoRoot, branch, defaultRemote)
+	comparison, err := g.comparisonDivergence(ctx, repoRoot, branch, defaultRemote)
 	if err != nil {
 		return ports.GitStatus{}, err
 	}
-	if upstreamConfigured {
-		status.Ahead = ahead
-		status.Behind = behind
+	if comparison.ok {
+		status.Ahead = comparison.ahead
+		status.Behind = comparison.behind
 		status.ComparisonConfigured = true
 	}
-	upstreamAhead, upstreamBehind, upstreamOK, err := g.UpstreamDivergence(ctx, repoRoot)
-	if err != nil {
-		return ports.GitStatus{}, err
-	}
-	if upstreamOK {
-		status.UpstreamConfigured = true
-		if comparesDefaultRemote(branch, defaultRemote) {
-			status.UpstreamAhead = upstreamAhead
-			status.UpstreamBehind = upstreamBehind
+	if comparison.checkedUpstream {
+		status.UpstreamConfigured = comparison.target == "@{upstream}" && comparison.ok
+	} else {
+		upstreamAhead, upstreamBehind, upstreamOK, err := g.UpstreamDivergence(ctx, repoRoot)
+		if err != nil {
+			return ports.GitStatus{}, err
+		}
+		if upstreamOK {
+			status.UpstreamConfigured = true
+			if comparesDefaultRemote(branch, defaultRemote) {
+				status.UpstreamAhead = upstreamAhead
+				status.UpstreamBehind = upstreamBehind
+			}
 		}
 	}
 	if err := g.workingTree(ctx, repoRoot, &status); err != nil {
@@ -186,27 +190,43 @@ func comparesDefaultRemote(branch string, defaultRemote string) bool {
 }
 
 func (g Git) Divergence(ctx context.Context, repoRoot string, branch string, defaultRemote string) (int, int, bool, error) {
+	result, err := g.comparisonDivergence(ctx, repoRoot, branch, defaultRemote)
+	return result.ahead, result.behind, result.ok, err
+}
+
+type gitDivergenceResult struct {
+	ahead           int
+	behind          int
+	ok              bool
+	target          string
+	checkedUpstream bool
+}
+
+func (g Git) comparisonDivergence(ctx context.Context, repoRoot string, branch string, defaultRemote string) (gitDivergenceResult, error) {
 	target := "@{upstream}"
 	fallbackTarget := ""
+	checkedUpstream := true
 	if comparesDefaultRemote(branch, defaultRemote) {
 		target = defaultRemote
+		checkedUpstream = false
 	} else if branch == "detached" {
-		return 0, 0, false, nil
+		return gitDivergenceResult{}, nil
 	} else if defaultRemote != "" {
 		fallbackTarget = defaultRemote
 	}
 	ahead, behind, ok, err := g.divergenceAgainst(ctx, repoRoot, target)
+	result := gitDivergenceResult{ahead: ahead, behind: behind, ok: ok, target: target, checkedUpstream: checkedUpstream}
 	if err == nil || ok || !errors.Is(err, errMissingUpstream) {
-		return ahead, behind, ok, err
+		return result, err
 	}
 	if fallbackTarget == "" {
-		return 0, 0, false, nil
+		return gitDivergenceResult{target: target, checkedUpstream: checkedUpstream}, nil
 	}
 	ahead, behind, ok, err = g.divergenceAgainst(ctx, repoRoot, fallbackTarget)
 	if errors.Is(err, errMissingUpstream) {
-		return 0, 0, false, nil
+		return gitDivergenceResult{target: fallbackTarget, checkedUpstream: checkedUpstream}, nil
 	}
-	return ahead, behind, ok, err
+	return gitDivergenceResult{ahead: ahead, behind: behind, ok: ok, target: fallbackTarget, checkedUpstream: checkedUpstream}, err
 }
 
 func (g Git) UpstreamDivergence(ctx context.Context, repoRoot string) (int, int, bool, error) {
@@ -238,7 +258,7 @@ func (g Git) divergenceAgainst(ctx context.Context, repoRoot string, target stri
 }
 
 func (g Git) workingTree(ctx context.Context, repoRoot string, status *ports.GitStatus) error {
-	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "status", "--porcelain=v1", "--branch"})
+	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "status", "--porcelain=v1"})
 	if err != nil {
 		return mapGitError(result, err)
 	}

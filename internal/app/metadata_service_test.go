@@ -317,8 +317,13 @@ func metadataDirectLock(store ports.StateStorePort) func(context.Context, func(p
 }
 
 type metadataFakeTmux struct {
-	sessions []ports.SessionSnapshot
-	paths    map[string]string
+	sessions         []ports.SessionSnapshot
+	paths            map[string]string
+	pathErrs         map[string]error
+	batchPaths       map[string]string
+	batchPathErr     error
+	sessionPathCalls *atomic.Int64
+	batchPathCalls   *atomic.Int64
 }
 
 func (t metadataFakeTmux) ServerID(ctx context.Context) (string, error) { return "tmux", nil }
@@ -332,7 +337,32 @@ func (t metadataFakeTmux) CurrentPanePath(ctx context.Context, clientID string) 
 	return "", nil
 }
 func (t metadataFakeTmux) SessionPath(ctx context.Context, sessionName string) (string, error) {
+	if t.sessionPathCalls != nil {
+		t.sessionPathCalls.Add(1)
+	}
+	if err, ok := t.pathErrs[sessionName]; ok {
+		return "", err
+	}
 	return t.paths[sessionName], nil
+}
+func (t metadataFakeTmux) SessionPaths(ctx context.Context, sessionNames []string) (map[string]string, error) {
+	if t.batchPathCalls != nil {
+		t.batchPathCalls.Add(1)
+	}
+	if t.batchPathErr != nil {
+		return nil, t.batchPathErr
+	}
+	source := t.batchPaths
+	if source == nil {
+		source = t.paths
+	}
+	paths := make(map[string]string, len(sessionNames))
+	for _, name := range sessionNames {
+		if path, ok := source[name]; ok {
+			paths[name] = path
+		}
+	}
+	return paths, nil
 }
 func (t metadataFakeTmux) PaneSize(ctx context.Context, paneID string) (ports.PaneSize, error) {
 	return ports.PaneSize{}, nil
@@ -386,6 +416,8 @@ type metadataFakeGit struct {
 	targetErrs  map[string]error
 	statusErrs  map[string]error
 	statusCalls *atomic.Int64
+	infoCalls   *atomic.Int64
+	targetCalls *atomic.Int64
 	statusErr   error
 }
 
@@ -408,6 +440,9 @@ func (g metadataFakeGit) Status(ctx context.Context, path string) (ports.GitStat
 	return g.statuses[path], nil
 }
 func (g metadataFakeGit) RepoInfo(ctx context.Context, path string) (ports.GitRepoInfo, error) {
+	if g.infoCalls != nil {
+		g.infoCalls.Add(1)
+	}
 	if err, ok := g.infoErrs[path]; ok {
 		return ports.GitRepoInfo{}, err
 	}
@@ -418,6 +453,9 @@ func (g metadataFakeGit) RepoInfo(ctx context.Context, path string) (ports.GitRe
 	return ports.GitRepoInfo{RepoRoot: status.RepoRoot, WorktreeRoot: status.RepoRoot, Branch: status.Branch}, nil
 }
 func (g metadataFakeGit) WatchTargets(ctx context.Context, path string) (ports.GitWatchTargets, error) {
+	if g.targetCalls != nil {
+		g.targetCalls.Add(1)
+	}
 	if err, ok := g.targetErrs[path]; ok {
 		return ports.GitWatchTargets{}, err
 	}
@@ -464,6 +502,102 @@ func (r *blockingMetadataRefresher) callCount() int64 {
 
 func (r *blockingMetadataRefresher) release() {
 	close(r.releaseC)
+}
+
+func TestMetadataServiceReconcileUsesBatchSessionPaths(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
+	var batchCalls atomic.Int64
+	var singleCalls atomic.Int64
+	tmux := metadataFakeTmux{
+		sessions:         []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}},
+		paths:            map[string]string{"alpha": "/wrong-alpha", "beta": "/wrong-beta"},
+		batchPaths:       map[string]string{"alpha": "/repo/a", "beta": "/repo/b"},
+		batchPathCalls:   &batchCalls,
+		sessionPathCalls: &singleCalls,
+	}
+	git := metadataFakeGit{infos: map[string]ports.GitRepoInfo{
+		"/repo/a": {RepoRoot: "/repo-a", WorktreeRoot: "/repo-a"},
+		"/repo/b": {RepoRoot: "/repo-b", WorktreeRoot: "/repo-b"},
+	}, targets: map[string]ports.GitWatchTargets{
+		"/repo/a": {RepoRoot: "/repo-a", WorktreeRoot: "/repo-a", Dirs: []string{"/repo-a"}},
+		"/repo/b": {RepoRoot: "/repo-b", WorktreeRoot: "/repo-b", Dirs: []string{"/repo-b"}},
+	}}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, LockStore: metadataDirectLock(store)}
+
+	subs, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	if err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if batchCalls.Load() != 1 || singleCalls.Load() != 0 {
+		t.Fatalf("batch path calls = %d single path calls = %d, want one batch and no per-session fallback", batchCalls.Load(), singleCalls.Load())
+	}
+	if _, ok := subs["/repo-a"]; !ok {
+		t.Fatalf("missing /repo-a subscription: %#v", subs)
+	}
+	if _, ok := subs["/repo-b"]; !ok {
+		t.Fatalf("missing /repo-b subscription: %#v", subs)
+	}
+}
+
+func TestMetadataServiceReconcileFallsBackWhenBatchSessionPathsFail(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
+	var batchCalls atomic.Int64
+	var singleCalls atomic.Int64
+	tmux := metadataFakeTmux{
+		sessions:         []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}},
+		paths:            map[string]string{"alpha": "/repo/a", "beta": "/repo/b"},
+		batchPathErr:     errors.New("batch unavailable"),
+		batchPathCalls:   &batchCalls,
+		sessionPathCalls: &singleCalls,
+	}
+	git := metadataFakeGit{infos: map[string]ports.GitRepoInfo{
+		"/repo/a": {RepoRoot: "/repo-a", WorktreeRoot: "/repo-a"},
+		"/repo/b": {RepoRoot: "/repo-b", WorktreeRoot: "/repo-b"},
+	}, targets: map[string]ports.GitWatchTargets{
+		"/repo/a": {RepoRoot: "/repo-a", WorktreeRoot: "/repo-a", Dirs: []string{"/repo-a"}},
+		"/repo/b": {RepoRoot: "/repo-b", WorktreeRoot: "/repo-b", Dirs: []string{"/repo-b"}},
+	}}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, LockStore: metadataDirectLock(store)}
+
+	subs, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	if err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if batchCalls.Load() != 1 || singleCalls.Load() != 2 {
+		t.Fatalf("batch path calls = %d single path calls = %d, want one failed batch and per-session fallback", batchCalls.Load(), singleCalls.Load())
+	}
+	if len(subs) != 2 {
+		t.Fatalf("subscriptions len = %d, want 2: %#v", len(subs), subs)
+	}
+}
+
+func TestMetadataServiceReconcileDeduplicatesRepoDiscovery(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}, paths: map[string]string{"alpha": "/repo/a", "beta": "/repo/a", "gamma": "/repo/b"}}
+	var infoCalls atomic.Int64
+	var targetCalls atomic.Int64
+	git := metadataFakeGit{infos: map[string]ports.GitRepoInfo{
+		"/repo/a": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"},
+		"/repo/b": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"},
+	}, targets: map[string]ports.GitWatchTargets{
+		"/repo/a": {RepoRoot: "/repo", WorktreeRoot: "/repo", Files: []string{"/repo/.git/HEAD"}, Dirs: []string{"/repo"}},
+		"/repo/b": {RepoRoot: "/repo", WorktreeRoot: "/repo", Files: []string{"/repo/.git/HEAD"}, Dirs: []string{"/repo"}},
+	}, infoCalls: &infoCalls, targetCalls: &targetCalls}
+	svc := MetadataService{Store: store, Query: tmux, Git: git, LockStore: metadataDirectLock(store)}
+
+	subs, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	if err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if infoCalls.Load() != 2 {
+		t.Fatalf("repo info calls = %d, want one per unique normalized session path", infoCalls.Load())
+	}
+	if targetCalls.Load() != 1 {
+		t.Fatalf("watch target calls = %d, want one per worktree", targetCalls.Load())
+	}
+	if got := subs["/repo"].SessionNames; len(got) != 3 {
+		t.Fatalf("subscription sessions = %#v, want three sessions sharing one repo", got)
+	}
 }
 
 func TestMetadataServiceReconcileBuildsRepoSubscriptions(t *testing.T) {
@@ -582,6 +716,66 @@ func (w *metadataFakeWatcher) waitStarted(t *testing.T) {
 	}
 }
 
+type metadataFakeConfig struct {
+	mu       sync.Mutex
+	snapshot ports.ConfigSnapshot
+}
+
+func (c *metadataFakeConfig) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.snapshot, nil
+}
+
+func (c *metadataFakeConfig) set(snapshot ports.ConfigSnapshot) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.snapshot = snapshot
+}
+
+type metadataLifecycleWatcher struct {
+	mu     sync.Mutex
+	starts int
+	stops  int
+}
+
+func newMetadataLifecycleWatcher() *metadataLifecycleWatcher { return &metadataLifecycleWatcher{} }
+
+func (w *metadataLifecycleWatcher) Watch(ctx context.Context, paths []string) (<-chan ports.FileWatchEvent, <-chan error, error) {
+	w.mu.Lock()
+	w.starts++
+	w.mu.Unlock()
+	events := make(chan ports.FileWatchEvent)
+	errs := make(chan error)
+	go func() {
+		<-ctx.Done()
+		w.mu.Lock()
+		w.stops++
+		w.mu.Unlock()
+		close(events)
+		close(errs)
+	}()
+	return events, errs, nil
+}
+
+func (w *metadataLifecycleWatcher) waitStarts(t *testing.T, want int) {
+	t.Helper()
+	eventually(t, func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return w.starts >= want
+	})
+}
+
+func (w *metadataLifecycleWatcher) waitStops(t *testing.T, want int) {
+	t.Helper()
+	eventually(t, func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return w.stops >= want
+	})
+}
+
 func eventually(t *testing.T, ok func() bool) {
 	t.Helper()
 	deadline := time.After(2 * time.Second)
@@ -596,6 +790,63 @@ func eventually(t *testing.T, ok func() bool) {
 			t.Fatal("condition was not met before timeout")
 		case <-tick.C:
 		}
+	}
+}
+
+func TestMetadataServiceRunStopsWatcherWhenConfigDisablesMetadata(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
+	git := metadataFakeGit{
+		infos:    map[string]ports.GitRepoInfo{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"}},
+		targets:  map[string]ports.GitWatchTargets{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", Files: []string{"/repo/.git/HEAD"}, Dirs: []string{"/repo"}}},
+		statuses: map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "main"}},
+	}
+	config := &metadataFakeConfig{snapshot: ports.ConfigSnapshot{MetadataSublineEnabled: true}}
+	watcher := newMetadataLifecycleWatcher()
+	reconcile := make(chan struct{}, 1)
+	svc := MetadataService{Store: store, Query: tmux, Git: git, Watcher: watcher, Config: config, ReconcileRequests: reconcile, LockStore: metadataDirectLock(store), ReconcileInterval: 10 * time.Millisecond}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- svc.Run(ctx, ports.ConfigSnapshot{MetadataSublineEnabled: true}) }()
+	watcher.waitStarts(t, 1)
+
+	config.set(ports.ConfigSnapshot{MetadataSublineEnabled: false})
+	reconcile <- struct{}{}
+	watcher.waitStops(t, 1)
+	cancel()
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run error: %v", err)
+	}
+}
+
+func TestMetadataServiceRunRestartsWatcherWhenConfigReenablesMetadata(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
+	git := metadataFakeGit{
+		infos:    map[string]ports.GitRepoInfo{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"}},
+		targets:  map[string]ports.GitWatchTargets{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", Files: []string{"/repo/.git/HEAD"}, Dirs: []string{"/repo"}}},
+		statuses: map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "main"}},
+	}
+	config := &metadataFakeConfig{snapshot: ports.ConfigSnapshot{MetadataSublineEnabled: true}}
+	watcher := newMetadataLifecycleWatcher()
+	reconcile := make(chan struct{}, 2)
+	svc := MetadataService{Store: store, Query: tmux, Git: git, Watcher: watcher, Config: config, ReconcileRequests: reconcile, LockStore: metadataDirectLock(store), ReconcileInterval: 10 * time.Millisecond}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- svc.Run(ctx, ports.ConfigSnapshot{MetadataSublineEnabled: true}) }()
+	watcher.waitStarts(t, 1)
+
+	config.set(ports.ConfigSnapshot{MetadataSublineEnabled: false})
+	reconcile <- struct{}{}
+	watcher.waitStops(t, 1)
+	config.set(ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	reconcile <- struct{}{}
+	watcher.waitStarts(t, 2)
+	cancel()
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run error: %v", err)
 	}
 }
 
