@@ -1,5 +1,8 @@
 name: Release
 
+# Actions and reusable workflows are pinned to immutable commits.
+# See docs/github-actions-pinning.md for update steps.
+
 on:
   push:
     tags: ['v*']
@@ -9,9 +12,9 @@ jobs:
     permissions:
       # Required to create GitHub releases and upload release assets; this workflow only runs on v* tag pushes.
       contents: write
-    uses: bnema/gh-actions/.github/workflows/go-release.yml@main
+    uses: bnema/gh-actions/.github/workflows/go-release.yml@0262486ab123e680b8bf87f57b0f97be9511d4c2
     with:
-      go-version: stable
+      go-version-file: go.mod
 
   sign-checksum:
     needs: [release]

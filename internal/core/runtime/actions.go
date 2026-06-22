@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	coreerrors "github.com/bnema/tmux-session-sidebar/internal/core/errors"
@@ -71,24 +70,32 @@ func (s *Service) CreateDetachedProjectSession(ctx context.Context, existing []s
 }
 
 func (s *Service) CreateAdhocSession(ctx context.Context, clientID string, existing []sessions.View, name string, path string) error {
+	plan := AdhocSessionDecision(existing, name, path)
+	if err := s.CreateDetachedAdhocSession(ctx, existing, plan); err != nil {
+		return err
+	}
+	return s.SwitchSession(ctx, clientID, name)
+}
+
+func (s *Service) CreateDetachedAdhocSession(ctx context.Context, existing []sessions.View, plan AdhocSessionPlan) error {
+	if !plan.Create {
+		return sessions.ValidateName(plan.SessionName)
+	}
 	if s.control == nil {
 		return ErrMissingControl
 	}
-	if err := ValidateCreateSession(existing, name); err != nil {
-		if errors.Is(err, coreerrors.ErrDuplicateSession) {
-			return s.control.SwitchClientSession(ctx, clientID, name)
-		}
+	if err := ValidateCreateSession(existing, plan.SessionName); err != nil {
 		return err
 	}
-	if err := s.control.CreateSession(ctx, name, path); err != nil {
+	if err := s.control.CreateSession(ctx, plan.SessionName, plan.Path); err != nil {
 		return err
 	}
 	if s.meta != nil {
-		if err := s.meta.SaveSessionMetadata(ctx, name, ports.SessionMetadata{Kind: "adhoc"}); err != nil {
-			return s.rollbackCreatedSession(ctx, name, fmt.Errorf("save adhoc metadata for %s: %w", name, err))
+		if err := s.meta.SaveSessionMetadata(ctx, plan.SessionName, ports.SessionMetadata{Kind: "adhoc"}); err != nil {
+			return s.rollbackCreatedSession(ctx, plan.SessionName, fmt.Errorf("save adhoc metadata for %s: %w", plan.SessionName, err))
 		}
 	}
-	return s.control.SwitchClientSession(ctx, clientID, name)
+	return nil
 }
 
 func (s *Service) RenameSession(ctx context.Context, existing []sessions.View, oldName string, newName string) error {
@@ -136,6 +143,12 @@ type ProjectSessionPlan struct {
 	Create      bool
 }
 
+type AdhocSessionPlan struct {
+	SessionName string
+	Path        string
+	Create      bool
+}
+
 func ValidateCreateSession(existing []sessions.View, name string) error {
 	if err := sessions.ValidateName(name); err != nil {
 		return err
@@ -152,6 +165,17 @@ func ProjectSessionDecision(existing []sessions.View, candidate projects.Candida
 	plan := ProjectSessionPlan{SessionName: candidate.SessionName, ProjectPath: candidate.Path, Create: true}
 	for _, session := range existing {
 		if session.Name == candidate.SessionName {
+			plan.Create = false
+			return plan
+		}
+	}
+	return plan
+}
+
+func AdhocSessionDecision(existing []sessions.View, name string, path string) AdhocSessionPlan {
+	plan := AdhocSessionPlan{SessionName: name, Path: path, Create: true}
+	for _, session := range existing {
+		if session.Name == name {
 			plan.Create = false
 			return plan
 		}

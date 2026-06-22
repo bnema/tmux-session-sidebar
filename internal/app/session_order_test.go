@@ -2,10 +2,13 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/bnema/tmux-session-sidebar/internal/core/heat"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
@@ -317,6 +320,92 @@ func TestSessionMetadataPersistenceHelpers(t *testing.T) {
 	}
 }
 
+func TestRenamePersistedSessionMovesHeatState(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaHeat := mustHeatStateJSON(t, heat.State{Score: 42, LastActiveAt: time.Date(2026, 6, 22, 9, 0, 0, 0, time.UTC)})
+	gammaHeat := mustHeatStateJSON(t, heat.State{Score: 7, LastActiveAt: time.Date(2026, 6, 22, 8, 0, 0, 0, time.UTC)})
+	seedPersistedSidebarState(t, ports.PersistedState{
+		Sessions: map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}},
+		Heat:     map[string][]byte{"alpha": alphaHeat, "gamma": gammaHeat},
+	})
+
+	if err := renamePersistedSession(ctx, "alpha", "beta"); err != nil {
+		t.Fatalf("renamePersistedSession() error = %v", err)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() error = %v", err)
+	}
+	if _, ok := state.Heat["alpha"]; ok {
+		t.Fatalf("Heat[alpha] still exists after rename: %#v", state.Heat)
+	}
+	if got := string(state.Heat["beta"]); got != string(alphaHeat) {
+		t.Fatalf("Heat[beta] = %s, want moved alpha heat %s", got, string(alphaHeat))
+	}
+	if got := string(state.Heat["gamma"]); got != string(gammaHeat) {
+		t.Fatalf("Heat[gamma] = %s, want preserved %s", got, string(gammaHeat))
+	}
+}
+
+func TestRenamePersistedSessionToUnpersistableRemovesHeatState(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaHeat := mustHeatStateJSON(t, heat.State{Score: 42})
+	seedPersistedSidebarState(t, ports.PersistedState{
+		Sessions:     map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}},
+		SessionOrder: []string{"alpha"},
+		Heat:         map[string][]byte{"alpha": alphaHeat},
+	})
+
+	if err := renamePersistedSession(ctx, "alpha", "123"); err != nil {
+		t.Fatalf("renamePersistedSession() error = %v", err)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() error = %v", err)
+	}
+	if _, ok := state.Heat["alpha"]; ok {
+		t.Fatalf("Heat[alpha] still exists after numeric rename: %#v", state.Heat)
+	}
+	if _, ok := state.Heat["123"]; ok {
+		t.Fatalf("Heat[123] exists after numeric rename: %#v", state.Heat)
+	}
+}
+
+func TestRemovePersistedSessionRemovesHeatStateAndRecreateStartsClean(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaHeat := mustHeatStateJSON(t, heat.State{Score: 42})
+	seedPersistedSidebarState(t, ports.PersistedState{
+		Sessions:     map[string]ports.SessionMetadata{"alpha": {Kind: "adhoc", LastPath: "/tmp/alpha"}},
+		SessionOrder: []string{"alpha"},
+		Heat:         map[string][]byte{"alpha": alphaHeat},
+	})
+
+	if err := removePersistedSession(ctx, "alpha"); err != nil {
+		t.Fatalf("removePersistedSession() error = %v", err)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() after remove error = %v", err)
+	}
+	if _, ok := state.Heat["alpha"]; ok {
+		t.Fatalf("Heat[alpha] still exists after remove: %#v", state.Heat)
+	}
+
+	if err := saveSessionMetadata(ctx, "alpha", ports.SessionMetadata{Kind: "adhoc", LastPath: "/tmp/new-alpha"}); err != nil {
+		t.Fatalf("saveSessionMetadata() recreate error = %v", err)
+	}
+	state, err = loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState() after recreate error = %v", err)
+	}
+	if _, ok := state.Heat["alpha"]; ok {
+		t.Fatalf("Heat[alpha] was inherited after recreate: %#v", state.Heat)
+	}
+}
+
 func TestClonePersistedStatePreservesPinnedSessionsAndAgentAttention(t *testing.T) {
 	original := ports.PersistedState{
 		PinnedSessions: []string{"alpha"},
@@ -376,6 +465,32 @@ func TestSaveShowNumericSessions(t *testing.T) {
 	}
 	if !state.Sidebar.Open || state.Sidebar.OwnerClient != "client-1" {
 		t.Fatalf("sidebar state = %#v, want open owner preserved", state.Sidebar)
+	}
+}
+
+func mustHeatStateJSON(t *testing.T, state heat.State) []byte {
+	t.Helper()
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal heat state: %v", err)
+	}
+	return data
+}
+
+func seedPersistedSidebarState(t *testing.T, state ports.PersistedState) {
+	t.Helper()
+	store := sessionOrderStore()
+	if state.Sessions == nil {
+		state.Sessions = map[string]ports.SessionMetadata{}
+	}
+	if state.SessionOrder == nil {
+		state.SessionOrder = []string{}
+	}
+	if state.Heat == nil {
+		state.Heat = map[string][]byte{}
+	}
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() seed state error = %v", err)
 	}
 }
 
