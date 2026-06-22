@@ -153,8 +153,29 @@ func TestEnsureRuntimeStateMigratedAndLoadReturnsDefaultForMissingState(t *testi
 	if !loaded {
 		t.Fatal("loaded = false, want initialized empty state for missing tmux.json")
 	}
-	if state.Sessions == nil || state.SessionOrder == nil || state.PinnedSessions == nil || state.PinColors == nil || state.Clients == nil || state.Heat == nil || state.AgentAttention == nil || state.Metadata == nil {
-		t.Fatalf("state maps/slices not initialized: %#v", state)
+	if state.Sessions == nil {
+		t.Fatal("state.Sessions not initialized")
+	}
+	if state.SessionOrder == nil {
+		t.Fatal("state.SessionOrder not initialized")
+	}
+	if state.PinnedSessions == nil {
+		t.Fatal("state.PinnedSessions not initialized")
+	}
+	if state.PinColors == nil {
+		t.Fatal("state.PinColors not initialized")
+	}
+	if state.Clients == nil {
+		t.Fatal("state.Clients not initialized")
+	}
+	if state.Heat == nil {
+		t.Fatal("state.Heat not initialized")
+	}
+	if state.AgentAttention == nil {
+		t.Fatal("state.AgentAttention not initialized")
+	}
+	if state.Metadata == nil {
+		t.Fatal("state.Metadata not initialized")
 	}
 }
 

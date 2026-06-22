@@ -51,6 +51,10 @@ func TestCaptureSessionHeatWithConfigSkipsWhenHeatColorsAndAutoSortDisabled(t *t
 	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{}); err != nil {
 		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
 	}
+	store.AssertNotCalled(t, "Load")
+	store.AssertNotCalled(t, "Save")
+	query.AssertNotCalled(t, "ListSessions")
+	query.AssertNotCalled(t, "ListClients")
 }
 
 func TestCaptureSessionHeatWithConfigCapturesWhenHeatColorsEnabled(t *testing.T) {
