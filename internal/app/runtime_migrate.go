@@ -145,42 +145,15 @@ func reusablePersistedStateFromData(data []byte) (reusablePersistedState, error)
 }
 
 func decodeReusablePersistedState(data []byte) (ports.PersistedState, bool, bool) {
-	if len(data) == 0 {
-		return emptyPersistedState(), true, false
-	}
-	var state ports.PersistedState
-	if err := json.Unmarshal(data, &state); err != nil {
+	state, err := persisted.DecodeState(data)
+	if err != nil {
 		return ports.PersistedState{}, false, false
 	}
-	initializePersistedStateForLoad(&state)
 	return state, true, persisted.IsMeaningful(state)
 }
 
 func emptyPersistedState() ports.PersistedState {
-	state := ports.PersistedState{}
-	initializePersistedStateForLoad(&state)
-	return state
-}
-
-func initializePersistedStateForLoad(state *ports.PersistedState) {
-	if state.Sessions == nil {
-		state.Sessions = map[string]ports.SessionMetadata{}
-	}
-	if state.SessionOrder == nil {
-		state.SessionOrder = []string{}
-	}
-	if state.PinnedSessions == nil {
-		state.PinnedSessions = []string{}
-	}
-	if state.PinColors == nil {
-		state.PinColors = map[string]string{}
-	}
-	if state.Clients == nil {
-		state.Clients = map[string][]byte{}
-	}
-	if state.Heat == nil {
-		state.Heat = map[string][]byte{}
-	}
+	return persisted.EmptyState()
 }
 
 // findSiblingStateCandidates returns old PID-scoped server directories whose

@@ -336,12 +336,15 @@ type goDivergenceResult struct {
 }
 
 func (g Git) comparisonDivergence(ctx context.Context, repo *gogit.Repository, info ports.GitRepoInfo) (goDivergenceResult, error) {
-	if g.Divergence != nil {
+	checkedUpstream := !comparesDefaultRemote(info.Branch, info.DefaultBranch)
+	upstream := ""
+	if checkedUpstream {
+		upstream = upstreamBranch(repo, info.Branch)
+	}
+	if g.Divergence != nil && upstream == "" {
 		ahead, behind, ok, err := g.Divergence.Divergence(ctx, info.WorktreeRoot, info.Branch, info.DefaultBranch)
 		if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			checkedUpstream := !comparesDefaultRemote(info.Branch, info.DefaultBranch)
-			targetIsUpstream := checkedUpstream && upstreamBranch(repo, info.Branch) != ""
-			return goDivergenceResult{ahead: ahead, behind: behind, ok: ok, checkedUpstream: checkedUpstream, targetIsUpstream: targetIsUpstream}, err
+			return goDivergenceResult{ahead: ahead, behind: behind, ok: ok, checkedUpstream: checkedUpstream}, err
 		}
 	}
 	return comparisonDivergence(ctx, repo, info.Branch, info.DefaultBranch)
@@ -366,20 +369,20 @@ func upstreamDivergence(ctx context.Context, repo *gogit.Repository, branch stri
 }
 
 func comparisonDivergence(ctx context.Context, repo *gogit.Repository, branch string, defaultRemote string) (goDivergenceResult, error) {
-	target := ""
-	checkedUpstream := false
-	targetIsUpstream := false
 	if comparesDefaultRemote(branch, defaultRemote) {
-		target = defaultRemote
-	} else {
-		checkedUpstream = true
-		if upstream := upstreamBranch(repo, branch); upstream != "" {
-			target = upstream
-			targetIsUpstream = true
-		} else {
-			target = defaultRemote
+		return divergenceResultForTarget(ctx, repo, defaultRemote, false, false)
+	}
+	upstream := upstreamBranch(repo, branch)
+	if upstream != "" {
+		result, err := divergenceResultForTarget(ctx, repo, upstream, true, true)
+		if err != nil || result.ok || defaultRemote == "" {
+			return result, err
 		}
 	}
+	return divergenceResultForTarget(ctx, repo, defaultRemote, true, false)
+}
+
+func divergenceResultForTarget(ctx context.Context, repo *gogit.Repository, target string, checkedUpstream bool, targetIsUpstream bool) (goDivergenceResult, error) {
 	if target == "" {
 		return goDivergenceResult{checkedUpstream: checkedUpstream}, nil
 	}

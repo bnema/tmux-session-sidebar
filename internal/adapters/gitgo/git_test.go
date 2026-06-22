@@ -95,6 +95,30 @@ func TestGitStatusComparesWorkingBranchToDefaultRemote(t *testing.T) {
 	}
 }
 
+func TestGitStatusFallsBackToDefaultRemoteWhenConfiguredUpstreamIsStale(t *testing.T) {
+	origin := initBareGitRepo(t)
+	work := cloneRepo(t, origin)
+	writeFile(t, work, "base.txt", "base\n")
+	runGit(t, work, "add", "base.txt")
+	runGit(t, work, "commit", "-m", "base")
+	runGit(t, work, "push", "-u", "origin", "main")
+	runGit(t, work, "remote", "set-head", "origin", "main")
+	runGit(t, work, "checkout", "-b", "feature")
+	writeFile(t, work, "feature.txt", "feature\n")
+	runGit(t, work, "add", "feature.txt")
+	runGit(t, work, "commit", "-m", "feature")
+	runGit(t, work, "push", "-u", "origin", "feature")
+	runGit(t, work, "update-ref", "-d", "refs/remotes/origin/feature")
+
+	status, err := (Git{}).Status(t.Context(), work)
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if !status.ComparisonConfigured || status.UpstreamConfigured || status.Ahead != 1 || status.Behind != 0 {
+		t.Fatalf("Status divergence = %#v, want fallback comparison 1/0 without configured upstream", status)
+	}
+}
+
 func TestGitStatusSeparatesDefaultBranchDivergenceFromUpstreamPushPull(t *testing.T) {
 	origin := initBareGitRepo(t)
 	work := cloneRepo(t, origin)

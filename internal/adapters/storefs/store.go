@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/bnema/tmux-session-sidebar/internal/core/persisted"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
@@ -23,17 +24,12 @@ func (s Store) Load(_ context.Context, serverID string) (ports.PersistedState, e
 	path := s.path(serverID)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}, SessionOrder: []string{}, Clients: map[string][]byte{}, Heat: map[string][]byte{}}, nil
+		return persisted.EmptyState(), nil
 	}
 	if err != nil {
 		return ports.PersistedState{}, err
 	}
-	var state ports.PersistedState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return ports.PersistedState{}, err
-	}
-	initializeMaps(&state)
-	return state, nil
+	return persisted.DecodeState(data)
 }
 
 func (s Store) Save(_ context.Context, serverID string, state ports.PersistedState) error {
@@ -128,19 +124,4 @@ func persistedStateJSONKeys() map[string]struct{} {
 		keys[name] = struct{}{}
 	}
 	return keys
-}
-
-func initializeMaps(state *ports.PersistedState) {
-	if state.Sessions == nil {
-		state.Sessions = map[string]ports.SessionMetadata{}
-	}
-	if state.SessionOrder == nil {
-		state.SessionOrder = []string{}
-	}
-	if state.Clients == nil {
-		state.Clients = map[string][]byte{}
-	}
-	if state.Heat == nil {
-		state.Heat = map[string][]byte{}
-	}
 }

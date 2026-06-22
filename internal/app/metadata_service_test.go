@@ -719,11 +719,19 @@ func (w *metadataFakeWatcher) waitStarted(t *testing.T) {
 type metadataFakeConfig struct {
 	mu       sync.Mutex
 	snapshot ports.ConfigSnapshot
+	errs     []error
 }
 
 func (c *metadataFakeConfig) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if len(c.errs) > 0 {
+		err := c.errs[0]
+		c.errs = c.errs[1:]
+		if err != nil {
+			return ports.ConfigSnapshot{}, err
+		}
+	}
 	return c.snapshot, nil
 }
 
@@ -790,6 +798,33 @@ func eventually(t *testing.T, ok func() bool) {
 			t.Fatal("condition was not met before timeout")
 		case <-tick.C:
 		}
+	}
+}
+
+func TestMetadataServiceRunKeepsWatcherAfterTransientConfigReloadError(t *testing.T) {
+	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
+	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
+	git := metadataFakeGit{
+		infos:    map[string]ports.GitRepoInfo{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", GitDir: "/repo/.git", CommonGitDir: "/repo/.git"}},
+		targets:  map[string]ports.GitWatchTargets{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", Files: []string{"/repo/.git/HEAD"}, Dirs: []string{"/repo"}}},
+		statuses: map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "main"}},
+	}
+	config := &metadataFakeConfig{snapshot: ports.ConfigSnapshot{MetadataSublineEnabled: true}, errs: []error{nil, errors.New("temporary config read failed")}}
+	watcher := newMetadataLifecycleWatcher()
+	reconcile := make(chan struct{}, 1)
+	svc := MetadataService{Store: store, Query: tmux, Git: git, Watcher: watcher, Config: config, ReconcileRequests: reconcile, LockStore: metadataDirectLock(store), ReconcileInterval: 10 * time.Millisecond}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- svc.Run(ctx, ports.ConfigSnapshot{MetadataSublineEnabled: true}) }()
+	watcher.waitStarts(t, 1)
+
+	reconcile <- struct{}{}
+	watcher.waitStops(t, 1)
+	watcher.waitStarts(t, 2)
+	cancel()
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run error: %v", err)
 	}
 }
 

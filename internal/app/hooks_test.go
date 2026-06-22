@@ -37,6 +37,12 @@ func TestInstallJSONHooksFailsWithoutClobberingExistingConfigWhenDirectoryCannot
 		t.Fatalf("chmod config dir read-only: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(configDir, 0o700) })
+	if probe, probeErr := os.CreateTemp(configDir, "probe-*"); probeErr == nil {
+		probeName := probe.Name()
+		_ = probe.Close()
+		_ = os.Remove(probeName)
+		t.Skip("directory permissions still allow temp file creation in this environment")
+	}
 
 	err := installJSONHooks(new(bytes.Buffer), def, true)
 	if err == nil {

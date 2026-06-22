@@ -315,9 +315,13 @@ func (s *MetadataService) Run(ctx context.Context, cfg ports.ConfigSnapshot) err
 		}
 		loaded, err := s.loadRunConfig(ctx, current)
 		if err != nil {
-			return err
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata config reload failed: %v\n", err)
+		} else {
+			current = loaded
 		}
-		current = loaded
 		if !current.MetadataSublineEnabled {
 			if err := s.waitMetadataReconcile(ctx); errors.Is(err, errMetadataReconcile) {
 				continue
