@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/internal/core/projects"
+	coreruntime "github.com/bnema/tmux-session-sidebar/internal/core/runtime"
 	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
@@ -50,15 +51,25 @@ func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.Sid
 	if err != nil {
 		return err
 	}
-	metadata := ports.SessionMetadata{Kind: "adhoc", LastPath: path}
-	if err := withSidebarFollow(ctx, flags["client"], sidebar, func() error {
-		return withPersistedSessionDuringTmuxAction(ctx, name, metadata, func() error {
-			return runtimeService().CreateAdhocSession(ctx, flags["client"], existing, name, path)
+	plan := coreruntime.AdhocSessionDecision(existing, name, path)
+	if !plan.Create {
+		return withSidebarFollow(ctx, flags["client"], sidebar, func() error {
+			return runtimeService().SwitchSession(ctx, flags["client"], plan.SessionName)
 		})
+	}
+
+	metadata := ports.SessionMetadata{Kind: "adhoc", LastPath: path}
+	if err := withPersistedSessionDuringTmuxAction(ctx, plan.SessionName, metadata, func() error {
+		return runtimeService().CreateDetachedAdhocSession(ctx, existing, plan)
 	}); err != nil {
 		return err
 	}
-	return saveCreatedSessionCategory(ctx, name, flags["category-id"])
+	if err := saveCreatedSessionCategory(ctx, plan.SessionName, flags["category-id"]); err != nil {
+		return err
+	}
+	return withSidebarFollow(ctx, flags["client"], sidebar, func() error {
+		return runtimeService().SwitchSession(ctx, flags["client"], plan.SessionName)
+	})
 }
 
 func saveCreatedSessionCategory(ctx context.Context, name string, categoryID string) error {

@@ -259,6 +259,9 @@ esac
 
 func TestCreateAdhocSwitchFailureKeepsNewMetadataWhenSessionExists(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	seedSidebarLayout(t, &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+		{ID: "category:target", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:target", Name: "Target"}},
+	}})
 	counter := filepath.Join(t.TempDir(), "list-count")
 	installFakeTmux(t, `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMUX_LOG"
@@ -276,10 +279,11 @@ case "$1" in
 esac
 `)
 
-	if err := createAdhoc(t.Context(), map[string]string{}, nil); err == nil {
+	if err := createAdhoc(t.Context(), map[string]string{"category-id": "category:target"}, nil); err == nil {
 		t.Fatal("createAdhoc returned nil, want switch error")
 	}
 	assertPersistedMetadata(t, "scratch", ports.SessionMetadata{Kind: "adhoc", LastPath: "/tmp/worktree/scratch"})
+	assertCategorySessions(t, "category:target", []string{"scratch"})
 }
 
 func TestCreateProjectFailureRestoresPreviousMetadata(t *testing.T) {

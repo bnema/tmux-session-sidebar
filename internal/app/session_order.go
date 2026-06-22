@@ -127,6 +127,13 @@ func renameSessionState(state *ports.PersistedState, oldName string, newName str
 			state.Metadata[newName] = metadata
 		}
 	}
+	if state.Heat != nil {
+		storedHeat, ok := state.Heat[oldName]
+		if ok {
+			delete(state.Heat, oldName)
+			state.Heat[newName] = storedHeat
+		}
+	}
 	for i, name := range state.SessionOrder {
 		if name == oldName {
 			state.SessionOrder[i] = newName
@@ -272,6 +279,7 @@ func removeSessionState(state *ports.PersistedState, name string) {
 	state.PinnedSessions = pinned
 	delete(state.PinColors, name)
 	delete(state.Metadata, name)
+	delete(state.Heat, name)
 	removeSidebarLayoutSessionRef(state.SidebarLayout, name)
 }
 

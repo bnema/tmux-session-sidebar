@@ -137,6 +137,20 @@ func TestCreateDetachedProjectSessionDoesNotSwitchClient(t *testing.T) {
 	}
 }
 
+func TestCreateDetachedAdhocSessionDoesNotSwitchClient(t *testing.T) {
+	ctx := context.Background()
+	control := mocks.NewMockControlPort(t)
+	meta := mocks.NewMockMetadataPort(t)
+	plan := AdhocSessionPlan{SessionName: "scratch", Path: "/tmp/scratch", Create: true}
+
+	control.EXPECT().CreateSession(ctx, "scratch", "/tmp/scratch").Return(nil)
+	meta.EXPECT().SaveSessionMetadata(ctx, "scratch", mock.Anything).Return(nil)
+
+	if err := NewService(nil, nil, control, nil).WithMetadata(meta).CreateDetachedAdhocSession(ctx, []sessions.View{{Name: "alpha"}}, plan); err != nil {
+		t.Fatalf("CreateDetachedAdhocSession error: %v", err)
+	}
+}
+
 func TestRenameSessionRequiresExistingOldName(t *testing.T) {
 	ctx := context.Background()
 	control := mocks.NewMockControlPort(t)
@@ -189,6 +203,28 @@ func TestProjectSessionDecision(t *testing.T) {
 			got := ProjectSessionDecision(existing, tt.candidate)
 			if got.SessionName != tt.wantName || got.Create != tt.wantCreate {
 				t.Fatalf("ProjectSessionDecision() = %#v, want name %q create %v", got, tt.wantName, tt.wantCreate)
+			}
+		})
+	}
+}
+
+func TestAdhocSessionDecision(t *testing.T) {
+	existing := []sessions.View{{Name: "alpha"}, {Name: "scratch"}}
+	tests := []struct {
+		name       string
+		session    string
+		path       string
+		wantCreate bool
+	}{
+		{name: "existing ad-hoc switches", session: "scratch", path: "/tmp/scratch", wantCreate: false},
+		{name: "new ad-hoc creates", session: "new", path: "/tmp/new", wantCreate: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := AdhocSessionDecision(existing, tt.session, tt.path)
+			if got.SessionName != tt.session || got.Path != tt.path || got.Create != tt.wantCreate {
+				t.Fatalf("AdhocSessionDecision() = %#v, want name %q path %q create %v", got, tt.session, tt.path, tt.wantCreate)
 			}
 		})
 	}

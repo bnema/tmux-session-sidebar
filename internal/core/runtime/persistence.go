@@ -589,11 +589,8 @@ func fingerprintPaneText(text string) string {
 }
 
 func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.SessionSnapshot, clients []ports.ClientSnapshot, observations []paneObservation, now time.Time, halfLife time.Duration, staleAfter time.Duration) (map[string]heat.State, map[string]heat.Trace) {
-	next := make(map[string]heat.State, len(current)+len(live))
+	next := make(map[string]heat.State, len(live))
 	traces := make(map[string]heat.Trace, len(live))
-	for name, state := range current {
-		next[name] = cloneHeatState(state)
-	}
 
 	sessionNamesByID := make(map[string]string, len(live))
 	for _, session := range live {
@@ -614,7 +611,7 @@ func reconcileLiveSessionHeat(current map[string]heat.State, live []ports.Sessio
 	visited := visitedSessionNames(clients, sessionNamesByID)
 
 	for _, session := range live {
-		state := cloneHeatState(next[session.Name])
+		state := cloneHeatState(current[session.Name])
 		active := applyPaneObservations(&state, observationsBySession[session.Name])
 		nextState, trace := heat.Advance(state, now, active, visited[session.Name], halfLife, staleAfter)
 		next[session.Name] = nextState

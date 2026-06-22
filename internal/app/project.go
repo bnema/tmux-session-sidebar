@@ -127,8 +127,11 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 	if err != nil {
 		return err
 	}
-	metadata := ports.SessionMetadata{Kind: "project", ProjectPath: candidate.Path, LastPath: candidate.Path}
 	plan := coreruntime.ProjectSessionDecision(existing, candidate)
+	if !plan.Create {
+		return switchClient(ctx, client, plan.SessionName, sidebar)
+	}
+	metadata := ports.SessionMetadata{Kind: "project", ProjectPath: candidate.Path, LastPath: candidate.Path}
 	if err := withPersistedSessionDuringTmuxAction(ctx, plan.SessionName, metadata, func() error {
 		return runtimeService().CreateDetachedProjectSession(ctx, existing, plan)
 	}); err != nil {
