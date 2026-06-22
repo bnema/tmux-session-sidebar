@@ -179,6 +179,36 @@ func TestEnsureRuntimeStateMigratedAndLoadReturnsDefaultForMissingState(t *testi
 	}
 }
 
+func TestEnsureRuntimeStateMigratedAndLoadDefersMalformedCurrentStateToCanonicalLoad(t *testing.T) {
+	root := t.TempDir()
+	defer ResetRuntimeScopeForTest()
+
+	scope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "111")
+	if err := os.MkdirAll(scope.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteRuntimeScopeMetadata(t, scope)
+	if err := os.MkdirAll(scope.StateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scope.StateDir, "tmux.json"), []byte("{invalid json"), 0o600); err != nil {
+		t.Fatalf("write malformed tmux.json: %v", err)
+	}
+
+	state, loaded, err := ensureRuntimeStateMigratedAndLoad(context.Background(), scope)
+	if err != nil {
+		t.Fatalf("ensureRuntimeStateMigratedAndLoad error = %v, want defer to canonical load", err)
+	}
+	if loaded {
+		t.Fatalf("loaded = true with state %#v, want false for malformed current state", state)
+	}
+
+	SetRuntimeScope(scope)
+	if _, err := loadSidebarState(context.Background()); err == nil {
+		t.Fatal("loadSidebarState error = nil, want canonical parse error for malformed current state")
+	}
+}
+
 func TestEnsureRuntimeStateMigrated_CurrentPIDLegacyState(t *testing.T) {
 	root := t.TempDir()
 	defer ResetRuntimeScopeForTest()
