@@ -250,7 +250,6 @@ func (c Client) SessionPath(ctx context.Context, sessionName string) (string, er
 func (c Client) SessionPaths(ctx context.Context, sessionNames []string) (map[string]string, error) {
 	requested := make(map[string]struct{}, len(sessionNames))
 	for _, name := range sessionNames {
-		name = strings.TrimSpace(name)
 		if name != "" {
 			requested[name] = struct{}{}
 		}
@@ -263,7 +262,7 @@ func (c Client) SessionPaths(ctx context.Context, sessionNames []string) (map[st
 		return nil, wrapTmuxError(result, err)
 	}
 	paths := make(map[string]string, len(requested))
-	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(result.Stdout, "\n"), "\n") {
 		fields := strings.SplitN(line, "\t", 4)
 		if len(fields) < 4 || fields[1] != "1" || fields[2] != "1" {
 			continue
