@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	processadapter "github.com/bnema/tmux-session-sidebar/internal/adapters/process"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 func TestAttachSingletonSidebarPreservesGroupedHorizontalWorkSplitAcrossToggle(t *testing.T) {
@@ -74,24 +75,24 @@ func TestSyncAttachedSidebarWidthPreservesGroupedWorkRatiosAcrossWindowResize(t 
 	windowID := strings.TrimSpace(runTmuxOutput(t, ctx, realTmux, socketName, "display-message", "-p", "-t", "work:", "#{window_id}"))
 
 	type attachedSidebarWidthSyncer interface {
-		CaptureAttachedSidebarWidthBaseline(context.Context, string, string, string) error
-		SyncAttachedSidebarWidth(context.Context, string, string, string) error
+		CaptureAttachedSidebarWidthBaseline(context.Context, string, string, string, ports.SidebarResizeOptions) error
+		SyncAttachedSidebarWidth(context.Context, string, string, string, ports.SidebarResizeOptions) error
 	}
 	syncer, ok := any(client).(attachedSidebarWidthSyncer)
 	if !ok {
 		t.Fatalf("Client does not implement sidebar width sync")
 	}
-	if err := syncer.CaptureAttachedSidebarWidthBaseline(ctx, windowID, sidebarPane, "30"); err != nil {
+	if err := syncer.CaptureAttachedSidebarWidthBaseline(ctx, windowID, sidebarPane, "30", ports.SidebarResizeOptions{}); err != nil {
 		t.Fatalf("CaptureAttachedSidebarWidthBaseline error: %v", err)
 	}
 
 	runTmux(t, ctx, realTmux, socketName, "resize-window", "-t", "work:", "-x", "59", "-y", "48")
-	if err := syncer.SyncAttachedSidebarWidth(ctx, windowID, sidebarPane, "30"); err != nil {
+	if err := syncer.SyncAttachedSidebarWidth(ctx, windowID, sidebarPane, "30", ports.SidebarResizeOptions{}); err != nil {
 		t.Fatalf("SyncAttachedSidebarWidth after narrow resize error: %v", err)
 	}
 
 	runTmux(t, ctx, realTmux, socketName, "resize-window", "-t", "work:", "-x", "181", "-y", "48")
-	if err := syncer.SyncAttachedSidebarWidth(ctx, windowID, sidebarPane, "30"); err != nil {
+	if err := syncer.SyncAttachedSidebarWidth(ctx, windowID, sidebarPane, "30", ports.SidebarResizeOptions{}); err != nil {
 		t.Fatalf("SyncAttachedSidebarWidth after restore error: %v", err)
 	}
 

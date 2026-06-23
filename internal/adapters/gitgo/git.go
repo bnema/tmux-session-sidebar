@@ -127,6 +127,7 @@ func (g Git) status(ctx context.Context, path string) (ports.GitStatus, error) {
 		status.Behind = comparison.behind
 		status.ComparisonConfigured = true
 	}
+	status.ComparisonMissing = comparison.missing
 	if comparison.checkedUpstream {
 		status.UpstreamConfigured = comparison.targetIsUpstream && comparison.ok
 	} else {
@@ -151,7 +152,7 @@ func (g Git) status(ctx context.Context, path string) (ports.GitStatus, error) {
 		return ports.GitStatus{}, err
 	}
 	countStatus(wtStatus, mergeInProgress(info.GitDir), &status)
-	status.Clean = status.Ahead == 0 && status.Behind == 0 && status.UpstreamAhead == 0 && status.UpstreamBehind == 0 && status.Staged == 0 && status.Modified == 0 && status.Deleted == 0 && status.Renamed == 0 && status.Untracked == 0 && status.Conflicts == 0
+	status.Clean = !status.ComparisonMissing && status.Ahead == 0 && status.Behind == 0 && status.UpstreamAhead == 0 && status.UpstreamBehind == 0 && status.Staged == 0 && status.Modified == 0 && status.Deleted == 0 && status.Renamed == 0 && status.Untracked == 0 && status.Conflicts == 0
 	return status, ctx.Err()
 }
 
@@ -331,6 +332,7 @@ type goDivergenceResult struct {
 	ahead            int
 	behind           int
 	ok               bool
+	missing          bool
 	checkedUpstream  bool
 	targetIsUpstream bool
 }
@@ -341,10 +343,10 @@ func (g Git) comparisonDivergence(ctx context.Context, repo *gogit.Repository, i
 	if checkedUpstream {
 		upstream = upstreamBranch(repo, info.Branch)
 	}
-	if g.Divergence != nil && upstream == "" {
+	if g.Divergence != nil {
 		ahead, behind, ok, err := g.Divergence.Divergence(ctx, info.WorktreeRoot, info.Branch, info.DefaultBranch)
-		if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return goDivergenceResult{ahead: ahead, behind: behind, ok: ok, checkedUpstream: checkedUpstream}, err
+		if ok || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return goDivergenceResult{ahead: ahead, behind: behind, ok: ok, checkedUpstream: checkedUpstream, targetIsUpstream: checkedUpstream && upstream != ""}, err
 		}
 	}
 	return comparisonDivergence(ctx, repo, info.Branch, info.DefaultBranch)
@@ -387,7 +389,8 @@ func divergenceResultForTarget(ctx context.Context, repo *gogit.Repository, targ
 		return goDivergenceResult{checkedUpstream: checkedUpstream}, nil
 	}
 	ahead, behind, ok, err := divergenceAgainstTarget(ctx, repo, target)
-	return goDivergenceResult{ahead: ahead, behind: behind, ok: ok, checkedUpstream: checkedUpstream, targetIsUpstream: targetIsUpstream}, err
+	missing := target != "" && !ok && err == nil
+	return goDivergenceResult{ahead: ahead, behind: behind, ok: ok, missing: missing, checkedUpstream: checkedUpstream, targetIsUpstream: targetIsUpstream}, err
 }
 
 func divergenceAgainstTarget(ctx context.Context, repo *gogit.Repository, target string) (int, int, bool, error) {

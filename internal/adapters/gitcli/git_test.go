@@ -119,14 +119,14 @@ func TestGitStatusComparesDefaultBranchWithDefaultRemoteWhenUpstreamMissing(t *t
 	}
 }
 
-func TestGitStatusIgnoresStaleDefaultRemoteBranch(t *testing.T) {
+func TestGitStatusReportsStaleDefaultRemoteBranch(t *testing.T) {
 	process := &staleDefaultRemoteProcess{}
 	status, err := (Git{Process: process}).Status(t.Context(), "/work")
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if status.UpstreamConfigured || status.Ahead != 0 || status.Behind != 0 || !status.Clean {
-		t.Fatalf("Status divergence = %#v, want clean status without upstream when origin/main is missing", status)
+	if status.UpstreamConfigured || status.ComparisonConfigured || !status.ComparisonMissing || status.Ahead != 0 || status.Behind != 0 || status.Clean {
+		t.Fatalf("Status divergence = %#v, want explicit missing comparison when origin/main is missing", status)
 	}
 	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main"}
 	if !slices.Equal(process.revListTargets, wantTargets) {
@@ -134,14 +134,14 @@ func TestGitStatusIgnoresStaleDefaultRemoteBranch(t *testing.T) {
 	}
 }
 
-func TestGitStatusIgnoresStaleUpstreamBranch(t *testing.T) {
+func TestGitStatusReportsStaleUpstreamBranch(t *testing.T) {
 	process := &staleUpstreamProcess{}
 	status, err := (Git{Process: process}).Status(t.Context(), "/work")
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if status.UpstreamConfigured || status.Ahead != 0 || status.Behind != 0 || !status.Clean {
-		t.Fatalf("Status divergence = %#v, want clean status without upstream when tracked origin/main is missing", status)
+	if status.UpstreamConfigured || status.ComparisonConfigured || !status.ComparisonMissing || status.Ahead != 0 || status.Behind != 0 || status.Clean {
+		t.Fatalf("Status divergence = %#v, want explicit missing comparison when tracked origin/main is missing", status)
 	}
 	wantTargets := []string{"HEAD...@{upstream}", "HEAD...origin/main"}
 	if !slices.Equal(process.revListTargets, wantTargets) {
@@ -397,7 +397,20 @@ func TestGitStatusReportsMissingUpstream(t *testing.T) {
 	}
 }
 
+func TestGitStatusReportsStaleConfiguredUpstreamWithoutDefaultRemote(t *testing.T) {
+	process := &staleConfiguredUpstreamWithoutDefaultRemoteProcess{}
+	status, err := (Git{Process: process}).Status(t.Context(), "/work")
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if status.UpstreamConfigured || status.ComparisonConfigured || !status.ComparisonMissing || status.Clean {
+		t.Fatalf("Status divergence = %#v, want missing comparison for stale configured upstream", status)
+	}
+}
+
 type missingUpstreamProcess struct{}
+
+type staleConfiguredUpstreamWithoutDefaultRemoteProcess struct{}
 
 func (p *missingUpstreamProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
 	if len(args) >= 4 && args[2] == "rev-parse" && args[3] == "--show-toplevel" {
@@ -411,6 +424,25 @@ func (p *missingUpstreamProcess) Exec(ctx context.Context, cmd string, args []st
 	}
 	if len(args) >= 4 && args[2] == "status" {
 		return ports.Result{Stdout: "## work\n"}, nil
+	}
+	return ports.Result{}, errors.New("unexpected call")
+}
+
+func (p *staleConfiguredUpstreamWithoutDefaultRemoteProcess) Exec(ctx context.Context, cmd string, args []string) (ports.Result, error) {
+	if len(args) >= 4 && args[2] == "rev-parse" && args[3] == "--show-toplevel" {
+		return ports.Result{Stdout: "/repo\n"}, nil
+	}
+	if len(args) >= 4 && args[2] == "branch" && args[3] == "--show-current" {
+		return ports.Result{Stdout: "work\n"}, nil
+	}
+	if len(args) >= 5 && args[2] == "symbolic-ref" && args[3] == "--short" && args[4] == "refs/remotes/origin/HEAD" {
+		return ports.Result{Stderr: "fatal: ref refs/remotes/origin/HEAD is not a symbolic ref"}, errors.New("exit status 1")
+	}
+	if len(args) >= 4 && args[2] == "rev-list" {
+		return ports.Result{Stderr: "fatal: upstream branch 'origin/work' not found"}, errors.New("exit status 128")
+	}
+	if len(args) >= 4 && args[2] == "status" {
+		return ports.Result{Stdout: ""}, nil
 	}
 	return ports.Result{}, errors.New("unexpected call")
 }
@@ -466,8 +498,8 @@ func TestGitStatusDetachedHeadWithoutDefaultRemoteHasNoDivergence(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if status.UpstreamConfigured || status.Ahead != 0 || status.Behind != 0 {
-		t.Fatalf("Status divergence = %#v, want none for detached head without default remote", status)
+	if status.UpstreamConfigured || status.ComparisonConfigured || status.ComparisonMissing || status.Ahead != 0 || status.Behind != 0 || !status.Clean {
+		t.Fatalf("Status divergence = %#v, want clean detached head without comparison", status)
 	}
 }
 

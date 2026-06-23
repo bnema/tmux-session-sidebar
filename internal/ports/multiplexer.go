@@ -87,6 +87,7 @@ type QueryPort interface {
 	ListClients(ctx context.Context) ([]ClientSnapshot, error)
 	CurrentPanePath(ctx context.Context, clientID string) (string, error)
 	SessionPath(ctx context.Context, sessionName string) (string, error)
+	SessionPaths(ctx context.Context, sessionNames []string) (map[string]string, error)
 	PaneSize(ctx context.Context, paneID string) (PaneSize, error)
 }
 
@@ -123,23 +124,20 @@ type SidebarFollowPort interface {
 	AttachSingletonSidebarWithoutFocus(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
 }
 
+type SidebarResizeOptions struct {
+	Logger LoggerPort
+}
+
 type SidebarResizePort interface {
 	// CaptureAttachedSidebarWidthBaseline records the current sidebar-open
 	// top-level work-group proportions when the attached layout is in a stable
 	// shape. Intended for non-resize layout-change hooks and post-attach capture.
-	CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowID string, paneID string, width string) error
+	CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowID string, paneID string, width string, options SidebarResizeOptions) error
 	// SyncAttachedSidebarWidth restores the configured width for an already
 	// attached sidebar pane while best-effort preserving the last captured
 	// sidebar-open top-level work-group proportions in the same window.
 	// Intended for resize hooks.
-	SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string) error
-}
-
-type SidebarLoggerPort interface {
-	// WithSidebarLogger returns an equivalent sidebar port that writes debug logs
-	// through logger. Implementations should preserve optional sidebar capabilities
-	// such as SidebarResizePort when wrapping the port.
-	WithSidebarLogger(logger LoggerPort) SidebarPort
+	SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string, options SidebarResizeOptions) error
 }
 
 type MetadataPort interface {

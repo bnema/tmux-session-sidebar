@@ -46,10 +46,6 @@ type MetadataRepoSubscription struct {
 	WatchDirs    []string
 }
 
-type metadataSessionPathsQuery interface {
-	SessionPaths(ctx context.Context, sessionNames []string) (map[string]string, error)
-}
-
 func NewMetadataService() *MetadataService {
 	tmux := runtimeMultiplexer()
 	return &MetadataService{
@@ -117,7 +113,10 @@ func (s *MetadataService) capture(ctx context.Context, cfg ports.ConfigSnapshot,
 		return false, err
 	}
 
-	livePaths := metadataLiveSessionPaths(ctx, s.Query, live)
+	livePaths, err := metadataLiveSessionPaths(ctx, s.Query, live)
+	if err != nil {
+		return false, err
+	}
 	liveNames := make(map[string]struct{}, len(live))
 	sessionPaths := make(map[string]string, len(live))
 	terminalDeletes := make(map[string]struct{})
@@ -313,15 +312,14 @@ func (s *MetadataService) Run(ctx context.Context, cfg ports.ConfigSnapshot) err
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		loaded, err := s.loadRunConfig(ctx, current)
+		loaded, err := s.loadRunConfig(ctx)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
 			}
-			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata config reload failed: %v\n", err)
-		} else {
-			current = loaded
+			return err
 		}
+		current = loaded
 		if !current.MetadataSublineEnabled {
 			if err := s.waitMetadataReconcile(ctx); errors.Is(err, errMetadataReconcile) {
 				continue
@@ -345,9 +343,9 @@ func (s *MetadataService) Run(ctx context.Context, cfg ports.ConfigSnapshot) err
 	}
 }
 
-func (s *MetadataService) loadRunConfig(ctx context.Context, fallback ports.ConfigSnapshot) (ports.ConfigSnapshot, error) {
+func (s *MetadataService) loadRunConfig(ctx context.Context) (ports.ConfigSnapshot, error) {
 	if s.Config == nil {
-		return fallback, nil
+		return ports.ConfigSnapshot{}, errors.New("metadata service missing config dependency")
 	}
 	cfg, err := s.Config.LoadConfig(ctx)
 	if err != nil {
@@ -499,7 +497,10 @@ func (s *MetadataService) Reconcile(ctx context.Context, cfg ports.ConfigSnapsho
 	if err != nil {
 		return nil, err
 	}
-	livePaths := metadataLiveSessionPaths(ctx, s.Query, live)
+	livePaths, err := metadataLiveSessionPaths(ctx, s.Query, live)
+	if err != nil {
+		return nil, err
+	}
 	subs := map[string]MetadataRepoSubscription{}
 	infos := map[string]metadataRepoInfoResult{}
 	targetsByWorktree := map[string]metadataWatchTargetsResult{}
@@ -561,35 +562,21 @@ type metadataWatchTargetsResult struct {
 	err     error
 }
 
-func metadataLiveSessionPaths(ctx context.Context, query ports.QueryPort, live []ports.SessionSnapshot) map[string]string {
-	livePaths := make(map[string]string, len(live))
-	missing := live
-	if batchQuery, ok := query.(metadataSessionPathsQuery); ok {
-		names := make([]string, 0, len(live))
-		for _, session := range live {
-			names = append(names, session.Name)
-		}
-		if paths, err := batchQuery.SessionPaths(ctx, names); err == nil {
-			maps.Copy(livePaths, paths)
-			missing = missingSessionsWithoutPaths(live, livePaths)
-		}
-	}
-	for _, session := range missing {
-		if path, err := query.SessionPath(ctx, session.Name); err == nil {
-			livePaths[session.Name] = path
-		}
-	}
-	return livePaths
-}
-
-func missingSessionsWithoutPaths(live []ports.SessionSnapshot, paths map[string]string) []ports.SessionSnapshot {
-	missing := make([]ports.SessionSnapshot, 0)
+func metadataLiveSessionPaths(ctx context.Context, query ports.QueryPort, live []ports.SessionSnapshot) (map[string]string, error) {
+	names := make([]string, 0, len(live))
 	for _, session := range live {
-		if strings.TrimSpace(paths[session.Name]) == "" {
-			missing = append(missing, session)
+		if name := strings.TrimSpace(session.Name); name != "" {
+			names = append(names, name)
 		}
 	}
-	return missing
+	if len(names) == 0 {
+		return map[string]string{}, nil
+	}
+	paths, err := query.SessionPaths(ctx, names)
+	if err != nil {
+		return nil, err
+	}
+	return paths, nil
 }
 
 func metadataPathCacheKey(path string) string {

@@ -965,6 +965,16 @@ func (q runtimeTestQuery) SessionPath(_ context.Context, sessionName string) (st
 	return q.sessionPaths[sessionName], nil
 }
 
+func (q runtimeTestQuery) SessionPaths(_ context.Context, sessionNames []string) (map[string]string, error) {
+	paths := make(map[string]string, len(sessionNames))
+	for _, name := range sessionNames {
+		if path := q.sessionPaths[name]; path != "" {
+			paths[name] = path
+		}
+	}
+	return paths, nil
+}
+
 func (q runtimeTestQuery) PaneSize(context.Context, string) (ports.PaneSize, error) {
 	return ports.PaneSize{}, nil
 }

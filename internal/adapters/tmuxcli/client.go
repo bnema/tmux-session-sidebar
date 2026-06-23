@@ -57,7 +57,6 @@ var _ ports.RuntimePort = Client{}
 var _ ports.SidebarSwitchPort = Client{}
 var _ ports.SidebarFollowPort = Client{}
 var _ ports.SidebarResizePort = Client{}
-var _ ports.SidebarLoggerPort = Client{}
 
 type Client struct {
 	Process ports.ProcessPort
@@ -66,11 +65,6 @@ type Client struct {
 
 func (c Client) Run(ctx context.Context, args []string) (ports.Result, error) {
 	return c.Process.Exec(ctx, tmuxBinary, args)
-}
-
-func (c Client) WithSidebarLogger(logger ports.LoggerPort) ports.SidebarPort {
-	c.Logger = logger
-	return c
 }
 
 func (c Client) LoadConfig(ctx context.Context) (ports.ConfigSnapshot, error) {

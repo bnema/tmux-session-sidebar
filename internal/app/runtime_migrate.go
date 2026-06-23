@@ -51,6 +51,12 @@ func ensureRuntimeStateMigratedAndLoad(ctx context.Context, scope RuntimeScope) 
 	if current.meaningful {
 		return current.state, true, nil
 	}
+	if current.exists && !current.reusable {
+		// Malformed current state is not reusable and must not be overwritten by
+		// migration candidates. Defer to the canonical store load path so callers
+		// receive the parse/corruption error for the file they already had.
+		return ports.PersistedState{}, false, nil
+	}
 
 	candidates, err := findSiblingStateCandidates(scope)
 	if err != nil {
@@ -96,6 +102,12 @@ func ensureRuntimeStateMigratedAndLoad(ctx context.Context, scope RuntimeScope) 
 	}
 	if current.meaningful {
 		return current.state, true, nil
+	}
+	if current.exists && !current.reusable {
+		// A concurrent writer may have produced malformed state while we were
+		// waiting for the migration lock. Preserve it and let the store report the
+		// parse error instead of clobbering it with stale candidate data.
+		return ports.PersistedState{}, false, nil
 	}
 
 	best := candidates[0]

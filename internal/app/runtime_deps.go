@@ -216,6 +216,10 @@ func (missingRuntime) SessionPath(context.Context, string) (string, error) {
 	return "", missingDependencyError("multiplexer port")
 }
 
+func (missingRuntime) SessionPaths(context.Context, []string) (map[string]string, error) {
+	return nil, missingDependencyError("multiplexer port")
+}
+
 func (missingRuntime) PaneSize(context.Context, string) (ports.PaneSize, error) {
 	return ports.PaneSize{}, missingDependencyError("multiplexer port")
 }

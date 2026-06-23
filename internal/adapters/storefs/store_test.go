@@ -69,6 +69,19 @@ func TestStoreLoadSaveSessionRestoreMetadata(t *testing.T) {
 	}
 }
 
+func TestStoreLoadRejectsEmptyExistingStateFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "server.json")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	_, err := New(dir).Load(context.Background(), "server")
+	if err == nil {
+		t.Fatal("Load error = nil, want empty existing state file to be malformed")
+	}
+}
+
 func TestStoreSavePreservesUnknownTopLevelFields(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "server.json")

@@ -35,7 +35,7 @@ func TestSyncAttachedSidebarWidthUsesSavedBaselineProportions(t *testing.T) {
 		return "", ""
 	})
 
-	if err := (Client{Process: rec}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30"); err != nil {
+	if err := (Client{Process: rec}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
 		t.Fatalf("SyncAttachedSidebarWidth error: %v", err)
 	}
 	assertRecUsedAllHandlers(t, rec)
@@ -69,7 +69,7 @@ func TestSyncAttachedSidebarWidthLogsBaselineAndComputedWidths(t *testing.T) {
 		return "", ""
 	})
 
-	if err := (Client{Process: rec, Logger: logger}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30"); err != nil {
+	if err := (Client{Process: rec}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{Logger: logger}); err != nil {
 		t.Fatalf("SyncAttachedSidebarWidth error: %v", err)
 	}
 	log := logger.joined()
@@ -111,7 +111,7 @@ func TestSyncAttachedSidebarWidthSkipsRestoreWhenSavedBaselineNoLongerMatchesTop
 		return "", ""
 	})
 
-	if err := (Client{Process: rec}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30"); err != nil {
+	if err := (Client{Process: rec}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
 		t.Fatalf("SyncAttachedSidebarWidth error: %v", err)
 	}
 	assertRecUsedAllHandlers(t, rec)
@@ -134,7 +134,7 @@ func TestCaptureAttachedSidebarWidthBaselineClearsSavedBaselineWhenCaptureIsInva
 		return "", ""
 	})
 
-	if err := (Client{Process: rec}).CaptureAttachedSidebarWidthBaseline(ctx, "@27", "%183", "30"); err != nil {
+	if err := (Client{Process: rec}).CaptureAttachedSidebarWidthBaseline(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
 		t.Fatalf("CaptureAttachedSidebarWidthBaseline error: %v", err)
 	}
 	assertRecUsedAllHandlers(t, rec)

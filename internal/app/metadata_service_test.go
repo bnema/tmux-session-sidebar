@@ -539,13 +539,13 @@ func TestMetadataServiceReconcileUsesBatchSessionPaths(t *testing.T) {
 	}
 }
 
-func TestMetadataServiceReconcileFallsBackForPartialBatchSessionPaths(t *testing.T) {
+func TestMetadataServiceReconcileUsesOnlyBatchSessionPaths(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
 	var batchCalls atomic.Int64
 	var singleCalls atomic.Int64
 	tmux := metadataFakeTmux{
 		sessions:         []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}},
-		paths:            map[string]string{"alpha": "/wrong-alpha", "beta": "/repo/b"},
+		paths:            map[string]string{"alpha": "/wrong-alpha", "beta": "/wrong-beta"},
 		batchPaths:       map[string]string{"alpha": "/repo/a"},
 		batchPathCalls:   &batchCalls,
 		sessionPathCalls: &singleCalls,
@@ -563,18 +563,18 @@ func TestMetadataServiceReconcileFallsBackForPartialBatchSessionPaths(t *testing
 	if err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
-	if batchCalls.Load() != 1 || singleCalls.Load() != 1 {
-		t.Fatalf("batch path calls = %d single path calls = %d, want one batch and one missing-session fallback", batchCalls.Load(), singleCalls.Load())
+	if batchCalls.Load() != 1 || singleCalls.Load() != 0 {
+		t.Fatalf("batch path calls = %d single path calls = %d, want one batch and no per-session fallback", batchCalls.Load(), singleCalls.Load())
 	}
 	if _, ok := subs["/repo-a"]; !ok {
 		t.Fatalf("missing /repo-a subscription: %#v", subs)
 	}
-	if _, ok := subs["/repo-b"]; !ok {
-		t.Fatalf("missing /repo-b subscription: %#v", subs)
+	if _, ok := subs["/repo-b"]; ok {
+		t.Fatalf("unexpected /repo-b subscription from per-session fallback: %#v", subs)
 	}
 }
 
-func TestMetadataServiceReconcileFallsBackWhenBatchSessionPathsFail(t *testing.T) {
+func TestMetadataServiceReconcileReturnsBatchSessionPathsError(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
 	var batchCalls atomic.Int64
 	var singleCalls atomic.Int64
@@ -594,15 +594,12 @@ func TestMetadataServiceReconcileFallsBackWhenBatchSessionPathsFail(t *testing.T
 	}}
 	svc := MetadataService{Store: store, Query: tmux, Git: git, LockStore: metadataDirectLock(store)}
 
-	subs, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
-	if err != nil {
-		t.Fatalf("Reconcile error: %v", err)
+	_, err := svc.Reconcile(t.Context(), ports.ConfigSnapshot{MetadataSublineEnabled: true})
+	if err == nil {
+		t.Fatal("Reconcile error = nil, want batch session paths error")
 	}
-	if batchCalls.Load() != 1 || singleCalls.Load() != 2 {
-		t.Fatalf("batch path calls = %d single path calls = %d, want one failed batch and per-session fallback", batchCalls.Load(), singleCalls.Load())
-	}
-	if len(subs) != 2 {
-		t.Fatalf("subscriptions len = %d, want 2: %#v", len(subs), subs)
+	if batchCalls.Load() != 1 || singleCalls.Load() != 0 {
+		t.Fatalf("batch path calls = %d single path calls = %d, want one failed batch and no per-session fallback", batchCalls.Load(), singleCalls.Load())
 	}
 }
 
@@ -712,7 +709,7 @@ func TestMetadataServiceRunWatchesDebouncesAndCapturesRepo(t *testing.T) {
 	}
 	watcher := newMetadataFakeWatcher()
 	refresher := &metadataFakeRefresher{}
-	svc := MetadataService{Store: store, Query: tmux, Git: git, Watcher: watcher, Refresher: refresher, LockStore: metadataDirectLock(store), Debounce: time.Millisecond}
+	svc := MetadataService{Store: store, Query: tmux, Config: &metadataFakeConfig{snapshot: ports.ConfigSnapshot{MetadataSublineEnabled: true}}, Git: git, Watcher: watcher, Refresher: refresher, LockStore: metadataDirectLock(store), Debounce: time.Millisecond}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
@@ -780,7 +777,7 @@ func TestMetadataServiceRunCoalescesBurstEventsIntoOneRepoCapture(t *testing.T) 
 	}
 	watcher := newMetadataFakeWatcher()
 	refresher := &metadataFakeRefresher{}
-	svc := MetadataService{Store: store, Query: tmux, Git: git, Watcher: watcher, Refresher: refresher, LockStore: metadataDirectLock(store), Debounce: 10 * time.Millisecond}
+	svc := MetadataService{Store: store, Query: tmux, Config: &metadataFakeConfig{snapshot: ports.ConfigSnapshot{MetadataSublineEnabled: true}}, Git: git, Watcher: watcher, Refresher: refresher, LockStore: metadataDirectLock(store), Debounce: 10 * time.Millisecond}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)

@@ -23,6 +23,7 @@ type GitStatus struct {
 	Untracked            int
 	Conflicts            int
 	ComparisonConfigured bool
+	ComparisonMissing    bool
 	UpstreamConfigured   bool
 }
 

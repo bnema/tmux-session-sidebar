@@ -57,6 +57,44 @@ func TestInstallJSONHooksFailsWithoutClobberingExistingConfigWhenDirectoryCannot
 	}
 }
 
+func TestWriteHookFileAtomicPreservesSymlinkedConfig(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "real-config.json")
+	link := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(target, []byte("old\n"), 0o600); err != nil {
+		t.Fatalf("write target config: %v", err)
+	}
+	if err := os.Symlink(filepath.Base(target), link); err != nil {
+		t.Fatalf("symlink config: %v", err)
+	}
+
+	if err := writeHookFileAtomic(link, []byte("new\n"), 0o644); err != nil {
+		t.Fatalf("writeHookFileAtomic error: %v", err)
+	}
+
+	linkInfo, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("lstat link: %v", err)
+	}
+	if linkInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("config link was replaced; mode=%v", linkInfo.Mode())
+	}
+	content, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read target config: %v", err)
+	}
+	if string(content) != "new\n" {
+		t.Fatalf("target config = %q, want new content", content)
+	}
+	targetInfo, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("stat target config: %v", err)
+	}
+	if got := targetInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("target permissions = %v, want 0600", got)
+	}
+}
+
 func TestInstallJSONHooksPreservesExistingConfigPermissions(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	def, ok := agentHookDefNamed("codex")

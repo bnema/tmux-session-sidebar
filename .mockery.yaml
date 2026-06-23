@@ -12,7 +12,6 @@ packages:
       QueryPort:
       ControlPort:
       SidebarPort:
-      SidebarLoggerPort:
       MetadataPort:
       IPCClientPort:
       IPCServerPort:

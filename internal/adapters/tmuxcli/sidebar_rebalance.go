@@ -48,7 +48,8 @@ type sidebarHorizontalGroup struct {
 	UniformWidth         bool
 }
 
-func (c Client) CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowID string, paneID string, width string) error {
+func (c Client) CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowID string, paneID string, width string, options ports.SidebarResizeOptions) error {
+	c.Logger = options.Logger
 	windowID, paneID, width, err := c.normalizeAttachedSidebarResizeInputs(ctx, windowID, paneID, width)
 	if err != nil {
 		if isTmuxTargetGone(err) {
@@ -57,10 +58,10 @@ func (c Client) CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowI
 		return err
 	}
 	if windowID == "" || paneID == "" {
-		c.resizeDebug("resize-baseline-capture-skip", []ports.LogField{{Key: "reason", Value: "missing-target"}, {Key: "window", Value: windowID}, {Key: "pane", Value: paneID}, {Key: "width", Value: width}})
+		c.resizeDebug("resize-baseline-capture-skip", ports.LogField{Key: "reason", Value: "missing-target"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "pane", Value: paneID}, ports.LogField{Key: "width", Value: width})
 		return nil
 	}
-	c.resizeDebug("resize-baseline-capture-start", []ports.LogField{{Key: "window", Value: windowID}, {Key: "pane", Value: paneID}, {Key: "width", Value: width}})
+	c.resizeDebug("resize-baseline-capture-start", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "pane", Value: paneID}, ports.LogField{Key: "width", Value: width})
 	active, err := c.sidebarResizeSyncActive(ctx, windowID)
 	if err != nil {
 		if isTmuxTargetGone(err) {
@@ -69,7 +70,7 @@ func (c Client) CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowI
 		return err
 	}
 	if active {
-		c.resizeDebug("resize-baseline-capture-skip", []ports.LogField{{Key: "reason", Value: "resize-sync-active"}, {Key: "window", Value: windowID}, {Key: "pane", Value: paneID}})
+		c.resizeDebug("resize-baseline-capture-skip", ports.LogField{Key: "reason", Value: "resize-sync-active"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "pane", Value: paneID})
 		return nil
 	}
 	weights, err := c.captureSidebarWorkWeights(ctx, windowID, paneID, width, sidebarWorkWeightByGroupWidth)
@@ -82,7 +83,8 @@ func (c Client) CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowI
 	return c.saveSidebarOpenWorkBaseline(ctx, windowID, weights)
 }
 
-func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string) error {
+func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string, options ports.SidebarResizeOptions) error {
+	c.Logger = options.Logger
 	windowID, paneID, width, err := c.normalizeAttachedSidebarResizeInputs(ctx, windowID, paneID, width)
 	if err != nil {
 		if isTmuxTargetGone(err) {
@@ -91,10 +93,10 @@ func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, p
 		return err
 	}
 	if windowID == "" || paneID == "" {
-		c.resizeDebug("resize-sync-skip", []ports.LogField{{Key: "reason", Value: "missing-target"}, {Key: "window", Value: windowID}, {Key: "pane", Value: paneID}, {Key: "width", Value: width}})
+		c.resizeDebug("resize-sync-skip", ports.LogField{Key: "reason", Value: "missing-target"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "pane", Value: paneID}, ports.LogField{Key: "width", Value: width})
 		return nil
 	}
-	c.resizeDebug("resize-sync-start", []ports.LogField{{Key: "window", Value: windowID}, {Key: "pane", Value: paneID}, {Key: "width", Value: width}})
+	c.resizeDebug("resize-sync-start", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "pane", Value: paneID}, ports.LogField{Key: "width", Value: width})
 	weights, err := c.loadSidebarOpenWorkBaseline(ctx, windowID)
 	if err != nil {
 		if isTmuxTargetGone(err) {
@@ -112,7 +114,7 @@ func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, p
 		}
 		return wrapped
 	}
-	c.resizeDebug("resize-sidebar-pane", []ports.LogField{{Key: "pane", Value: paneID}, {Key: "width", Value: width}})
+	c.resizeDebug("resize-sidebar-pane", ports.LogField{Key: "pane", Value: paneID}, ports.LogField{Key: "width", Value: width})
 	c.applySidebarWorkWeightsBestEffort(ctx, windowID, paneID, weights, true)
 	return nil
 }
@@ -154,7 +156,7 @@ func (c Client) captureSidebarWorkWeights(ctx context.Context, windowID string, 
 	if mode == sidebarWorkWeightByGroupWidth {
 		parsedWidth, ok := parseSidebarWidthCells(width)
 		if !ok {
-			c.resizeDebug("resize-capture-weights-skip", []ports.LogField{{Key: "reason", Value: "invalid-sidebar-width"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "width", Value: width}})
+			c.resizeDebug("resize-capture-weights-skip", ports.LogField{Key: "reason", Value: "invalid-sidebar-width"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "width", Value: width})
 			return nil, nil
 		}
 		expectedSidebarWidth = parsedWidth
@@ -162,7 +164,7 @@ func (c Client) captureSidebarWorkWeights(ctx context.Context, windowID string, 
 	groups, windowWidth, err := c.sidebarHorizontalWorkGroups(ctx, windowID, sidebarPaneID, true, expectedSidebarWidth)
 	if err != nil || len(groups) == 0 {
 		if err == nil {
-			c.resizeDebug("resize-capture-weights-skip", []ports.LogField{{Key: "reason", Value: "no-valid-work-groups"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "expected_sidebar_width", Value: expectedSidebarWidth}})
+			c.resizeDebug("resize-capture-weights-skip", ports.LogField{Key: "reason", Value: "no-valid-work-groups"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth})
 		}
 		return nil, err
 	}
@@ -177,12 +179,12 @@ func (c Client) captureSidebarWorkWeights(ctx context.Context, windowID string, 
 			weight = nextLeft - group.Left
 		}
 		if strings.TrimSpace(group.RepresentativePaneID) == "" || weight <= 0 {
-			c.resizeDebug("resize-capture-weights-skip", []ports.LogField{{Key: "reason", Value: "invalid-group-weight"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "group", Value: formatSidebarHorizontalGroup(group)}, {Key: "weight", Value: weight}})
+			c.resizeDebug("resize-capture-weights-skip", ports.LogField{Key: "reason", Value: "invalid-group-weight"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "group", Value: formatSidebarHorizontalGroup(group)}, ports.LogField{Key: "weight", Value: weight})
 			return nil, nil
 		}
 		weights = append(weights, sidebarWorkWeight{RepresentativePaneID: group.RepresentativePaneID, Weight: weight})
 	}
-	c.resizeDebug("resize-captured-work-weights", []ports.LogField{{Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "mode", Value: mode.String()}, {Key: "weights", Value: formatSidebarWorkWeights(weights)}})
+	c.resizeDebug("resize-captured-work-weights", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "mode", Value: mode.String()}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)})
 	return weights, nil
 }
 
@@ -190,21 +192,21 @@ func (c Client) saveSidebarOpenWorkBaseline(ctx context.Context, windowID string
 	baseline := sidebarOpenWorkBaseline{RepresentativePaneIDs: make([]string, 0, len(weights)), WorkWidths: make([]int, 0, len(weights))}
 	for _, weight := range weights {
 		if strings.TrimSpace(weight.RepresentativePaneID) == "" || weight.Weight <= 0 {
-			c.resizeDebug("resize-baseline-clear", []ports.LogField{{Key: "window", Value: windowID}, {Key: "reason", Value: "invalid-weight"}, {Key: "weights", Value: formatSidebarWorkWeights(weights)}})
+			c.resizeDebug("resize-baseline-clear", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "reason", Value: "invalid-weight"}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)})
 			return c.clearWindowOptionValue(ctx, windowID, optionSidebarOpenWorkBaseline)
 		}
 		baseline.RepresentativePaneIDs = append(baseline.RepresentativePaneIDs, weight.RepresentativePaneID)
 		baseline.WorkWidths = append(baseline.WorkWidths, weight.Weight)
 	}
 	if len(baseline.RepresentativePaneIDs) < 2 {
-		c.resizeDebug("resize-baseline-clear", []ports.LogField{{Key: "window", Value: windowID}, {Key: "reason", Value: "too-few-work-groups"}, {Key: "weights", Value: formatSidebarWorkWeights(weights)}})
+		c.resizeDebug("resize-baseline-clear", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "reason", Value: "too-few-work-groups"}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)})
 		return c.clearWindowOptionValue(ctx, windowID, optionSidebarOpenWorkBaseline)
 	}
 	encoded, err := json.Marshal(baseline)
 	if err != nil {
 		return err
 	}
-	c.resizeDebug("resize-baseline-save", []ports.LogField{{Key: "window", Value: windowID}, {Key: "representatives", Value: baseline.RepresentativePaneIDs}, {Key: "widths", Value: baseline.WorkWidths}})
+	c.resizeDebug("resize-baseline-save", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "representatives", Value: baseline.RepresentativePaneIDs}, ports.LogField{Key: "widths", Value: baseline.WorkWidths})
 	return c.setWindowOptionValue(ctx, windowID, optionSidebarOpenWorkBaseline, string(encoded))
 }
 
@@ -214,28 +216,28 @@ func (c Client) loadSidebarOpenWorkBaseline(ctx context.Context, windowID string
 		return nil, err
 	}
 	if raw == "" {
-		c.resizeDebug("resize-baseline-empty", []ports.LogField{{Key: "window", Value: windowID}})
+		c.resizeDebug("resize-baseline-empty", ports.LogField{Key: "window", Value: windowID})
 		return nil, nil
 	}
 	var baseline sidebarOpenWorkBaseline
 	if err := json.Unmarshal([]byte(raw), &baseline); err != nil {
-		c.resizeDebug("resize-baseline-invalid", []ports.LogField{{Key: "window", Value: windowID}, {Key: "reason", Value: "decode"}, {Key: "raw", Value: raw}, {Key: "error", Value: err.Error()}})
+		c.resizeDebug("resize-baseline-invalid", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "reason", Value: "decode"}, ports.LogField{Key: "raw", Value: raw}, ports.LogField{Key: "error", Value: err.Error()})
 		return nil, nil
 	}
 	if len(baseline.RepresentativePaneIDs) < 2 || len(baseline.RepresentativePaneIDs) != len(baseline.WorkWidths) {
-		c.resizeDebug("resize-baseline-invalid", []ports.LogField{{Key: "window", Value: windowID}, {Key: "reason", Value: "shape"}, {Key: "representatives", Value: baseline.RepresentativePaneIDs}, {Key: "widths", Value: baseline.WorkWidths}})
+		c.resizeDebug("resize-baseline-invalid", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "reason", Value: "shape"}, ports.LogField{Key: "representatives", Value: baseline.RepresentativePaneIDs}, ports.LogField{Key: "widths", Value: baseline.WorkWidths})
 		return nil, nil
 	}
 	weights := make([]sidebarWorkWeight, 0, len(baseline.RepresentativePaneIDs))
 	for i, repID := range baseline.RepresentativePaneIDs {
 		repID = strings.TrimSpace(repID)
 		if repID == "" || baseline.WorkWidths[i] <= 0 {
-			c.resizeDebug("resize-baseline-invalid", []ports.LogField{{Key: "window", Value: windowID}, {Key: "reason", Value: "invalid-entry"}, {Key: "representatives", Value: baseline.RepresentativePaneIDs}, {Key: "widths", Value: baseline.WorkWidths}})
+			c.resizeDebug("resize-baseline-invalid", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "reason", Value: "invalid-entry"}, ports.LogField{Key: "representatives", Value: baseline.RepresentativePaneIDs}, ports.LogField{Key: "widths", Value: baseline.WorkWidths})
 			return nil, nil
 		}
 		weights = append(weights, sidebarWorkWeight{RepresentativePaneID: repID, Weight: baseline.WorkWidths[i]})
 	}
-	c.resizeDebug("resize-baseline-loaded", []ports.LogField{{Key: "window", Value: windowID}, {Key: "representatives", Value: baseline.RepresentativePaneIDs}, {Key: "widths", Value: baseline.WorkWidths}})
+	c.resizeDebug("resize-baseline-loaded", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "representatives", Value: baseline.RepresentativePaneIDs}, ports.LogField{Key: "widths", Value: baseline.WorkWidths})
 	return weights, nil
 }
 
@@ -257,13 +259,13 @@ func (c Client) setSidebarResizeSyncActiveBestEffort(ctx context.Context, window
 
 func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID string, sidebarPaneID string, weights []sidebarWorkWeight, requireSidebar bool) {
 	if len(weights) < 2 {
-		c.resizeDebug("resize-work-weights-skip", []ports.LogField{{Key: "reason", Value: "too-few-baseline-weights"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "weights", Value: formatSidebarWorkWeights(weights)}})
+		c.resizeDebug("resize-work-weights-skip", ports.LogField{Key: "reason", Value: "too-few-baseline-weights"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)})
 		return
 	}
 	groups, _, err := c.sidebarHorizontalWorkGroups(ctx, windowID, sidebarPaneID, requireSidebar, 0)
 	if err != nil || len(groups) != len(weights) {
 		if err == nil {
-			c.resizeDebug("resize-work-weights-skip", []ports.LogField{{Key: "reason", Value: "group-count-mismatch"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "weights", Value: formatSidebarWorkWeights(weights)}, {Key: "groups", Value: formatSidebarHorizontalGroups(groups)}})
+			c.resizeDebug("resize-work-weights-skip", ports.LogField{Key: "reason", Value: "group-count-mismatch"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)}, ports.LogField{Key: "groups", Value: formatSidebarHorizontalGroups(groups)})
 		}
 		return
 	}
@@ -278,12 +280,12 @@ func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID 
 	for i, weight := range weights {
 		representativePaneID := strings.TrimSpace(weight.RepresentativePaneID)
 		if representativePaneID == "" || weight.Weight <= 0 {
-			c.resizeDebug("resize-work-weights-skip", []ports.LogField{{Key: "reason", Value: "invalid-baseline-weight"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "weights", Value: formatSidebarWorkWeights(weights)}})
+			c.resizeDebug("resize-work-weights-skip", ports.LogField{Key: "reason", Value: "invalid-baseline-weight"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)})
 			return
 		}
 		group, ok := groupByRep[representativePaneID]
 		if !ok {
-			c.resizeDebug("resize-work-weights-skip", []ports.LogField{{Key: "reason", Value: "missing-current-group"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "representative", Value: representativePaneID}, {Key: "weights", Value: formatSidebarWorkWeights(weights)}, {Key: "groups", Value: formatSidebarHorizontalGroups(groups)}})
+			c.resizeDebug("resize-work-weights-skip", ports.LogField{Key: "reason", Value: "missing-current-group"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "representative", Value: representativePaneID}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)}, ports.LogField{Key: "groups", Value: formatSidebarHorizontalGroups(groups)})
 			return
 		}
 		alignedGroups[i] = group
@@ -292,20 +294,20 @@ func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID 
 	targetWidths := proportionalWidths(targetWeights, totalWidth)
 	for _, targetWidth := range targetWidths {
 		if targetWidth <= 0 {
-			c.resizeDebug("resize-work-weights-skip", []ports.LogField{{Key: "reason", Value: "invalid-target-width"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "weights", Value: formatSidebarWorkWeights(weights)}, {Key: "target_widths", Value: targetWidths}})
+			c.resizeDebug("resize-work-weights-skip", ports.LogField{Key: "reason", Value: "invalid-target-width"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)}, ports.LogField{Key: "target_widths", Value: targetWidths})
 			return
 		}
 	}
-	c.resizeDebug("resize-work-weights", []ports.LogField{{Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "total_width", Value: totalWidth}, {Key: "weights", Value: formatSidebarWorkWeights(weights)}, {Key: "target_widths", Value: targetWidths}})
+	c.resizeDebug("resize-work-weights", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "total_width", Value: totalWidth}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)}, ports.LogField{Key: "target_widths", Value: targetWidths})
 	for i := 0; i < len(alignedGroups)-1; i++ {
 		group := alignedGroups[i]
 		if group.Width == targetWidths[i] {
-			c.resizeDebug("resize-work-pane-skip", []ports.LogField{{Key: "pane", Value: group.RepresentativePaneID}, {Key: "reason", Value: "already-target-width"}, {Key: "width", Value: group.Width}})
+			c.resizeDebug("resize-work-pane-skip", ports.LogField{Key: "pane", Value: group.RepresentativePaneID}, ports.LogField{Key: "reason", Value: "already-target-width"}, ports.LogField{Key: "width", Value: group.Width})
 			continue
 		}
-		c.resizeDebug("resize-work-pane", []ports.LogField{{Key: "pane", Value: group.RepresentativePaneID}, {Key: "from", Value: group.Width}, {Key: "to", Value: targetWidths[i]}})
+		c.resizeDebug("resize-work-pane", ports.LogField{Key: "pane", Value: group.RepresentativePaneID}, ports.LogField{Key: "from", Value: group.Width}, ports.LogField{Key: "to", Value: targetWidths[i]})
 		if err := c.resizePaneWidth(ctx, group.RepresentativePaneID, strconv.Itoa(targetWidths[i])); err != nil {
-			c.resizeDebug("resize-work-pane-error", []ports.LogField{{Key: "pane", Value: group.RepresentativePaneID}, {Key: "from", Value: group.Width}, {Key: "to", Value: targetWidths[i]}, {Key: "error", Value: err.Error()}})
+			c.resizeDebug("resize-work-pane-error", ports.LogField{Key: "pane", Value: group.RepresentativePaneID}, ports.LogField{Key: "from", Value: group.Width}, ports.LogField{Key: "to", Value: targetWidths[i]}, ports.LogField{Key: "error", Value: err.Error()})
 		}
 	}
 }
@@ -322,23 +324,23 @@ func (c Client) sidebarHorizontalWorkGroups(ctx context.Context, windowID string
 	var work []sidebarRebalancePane
 	if requireSidebar {
 		if len(panes) < 3 {
-			c.resizeDebug("resize-work-groups-skip", []ports.LogField{{Key: "reason", Value: "too-few-panes"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "require_sidebar", Value: requireSidebar}, {Key: "expected_sidebar_width", Value: expectedSidebarWidth}, {Key: "window_width", Value: windowWidth}, {Key: "window_height", Value: windowHeight}, {Key: "panes", Value: formatSidebarRebalancePanes(panes)}})
+			c.resizeDebug("resize-work-groups-skip", ports.LogField{Key: "reason", Value: "too-few-panes"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "require_sidebar", Value: requireSidebar}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)})
 			return nil, 0, nil
 		}
 		sidebar, nonSidebar := splitSidebarAndWorkPanes(panes, sidebarPaneID)
 		if sidebar == nil || !sidebar.Sidebar || sidebar.Left != 0 || sidebar.Top != 0 || sidebar.Height != windowHeight {
-			c.resizeDebug("resize-work-groups-skip", []ports.LogField{{Key: "reason", Value: "invalid-sidebar-shape"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "require_sidebar", Value: requireSidebar}, {Key: "expected_sidebar_width", Value: expectedSidebarWidth}, {Key: "window_width", Value: windowWidth}, {Key: "window_height", Value: windowHeight}, {Key: "panes", Value: formatSidebarRebalancePanes(panes)}})
+			c.resizeDebug("resize-work-groups-skip", ports.LogField{Key: "reason", Value: "invalid-sidebar-shape"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "require_sidebar", Value: requireSidebar}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)})
 			return nil, 0, nil
 		}
 		if expectedSidebarWidth > 0 && sidebar.Width != expectedSidebarWidth {
-			c.resizeDebug("resize-work-groups-skip", []ports.LogField{{Key: "reason", Value: "sidebar-width-mismatch"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "actual_sidebar_width", Value: sidebar.Width}, {Key: "expected_sidebar_width", Value: expectedSidebarWidth}, {Key: "window_width", Value: windowWidth}, {Key: "window_height", Value: windowHeight}, {Key: "panes", Value: formatSidebarRebalancePanes(panes)}})
+			c.resizeDebug("resize-work-groups-skip", ports.LogField{Key: "reason", Value: "sidebar-width-mismatch"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "actual_sidebar_width", Value: sidebar.Width}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)})
 			return nil, 0, nil
 		}
 		work = nonSidebar
 	} else {
 		for _, pane := range panes {
 			if pane.Sidebar {
-				c.resizeDebug("resize-work-groups-skip", []ports.LogField{{Key: "reason", Value: "unexpected-sidebar-pane"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "require_sidebar", Value: requireSidebar}, {Key: "expected_sidebar_width", Value: expectedSidebarWidth}, {Key: "window_width", Value: windowWidth}, {Key: "window_height", Value: windowHeight}, {Key: "panes", Value: formatSidebarRebalancePanes(panes)}})
+				c.resizeDebug("resize-work-groups-skip", ports.LogField{Key: "reason", Value: "unexpected-sidebar-pane"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "require_sidebar", Value: requireSidebar}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)})
 				return nil, 0, nil
 			}
 		}
@@ -346,10 +348,10 @@ func (c Client) sidebarHorizontalWorkGroups(ctx context.Context, windowID string
 	}
 	groups := groupHorizontalPanes(work)
 	if len(groups) < 2 || !validSidebarHorizontalGroups(groups, windowHeight) {
-		c.resizeDebug("resize-work-groups-skip", []ports.LogField{{Key: "reason", Value: "invalid-work-groups"}, {Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "require_sidebar", Value: requireSidebar}, {Key: "expected_sidebar_width", Value: expectedSidebarWidth}, {Key: "window_width", Value: windowWidth}, {Key: "window_height", Value: windowHeight}, {Key: "panes", Value: formatSidebarRebalancePanes(panes)}, {Key: "groups", Value: formatSidebarHorizontalGroups(groups)}})
+		c.resizeDebug("resize-work-groups-skip", ports.LogField{Key: "reason", Value: "invalid-work-groups"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "require_sidebar", Value: requireSidebar}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)}, ports.LogField{Key: "groups", Value: formatSidebarHorizontalGroups(groups)})
 		return nil, 0, nil
 	}
-	c.resizeDebug("resize-work-groups", []ports.LogField{{Key: "window", Value: windowID}, {Key: "sidebar", Value: sidebarPaneID}, {Key: "require_sidebar", Value: requireSidebar}, {Key: "expected_sidebar_width", Value: expectedSidebarWidth}, {Key: "window_width", Value: windowWidth}, {Key: "window_height", Value: windowHeight}, {Key: "panes", Value: formatSidebarRebalancePanes(panes)}, {Key: "groups", Value: formatSidebarHorizontalGroups(groups)}})
+	c.resizeDebug("resize-work-groups", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "require_sidebar", Value: requireSidebar}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)}, ports.LogField{Key: "groups", Value: formatSidebarHorizontalGroups(groups)})
 	return groups, windowWidth, nil
 }
 
@@ -494,7 +496,7 @@ func (c Client) windowDimensions(ctx context.Context, windowID string) (int, int
 	return width, height, nil
 }
 
-func (c Client) resizeDebug(msg string, fields []ports.LogField) {
+func (c Client) resizeDebug(msg string, fields ...ports.LogField) {
 	if c.Logger == nil {
 		return
 	}

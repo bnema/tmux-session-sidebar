@@ -16,6 +16,7 @@ type Git struct {
 }
 
 var errMissingUpstream = errors.New("missing upstream")
+var errUnconfiguredUpstream = errors.New("upstream not configured")
 
 func (g Git) RepoRoot(ctx context.Context, path string) (string, error) {
 	result, err := g.Process.Exec(ctx, "git", []string{"-C", path, "rev-parse", "--show-toplevel"})
@@ -101,6 +102,7 @@ func (g Git) Status(ctx context.Context, path string) (ports.GitStatus, error) {
 		status.Behind = comparison.behind
 		status.ComparisonConfigured = true
 	}
+	status.ComparisonMissing = comparison.missing
 	if comparison.checkedUpstream {
 		status.UpstreamConfigured = comparison.target == "@{upstream}" && comparison.ok
 	} else {
@@ -119,7 +121,7 @@ func (g Git) Status(ctx context.Context, path string) (ports.GitStatus, error) {
 	if err := g.workingTree(ctx, repoRoot, &status); err != nil {
 		return ports.GitStatus{}, err
 	}
-	status.Clean = status.Ahead == 0 && status.Behind == 0 && status.UpstreamAhead == 0 && status.UpstreamBehind == 0 && status.Staged == 0 && status.Modified == 0 && status.Deleted == 0 && status.Renamed == 0 && status.Untracked == 0 && status.Conflicts == 0
+	status.Clean = !status.ComparisonMissing && status.Ahead == 0 && status.Behind == 0 && status.UpstreamAhead == 0 && status.UpstreamBehind == 0 && status.Staged == 0 && status.Modified == 0 && status.Deleted == 0 && status.Renamed == 0 && status.Untracked == 0 && status.Conflicts == 0
 	return status, nil
 }
 
@@ -198,6 +200,7 @@ type gitDivergenceResult struct {
 	ahead           int
 	behind          int
 	ok              bool
+	missing         bool
 	target          string
 	checkedUpstream bool
 }
@@ -220,11 +223,12 @@ func (g Git) comparisonDivergence(ctx context.Context, repoRoot string, branch s
 		return result, err
 	}
 	if fallbackTarget == "" {
-		return gitDivergenceResult{target: target, checkedUpstream: checkedUpstream}, nil
+		missing := !errors.Is(err, errUnconfiguredUpstream)
+		return gitDivergenceResult{target: target, checkedUpstream: checkedUpstream, missing: missing}, nil
 	}
 	ahead, behind, ok, err = g.divergenceAgainst(ctx, repoRoot, fallbackTarget)
 	if errors.Is(err, errMissingUpstream) {
-		return gitDivergenceResult{target: fallbackTarget, checkedUpstream: checkedUpstream}, nil
+		return gitDivergenceResult{target: fallbackTarget, checkedUpstream: checkedUpstream, missing: true}, nil
 	}
 	return gitDivergenceResult{ahead: ahead, behind: behind, ok: ok, target: fallbackTarget, checkedUpstream: checkedUpstream}, err
 }
@@ -241,6 +245,9 @@ func (g Git) divergenceAgainst(ctx context.Context, repoRoot string, target stri
 	result, err := g.Process.Exec(ctx, "git", []string{"-C", repoRoot, "rev-list", "--left-right", "--count", "HEAD..." + target})
 	if err != nil {
 		if isMissingUpstreamError(result, err) {
+			if isUnconfiguredUpstreamError(result, err) {
+				return 0, 0, false, errors.Join(errMissingUpstream, errUnconfiguredUpstream, err)
+			}
 			return 0, 0, false, errors.Join(errMissingUpstream, err)
 		}
 		return 0, 0, false, mapGitError(result, err)
@@ -329,6 +336,11 @@ func isEmptyRepositoryRevisionError(result ports.Result, err error) bool {
 func isMissingUpstreamError(result ports.Result, err error) bool {
 	message := strings.ToLower(result.Stderr + result.Stdout + err.Error())
 	return strings.Contains(message, "no upstream configured") || strings.Contains(message, "no upstream branch") || strings.Contains(message, "does not point to a branch") || strings.Contains(message, "upstream") && strings.Contains(message, "not found") || strings.Contains(message, "unknown revision") || strings.Contains(message, "ambiguous argument") || strings.Contains(message, "no such branch")
+}
+
+func isUnconfiguredUpstreamError(result ports.Result, err error) bool {
+	message := strings.ToLower(result.Stderr + result.Stdout + err.Error())
+	return strings.Contains(message, "no upstream configured") || strings.Contains(message, "no upstream branch") || strings.Contains(message, "does not point to a branch")
 }
 
 func mapGitError(result ports.Result, err error) error {

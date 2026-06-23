@@ -78,7 +78,7 @@ func (w *metadataLifecycleWatcher) waitStops(t *testing.T, want int) {
 	})
 }
 
-func TestMetadataServiceRunKeepsWatcherAfterTransientConfigReloadError(t *testing.T) {
+func TestMetadataServiceRunReturnsConfigReloadError(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
 	tmux := metadataFakeTmux{sessions: []ports.SessionSnapshot{{Name: "alpha"}}, paths: map[string]string{"alpha": "/repo"}}
 	git := metadataFakeGit{
@@ -86,7 +86,8 @@ func TestMetadataServiceRunKeepsWatcherAfterTransientConfigReloadError(t *testin
 		targets:  map[string]ports.GitWatchTargets{"/repo": {RepoRoot: "/repo", WorktreeRoot: "/repo", Files: []string{"/repo/.git/HEAD"}, Dirs: []string{"/repo"}}},
 		statuses: map[string]ports.GitStatus{"/repo": {RepoRoot: "/repo", Branch: "main"}},
 	}
-	config := &metadataFakeConfig{snapshot: ports.ConfigSnapshot{MetadataSublineEnabled: true}, errs: []error{nil, errors.New("temporary config read failed")}}
+	wantErr := errors.New("temporary config read failed")
+	config := &metadataFakeConfig{snapshot: ports.ConfigSnapshot{MetadataSublineEnabled: true}, errs: []error{nil, wantErr}}
 	watcher := newMetadataLifecycleWatcher()
 	reconcile := make(chan struct{}, 1)
 	svc := MetadataService{Store: store, Query: tmux, Git: git, Watcher: watcher, Config: config, ReconcileRequests: reconcile, LockStore: metadataDirectLock(store), ReconcileInterval: time.Hour}
@@ -98,10 +99,13 @@ func TestMetadataServiceRunKeepsWatcherAfterTransientConfigReloadError(t *testin
 
 	reconcile <- struct{}{}
 	watcher.waitStops(t, 1)
-	watcher.waitStarts(t, 2)
-	cancel()
-	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("Run error: %v", err)
+	select {
+	case err := <-done:
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("Run error = %v, want %v", err, wantErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Run did not return config reload error")
 	}
 }
 
