@@ -504,6 +504,24 @@ func (r *blockingMetadataRefresher) release() {
 	close(r.releaseC)
 }
 
+func TestMetadataLiveSessionPathsPreservesSessionNameIdentity(t *testing.T) {
+	paths, err := metadataLiveSessionPaths(t.Context(), metadataFakeTmux{
+		batchPaths: map[string]string{
+			" alpha ": "/repo/spaced",
+			"alpha":   "/repo/trimmed",
+		},
+	}, []ports.SessionSnapshot{{Name: " alpha "}})
+	if err != nil {
+		t.Fatalf("metadataLiveSessionPaths error: %v", err)
+	}
+	if got := paths[" alpha "]; got != "/repo/spaced" {
+		t.Fatalf("path for exact session name = %q, want /repo/spaced; all paths: %#v", got, paths)
+	}
+	if _, ok := paths["alpha"]; ok {
+		t.Fatalf("unexpected trimmed session path entry: %#v", paths)
+	}
+}
+
 func TestMetadataServiceReconcileUsesBatchSessionPaths(t *testing.T) {
 	store := &metadataFakeStore{state: ports.PersistedState{Sessions: map[string]ports.SessionMetadata{}}}
 	var batchCalls atomic.Int64

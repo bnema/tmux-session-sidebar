@@ -49,7 +49,9 @@ type sidebarHorizontalGroup struct {
 }
 
 func (c Client) CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowID string, paneID string, width string, options ports.SidebarResizeOptions) error {
-	c.Logger = options.Logger
+	if options.Logger != nil {
+		c.Logger = options.Logger
+	}
 	windowID, paneID, width, err := c.normalizeAttachedSidebarResizeInputs(ctx, windowID, paneID, width)
 	if err != nil {
 		if isTmuxTargetGone(err) {
@@ -84,7 +86,9 @@ func (c Client) CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowI
 }
 
 func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string, options ports.SidebarResizeOptions) error {
-	c.Logger = options.Logger
+	if options.Logger != nil {
+		c.Logger = options.Logger
+	}
 	windowID, paneID, width, err := c.normalizeAttachedSidebarResizeInputs(ctx, windowID, paneID, width)
 	if err != nil {
 		if isTmuxTargetGone(err) {

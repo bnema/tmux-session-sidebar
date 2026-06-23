@@ -346,7 +346,15 @@ func (g Git) comparisonDivergence(ctx context.Context, repo *gogit.Repository, i
 	if g.Divergence != nil {
 		ahead, behind, ok, err := g.Divergence.Divergence(ctx, info.WorktreeRoot, info.Branch, info.DefaultBranch)
 		if ok || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return goDivergenceResult{ahead: ahead, behind: behind, ok: ok, checkedUpstream: checkedUpstream, targetIsUpstream: checkedUpstream && upstream != ""}, err
+			targetIsUpstream := false
+			if ok && checkedUpstream && upstream != "" {
+				exists, existsErr := targetReferenceExists(ctx, repo, upstream)
+				if existsErr != nil {
+					return goDivergenceResult{}, existsErr
+				}
+				targetIsUpstream = exists
+			}
+			return goDivergenceResult{ahead: ahead, behind: behind, ok: ok, checkedUpstream: checkedUpstream, targetIsUpstream: targetIsUpstream}, err
 		}
 	}
 	return comparisonDivergence(ctx, repo, info.Branch, info.DefaultBranch)
@@ -356,6 +364,16 @@ func (g Git) upstreamDivergence(ctx context.Context, repo *gogit.Repository, inf
 	if g.Divergence != nil {
 		ahead, behind, ok, err := g.Divergence.Divergence(ctx, info.WorktreeRoot, info.Branch, "")
 		if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if ok {
+				upstream := upstreamBranch(repo, info.Branch)
+				exists, existsErr := targetReferenceExists(ctx, repo, upstream)
+				if existsErr != nil {
+					return 0, 0, false, existsErr
+				}
+				if !exists {
+					return 0, 0, false, err
+				}
+			}
 			return ahead, behind, ok, err
 		}
 	}
@@ -391,6 +409,23 @@ func divergenceResultForTarget(ctx context.Context, repo *gogit.Repository, targ
 	ahead, behind, ok, err := divergenceAgainstTarget(ctx, repo, target)
 	missing := target != "" && !ok && err == nil
 	return goDivergenceResult{ahead: ahead, behind: behind, ok: ok, missing: missing, checkedUpstream: checkedUpstream, targetIsUpstream: targetIsUpstream}, err
+}
+
+func targetReferenceExists(ctx context.Context, repo *gogit.Repository, target string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if target == "" {
+		return false, nil
+	}
+	_, err := repo.Reference(referenceNameForTarget(target), true)
+	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, ctx.Err()
 }
 
 func divergenceAgainstTarget(ctx context.Context, repo *gogit.Repository, target string) (int, int, bool, error) {

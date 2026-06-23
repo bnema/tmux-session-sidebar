@@ -565,8 +565,8 @@ type metadataWatchTargetsResult struct {
 func metadataLiveSessionPaths(ctx context.Context, query ports.QueryPort, live []ports.SessionSnapshot) (map[string]string, error) {
 	names := make([]string, 0, len(live))
 	for _, session := range live {
-		if name := strings.TrimSpace(session.Name); name != "" {
-			names = append(names, name)
+		if session.Name != "" {
+			names = append(names, session.Name)
 		}
 	}
 	if len(names) == 0 {

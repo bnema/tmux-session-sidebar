@@ -41,6 +41,29 @@ func TestSyncAttachedSidebarWidthUsesSavedBaselineProportions(t *testing.T) {
 	assertRecUsedAllHandlers(t, rec)
 }
 
+func TestAttachedSidebarResizePreservesClientLoggerWhenOptionsLoggerNil(t *testing.T) {
+	ctx := t.Context()
+	logger := &recordingResizeLogger{}
+	client := Client{Logger: logger}
+
+	if err := client.CaptureAttachedSidebarWidthBaseline(ctx, "", "", "", ports.SidebarResizeOptions{}); err != nil {
+		t.Fatalf("CaptureAttachedSidebarWidthBaseline error: %v", err)
+	}
+	if err := client.SyncAttachedSidebarWidth(ctx, "", "", "", ports.SidebarResizeOptions{}); err != nil {
+		t.Fatalf("SyncAttachedSidebarWidth error: %v", err)
+	}
+
+	log := logger.joined()
+	for _, want := range []string{
+		"debug: resize-baseline-capture-skip reason=missing-target",
+		"debug: resize-sync-skip reason=missing-target",
+	} {
+		if !strings.Contains(log, want) {
+			t.Fatalf("resize log missing %q:\n%s", want, log)
+		}
+	}
+}
+
 func TestSyncAttachedSidebarWidthLogsBaselineAndComputedWidths(t *testing.T) {
 	ctx := t.Context()
 	logger := &recordingResizeLogger{}

@@ -9,22 +9,34 @@ var ErrNotGitRepository = errors.New("not a git repository")
 var ErrGitPathMissing = errors.New("git path missing")
 
 type GitStatus struct {
-	RepoRoot             string
-	Branch               string
-	Clean                bool
-	Ahead                int
-	Behind               int
-	UpstreamAhead        int
-	UpstreamBehind       int
-	Staged               int
-	Modified             int
-	Deleted              int
-	Renamed              int
-	Untracked            int
-	Conflicts            int
+	RepoRoot string
+	Branch   string
+	// Clean is true only when the working tree is clean, the primary comparison has no
+	// divergence, no separate upstream divergence is pending, and ComparisonMissing is false.
+	Clean bool
+	// Ahead and Behind compare HEAD with the primary comparison target. Feature branches
+	// compare to the default remote branch when available; default branches compare to
+	// their upstream when available, otherwise to the default remote branch when available.
+	Ahead  int
+	Behind int
+	// UpstreamAhead and UpstreamBehind track push/pull divergence from an actual upstream
+	// ref when that upstream is separate from the primary default-remote comparison.
+	UpstreamAhead  int
+	UpstreamBehind int
+	Staged         int
+	Modified       int
+	Deleted        int
+	Renamed        int
+	Untracked      int
+	Conflicts      int
+	// ComparisonConfigured is true when the primary comparison target exists and was read.
 	ComparisonConfigured bool
-	ComparisonMissing    bool
-	UpstreamConfigured   bool
+	// ComparisonMissing is true when a comparison target was configured or selected but the
+	// target ref is missing. Clean must be false while ComparisonMissing is true.
+	ComparisonMissing bool
+	// UpstreamConfigured is true only when an actual upstream ref exists and was used, or
+	// separately checked, for upstream divergence.
+	UpstreamConfigured bool
 }
 
 type GitRepoInfo struct {
