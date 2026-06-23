@@ -279,6 +279,19 @@ esac
 	}
 }
 
+func TestMetadataWatcherRestartInCooldown(t *testing.T) {
+	now := time.Date(2026, 6, 23, 12, 0, 0, 0, time.UTC)
+	if metadataWatcherRestartInCooldown(now, time.Time{}) {
+		t.Fatal("cooldown active without a recorded failure")
+	}
+	if !metadataWatcherRestartInCooldown(now, now.Add(-defaultMetadataCaptureFailureCooldown+time.Nanosecond)) {
+		t.Fatal("cooldown inactive before restart cooldown elapsed")
+	}
+	if metadataWatcherRestartInCooldown(now, now.Add(-defaultMetadataCaptureFailureCooldown)) {
+		t.Fatal("cooldown active after restart cooldown elapsed")
+	}
+}
+
 func TestDaemonEnsureClearsTransientHeatStateOnStartup(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	store := sessionOrderStore()

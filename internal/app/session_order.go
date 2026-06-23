@@ -14,7 +14,7 @@ import (
 
 func loadSidebarState(ctx context.Context) (ports.PersistedState, error) {
 	store := sessionOrderStore()
-	if _, _, err := ensureRuntimeStateMigratedAndLoad(ctx, store.scope); err != nil {
+	if err := ensureRuntimeStateMigrated(ctx, store.scope); err != nil {
 		return ports.PersistedState{}, err
 	}
 	return store.Load(ctx, "tmux")

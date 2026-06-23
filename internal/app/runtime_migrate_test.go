@@ -318,6 +318,14 @@ func TestEnsureRuntimeStateMigrated_MalformedCurrentNotOverwrittenByCandidate(t 
 		t.Fatal(err)
 	}
 	mustWriteRuntimeScopeMetadata(t, newScope)
+	candidates, err := findSiblingStateCandidates(newScope)
+	if err != nil {
+		t.Fatalf("findSiblingStateCandidates() error = %v", err)
+	}
+	wantCandidatePath := filepath.Join(oldScope.Dir, "tmux.json")
+	if len(candidates) != 1 || candidates[0].tmuxJSONPath != wantCandidatePath {
+		t.Fatalf("candidates = %#v, want old scope candidate %q", candidates, wantCandidatePath)
+	}
 	if err := os.MkdirAll(newScope.StateDir, 0o700); err != nil {
 		t.Fatal(err)
 	}

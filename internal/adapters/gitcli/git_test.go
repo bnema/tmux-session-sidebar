@@ -389,8 +389,8 @@ func TestGitStatusReportsMissingUpstream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if status.UpstreamConfigured {
-		t.Fatal("UpstreamConfigured = true, want false")
+	if status.UpstreamConfigured || status.Ahead != 0 || status.Behind != 0 {
+		t.Fatalf("Status divergence = %#v, want no upstream and zero divergence", status)
 	}
 	if !status.Clean {
 		t.Fatalf("Clean = false, want true: %#v", status)
@@ -403,7 +403,7 @@ func TestGitStatusReportsStaleConfiguredUpstreamWithoutDefaultRemote(t *testing.
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if status.UpstreamConfigured || status.ComparisonConfigured || !status.ComparisonMissing || status.Clean {
+	if status.UpstreamConfigured || status.ComparisonConfigured || !status.ComparisonMissing || status.Ahead != 0 || status.Behind != 0 || status.Clean {
 		t.Fatalf("Status divergence = %#v, want missing comparison for stale configured upstream", status)
 	}
 }

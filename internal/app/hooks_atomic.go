@@ -17,6 +17,12 @@ func writeHookFileAtomic(path string, data []byte, defaultPerm fs.FileMode) erro
 		if info.Mode()&os.ModeSymlink != 0 {
 			resolved, err := filepath.EvalSymlinks(path)
 			if err != nil {
+				linkTarget, targetErr := symlinkTargetPath(path)
+				if targetErr == nil {
+					if _, statErr := os.Stat(linkTarget); statErr != nil {
+						return fmt.Errorf("stat symlink hook config target %s: %w", linkTarget, statErr)
+					}
+				}
 				return fmt.Errorf("resolve symlink hook config %s: %w", path, err)
 			}
 			targetPath = resolved
@@ -66,6 +72,17 @@ func writeHookFileAtomic(path string, data []byte, defaultPerm fs.FileMode) erro
 	needsCleanup = false
 	syncDirBestEffort(dir)
 	return nil
+}
+
+func symlinkTargetPath(path string) (string, error) {
+	target, err := os.Readlink(path)
+	if err != nil {
+		return "", err
+	}
+	if filepath.IsAbs(target) {
+		return filepath.Clean(target), nil
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(path), target)), nil
 }
 
 func syncDirBestEffort(dir string) {

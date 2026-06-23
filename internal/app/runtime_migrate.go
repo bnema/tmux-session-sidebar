@@ -63,16 +63,10 @@ func ensureRuntimeStateMigratedAndLoad(ctx context.Context, scope RuntimeScope) 
 		return ports.PersistedState{}, false, fmt.Errorf("find sibling state candidates: %w", err)
 	}
 	if len(candidates) == 0 {
-		if current.reusable {
-			return current.state, true, nil
-		}
-		if !current.exists {
+		if !current.reusable {
 			return emptyPersistedState(), true, nil
 		}
-		// Malformed current state is not reusable. Defer to the canonical store
-		// load path so callers still receive the same parse error they did before
-		// migration/load reuse existed.
-		return ports.PersistedState{}, false, nil
+		return current.state, true, nil
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
@@ -117,16 +111,10 @@ func ensureRuntimeStateMigratedAndLoad(ctx context.Context, scope RuntimeScope) 
 	}
 	candidate := reusablePersistedStateFromData(data)
 	if !candidate.meaningful {
-		if current.reusable {
-			return current.state, true, nil
-		}
-		if !current.exists {
+		if !current.reusable {
 			return emptyPersistedState(), true, nil
 		}
-		// Malformed current state is not reusable. Defer to the canonical store
-		// load path so callers still receive the same parse error they did before
-		// migration/load reuse existed.
-		return ports.PersistedState{}, false, nil
+		return current.state, true, nil
 	}
 
 	if err := atomicWriteFile(currentPath, data, 0o600); err != nil {

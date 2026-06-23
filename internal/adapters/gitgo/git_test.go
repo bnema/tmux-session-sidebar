@@ -75,8 +75,8 @@ func TestGitStatusUsesInjectedDivergenceCounterWhenUpstreamExists(t *testing.T) 
 	if counter.calls == 0 {
 		t.Fatal("Divergence calls = 0, want injected counter to stay authoritative when upstream exists")
 	}
-	if status.Ahead != 7 || status.Behind != 8 || !status.ComparisonConfigured {
-		t.Fatalf("Status divergence = %#v, want injected comparison 7/8", status)
+	if status.Ahead != 7 || status.Behind != 8 || !status.ComparisonConfigured || !status.UpstreamConfigured || status.ComparisonMissing {
+		t.Fatalf("Status divergence = %#v, want injected upstream comparison 7/8", status)
 	}
 }
 
@@ -101,8 +101,8 @@ func TestGitStatusFallsBackToNativeComparisonWhenInjectedCounterHasNoComparison(
 	if counter.calls == 0 {
 		t.Fatal("Divergence calls = 0, want injected counter attempted first")
 	}
-	if !status.ComparisonConfigured || status.Ahead != 1 || status.Behind != 0 || status.ComparisonMissing {
-		t.Fatalf("Status divergence = %#v, want native fallback comparison 1/0", status)
+	if !status.ComparisonConfigured || status.UpstreamConfigured || status.Ahead != 1 || status.Behind != 0 || status.ComparisonMissing {
+		t.Fatalf("Status divergence = %#v, want native fallback comparison 1/0 without upstream", status)
 	}
 }
 
@@ -191,7 +191,10 @@ func TestGitStatusInjectedDivergenceDoesNotMarkStaleUpstreamConfigured(t *testin
 	if err != nil {
 		t.Fatalf("Status error: %v", err)
 	}
-	if !status.ComparisonConfigured || status.Ahead != 1 || status.Behind != 0 {
+	if counter.calls == 0 {
+		t.Fatal("Divergence calls = 0, want injected counter to be consulted for stale upstream")
+	}
+	if !status.ComparisonConfigured || status.Ahead != 1 || status.Behind != 0 || status.ComparisonMissing {
 		t.Fatalf("Status divergence = %#v, want injected comparison 1/0", status)
 	}
 	if status.UpstreamConfigured {

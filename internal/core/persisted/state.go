@@ -21,7 +21,7 @@ func EmptyState() ports.PersistedState {
 // fields that callers expect to be usable after loading.
 func DecodeState(data []byte) (ports.PersistedState, error) {
 	if len(data) == 0 {
-		return ports.PersistedState{}, errors.New("empty persisted state")
+		return ports.PersistedState{}, errors.New("cannot decode empty state data")
 	}
 	var state ports.PersistedState
 	if err := json.Unmarshal(data, &state); err != nil {

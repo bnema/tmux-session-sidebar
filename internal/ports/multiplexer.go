@@ -124,6 +124,8 @@ type SidebarFollowPort interface {
 	AttachSingletonSidebarWithoutFocus(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
 }
 
+// SidebarResizeOptions configures optional resize behavior. Logger may be nil;
+// implementations should treat it as an optional diagnostic sink.
 type SidebarResizeOptions struct {
 	Logger LoggerPort
 }
@@ -132,11 +134,13 @@ type SidebarResizePort interface {
 	// CaptureAttachedSidebarWidthBaseline records the current sidebar-open
 	// top-level work-group proportions when the attached layout is in a stable
 	// shape. Intended for non-resize layout-change hooks and post-attach capture.
+	// The options parameter configures optional behavior such as logger override.
 	CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowID string, paneID string, width string, options SidebarResizeOptions) error
 	// SyncAttachedSidebarWidth restores the configured width for an already
 	// attached sidebar pane while best-effort preserving the last captured
 	// sidebar-open top-level work-group proportions in the same window.
-	// Intended for resize hooks.
+	// Intended for resize hooks. The options parameter configures optional
+	// behavior such as logger override.
 	SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string, options SidebarResizeOptions) error
 }
 

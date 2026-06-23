@@ -58,6 +58,9 @@ func TestInstallJSONHooksFailsWithoutClobberingExistingConfigWhenDirectoryCannot
 }
 
 func TestWriteHookFileAtomicPreservesSymlinkedConfig(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on Windows")
+	}
 	dir := t.TempDir()
 	target := filepath.Join(dir, "real-config.json")
 	link := filepath.Join(dir, "config.json")
@@ -92,6 +95,26 @@ func TestWriteHookFileAtomicPreservesSymlinkedConfig(t *testing.T) {
 	}
 	if got := targetInfo.Mode().Perm(); got != 0o600 {
 		t.Fatalf("target permissions = %v, want 0600", got)
+	}
+}
+
+func TestWriteHookFileAtomicRejectsDanglingSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on Windows")
+	}
+	dir := t.TempDir()
+	link := filepath.Join(dir, "config.json")
+	missingTarget := filepath.Join(dir, "missing-config.json")
+	if err := os.Symlink(filepath.Base(missingTarget), link); err != nil {
+		t.Fatalf("symlink config: %v", err)
+	}
+
+	err := writeHookFileAtomic(link, []byte("new\n"), 0o644)
+	if err == nil {
+		t.Fatal("writeHookFileAtomic error = nil, want dangling symlink error")
+	}
+	if !strings.Contains(err.Error(), "stat symlink hook config target") {
+		t.Fatalf("writeHookFileAtomic error = %v, want stat symlink hook config target", err)
 	}
 }
 

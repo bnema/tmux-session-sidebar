@@ -49,8 +49,36 @@ func navigationKeyDelta(msg tea.KeyPressMsg) (int, bool) {
 	}
 }
 
+func searchNavigationKeyDelta(msg tea.KeyPressMsg) (int, bool) {
+	key := msg.Key()
+	if key.Mod != 0 && !key.Mod.Contains(tea.ModAlt) {
+		return 0, false
+	}
+	switch key.Code {
+	case tea.KeyDown:
+		return 1, true
+	case tea.KeyUp:
+		return -1, true
+	}
+	if !key.Mod.Contains(tea.ModAlt) {
+		return 0, false
+	}
+	switch {
+	case key.Text == "j" || key.Code == 'j':
+		return 1, true
+	case key.Text == "k" || key.Code == 'k':
+		return -1, true
+	default:
+		return 0, false
+	}
+}
+
 func reorderKeyDelta(msg tea.KeyPressMsg) (int, bool) {
-	switch msg.Key().Text {
+	key := msg.Key()
+	if !plainOrShiftKey(key) {
+		return 0, false
+	}
+	switch key.Text {
 	case "J":
 		return 1, true
 	case "K":
@@ -82,7 +110,12 @@ func pinnedToggleKey(msg tea.KeyPressMsg) bool {
 }
 
 func colorizeKey(msg tea.KeyPressMsg) bool {
-	return msg.Key().Text == "C"
+	key := msg.Key()
+	return plainOrShiftKey(key) && key.Text == "C"
+}
+
+func plainOrShiftKey(key tea.Key) bool {
+	return key.Mod == 0 || key.Mod == tea.ModShift
 }
 
 func numericSlotKey(msg tea.KeyPressMsg) (int, bool) {
@@ -102,20 +135,27 @@ func numericSlotKey(msg tea.KeyPressMsg) (int, bool) {
 	return 0, false
 }
 
-func isKillConfirmYes(msg tea.KeyPressMsg) bool {
+func isConfirmYes(msg tea.KeyPressMsg) bool {
 	return msg.Key().Text == "y" || msg.Key().Text == "Y"
+}
+
+func isConfirmCancel(msg tea.KeyPressMsg) bool {
+	key := msg.Keystroke()
+	return msg.Key().Text == "n" || msg.Key().Text == "N" || key == "enter" || key == "esc"
+}
+
+func isKillConfirmYes(msg tea.KeyPressMsg) bool {
+	return isConfirmYes(msg)
 }
 
 func isKillConfirmCancel(msg tea.KeyPressMsg) bool {
-	key := msg.Keystroke()
-	return msg.Key().Text == "n" || msg.Key().Text == "N" || key == "enter" || key == "esc"
+	return isConfirmCancel(msg)
 }
 
 func isDeleteConfirmYes(msg tea.KeyPressMsg) bool {
-	return msg.Key().Text == "y" || msg.Key().Text == "Y"
+	return isConfirmYes(msg)
 }
 
 func isDeleteConfirmCancel(msg tea.KeyPressMsg) bool {
-	key := msg.Keystroke()
-	return msg.Key().Text == "n" || msg.Key().Text == "N" || key == "enter" || key == "esc"
+	return isConfirmCancel(msg)
 }

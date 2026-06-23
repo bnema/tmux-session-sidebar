@@ -297,7 +297,7 @@ func (m SidebarModel) updateSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m.movePage(delta)
 		return m.finishInteractiveUpdate()
 	}
-	if delta, ok := navigationKeyDelta(msg); ok {
+	if delta, ok := searchNavigationKeyDelta(msg); ok {
 		m.move(delta)
 		return m.finishInteractiveUpdate()
 	}

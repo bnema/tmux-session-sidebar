@@ -215,12 +215,13 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 	var metadataWG sync.WaitGroup
 	var metadataMu sync.Mutex
 	metadataStarted := false
+	metadataLastFailureAt := time.Time{}
 	startMetadataWatcher := func(cfg ports.ConfigSnapshot) {
 		if !cfg.MetadataSublineEnabled {
 			return
 		}
 		metadataMu.Lock()
-		if metadataStarted {
+		if metadataStarted || metadataWatcherRestartInCooldown(time.Now(), metadataLastFailureAt) {
 			metadataMu.Unlock()
 			return
 		}
@@ -230,10 +231,16 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 			service := NewMetadataService()
 			service.ReconcileRequests = metadataReconcile
 			err := service.Run(ctx, cfg)
+			failed := err != nil && !errors.Is(err, context.Canceled)
 			metadataMu.Lock()
 			metadataStarted = false
+			if failed {
+				metadataLastFailureAt = time.Now()
+			} else {
+				metadataLastFailureAt = time.Time{}
+			}
 			metadataMu.Unlock()
-			if err != nil && !errors.Is(err, context.Canceled) {
+			if failed {
 				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata watcher stopped: %v\n", err)
 			}
 		})
@@ -342,6 +349,10 @@ func sidebarRefreshIntervalFromConfig(cfg ports.ConfigSnapshot) time.Duration {
 		return time.Duration(cfg.HeatRefreshSeconds) * time.Second
 	}
 	return time.Minute
+}
+
+func metadataWatcherRestartInCooldown(now time.Time, lastFailureAt time.Time) bool {
+	return !lastFailureAt.IsZero() && now.Sub(lastFailureAt) < defaultMetadataCaptureFailureCooldown
 }
 
 func withLockedSidebarStore(ctx context.Context, fn func(scopedStateStore) error) error {
