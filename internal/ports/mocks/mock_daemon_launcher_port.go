@@ -61,7 +61,7 @@ type MockDaemonLauncherPort_EnsureStarted_Call struct {
 
 // EnsureStarted is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockDaemonLauncherPort_Expecter) EnsureStarted(ctx interface{}) *MockDaemonLauncherPort_EnsureStarted_Call {
+func (_e *MockDaemonLauncherPort_Expecter) EnsureStarted(ctx any) *MockDaemonLauncherPort_EnsureStarted_Call {
 	return &MockDaemonLauncherPort_EnsureStarted_Call{Call: _e.mock.On("EnsureStarted", ctx)}
 }
 

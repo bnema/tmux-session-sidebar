@@ -135,6 +135,13 @@ type SidebarResizePort interface {
 	SyncAttachedSidebarWidth(ctx context.Context, windowID string, paneID string, width string) error
 }
 
+type SidebarLoggerPort interface {
+	// WithSidebarLogger returns an equivalent sidebar port that writes debug logs
+	// through logger. Implementations should preserve optional sidebar capabilities
+	// such as SidebarResizePort when wrapping the port.
+	WithSidebarLogger(logger LoggerPort) SidebarPort
+}
+
 type MetadataPort interface {
 	LoadSessionMetadata(ctx context.Context, sessionName string) (SessionMetadata, error)
 	SaveSessionMetadata(ctx context.Context, sessionName string, metadata SessionMetadata) error

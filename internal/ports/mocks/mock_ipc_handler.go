@@ -72,7 +72,7 @@ type MockIPCHandler_HandleIPC_Call struct {
 // HandleIPC is a helper method to define mock.On call
 //   - ctx context.Context
 //   - req ports.Request
-func (_e *MockIPCHandler_Expecter) HandleIPC(ctx interface{}, req interface{}) *MockIPCHandler_HandleIPC_Call {
+func (_e *MockIPCHandler_Expecter) HandleIPC(ctx any, req any) *MockIPCHandler_HandleIPC_Call {
 	return &MockIPCHandler_HandleIPC_Call{Call: _e.mock.On("HandleIPC", ctx, req)}
 }
 

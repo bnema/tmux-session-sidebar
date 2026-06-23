@@ -61,7 +61,7 @@ type MockSidebarRefresherPort_RefreshAllSidebars_Call struct {
 
 // RefreshAllSidebars is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockSidebarRefresherPort_Expecter) RefreshAllSidebars(ctx interface{}) *MockSidebarRefresherPort_RefreshAllSidebars_Call {
+func (_e *MockSidebarRefresherPort_Expecter) RefreshAllSidebars(ctx any) *MockSidebarRefresherPort_RefreshAllSidebars_Call {
 	return &MockSidebarRefresherPort_RefreshAllSidebars_Call{Call: _e.mock.On("RefreshAllSidebars", ctx)}
 }
 

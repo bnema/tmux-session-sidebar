@@ -6,12 +6,13 @@ filename: 'mock_{{.InterfaceName | snakecase}}.go'
 structname: 'Mock{{.InterfaceName}}'
 pkgname: mocks
 packages:
-  github.com/bnema/tmux-session-sidebar/ports:
+  github.com/bnema/tmux-session-sidebar/internal/ports:
     interfaces:
       ConfigPort:
       QueryPort:
       ControlPort:
       SidebarPort:
+      SidebarLoggerPort:
       MetadataPort:
       IPCClientPort:
       IPCServerPort:

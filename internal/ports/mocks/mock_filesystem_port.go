@@ -70,7 +70,7 @@ type MockFilesystemPort_ListImmediateDirs_Call struct {
 
 // ListImmediateDirs is a helper method to define mock.On call
 //   - root string
-func (_e *MockFilesystemPort_Expecter) ListImmediateDirs(root interface{}) *MockFilesystemPort_ListImmediateDirs_Call {
+func (_e *MockFilesystemPort_Expecter) ListImmediateDirs(root any) *MockFilesystemPort_ListImmediateDirs_Call {
 	return &MockFilesystemPort_ListImmediateDirs_Call{Call: _e.mock.On("ListImmediateDirs", root)}
 }
 
@@ -130,7 +130,7 @@ type MockFilesystemPort_ResolvePath_Call struct {
 
 // ResolvePath is a helper method to define mock.On call
 //   - path string
-func (_e *MockFilesystemPort_Expecter) ResolvePath(path interface{}) *MockFilesystemPort_ResolvePath_Call {
+func (_e *MockFilesystemPort_Expecter) ResolvePath(path any) *MockFilesystemPort_ResolvePath_Call {
 	return &MockFilesystemPort_ResolvePath_Call{Call: _e.mock.On("ResolvePath", path)}
 }
 

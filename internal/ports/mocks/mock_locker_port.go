@@ -74,7 +74,7 @@ type MockLockerPort_Acquire_Call struct {
 // Acquire is a helper method to define mock.On call
 //   - ctx context.Context
 //   - key string
-func (_e *MockLockerPort_Expecter) Acquire(ctx interface{}, key interface{}) *MockLockerPort_Acquire_Call {
+func (_e *MockLockerPort_Expecter) Acquire(ctx any, key any) *MockLockerPort_Acquire_Call {
 	return &MockLockerPort_Acquire_Call{Call: _e.mock.On("Acquire", ctx, key)}
 }
 

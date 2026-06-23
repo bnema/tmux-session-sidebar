@@ -72,7 +72,7 @@ type MockGitPort_RepoInfo_Call struct {
 // RepoInfo is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-func (_e *MockGitPort_Expecter) RepoInfo(ctx interface{}, path interface{}) *MockGitPort_RepoInfo_Call {
+func (_e *MockGitPort_Expecter) RepoInfo(ctx any, path any) *MockGitPort_RepoInfo_Call {
 	return &MockGitPort_RepoInfo_Call{Call: _e.mock.On("RepoInfo", ctx, path)}
 }
 
@@ -138,7 +138,7 @@ type MockGitPort_RepoRoot_Call struct {
 // RepoRoot is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-func (_e *MockGitPort_Expecter) RepoRoot(ctx interface{}, path interface{}) *MockGitPort_RepoRoot_Call {
+func (_e *MockGitPort_Expecter) RepoRoot(ctx any, path any) *MockGitPort_RepoRoot_Call {
 	return &MockGitPort_RepoRoot_Call{Call: _e.mock.On("RepoRoot", ctx, path)}
 }
 
@@ -204,7 +204,7 @@ type MockGitPort_Status_Call struct {
 // Status is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-func (_e *MockGitPort_Expecter) Status(ctx interface{}, path interface{}) *MockGitPort_Status_Call {
+func (_e *MockGitPort_Expecter) Status(ctx any, path any) *MockGitPort_Status_Call {
 	return &MockGitPort_Status_Call{Call: _e.mock.On("Status", ctx, path)}
 }
 
@@ -270,7 +270,7 @@ type MockGitPort_WatchTargets_Call struct {
 // WatchTargets is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-func (_e *MockGitPort_Expecter) WatchTargets(ctx interface{}, path interface{}) *MockGitPort_WatchTargets_Call {
+func (_e *MockGitPort_Expecter) WatchTargets(ctx any, path any) *MockGitPort_WatchTargets_Call {
 	return &MockGitPort_WatchTargets_Call{Call: _e.mock.On("WatchTargets", ctx, path)}
 }
 

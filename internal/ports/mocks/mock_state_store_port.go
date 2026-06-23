@@ -72,7 +72,7 @@ type MockStateStorePort_Load_Call struct {
 // Load is a helper method to define mock.On call
 //   - ctx context.Context
 //   - serverID string
-func (_e *MockStateStorePort_Expecter) Load(ctx interface{}, serverID interface{}) *MockStateStorePort_Load_Call {
+func (_e *MockStateStorePort_Expecter) Load(ctx any, serverID any) *MockStateStorePort_Load_Call {
 	return &MockStateStorePort_Load_Call{Call: _e.mock.On("Load", ctx, serverID)}
 }
 
@@ -130,7 +130,7 @@ type MockStateStorePort_Save_Call struct {
 //   - ctx context.Context
 //   - serverID string
 //   - state ports.PersistedState
-func (_e *MockStateStorePort_Expecter) Save(ctx interface{}, serverID interface{}, state interface{}) *MockStateStorePort_Save_Call {
+func (_e *MockStateStorePort_Expecter) Save(ctx any, serverID any, state any) *MockStateStorePort_Save_Call {
 	return &MockStateStorePort_Save_Call{Call: _e.mock.On("Save", ctx, serverID, state)}
 }
 

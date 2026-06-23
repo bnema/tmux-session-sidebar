@@ -50,7 +50,7 @@ type MockLoggerPort_Debug_Call struct {
 // Debug is a helper method to define mock.On call
 //   - msg string
 //   - fields []ports.LogField
-func (_e *MockLoggerPort_Expecter) Debug(msg interface{}, fields interface{}) *MockLoggerPort_Debug_Call {
+func (_e *MockLoggerPort_Expecter) Debug(msg any, fields any) *MockLoggerPort_Debug_Call {
 	return &MockLoggerPort_Debug_Call{Call: _e.mock.On("Debug", msg, fields)}
 }
 
@@ -96,7 +96,7 @@ type MockLoggerPort_Error_Call struct {
 // Error is a helper method to define mock.On call
 //   - msg string
 //   - fields []ports.LogField
-func (_e *MockLoggerPort_Expecter) Error(msg interface{}, fields interface{}) *MockLoggerPort_Error_Call {
+func (_e *MockLoggerPort_Expecter) Error(msg any, fields any) *MockLoggerPort_Error_Call {
 	return &MockLoggerPort_Error_Call{Call: _e.mock.On("Error", msg, fields)}
 }
 
@@ -142,7 +142,7 @@ type MockLoggerPort_Info_Call struct {
 // Info is a helper method to define mock.On call
 //   - msg string
 //   - fields []ports.LogField
-func (_e *MockLoggerPort_Expecter) Info(msg interface{}, fields interface{}) *MockLoggerPort_Info_Call {
+func (_e *MockLoggerPort_Expecter) Info(msg any, fields any) *MockLoggerPort_Info_Call {
 	return &MockLoggerPort_Info_Call{Call: _e.mock.On("Info", msg, fields)}
 }
 
