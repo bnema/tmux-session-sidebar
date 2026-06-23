@@ -156,6 +156,47 @@ esac
 	}
 }
 
+func TestCreateNamedSessionActionDefaultsToHomePath(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	home := filepath.Join(t.TempDir(), "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("MkdirAll(home) error = %v", err)
+	}
+	t.Setenv("HOME", home)
+	selectedPath := "/tmp/worktree/previous-project"
+	logPath := installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  display-message)
+    if [ "$5" = '#{window_id}' ]; then
+      printf '@1\n'
+    else
+      printf '`+selectedPath+`\n'
+    fi
+    ;;
+  list-panes)
+    printf '%%1\t1\t0\t\t`+selectedPath+`\n'
+    ;;
+  list-sessions)
+    ;;
+esac
+`)
+
+	actions := buildSidebarActions(t.Context(), map[string]string{"client": "/dev/pts/99"}, nil, nil, nil)
+	if !actions.CreateNamedSession("scratch", "") {
+		t.Fatalf("CreateNamedSession returned false, log=%q", readLog(t, logPath))
+	}
+
+	log := readLog(t, logPath)
+	if want := "new-session -d -s scratch -c " + home; !strings.Contains(log, want) {
+		t.Fatalf("expected named session to start from home path %q, log=%q", home, log)
+	}
+	if strings.Contains(log, selectedPath) || strings.Contains(log, "list-panes -t @1") {
+		t.Fatalf("named session should not inspect or use previously selected path %q, log=%q", selectedPath, log)
+	}
+	assertPersistedMetadata(t, "scratch", ports.SessionMetadata{Kind: "adhoc", LastPath: home})
+}
+
 func TestCurrentPanePathForActionPrefersActiveNonSidebarPane(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	installFakeTmux(t, `#!/usr/bin/env bash
