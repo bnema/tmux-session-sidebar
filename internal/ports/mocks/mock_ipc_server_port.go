@@ -63,7 +63,7 @@ type MockIPCServerPort_Serve_Call struct {
 // Serve is a helper method to define mock.On call
 //   - ctx context.Context
 //   - handler ports.IPCHandler
-func (_e *MockIPCServerPort_Expecter) Serve(ctx interface{}, handler interface{}) *MockIPCServerPort_Serve_Call {
+func (_e *MockIPCServerPort_Expecter) Serve(ctx any, handler any) *MockIPCServerPort_Serve_Call {
 	return &MockIPCServerPort_Serve_Call{Call: _e.mock.On("Serve", ctx, handler)}
 }
 

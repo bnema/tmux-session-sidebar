@@ -70,7 +70,7 @@ type MockReleaseCheckerPort_LatestReleaseTag_Call struct {
 
 // LatestReleaseTag is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockReleaseCheckerPort_Expecter) LatestReleaseTag(ctx interface{}) *MockReleaseCheckerPort_LatestReleaseTag_Call {
+func (_e *MockReleaseCheckerPort_Expecter) LatestReleaseTag(ctx any) *MockReleaseCheckerPort_LatestReleaseTag_Call {
 	return &MockReleaseCheckerPort_LatestReleaseTag_Call{Call: _e.mock.On("LatestReleaseTag", ctx)}
 }
 

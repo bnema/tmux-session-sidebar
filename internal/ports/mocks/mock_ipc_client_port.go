@@ -72,7 +72,7 @@ type MockIPCClientPort_Send_Call struct {
 // Send is a helper method to define mock.On call
 //   - ctx context.Context
 //   - req ports.Request
-func (_e *MockIPCClientPort_Expecter) Send(ctx interface{}, req interface{}) *MockIPCClientPort_Send_Call {
+func (_e *MockIPCClientPort_Expecter) Send(ctx any, req any) *MockIPCClientPort_Send_Call {
 	return &MockIPCClientPort_Send_Call{Call: _e.mock.On("Send", ctx, req)}
 }
 

@@ -156,8 +156,8 @@ func (_c *MockQueryPort_ListClients_Call) Run(run func(ctx context.Context)) *Mo
 	return _c
 }
 
-func (_c *MockQueryPort_ListClients_Call) Return(tmuxClientSnapshots []ports.ClientSnapshot, err error) *MockQueryPort_ListClients_Call {
-	_c.Call.Return(tmuxClientSnapshots, err)
+func (_c *MockQueryPort_ListClients_Call) Return(clientSnapshots []ports.ClientSnapshot, err error) *MockQueryPort_ListClients_Call {
+	_c.Call.Return(clientSnapshots, err)
 	return _c
 }
 
@@ -218,8 +218,8 @@ func (_c *MockQueryPort_ListSessions_Call) Run(run func(ctx context.Context)) *M
 	return _c
 }
 
-func (_c *MockQueryPort_ListSessions_Call) Return(tmuxSessionSnapshots []ports.SessionSnapshot, err error) *MockQueryPort_ListSessions_Call {
-	_c.Call.Return(tmuxSessionSnapshots, err)
+func (_c *MockQueryPort_ListSessions_Call) Return(sessionSnapshots []ports.SessionSnapshot, err error) *MockQueryPort_ListSessions_Call {
+	_c.Call.Return(sessionSnapshots, err)
 	return _c
 }
 

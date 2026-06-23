@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -325,11 +326,15 @@ func parkVisibleSidebar(ctx context.Context, sidebar ports.SidebarPort, paneID s
 	return sidebar.ParkSingletonSidebar(ctx, paneID)
 }
 
-func syncSidebarWidth(ctx context.Context, _ string, flags map[string]string, sidebar ports.SidebarPort) error {
+func syncSidebarWidth(ctx context.Context, routePath string, flags map[string]string, sidebar ports.SidebarPort) error {
 	if sidebar == nil {
 		return nil
 	}
-	ref, err := findSidebarForHook(ctx, sidebar, flags)
+	target := resizeHookTarget(flags)
+	if target == "" {
+		return nil
+	}
+	ref, err := sidebar.FindSidebarPane(ctx, target)
 	if err != nil {
 		if isIgnoredResizeHookError(err) {
 			return nil
@@ -339,25 +344,59 @@ func syncSidebarWidth(ctx context.Context, _ string, flags map[string]string, si
 	if ref.PaneID == "" {
 		return nil
 	}
-	width, err := configuredSidebarWidth(ctx)
+	width, debug, err := configuredSidebarWidthAndDebug(ctx)
 	if err != nil {
 		return err
 	}
-	if syncer, ok := sidebar.(ports.SidebarResizePort); ok {
-		return syncer.SyncAttachedSidebarWidth(ctx, ref.WindowID, ref.PaneID, width)
-	}
-	return resizeSidebarPaneToWidth(ctx, ref.PaneID, width)
+	syncer, hasResizePort := sidebar.(ports.SidebarResizePort)
+	return withResizeDebugLogger(debug, func(logger ports.LoggerPort) error {
+		loggedSidebar := sidebarWithLogger(sidebar, logger)
+		if loggedSyncer, ok := loggedSidebar.(ports.SidebarResizePort); ok {
+			syncer = loggedSyncer
+		}
+		logResizeDebug(logger, "resize-hook-start", []ports.LogField{
+			{Key: "path", Value: routePath},
+			{Key: "target", Value: target},
+			{Key: "flag_pane", Value: strings.TrimSpace(flags["pane"])},
+			{Key: "flag_window", Value: strings.TrimSpace(flags["window"])},
+			{Key: "flag_client", Value: strings.TrimSpace(flags["client"])},
+		})
+		if hasResizePort {
+			logResizeDebug(logger, "resize-hook", []ports.LogField{
+				{Key: "path", Value: routePath},
+				{Key: "target", Value: target},
+				{Key: "pane", Value: ref.PaneID},
+				{Key: "window", Value: ref.WindowID},
+				{Key: "width", Value: width},
+				{Key: "handler", Value: "sidebar-resize-port"},
+			})
+			return syncer.SyncAttachedSidebarWidth(ctx, ref.WindowID, ref.PaneID, width)
+		}
+		logResizeDebug(logger, "resize-hook", []ports.LogField{
+			{Key: "path", Value: routePath},
+			{Key: "target", Value: target},
+			{Key: "pane", Value: ref.PaneID},
+			{Key: "window", Value: ref.WindowID},
+			{Key: "width", Value: width},
+			{Key: "handler", Value: "resize-pane"},
+		})
+		return resizeSidebarPaneToWidth(ctx, ref.PaneID, width)
+	})
 }
 
 func captureSidebarWidthBaseline(ctx context.Context, flags map[string]string, sidebar ports.SidebarPort) error {
 	if sidebar == nil {
 		return nil
 	}
+	target := resizeHookTarget(flags)
+	if target == "" {
+		return nil
+	}
 	capturer, ok := sidebar.(ports.SidebarResizePort)
 	if !ok {
 		return nil
 	}
-	ref, err := findSidebarForHook(ctx, sidebar, flags)
+	ref, err := sidebar.FindSidebarPane(ctx, target)
 	if err != nil {
 		if isIgnoredResizeHookError(err) {
 			return nil
@@ -367,31 +406,87 @@ func captureSidebarWidthBaseline(ctx context.Context, flags map[string]string, s
 	if ref.PaneID == "" {
 		return nil
 	}
-	width, err := configuredSidebarWidth(ctx)
+	width, debug, err := configuredSidebarWidthAndDebug(ctx)
 	if err != nil {
 		return err
 	}
-	return capturer.CaptureAttachedSidebarWidthBaseline(ctx, ref.WindowID, ref.PaneID, width)
+	return withResizeDebugLogger(debug, func(logger ports.LoggerPort) error {
+		loggedSidebar := sidebarWithLogger(sidebar, logger)
+		if loggedCapturer, ok := loggedSidebar.(ports.SidebarResizePort); ok {
+			capturer = loggedCapturer
+		}
+		logResizeDebug(logger, "resize-baseline-hook-start", []ports.LogField{{Key: "path", Value: "hook/window-layout-changed"}, {Key: "target", Value: target}, {Key: "flag_pane", Value: strings.TrimSpace(flags["pane"])}, {Key: "flag_window", Value: strings.TrimSpace(flags["window"])}, {Key: "flag_client", Value: strings.TrimSpace(flags["client"])}})
+		logResizeDebug(logger, "resize-baseline-hook", []ports.LogField{
+			{Key: "path", Value: "hook/window-layout-changed"},
+			{Key: "target", Value: target},
+			{Key: "pane", Value: ref.PaneID},
+			{Key: "window", Value: ref.WindowID},
+			{Key: "width", Value: width},
+			{Key: "handler", Value: "sidebar-resize-port"},
+		})
+		return capturer.CaptureAttachedSidebarWidthBaseline(ctx, ref.WindowID, ref.PaneID, width)
+	})
 }
 
-func findSidebarForHook(ctx context.Context, sidebar ports.SidebarPort, flags map[string]string) (ports.PaneRef, error) {
-	target := firstNonEmpty(strings.TrimSpace(flags["pane"]), strings.TrimSpace(flags["window"]), strings.TrimSpace(flags["client"]))
-	if target == "" {
-		return ports.PaneRef{}, nil
-	}
-	return sidebar.FindSidebarPane(ctx, target)
-}
-
-func configuredSidebarWidth(ctx context.Context) (string, error) {
-	widthOutput, err := tmux(ctx, "show-options", "-gvq", "@session-sidebar-width")
+func configuredSidebarWidthAndDebug(ctx context.Context) (string, bool, error) {
+	output, err := tmux(ctx, "display-message", "-p", "#{@session-sidebar-width}\t#{@session-sidebar-activity-debug-log}")
 	if err != nil {
-		return "", tmuxCommandError("show @session-sidebar-width", widthOutput, err)
+		return "", false, tmuxCommandError("show resize debug options", output, err)
 	}
-	width := strings.TrimSpace(widthOutput)
-	if width == "" {
-		width = "30"
+	fields := strings.SplitN(strings.TrimRight(output, "\r\n"), "\t", 2)
+	width := "30"
+	if len(fields) > 0 && strings.TrimSpace(fields[0]) != "" {
+		width = strings.TrimSpace(fields[0])
 	}
-	return width, nil
+	debug := false
+	if len(fields) > 1 {
+		debug = parseSidebarTmuxBool(fields[1])
+	}
+	return width, debug, nil
+}
+
+func withResizeDebugLogger(enabled bool, fn func(ports.LoggerPort) error) error {
+	if !enabled {
+		return fn(nil)
+	}
+	logPath := filepath.Join(RuntimeDir(), "activity.log")
+	logger, closer, err := runtimeActivityLogger(logPath, maxSidebarLogBytes)
+	if err != nil {
+		return fn(nil)
+	}
+	defer func() { _ = closer.Close() }()
+	return fn(logger)
+}
+
+func sidebarWithLogger(sidebar ports.SidebarPort, logger ports.LoggerPort) ports.SidebarPort {
+	if logger == nil {
+		return sidebar
+	}
+	withLogger, ok := sidebar.(ports.SidebarLoggerPort)
+	if !ok {
+		return sidebar
+	}
+	return withLogger.WithSidebarLogger(logger)
+}
+
+func parseSidebarTmuxBool(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "yes", "true", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func resizeHookTarget(flags map[string]string) string {
+	return firstNonEmpty(strings.TrimSpace(flags["pane"]), strings.TrimSpace(flags["window"]), strings.TrimSpace(flags["client"]))
+}
+
+func logResizeDebug(logger ports.LoggerPort, msg string, fields []ports.LogField) {
+	if logger == nil {
+		return
+	}
+	logger.Debug(msg, fields)
 }
 
 func resizeSidebarPaneToWidth(ctx context.Context, paneID string, width string) error {

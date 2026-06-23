@@ -73,7 +73,7 @@ type MockProcessPort_Exec_Call struct {
 //   - ctx context.Context
 //   - name string
 //   - args []string
-func (_e *MockProcessPort_Expecter) Exec(ctx interface{}, name interface{}, args interface{}) *MockProcessPort_Exec_Call {
+func (_e *MockProcessPort_Expecter) Exec(ctx any, name any, args any) *MockProcessPort_Exec_Call {
 	return &MockProcessPort_Exec_Call{Call: _e.mock.On("Exec", ctx, name, args)}
 }
 

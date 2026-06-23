@@ -71,7 +71,7 @@ type MockSystemColorSchemePort_CurrentPreference_Call struct {
 
 // CurrentPreference is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockSystemColorSchemePort_Expecter) CurrentPreference(ctx interface{}) *MockSystemColorSchemePort_CurrentPreference_Call {
+func (_e *MockSystemColorSchemePort_Expecter) CurrentPreference(ctx any) *MockSystemColorSchemePort_CurrentPreference_Call {
 	return &MockSystemColorSchemePort_CurrentPreference_Call{Call: _e.mock.On("CurrentPreference", ctx)}
 }
 
@@ -141,7 +141,7 @@ type MockSystemColorSchemePort_Watch_Call struct {
 
 // Watch is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockSystemColorSchemePort_Expecter) Watch(ctx interface{}) *MockSystemColorSchemePort_Watch_Call {
+func (_e *MockSystemColorSchemePort_Expecter) Watch(ctx any) *MockSystemColorSchemePort_Watch_Call {
 	return &MockSystemColorSchemePort_Watch_Call{Call: _e.mock.On("Watch", ctx)}
 }
 

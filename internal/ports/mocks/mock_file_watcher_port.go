@@ -82,7 +82,7 @@ type MockFileWatcherPort_Watch_Call struct {
 // Watch is a helper method to define mock.On call
 //   - ctx context.Context
 //   - paths []string
-func (_e *MockFileWatcherPort_Expecter) Watch(ctx interface{}, paths interface{}) *MockFileWatcherPort_Watch_Call {
+func (_e *MockFileWatcherPort_Expecter) Watch(ctx any, paths any) *MockFileWatcherPort_Watch_Call {
 	return &MockFileWatcherPort_Watch_Call{Call: _e.mock.On("Watch", ctx, paths)}
 }
 
