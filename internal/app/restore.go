@@ -213,16 +213,34 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 	})
 	metadataReconcile := make(chan struct{}, 1)
 	var metadataWG sync.WaitGroup
+	var metadataMu sync.Mutex
 	metadataStarted := false
+	metadataLastFailureAt := time.Time{}
 	startMetadataWatcher := func(cfg ports.ConfigSnapshot) {
-		if metadataStarted || !cfg.MetadataSublineEnabled {
+		if !cfg.MetadataSublineEnabled {
+			return
+		}
+		metadataMu.Lock()
+		if metadataStarted || metadataWatcherRestartInCooldown(time.Now(), metadataLastFailureAt) {
+			metadataMu.Unlock()
 			return
 		}
 		metadataStarted = true
+		metadataMu.Unlock()
 		metadataWG.Go(func() {
 			service := NewMetadataService()
 			service.ReconcileRequests = metadataReconcile
-			if err := service.Run(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
+			err := service.Run(ctx, cfg)
+			failed := err != nil && !errors.Is(err, context.Canceled)
+			metadataMu.Lock()
+			metadataStarted = false
+			if failed {
+				metadataLastFailureAt = time.Now()
+			} else {
+				metadataLastFailureAt = time.Time{}
+			}
+			metadataMu.Unlock()
+			if failed {
 				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata watcher stopped: %v\n", err)
 			}
 		})
@@ -257,6 +275,9 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 
 	for {
 		cfg = loadSidebarConfig(ctx)
+		if pendingFullCaptureAt.IsZero() {
+			startMetadataWatcher(cfg)
+		}
 		interval := sidebarRefreshIntervalFromConfig(cfg)
 		if !pendingFullCaptureAt.IsZero() {
 			untilCapture := time.Until(pendingFullCaptureAt)
@@ -328,6 +349,10 @@ func sidebarRefreshIntervalFromConfig(cfg ports.ConfigSnapshot) time.Duration {
 		return time.Duration(cfg.HeatRefreshSeconds) * time.Second
 	}
 	return time.Minute
+}
+
+func metadataWatcherRestartInCooldown(now time.Time, lastFailureAt time.Time) bool {
+	return !lastFailureAt.IsZero() && now.Sub(lastFailureAt) < defaultMetadataCaptureFailureCooldown
 }
 
 func withLockedSidebarStore(ctx context.Context, fn func(scopedStateStore) error) error {

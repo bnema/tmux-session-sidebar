@@ -58,6 +58,54 @@ func TestGitStatusUsesInjectedDivergenceCounter(t *testing.T) {
 	}
 }
 
+func TestGitStatusUsesInjectedDivergenceCounterWhenUpstreamExists(t *testing.T) {
+	origin := initBareGitRepo(t)
+	work := cloneRepo(t, origin)
+	writeFile(t, work, "base.txt", "base\n")
+	runGit(t, work, "add", "base.txt")
+	runGit(t, work, "commit", "-m", "base")
+	runGit(t, work, "push", "-u", "origin", "main")
+	runGit(t, work, "remote", "set-head", "origin", "main")
+
+	counter := &recordingDivergenceCounter{ahead: 7, behind: 8, ok: true}
+	status, err := (Git{Divergence: counter}).Status(t.Context(), work)
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if counter.calls == 0 {
+		t.Fatal("Divergence calls = 0, want injected counter to stay authoritative when upstream exists")
+	}
+	if status.Ahead != 7 || status.Behind != 8 || !status.ComparisonConfigured || !status.UpstreamConfigured || status.ComparisonMissing {
+		t.Fatalf("Status divergence = %#v, want injected upstream comparison 7/8", status)
+	}
+}
+
+func TestGitStatusFallsBackToNativeComparisonWhenInjectedCounterHasNoComparison(t *testing.T) {
+	origin := initBareGitRepo(t)
+	work := cloneRepo(t, origin)
+	writeFile(t, work, "base.txt", "base\n")
+	runGit(t, work, "add", "base.txt")
+	runGit(t, work, "commit", "-m", "base")
+	runGit(t, work, "push", "-u", "origin", "main")
+	runGit(t, work, "remote", "set-head", "origin", "main")
+	runGit(t, work, "checkout", "-b", "feature")
+	writeFile(t, work, "feature.txt", "feature\n")
+	runGit(t, work, "add", "feature.txt")
+	runGit(t, work, "commit", "-m", "feature")
+
+	counter := &recordingDivergenceCounter{ok: false}
+	status, err := (Git{Divergence: counter}).Status(t.Context(), work)
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if counter.calls == 0 {
+		t.Fatal("Divergence calls = 0, want injected counter attempted first")
+	}
+	if !status.ComparisonConfigured || status.UpstreamConfigured || status.Ahead != 1 || status.Behind != 0 || status.ComparisonMissing {
+		t.Fatalf("Status divergence = %#v, want native fallback comparison 1/0 without upstream", status)
+	}
+}
+
 type recordingDivergenceCounter struct {
 	calls         int
 	repoRoot      string
@@ -120,6 +168,37 @@ func TestGitStatusFallsBackToDefaultRemoteWhenConfiguredUpstreamIsStale(t *testi
 	}
 	if !status.ComparisonConfigured || status.UpstreamConfigured || status.Ahead != 1 || status.Behind != 0 {
 		t.Fatalf("Status divergence = %#v, want fallback comparison 1/0 without configured upstream", status)
+	}
+}
+
+func TestGitStatusInjectedDivergenceDoesNotMarkStaleUpstreamConfigured(t *testing.T) {
+	origin := initBareGitRepo(t)
+	work := cloneRepo(t, origin)
+	writeFile(t, work, "base.txt", "base\n")
+	runGit(t, work, "add", "base.txt")
+	runGit(t, work, "commit", "-m", "base")
+	runGit(t, work, "push", "-u", "origin", "main")
+	runGit(t, work, "remote", "set-head", "origin", "main")
+	runGit(t, work, "checkout", "-b", "feature")
+	writeFile(t, work, "feature.txt", "feature\n")
+	runGit(t, work, "add", "feature.txt")
+	runGit(t, work, "commit", "-m", "feature")
+	runGit(t, work, "push", "-u", "origin", "feature")
+	runGit(t, work, "update-ref", "-d", "refs/remotes/origin/feature")
+
+	counter := &recordingDivergenceCounter{ahead: 1, behind: 0, ok: true}
+	status, err := (Git{Divergence: counter}).Status(t.Context(), work)
+	if err != nil {
+		t.Fatalf("Status error: %v", err)
+	}
+	if counter.calls == 0 {
+		t.Fatal("Divergence calls = 0, want injected counter to be consulted for stale upstream")
+	}
+	if !status.ComparisonConfigured || status.Ahead != 1 || status.Behind != 0 || status.ComparisonMissing {
+		t.Fatalf("Status divergence = %#v, want injected comparison 1/0", status)
+	}
+	if status.UpstreamConfigured {
+		t.Fatalf("UpstreamConfigured = true for stale upstream fallback: %#v", status)
 	}
 }
 

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -11,6 +12,49 @@ import (
 	"github.com/bnema/tmux-session-sidebar/internal/core/heat"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
+
+type loadCountingStateStore struct {
+	state ports.PersistedState
+	loads int
+}
+
+func (s *loadCountingStateStore) Load(context.Context, string) (ports.PersistedState, error) {
+	s.loads++
+	return s.state, nil
+}
+
+func (s *loadCountingStateStore) Save(context.Context, string, ports.PersistedState) error {
+	return nil
+}
+
+func TestLoadSidebarStateUsesStateStoreAfterMigrationCheck(t *testing.T) {
+	root := t.TempDir()
+	defer ResetRuntimeScopeForTest()
+	scope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "111")
+	if err := os.MkdirAll(scope.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteRuntimeScopeMetadata(t, scope)
+	writeTmuxJSON(t, scope.StateDir, ports.PersistedState{SessionOrder: []string{"from-file"}})
+	fakeStore := &loadCountingStateStore{state: ports.PersistedState{SessionOrder: []string{"from-store"}}}
+	deps := runtimeDependencies()
+	updatedDeps := deps
+	updatedDeps.StateStoreFactory = func(RuntimeScope) ports.StateStorePort { return fakeStore }
+	SetRuntimeDependencies(updatedDeps)
+	t.Cleanup(func() { SetRuntimeDependencies(deps) })
+	SetRuntimeScope(scope)
+
+	state, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState() error = %v", err)
+	}
+	if fakeStore.loads != 1 {
+		t.Fatalf("store Load calls = %d, want 1", fakeStore.loads)
+	}
+	if len(state.SessionOrder) != 1 || state.SessionOrder[0] != "from-store" {
+		t.Fatalf("SessionOrder = %#v, want state loaded through store", state.SessionOrder)
+	}
+}
 
 func TestSaveMovedSessionOrder(t *testing.T) {
 	tests := []struct {

@@ -182,6 +182,7 @@ func TestStoreLoadEdges(t *testing.T) {
 	}{
 		{name: "missing server initializes maps", serverID: "missing", wantEmpty: true},
 		{name: "sparse json", serverID: "sparse", setup: func(dir string) error { return os.WriteFile(filepath.Join(dir, "sparse.json"), []byte("{}"), 0o600) }, wantEmpty: true},
+		{name: "empty file", serverID: "empty", setup: func(dir string) error { return os.WriteFile(filepath.Join(dir, "empty.json"), nil, 0o600) }, wantErr: true},
 		{name: "invalid json", serverID: "bad", setup: func(dir string) error { return os.WriteFile(filepath.Join(dir, "bad.json"), []byte("{"), 0o600) }, wantErr: true},
 		{name: "path traversal confined", serverID: "../evil", wantEmpty: true},
 	}

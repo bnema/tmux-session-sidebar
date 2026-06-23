@@ -419,3 +419,71 @@ func (_c *MockQueryPort_SessionPath_Call) RunAndReturn(run func(ctx context.Cont
 	_c.Call.Return(run)
 	return _c
 }
+
+// SessionPaths provides a mock function for the type MockQueryPort
+func (_mock *MockQueryPort) SessionPaths(ctx context.Context, sessionNames []string) (map[string]string, error) {
+	ret := _mock.Called(ctx, sessionNames)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SessionPaths")
+	}
+
+	var r0 map[string]string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) (map[string]string, error)); ok {
+		return returnFunc(ctx, sessionNames)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) map[string]string); ok {
+		r0 = returnFunc(ctx, sessionNames)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string) error); ok {
+		r1 = returnFunc(ctx, sessionNames)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockQueryPort_SessionPaths_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SessionPaths'
+type MockQueryPort_SessionPaths_Call struct {
+	*mock.Call
+}
+
+// SessionPaths is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionNames []string
+func (_e *MockQueryPort_Expecter) SessionPaths(ctx any, sessionNames any) *MockQueryPort_SessionPaths_Call {
+	return &MockQueryPort_SessionPaths_Call{Call: _e.mock.On("SessionPaths", ctx, sessionNames)}
+}
+
+func (_c *MockQueryPort_SessionPaths_Call) Run(run func(ctx context.Context, sessionNames []string)) *MockQueryPort_SessionPaths_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []string
+		if args[1] != nil {
+			arg1 = args[1].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockQueryPort_SessionPaths_Call) Return(stringToString map[string]string, err error) *MockQueryPort_SessionPaths_Call {
+	_c.Call.Return(stringToString, err)
+	return _c
+}
+
+func (_c *MockQueryPort_SessionPaths_Call) RunAndReturn(run func(ctx context.Context, sessionNames []string) (map[string]string, error)) *MockQueryPort_SessionPaths_Call {
+	_c.Call.Return(run)
+	return _c
+}

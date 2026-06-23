@@ -2,6 +2,7 @@ package persisted
 
 import (
 	"encoding/json"
+	"errors"
 	"slices"
 
 	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
@@ -20,7 +21,7 @@ func EmptyState() ports.PersistedState {
 // fields that callers expect to be usable after loading.
 func DecodeState(data []byte) (ports.PersistedState, error) {
 	if len(data) == 0 {
-		return EmptyState(), nil
+		return ports.PersistedState{}, errors.New("cannot decode empty state data")
 	}
 	var state ports.PersistedState
 	if err := json.Unmarshal(data, &state); err != nil {

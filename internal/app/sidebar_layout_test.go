@@ -18,26 +18,20 @@ type resizeSyncSidebarPort struct {
 	*mocks.MockSidebarPort
 	syncCalls    []string
 	captureCalls []string
-	logger       ports.LoggerPort
 }
 
-func (d *resizeSyncSidebarPort) WithSidebarLogger(logger ports.LoggerPort) ports.SidebarPort {
-	d.logger = logger
-	return d
-}
-
-func (d *resizeSyncSidebarPort) CaptureAttachedSidebarWidthBaseline(_ context.Context, windowID string, paneID string, width string) error {
+func (d *resizeSyncSidebarPort) CaptureAttachedSidebarWidthBaseline(_ context.Context, windowID string, paneID string, width string, options ports.SidebarResizeOptions) error {
 	d.captureCalls = append(d.captureCalls, windowID+"|"+paneID+"|"+width)
-	if d.logger != nil {
-		d.logger.Debug("resize-capture-port", []ports.LogField{{Key: "window", Value: windowID}, {Key: "pane", Value: paneID}, {Key: "width", Value: width}})
+	if options.Logger != nil {
+		options.Logger.Debug("resize-capture-port", []ports.LogField{{Key: "window", Value: windowID}, {Key: "pane", Value: paneID}, {Key: "width", Value: width}})
 	}
 	return nil
 }
 
-func (d *resizeSyncSidebarPort) SyncAttachedSidebarWidth(_ context.Context, windowID string, paneID string, width string) error {
+func (d *resizeSyncSidebarPort) SyncAttachedSidebarWidth(_ context.Context, windowID string, paneID string, width string, options ports.SidebarResizeOptions) error {
 	d.syncCalls = append(d.syncCalls, windowID+"|"+paneID+"|"+width)
-	if d.logger != nil {
-		d.logger.Debug("resize-sync-port", []ports.LogField{{Key: "window", Value: windowID}, {Key: "pane", Value: paneID}, {Key: "width", Value: width}})
+	if options.Logger != nil {
+		options.Logger.Debug("resize-sync-port", []ports.LogField{{Key: "window", Value: windowID}, {Key: "pane", Value: paneID}, {Key: "width", Value: width}})
 	}
 	return nil
 }

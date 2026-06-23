@@ -305,26 +305,20 @@ func TestSidebarModelAltJKNavigateBrowseSearchAndProjectMenu(t *testing.T) {
 	})
 }
 
-func TestSidebarModelPlainJKNavigateSearchWithoutMutatingFilter(t *testing.T) {
+func TestSidebarModelPlainJKFilterSearchText(t *testing.T) {
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}, Actions{})
 	updated, _ := model.Update(keyPress("/", 0))
 	model = requireSidebarModel(t, updated)
 	updated, _ = model.Update(keyPress("j", 0))
 	model = requireSidebarModel(t, updated)
-	if item, ok := model.selectedSession(); !ok || item.Name != "beta" {
-		t.Fatalf("search selection after j = %#v ok=%v, want beta", item, ok)
-	}
-	if model.filter != "" {
-		t.Fatalf("search filter after j = %q, want unchanged empty filter", model.filter)
+	if model.filter != "j" {
+		t.Fatalf("search filter after j = %q, want j", model.filter)
 	}
 
 	updated, _ = model.Update(keyPress("k", 0))
 	model = requireSidebarModel(t, updated)
-	if item, ok := model.selectedSession(); !ok || item.Name != "alpha" {
-		t.Fatalf("search selection after k = %#v ok=%v, want alpha", item, ok)
-	}
-	if model.filter != "" {
-		t.Fatalf("search filter after k = %q, want unchanged empty filter", model.filter)
+	if model.filter != "jk" {
+		t.Fatalf("search filter after k = %q, want jk", model.filter)
 	}
 }
 

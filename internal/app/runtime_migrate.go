@@ -51,22 +51,22 @@ func ensureRuntimeStateMigratedAndLoad(ctx context.Context, scope RuntimeScope) 
 	if current.meaningful {
 		return current.state, true, nil
 	}
+	if current.exists && !current.reusable {
+		// Malformed current state is not reusable and must not be overwritten by
+		// migration candidates. Defer to the canonical store load path so callers
+		// receive the parse/corruption error for the file they already had.
+		return ports.PersistedState{}, false, nil
+	}
 
 	candidates, err := findSiblingStateCandidates(scope)
 	if err != nil {
 		return ports.PersistedState{}, false, fmt.Errorf("find sibling state candidates: %w", err)
 	}
 	if len(candidates) == 0 {
-		if current.reusable {
-			return current.state, true, nil
-		}
-		if !current.exists {
+		if !current.reusable {
 			return emptyPersistedState(), true, nil
 		}
-		// Malformed current state is not reusable. Defer to the canonical store
-		// load path so callers still receive the same parse error they did before
-		// migration/load reuse existed.
-		return ports.PersistedState{}, false, nil
+		return current.state, true, nil
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
@@ -97,6 +97,12 @@ func ensureRuntimeStateMigratedAndLoad(ctx context.Context, scope RuntimeScope) 
 	if current.meaningful {
 		return current.state, true, nil
 	}
+	if current.exists && !current.reusable {
+		// A concurrent writer may have produced malformed state while we were
+		// waiting for the migration lock. Preserve it and let the store report the
+		// parse error instead of clobbering it with stale candidate data.
+		return ports.PersistedState{}, false, nil
+	}
 
 	best := candidates[0]
 	data, err := os.ReadFile(best.tmuxJSONPath)
@@ -105,16 +111,10 @@ func ensureRuntimeStateMigratedAndLoad(ctx context.Context, scope RuntimeScope) 
 	}
 	candidate := reusablePersistedStateFromData(data)
 	if !candidate.meaningful {
-		if current.reusable {
-			return current.state, true, nil
-		}
-		if !current.exists {
+		if !current.reusable {
 			return emptyPersistedState(), true, nil
 		}
-		// Malformed current state is not reusable. Defer to the canonical store
-		// load path so callers still receive the same parse error they did before
-		// migration/load reuse existed.
-		return ports.PersistedState{}, false, nil
+		return current.state, true, nil
 	}
 
 	if err := atomicWriteFile(currentPath, data, 0o600); err != nil {

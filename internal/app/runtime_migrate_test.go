@@ -302,6 +302,54 @@ func TestEnsureRuntimeStateMigrated_DifferentSocketIgnored(t *testing.T) {
 	}
 }
 
+func TestEnsureRuntimeStateMigrated_MalformedCurrentNotOverwrittenByCandidate(t *testing.T) {
+	root := t.TempDir()
+	defer ResetRuntimeScopeForTest()
+
+	oldScope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "111")
+	if err := os.MkdirAll(oldScope.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteRuntimeScopeMetadata(t, oldScope)
+	writeTmuxJSON(t, oldScope.Dir, ports.PersistedState{SessionOrder: []string{"old-data"}})
+
+	newScope := runtimeScopeFromDir(root, false, "/tmp/tmux/default", "222")
+	if err := os.MkdirAll(newScope.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteRuntimeScopeMetadata(t, newScope)
+	candidates, err := findSiblingStateCandidates(newScope)
+	if err != nil {
+		t.Fatalf("findSiblingStateCandidates() error = %v", err)
+	}
+	wantCandidatePath := filepath.Join(oldScope.Dir, "tmux.json")
+	if len(candidates) != 1 || candidates[0].tmuxJSONPath != wantCandidatePath {
+		t.Fatalf("candidates = %#v, want old scope candidate %q", candidates, wantCandidatePath)
+	}
+	if err := os.MkdirAll(newScope.StateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	currentPath := filepath.Join(newScope.StateDir, "tmux.json")
+	if err := os.WriteFile(currentPath, []byte("{invalid json"), 0o600); err != nil {
+		t.Fatalf("write malformed current tmux.json: %v", err)
+	}
+
+	if err := ensureRuntimeStateMigrated(context.Background(), newScope); err != nil {
+		t.Fatalf("ensureRuntimeStateMigrated() error = %v", err)
+	}
+	data, err := os.ReadFile(currentPath)
+	if err != nil {
+		t.Fatalf("read current tmux.json: %v", err)
+	}
+	if string(data) != "{invalid json" {
+		t.Fatalf("current tmux.json was overwritten with %q", data)
+	}
+	SetRuntimeScope(newScope)
+	if _, err := loadSidebarState(context.Background()); err == nil {
+		t.Fatal("loadSidebarState error = nil, want canonical parse error for malformed current state")
+	}
+}
+
 func TestEnsureRuntimeStateMigrated_CurrentMeaningfulNotOverwritten(t *testing.T) {
 	root := t.TempDir()
 	defer ResetRuntimeScopeForTest()

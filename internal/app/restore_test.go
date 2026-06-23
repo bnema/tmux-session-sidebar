@@ -220,6 +220,78 @@ esac
 	}
 }
 
+func TestDaemonServeStartsMetadataWatcherWhenConfigEnablesAfterStartup(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	counterPath := filepath.Join(t.TempDir(), "metadata-config-calls")
+	alphaPath := t.TempDir()
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "$3" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '1\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'off\n' ;;
+      @session-sidebar-metadata-subline)
+        count=$(cat "$METADATA_CONFIG_CALLS" 2>/dev/null || printf '0')
+        count=$((count + 1))
+        printf '%s\n' "$count" > "$METADATA_CONFIG_CALLS"
+        if [ "$count" -le 1 ]; then printf 'off\n'; else printf 'on\n'; fi ;;
+      @session-sidebar-metadata-inactive) printf 'on\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) printf '$1\talpha\t1\t0\n' ;;
+  list-clients) ;;
+  list-panes)
+    if [ "$2" = "-a" ]; then printf 'alpha\t1\t1\t%s\n' "$CAPTURE_PATH"; fi ;;
+  display-message) printf '%s\n' "$CAPTURE_PATH" ;;
+esac
+`)
+	t.Setenv("METADATA_CONFIG_CALLS", counterPath)
+	t.Setenv("CAPTURE_PATH", alphaPath)
+	watcher := newMetadataLifecycleWatcher()
+	git := metadataFakeGit{
+		infos:    map[string]ports.GitRepoInfo{alphaPath: {RepoRoot: alphaPath, WorktreeRoot: alphaPath, GitDir: filepath.Join(alphaPath, ".git"), CommonGitDir: filepath.Join(alphaPath, ".git")}},
+		targets:  map[string]ports.GitWatchTargets{alphaPath: {RepoRoot: alphaPath, WorktreeRoot: alphaPath, Files: []string{filepath.Join(alphaPath, ".git", "HEAD")}, Dirs: []string{alphaPath}}},
+		statuses: map[string]ports.GitStatus{alphaPath: {RepoRoot: alphaPath, Branch: "main"}},
+	}
+	deps := runtimeDependencies()
+	updatedDeps := deps
+	updatedDeps.Git = git
+	updatedDeps.WatcherFactory = func() ports.FileWatcherPort { return watcher }
+	SetRuntimeDependencies(updatedDeps)
+	t.Cleanup(func() { SetRuntimeDependencies(deps) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- serveSidebarDaemonWithOptions(ctx, nil, nil, daemonServeOptions{}) }()
+	watcher.waitStarts(t, 1)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("serveSidebarDaemonWithOptions error: %v", err)
+	}
+}
+
+func TestMetadataWatcherRestartInCooldown(t *testing.T) {
+	now := time.Date(2026, 6, 23, 12, 0, 0, 0, time.UTC)
+	if metadataWatcherRestartInCooldown(now, time.Time{}) {
+		t.Fatal("cooldown active without a recorded failure")
+	}
+	if !metadataWatcherRestartInCooldown(now, now.Add(-defaultMetadataCaptureFailureCooldown+time.Nanosecond)) {
+		t.Fatal("cooldown inactive before restart cooldown elapsed")
+	}
+	if metadataWatcherRestartInCooldown(now, now.Add(-defaultMetadataCaptureFailureCooldown)) {
+		t.Fatal("cooldown active after restart cooldown elapsed")
+	}
+}
+
 func TestDaemonEnsureClearsTransientHeatStateOnStartup(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	store := sessionOrderStore()

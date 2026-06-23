@@ -215,7 +215,7 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 }
 
 func (c Client) captureAttachedSidebarWidthBaselineBestEffort(ctx context.Context, windowID string, paneID string, width string) {
-	_ = c.CaptureAttachedSidebarWidthBaseline(ctx, windowID, paneID, width)
+	_ = c.CaptureAttachedSidebarWidthBaseline(ctx, windowID, paneID, width, ports.SidebarResizeOptions{})
 }
 
 func (c Client) sidebarPaneMovedAwayFromWindowBestEffort(ctx context.Context, paneID string, originalWindowID string) bool {
