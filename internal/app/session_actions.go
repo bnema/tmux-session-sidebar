@@ -72,6 +72,33 @@ func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.Sid
 	})
 }
 
+func createNamedSession(ctx context.Context, flags map[string]string, sidebar ports.SidebarPort) error {
+	if flags["source-path"] != "" {
+		return createAdhoc(ctx, flags, sidebar)
+	}
+	path, err := neutralSessionSourcePath()
+	if err != nil {
+		return err
+	}
+	createFlags := cloneStringMap(flags)
+	if createFlags == nil {
+		createFlags = map[string]string{}
+	}
+	createFlags["source-path"] = path
+	return createAdhoc(ctx, createFlags, sidebar)
+}
+
+func neutralSessionSourcePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get user home directory: %w", err)
+	}
+	if strings.TrimSpace(home) == "" {
+		return "", fmt.Errorf("get user home directory: empty user home directory")
+	}
+	return home, nil
+}
+
 func saveCreatedSessionCategory(ctx context.Context, name string, categoryID string) error {
 	if strings.TrimSpace(categoryID) == "" {
 		return nil

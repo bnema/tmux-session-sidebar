@@ -536,7 +536,7 @@ func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io
 			return handleMetadataAction(ctx, ipcClient, "create ad-hoc session", createAdhoc(ctx, map[string]string{"client": currentClient(), "category-id": categoryID}, sidebar))
 		},
 		CreateNamedSession: func(name string, categoryID string) bool {
-			return handleMetadataAction(ctx, ipcClient, "create named session", createAdhoc(ctx, map[string]string{"client": currentClient(), "name": name, "category-id": categoryID}, sidebar))
+			return handleMetadataAction(ctx, ipcClient, "create named session", createNamedSession(ctx, map[string]string{"client": currentClient(), "name": name, "category-id": categoryID}, sidebar))
 		},
 		RenameSession: func(name string) bool {
 			return handleMetadataAction(ctx, ipcClient, "rename session", renameSession(ctx, map[string]string{"client": currentClient(), "session": name}, sidebar))
