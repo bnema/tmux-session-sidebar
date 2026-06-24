@@ -322,6 +322,103 @@ func TestSidebarModelPlainJKFilterSearchText(t *testing.T) {
 	}
 }
 
+func TestSidebarModelPlainJKFilterProjectMenuText(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+		LoadProjects: func() []ProjectItem {
+			return []ProjectItem{{Name: "joker"}, {Name: "kilo"}, {Name: "alpha"}}
+		},
+	})
+	model.openProjectMenu()
+
+	updated, _ := model.Update(keyPress("j", 0))
+	model = requireSidebarModel(t, updated)
+	if model.menu.Filter != "j" || model.menu.Cursor != 0 {
+		t.Fatalf("project menu after j filter=%q cursor=%d, want filter j and cursor 0", model.menu.Filter, model.menu.Cursor)
+	}
+	if visible := model.visibleMenuItems(); len(visible) != 1 || visible[0].Label != "joker" {
+		t.Fatalf("project menu visible after j = %#v, want joker only", visible)
+	}
+
+	updated, _ = model.Update(keyPress("k", 0))
+	model = requireSidebarModel(t, updated)
+	if model.menu.Filter != "jk" || model.menu.Cursor != 0 {
+		t.Fatalf("project menu after k filter=%q cursor=%d, want filter jk and cursor 0", model.menu.Filter, model.menu.Cursor)
+	}
+}
+
+func TestSidebarModelProjectMenuArrowAndAltJKNavigate(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+		LoadProjects: func() []ProjectItem {
+			return []ProjectItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}
+		},
+	})
+	model.openProjectMenu()
+
+	for _, step := range []struct {
+		name string
+		key  tea.KeyPressMsg
+		want string
+	}{
+		{name: "down", key: tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}), want: "beta"},
+		{name: "alt+j", key: altKeyPress("j"), want: "gamma"},
+		{name: "up", key: tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}), want: "beta"},
+		{name: "alt+k", key: altKeyPress("k"), want: "alpha"},
+	} {
+		updated, _ := model.Update(step.key)
+		model = requireSidebarModel(t, updated)
+		visible := model.visibleMenuItems()
+		if visible[model.menu.Cursor].Label != step.want {
+			t.Fatalf("after %s cursor label = %q, want %q (visible %#v)", step.name, visible[model.menu.Cursor].Label, step.want, visible)
+		}
+	}
+}
+
+func TestSidebarModelProjectMenuFilterAffordanceAndEmptyStates(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+		LoadProjects: func() []ProjectItem {
+			return []ProjectItem{{Name: "joker"}, {Name: "alpha"}}
+		},
+	})
+	model.openProjectMenu()
+	view := stripANSI(model.Render())
+	for _, want := range []string{" type to filter projects", "type to filter", "↑/↓ or alt+j/k"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("project picker view missing %q: %q", want, view)
+		}
+	}
+
+	updated, _ := model.Update(keyPress("j", 0))
+	model = requireSidebarModel(t, updated)
+	view = stripANSI(model.Render())
+	if !strings.Contains(view, " j") {
+		t.Fatalf("filtered project picker view missing active query: %q", view)
+	}
+
+	updated, _ = model.Update(keyPress("z", 0))
+	model = requireSidebarModel(t, updated)
+	view = stripANSI(model.Render())
+	if !strings.Contains(view, `No matches for "jz"`) {
+		t.Fatalf("no-match project picker view = %q, want query-specific empty state", view)
+	}
+
+	model.menu.Filter = " jz "
+	view = stripANSI(model.Render())
+	if !strings.Contains(view, " jz") || !strings.Contains(view, `No matches for "jz"`) {
+		t.Fatalf("trimmed no-match project picker view = %q, want trimmed filter affordance and empty state", view)
+	}
+}
+
+func TestSidebarModelProjectMenuEmptyProjectList(t *testing.T) {
+	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}}, Actions{
+		LoadProjects: func() []ProjectItem { return nil },
+	})
+	model.openProjectMenu()
+	view := stripANSI(model.Render())
+	if !strings.Contains(view, "No projects found") {
+		t.Fatalf("empty project picker view = %q, want No projects found", view)
+	}
+}
+
 func TestSidebarModelSearchFiltersTreeSessions(t *testing.T) {
 	model := newTestSidebarModel([]SessionItem{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}, Actions{})
 	updated, _ := model.Update(keyPress("/", 0))

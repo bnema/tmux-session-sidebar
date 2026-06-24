@@ -115,14 +115,27 @@ func (m *SidebarModel) clampMenuCursor() {
 
 func (m SidebarModel) renderMenuRows(styles sidebarStyles) string {
 	visible := m.visibleMenuItems()
+	lines := []string{}
+	projectFilter := ""
+	if m.mode == ModeProject {
+		projectFilter = strings.TrimSpace(m.menu.Filter)
+		filterCopy := "type to filter projects"
+		if projectFilter != "" {
+			filterCopy = projectFilter
+		}
+		lines = append(lines, styles.dim.Render(" "+filterCopy))
+	}
 	if len(visible) == 0 {
 		empty := m.menu.Spec.EmptyLabel
+		if m.mode == ModeProject && projectFilter != "" {
+			empty = "No matches for \"" + projectFilter + "\""
+		}
 		if empty == "" {
 			empty = "no items"
 		}
-		return styles.dim.Render(empty)
+		lines = append(lines, styles.dim.Render(empty))
+		return strings.Join(lines, "\n")
 	}
-	lines := make([]string, 0, len(visible)+1)
 	for i, item := range visible {
 		if item.Header {
 			lines = append(lines, styles.accent.Render(strings.ToUpper(item.Label)))

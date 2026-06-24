@@ -322,7 +322,7 @@ func (m SidebarModel) updateSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 }
 
 func (m SidebarModel) updateMenuKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if delta, ok := navigationKeyDelta(msg); ok {
+	if delta, ok := menuNavigationKeyDelta(msg, m.mode); ok {
 		m.moveMenu(delta)
 		return m.finishInteractiveUpdate()
 	}
