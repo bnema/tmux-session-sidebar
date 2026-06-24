@@ -77,78 +77,22 @@ func (r runtimeRouter) direct() runtimeRouter {
 }
 
 func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer, stderr io.Writer) error {
-	if r.ipcClient != nil && routeUsesIPC(route.Path) {
-		if err := r.sendIPC(ctx, route); err != nil {
-			shouldFallback := r.sidebar != nil && ipcUnavailableForBootstrap(err)
-			if !shouldFallback {
-				return err
-			}
-			r.ensureDaemonStartedBestEffort(ctx, route, stderr)
-		} else {
-			return nil
-		}
+	if handled, err := r.handleIPCRoute(ctx, route, stderr); handled || err != nil {
+		return err
 	}
 	if routeRequiresSidebar(route.Path) && r.sidebar == nil {
 		return fmt.Errorf("runtime router: sidebar port is required for %s", route.Path)
 	}
-	switch route.Path {
-	case "sidebar/toggle":
-		return toggleSidebar(ctx, route.Flags, r.sidebar)
-	case "sidebar/open":
-		return openSidebar(ctx, route.Flags, r.sidebar)
-	case "sidebar/close":
-		return closeSidebar(ctx, r.sidebar)
-	case "sidebar/refresh":
-		return refreshSidebar(ctx, route.Flags["client"], r.sidebar)
-	case "action/quick-switch":
-		return quickSwitch(ctx, route.Flags, r.sidebar)
-	case "action/switch":
-		return switchClient(ctx, route.Flags["client"], route.Flags["session"], r.sidebar)
-	case "action/toggle-numeric":
-		return nil
-	case "action/create-project":
-		return r.withMetadataReconcile(ctx, createProject(ctx, route.Flags, stdout, r.sidebar))
-	case "action/create-current-git-project":
-		return r.withMetadataReconcile(ctx, createCurrentGitProject(ctx, route.Flags, r.sidebar))
-	case "action/create-adhoc":
-		return r.withMetadataReconcile(ctx, createAdhoc(ctx, route.Flags, r.sidebar))
-	case "action/rename":
-		return r.withMetadataReconcile(ctx, renameSession(ctx, route.Flags, r.sidebar))
-	case "action/kill":
-		return r.withMetadataReconcile(ctx, killSession(ctx, route.Flags, r.sidebar))
-	case "resurrect/post-save-layout":
-		if len(route.Args) < 1 {
-			return fmt.Errorf("resurrect post-save-layout: missing save file")
-		}
-		return resurrectPostSaveLayout(ctx, route.Args[0])
-	case "daemon/ensure":
-		return ensureRestoredAndCapturedOnStartup(ctx)
-	case "daemon/bootstrap":
-		return bootstrapSidebarDaemonForEnvironment(ctx, r.runtimeEnvironment(), stderr, r.ipcServer, r.direct())
-	case "daemon/serve-ui":
-		return serveSidebarUIForEnvironment(ctx, r.runtimeEnvironment(), route.Flags, stdout, r.sidebar, r.ipcClient)
-	case "hook/client-attached":
-		return r.withMetadataReconcile(ctx, ensureRestoredAndCapturedAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar))
-	case "hook/client-detached":
-		return r.withMetadataReconcile(ctx, captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar, false))
-	case "hook/client-session-changed":
-		return r.withMetadataReconcile(ctx, captureLiveSidebarSessionsAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar, true))
-	case "hook/client-resized", "hook/window-resized":
-		return syncSidebarWidth(ctx, route.Path, route.Flags, r.sidebar)
-	case "hook/window-layout-changed":
-		return captureSidebarWidthBaseline(ctx, route.Flags, r.sidebar)
-	case "hook/agent-event":
-		return recordAgentHookEvent(ctx, route.Flags)
-	case "hooks/run":
-		return runHooksCommand(ctx, route.Args, route.Flags, stdout, stderr)
-	case "runtime/self-update":
-		return runSelfUpdate(ctx, stdout, stderr)
-	case "daemon/serve":
-		return serveSidebarDaemonForEnvironment(ctx, r.runtimeEnvironment(), r.ipcServer, r.direct())
-	default:
-		_, _ = fmt.Fprintf(stderr, "%s not implemented yet\n", route.Path)
-		return fmt.Errorf("unimplemented route: %s", route.Path)
+	if isSidebarRoute(route.Path) {
+		return r.handleSidebarRoute(ctx, route)
 	}
+	if isActionRoute(route.Path) {
+		return r.handleActionRoute(ctx, route, stdout)
+	}
+	if isHookRoute(route.Path) {
+		return r.handleHookRoute(ctx, route)
+	}
+	return r.handleRuntimeRoute(ctx, route, stdout, stderr)
 }
 
 func ipcUnavailableForBootstrap(err error) bool {
