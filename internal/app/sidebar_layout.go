@@ -208,71 +208,30 @@ func saveReconciledSidebarLayout(ctx context.Context, live []string) error {
 }
 
 func saveNewSidebarCategory(ctx context.Context, name string, live []string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return fmt.Errorf("create sidebar category: name is required")
-	}
-	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
-		id := uniqueLayoutID("category", layout)
-		layout.Items = append(layout.Items, sidebarlayout.CategoryItem(id, name, false, nil))
+	return withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
+		layout, err := sidebarlayout.AddCategory(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder, name)
+		if err != nil {
+			return err
+		}
 		state.SidebarLayout = persistedLayoutFromCore(layout)
+		return saveLoadedSidebarState(ctx, store, *state)
 	})
 }
 
 func saveSidebarSessionCategory(ctx context.Context, sessionName string, categoryID string, live []string) error {
-	sessionName = strings.TrimSpace(sessionName)
-	categoryID = strings.TrimSpace(categoryID)
-	if sessionName == "" || categoryID == "" {
-		return nil
-	}
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
-		foundTarget := false
-		for itemIndex := range layout.Items {
-			if layout.Items[itemIndex].Kind != sidebarlayout.ItemKindCategory {
-				continue
-			}
-			category := &layout.Items[itemIndex].Category
-			kept := category.Sessions[:0]
-			for _, ref := range category.Sessions {
-				if ref.Name != sessionName {
-					kept = append(kept, ref)
-				}
-			}
-			category.Sessions = kept
-			if category.ID == categoryID {
-				foundTarget = true
-				category.Sessions = append(category.Sessions, sidebarlayout.SessionRef{Name: sessionName})
-			}
-		}
-		if foundTarget {
+		layout, changed := sidebarlayout.AssignSessionCategory(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder, sessionName, categoryID)
+		if changed {
 			state.SidebarLayout = persistedLayoutFromCore(layout)
 		}
 	})
 }
 
 func saveSidebarCategoryColor(ctx context.Context, categoryID string, color string, live []string) error {
-	categoryID = strings.TrimSpace(categoryID)
-	color = strings.TrimSpace(color)
-	if categoryID == "" {
-		return nil
-	}
 	return withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
-		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
-		found := false
-		for i := range layout.Items {
-			if layout.Items[i].Kind == sidebarlayout.ItemKindCategory && layout.Items[i].Category.ID == categoryID {
-				layout.Items[i].Category.Color = color
-				found = true
-				break
-			}
-		}
-		if !found {
-			if color == "" {
-				return nil
-			}
-			return fmt.Errorf("color sidebar category: category %q not found", categoryID)
+		layout, changed, err := sidebarlayout.SetCategoryColor(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder, categoryID, color)
+		if err != nil || !changed {
+			return err
 		}
 		state.SidebarLayout = persistedLayoutFromCore(layout)
 		return saveLoadedSidebarState(ctx, store, *state)
@@ -280,56 +239,28 @@ func saveSidebarCategoryColor(ctx context.Context, categoryID string, color stri
 }
 
 func saveSidebarCategoryCollapsed(ctx context.Context, categoryID string, collapsed bool, live []string) error {
-	categoryID = strings.TrimSpace(categoryID)
-	if categoryID == "" {
-		return nil
-	}
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
-		for i := range layout.Items {
-			if layout.Items[i].Kind == sidebarlayout.ItemKindCategory && layout.Items[i].Category.ID == categoryID {
-				layout.Items[i].Category.Collapsed = collapsed
-				break
-			}
+		layout, changed := sidebarlayout.SetCategoryCollapsed(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder, categoryID, collapsed)
+		if changed {
+			state.SidebarLayout = persistedLayoutFromCore(layout)
 		}
-		state.SidebarLayout = persistedLayoutFromCore(layout)
 	})
 }
 
 func saveSidebarCategorySessionsExpanded(ctx context.Context, categoryID string, expanded bool, live []string) error {
-	categoryID = strings.TrimSpace(categoryID)
-	if categoryID == "" {
-		return nil
-	}
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
-		for i := range layout.Items {
-			if layout.Items[i].Kind == sidebarlayout.ItemKindCategory && layout.Items[i].Category.ID == categoryID {
-				layout.Items[i].Category.SessionsExpanded = expanded
-				break
-			}
+		layout, changed := sidebarlayout.SetCategorySessionsExpanded(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder, categoryID, expanded)
+		if changed {
+			state.SidebarLayout = persistedLayoutFromCore(layout)
 		}
-		state.SidebarLayout = persistedLayoutFromCore(layout)
 	})
 }
 
 func saveRenamedSidebarCategory(ctx context.Context, categoryID string, name string, live []string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return fmt.Errorf("rename sidebar category: name is required")
-	}
 	return withLoadedSidebarState(ctx, func(store scopedStateStore, state *ports.PersistedState) error {
-		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
-		found := false
-		for i, item := range layout.Items {
-			if item.Kind == sidebarlayout.ItemKindCategory && item.Category.ID == categoryID {
-				layout.Items[i].Category.Name = name
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("rename sidebar category: category %q not found", categoryID)
+		layout, err := sidebarlayout.RenameCategory(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder, categoryID, name)
+		if err != nil {
+			return err
 		}
 		state.SidebarLayout = persistedLayoutFromCore(layout)
 		return saveLoadedSidebarState(ctx, store, *state)
@@ -338,16 +269,14 @@ func saveRenamedSidebarCategory(ctx context.Context, categoryID string, name str
 
 func saveNewSidebarSpacer(ctx context.Context, live []string) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
-		layout.Items = append(layout.Items, sidebarlayout.SpacerItem(uniqueLayoutID("spacer", layout)))
+		layout := sidebarlayout.AddSpacer(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
 		state.SidebarLayout = persistedLayoutFromCore(layout)
 	})
 }
 
 func saveNewSidebarSeparator(ctx context.Context, live []string) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
-		layout.Items = append(layout.Items, sidebarlayout.SeparatorItem(uniqueLayoutID("separator", layout)))
+		layout := sidebarlayout.AddSeparator(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
 		state.SidebarLayout = persistedLayoutFromCore(layout)
 	})
 }
@@ -366,35 +295,16 @@ func sidebarlayoutSelectionForItem(itemID string) sidebarlayout.Selection {
 
 func saveMovedSidebarLayoutItem(ctx context.Context, selection sidebarlayout.Selection, delta int, live []string) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
-		layout = sidebarlayout.MoveSelectionVisible(layout, selection, delta, persistedShowNumeric(*state))
+		layout := sidebarlayout.MoveSelectionUseCase(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder, selection, delta, persistedShowNumeric(*state))
 		state.SidebarLayout = persistedLayoutFromCore(layout)
 	})
 }
 
 func saveDeletedSidebarLayoutItem(ctx context.Context, selection sidebarlayout.Selection, live []string) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		layout := sidebarlayout.EnsureLayout(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder)
-		items := make([]sidebarlayout.LayoutItem, 0, len(layout.Items))
-		for _, item := range layout.Items {
-			if sidebarLayoutItemMatchesSelection(item, selection) {
-				continue
-			}
-			items = append(items, item)
-		}
-		state.SidebarLayout = persistedLayoutFromCore(sidebarlayout.EnsureLayout(sidebarlayout.Layout{Items: items}, live, state.SessionOrder))
+		layout := sidebarlayout.DeleteSelection(coreLayoutFromPersisted(state.SidebarLayout), live, state.SessionOrder, selection)
+		state.SidebarLayout = persistedLayoutFromCore(layout)
 	})
-}
-
-func sidebarLayoutItemMatchesSelection(item sidebarlayout.LayoutItem, selection sidebarlayout.Selection) bool {
-	switch selection.Kind {
-	case sidebarlayout.RowKindCategory:
-		return item.Kind == sidebarlayout.ItemKindCategory && item.Category.ID == selection.CategoryID
-	case sidebarlayout.RowKindSeparator, sidebarlayout.RowKindSpacer:
-		return item.ID == selection.ItemID
-	default:
-		return false
-	}
 }
 
 func sidebarSelectionForCurrent(layout sidebarlayout.Layout, current string) sidebarlayout.Selection {
@@ -445,18 +355,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func uniqueLayoutID(prefix string, layout sidebarlayout.Layout) string {
-	used := map[string]bool{}
-	for _, item := range layout.Items {
-		used[item.ID] = true
-	}
-	for i := 1; i <= 10000; i++ {
-		id := fmt.Sprintf("%s:%d", prefix, i)
-		if !used[id] {
-			return id
-		}
-	}
-	return fmt.Sprintf("%s:%d", prefix, time.Now().UnixNano())
 }
