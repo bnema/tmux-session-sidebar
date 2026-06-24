@@ -400,6 +400,12 @@ func TestSidebarModelProjectMenuFilterAffordanceAndEmptyStates(t *testing.T) {
 	if !strings.Contains(view, `No matches for "jz"`) {
 		t.Fatalf("no-match project picker view = %q, want query-specific empty state", view)
 	}
+
+	model.menu.Filter = " jz "
+	view = stripANSI(model.Render())
+	if !strings.Contains(view, " jz") || !strings.Contains(view, `No matches for "jz"`) {
+		t.Fatalf("trimmed no-match project picker view = %q, want trimmed filter affordance and empty state", view)
+	}
 }
 
 func TestSidebarModelProjectMenuEmptyProjectList(t *testing.T) {
