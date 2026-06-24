@@ -126,16 +126,14 @@ func (s *Service) CaptureSessionHeat(ctx context.Context, serverID string) error
 		return ErrMissingQuery
 	}
 
-	state, err := s.store.Load(ctx, serverID)
-	if err != nil {
-		return err
-	}
 	live, err := s.query.ListSessions(ctx)
 	if err != nil {
 		return err
 	}
-	_ = s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
-	return s.store.Save(ctx, serverID, state)
+	return ports.UpdateState(ctx, s.store, serverID, func(state *ports.PersistedState) error {
+		_ = s.captureHeatIntoState(ctx, state, live, s.loadHeatConfig(ctx))
+		return nil
+	})
 }
 
 func (s *Service) CaptureLiveSessionsWithConfig(ctx context.Context, serverID string, snapshot ports.ConfigSnapshot) error {
@@ -162,31 +160,32 @@ func (s *Service) captureLiveSessions(ctx context.Context, serverID string, snap
 		return false, ErrMissingQuery
 	}
 
-	state, err := s.store.Load(ctx, serverID)
-	if err != nil {
-		return false, err
-	}
 	live, err := s.query.ListSessions(ctx)
 	if err != nil {
 		return false, err
 	}
-	if protectEmpty && persistableSessionCount(live) == 0 && persisted.IsMeaningful(state) {
-		return false, nil
-	}
-	state.Sessions = reconcileLiveSessionMetadata(ctx, s.query, live, state.Sessions)
-	state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
-	state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
-	state.PinColors = reconcilePinColors(state.PinColors, live)
-	if snapshot != nil {
-		capture := heatCaptureResult{}
-		if SessionHeatCaptureRequired(*snapshot) {
-			capture = s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(*snapshot))
+	changed := false
+	err = ports.UpdateState(ctx, s.store, serverID, func(state *ports.PersistedState) error {
+		if protectEmpty && persistableSessionCount(live) == 0 && persisted.IsMeaningful(*state) {
+			return nil
 		}
-		applyRecentSessionOrderAfterCapture(&state, live, *snapshot, time.Now(), capture)
-	} else {
-		_ = s.captureHeatIntoState(ctx, &state, live, s.loadHeatConfig(ctx))
-	}
-	return true, s.store.Save(ctx, serverID, state)
+		state.Sessions = reconcileLiveSessionMetadata(ctx, s.query, live, state.Sessions)
+		state.SessionOrder = reconcileSessionOrder(state.SessionOrder, live)
+		state.PinnedSessions = reconcilePinnedSessions(state.PinnedSessions, live)
+		state.PinColors = reconcilePinColors(state.PinColors, live)
+		if snapshot != nil {
+			capture := heatCaptureResult{}
+			if SessionHeatCaptureRequired(*snapshot) {
+				capture = s.captureHeatIntoState(ctx, state, live, heatConfigFromSnapshot(*snapshot))
+			}
+			applyRecentSessionOrderAfterCapture(state, live, *snapshot, time.Now(), capture)
+		} else {
+			_ = s.captureHeatIntoState(ctx, state, live, s.loadHeatConfig(ctx))
+		}
+		changed = true
+		return nil
+	})
+	return changed, err
 }
 
 func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID string, snapshot ports.ConfigSnapshot) error {
@@ -200,17 +199,15 @@ func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID str
 		return ErrMissingQuery
 	}
 
-	state, err := s.store.Load(ctx, serverID)
-	if err != nil {
-		return err
-	}
 	live, err := s.query.ListSessions(ctx)
 	if err != nil {
 		return err
 	}
-	capture := s.captureHeatIntoState(ctx, &state, live, heatConfigFromSnapshot(snapshot))
-	applyRecentSessionOrderAfterCapture(&state, live, snapshot, time.Now(), capture)
-	return s.store.Save(ctx, serverID, state)
+	return ports.UpdateState(ctx, s.store, serverID, func(state *ports.PersistedState) error {
+		capture := s.captureHeatIntoState(ctx, state, live, heatConfigFromSnapshot(snapshot))
+		applyRecentSessionOrderAfterCapture(state, live, snapshot, time.Now(), capture)
+		return nil
+	})
 }
 
 func (s *Service) ResetTransientHeatState(ctx context.Context, serverID string) error {

@@ -274,21 +274,19 @@ type metadataCaptureResult struct {
 func (s *MetadataService) batchMetadataSave(ctx context.Context, lockStore func(context.Context, func(ports.StateStorePort) error) error, liveNames map[string]struct{}, deletes map[string]struct{}, statuses map[string]ports.GitStatus) (bool, error) {
 	changed := false
 	err := lockStore(ctx, func(store ports.StateStorePort) error {
-		latest, err := store.Load(ctx, "tmux")
-		if err != nil {
-			return err
-		}
-		next := liveMetadata(latest.Metadata, liveNames)
-		for name := range deletes {
-			delete(next, name)
-		}
-		maps.Copy(next, statuses)
-		if gitMetadataEqual(latest.Metadata, next) {
+		return ports.UpdateState(ctx, store, "tmux", func(latest *ports.PersistedState) error {
+			next := liveMetadata(latest.Metadata, liveNames)
+			for name := range deletes {
+				delete(next, name)
+			}
+			maps.Copy(next, statuses)
+			if gitMetadataEqual(latest.Metadata, next) {
+				return nil
+			}
+			latest.Metadata = next
+			changed = true
 			return nil
-		}
-		latest.Metadata = next
-		changed = true
-		return store.Save(ctx, "tmux", latest)
+		})
 	})
 	return changed, err
 }
@@ -686,24 +684,22 @@ func (s *MetadataService) CaptureRepo(ctx context.Context, sub MetadataRepoSubsc
 	}
 	changed := false
 	err = lockStore(ctx, func(store ports.StateStorePort) error {
-		latest, err := store.Load(ctx, "tmux")
-		if err != nil {
-			return err
-		}
-		next := cloneGitMetadata(latest.Metadata)
-		for _, name := range sub.SessionNames {
-			if terminalDelete {
-				delete(next, name)
-				continue
+		return ports.UpdateState(ctx, store, "tmux", func(latest *ports.PersistedState) error {
+			next := cloneGitMetadata(latest.Metadata)
+			for _, name := range sub.SessionNames {
+				if terminalDelete {
+					delete(next, name)
+					continue
+				}
+				next[name] = status
 			}
-			next[name] = status
-		}
-		if gitMetadataEqual(latest.Metadata, next) {
+			if gitMetadataEqual(latest.Metadata, next) {
+				return nil
+			}
+			latest.Metadata = next
+			changed = true
 			return nil
-		}
-		latest.Metadata = next
-		changed = true
-		return store.Save(ctx, "tmux", latest)
+		})
 	})
 	if err != nil {
 		return false, err

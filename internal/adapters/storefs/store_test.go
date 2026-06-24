@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/bnema/tmux-session-sidebar/internal/core/persisted"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
@@ -39,6 +41,95 @@ func TestStoreLoadSave(t *testing.T) {
 				t.Fatalf("loaded state = %#v, want %#v", got, want)
 			}
 		})
+	}
+}
+
+func TestStoreUpdateSerializesReadModifyWrite(t *testing.T) {
+	store := New(t.TempDir())
+	ctx := context.Background()
+
+	const updates = 16
+	var ready sync.WaitGroup
+	ready.Add(updates)
+	start := make(chan struct{})
+	var done sync.WaitGroup
+	done.Add(updates)
+	for i := range updates {
+		go func(i int) {
+			defer done.Done()
+			ready.Done()
+			<-start
+			if err := store.Update(ctx, "server", func(state *ports.PersistedState) error {
+				state.SessionOrder = append(state.SessionOrder, string(rune('a'+i)))
+				return nil
+			}); err != nil {
+				t.Errorf("Update error: %v", err)
+			}
+		}(i)
+	}
+	ready.Wait()
+	close(start)
+	done.Wait()
+
+	got, err := store.Load(ctx, "server")
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if len(got.SessionOrder) != updates {
+		t.Fatalf("SessionOrder length = %d, want %d: %#v", len(got.SessionOrder), updates, got.SessionOrder)
+	}
+}
+
+func TestStoreUpdateSkipsSaveWhenStateUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	store := New(dir)
+	ctx := context.Background()
+	initial := ports.PersistedState{SessionOrder: []string{"alpha"}}
+	if err := store.Save(ctx, "server", initial); err != nil {
+		t.Fatalf("Save error: %v", err)
+	}
+	path := filepath.Join(dir, "server.json")
+	baseline := time.Unix(1, 0)
+	if err := os.Chtimes(path, baseline, baseline); err != nil {
+		t.Fatalf("Chtimes error: %v", err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat error: %v", err)
+	}
+	if err := store.Update(ctx, "server", func(state *ports.PersistedState) error { return nil }); err != nil {
+		t.Fatalf("Update error: %v", err)
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat after error: %v", err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Fatalf("unchanged Update rewrote state: before %v after %v", before.ModTime(), after.ModTime())
+	}
+}
+
+func TestStoreUpdateDetectsInPlaceMapMutations(t *testing.T) {
+	store := New(t.TempDir())
+	ctx := context.Background()
+	initial := ports.PersistedState{Sessions: map[string]ports.SessionMetadata{"alpha": {Kind: "project"}}}
+	if err := store.Save(ctx, "server", initial); err != nil {
+		t.Fatalf("Save error: %v", err)
+	}
+
+	if err := store.Update(ctx, "server", func(state *ports.PersistedState) error {
+		state.Sessions["alpha"] = ports.SessionMetadata{Kind: "captured", LastPath: "/tmp/alpha"}
+		return nil
+	}); err != nil {
+		t.Fatalf("Update error: %v", err)
+	}
+
+	got, err := store.Load(ctx, "server")
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if got.Sessions["alpha"].LastPath != "/tmp/alpha" {
+		t.Fatalf("LastPath = %q, want /tmp/alpha", got.Sessions["alpha"].LastPath)
 	}
 }
 

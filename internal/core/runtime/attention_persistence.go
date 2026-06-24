@@ -39,34 +39,32 @@ func (s *Service) RecordAgentAttentionEvent(ctx context.Context, serverID string
 		event.OccurredAt = time.Now().UTC()
 	}
 
-	state, err := s.store.Load(ctx, serverID)
-	if err != nil {
-		return false, err
-	}
-	decoded := attention.DecodeStateMap(state.AgentAttention)
-	if liveSessionIDs, ok := s.liveSessionIDs(ctx); ok {
-		pruneAgentAttentionSessions(decoded, liveSessionIDs)
-	}
 	sessionID := strings.TrimSpace(event.SessionID)
-	previousSessionState := decoded[sessionID]
-	previousAttention := previousSessionState.Attention
-	visited := shouldSuppressEventAttentionWhileSessionIsCurrent(previousSessionState) && s.sessionCurrentlyAttached(ctx, sessionID)
-	sessionState := attention.ApplyEvent(previousSessionState, attention.Event{
-		Action:     event.Action,
-		Agent:      event.Agent,
-		PaneID:     event.PaneID,
-		OccurredAt: event.OccurredAt,
-	}, visited)
-	if emptyAgentAttentionState(sessionState) {
-		delete(decoded, sessionID)
-	} else {
-		decoded[sessionID] = sessionState
-	}
-	state.AgentAttention = attention.EncodeStateMap(decoded)
-	if err := s.store.Save(ctx, serverID, state); err != nil {
-		return false, err
-	}
-	return previousAttention != sessionState.Attention, nil
+	attentionChanged := false
+	err := ports.UpdateState(ctx, s.store, serverID, func(state *ports.PersistedState) error {
+		decoded := attention.DecodeStateMap(state.AgentAttention)
+		if liveSessionIDs, ok := s.liveSessionIDs(ctx); ok {
+			pruneAgentAttentionSessions(decoded, liveSessionIDs)
+		}
+		previousSessionState := decoded[sessionID]
+		previousAttention := previousSessionState.Attention
+		visited := shouldSuppressEventAttentionWhileSessionIsCurrent(previousSessionState) && s.sessionCurrentlyAttached(ctx, sessionID)
+		sessionState := attention.ApplyEvent(previousSessionState, attention.Event{
+			Action:     event.Action,
+			Agent:      event.Agent,
+			PaneID:     event.PaneID,
+			OccurredAt: event.OccurredAt,
+		}, visited)
+		if emptyAgentAttentionState(sessionState) {
+			delete(decoded, sessionID)
+		} else {
+			decoded[sessionID] = sessionState
+		}
+		state.AgentAttention = attention.EncodeStateMap(decoded)
+		attentionChanged = previousAttention != sessionState.Attention
+		return nil
+	})
+	return attentionChanged, err
 }
 
 func (s *Service) CaptureVisitedAgentAttention(ctx context.Context, serverID string) error {
@@ -75,11 +73,6 @@ func (s *Service) CaptureVisitedAgentAttention(ctx context.Context, serverID str
 	}
 	if s.query == nil {
 		return ErrMissingQuery
-	}
-
-	state, err := s.store.Load(ctx, serverID)
-	if err != nil {
-		return err
 	}
 
 	live, err := s.query.ListSessions(ctx)
@@ -91,45 +84,47 @@ func (s *Service) CaptureVisitedAgentAttention(ctx context.Context, serverID str
 		liveSessionIDs[session.ID] = true
 	}
 
-	decoded := attention.DecodeStateMap(state.AgentAttention)
-	changed := pruneAgentAttentionSessions(decoded, liveSessionIDs)
-	clients, err := s.query.ListClients(ctx)
-	if err != nil {
-		if !changed && len(state.Clients) == 0 {
+	clients, clientsErr := s.query.ListClients(ctx)
+	return ports.UpdateState(ctx, s.store, serverID, func(state *ports.PersistedState) error {
+		decoded := attention.DecodeStateMap(state.AgentAttention)
+		changed := pruneAgentAttentionSessions(decoded, liveSessionIDs)
+		if clientsErr != nil {
+			if !changed && len(state.Clients) == 0 {
+				return nil
+			}
+			state.AgentAttention = attention.EncodeStateMap(decoded)
+			state.Clients = nil
+			return nil
+		}
+		previousClientSessions := decodePersistedClientSessions(state.Clients)
+		currentClientSessions := attachedClientSessions(clients)
+		now := time.Now().UTC()
+		for clientID, sessionID := range currentClientSessions {
+			previousSessionID := previousClientSessions[clientID]
+			if previousSessionID == sessionID {
+				continue
+			}
+			sessionState, ok := decoded[sessionID]
+			if previousSessionID == "" && (!ok || !sessionState.Attention) {
+				continue
+			}
+			decoded[sessionID] = attention.AcknowledgeVisit(sessionState, now)
+			changed = true
+		}
+		if len(previousClientSessions) == 0 {
+			previousClientSessions = nil
+		}
+		if len(currentClientSessions) == 0 {
+			currentClientSessions = nil
+		}
+		clientsChanged := !reflect.DeepEqual(previousClientSessions, currentClientSessions)
+		if !changed && !clientsChanged {
 			return nil
 		}
 		state.AgentAttention = attention.EncodeStateMap(decoded)
-		state.Clients = nil
-		return s.store.Save(ctx, serverID, state)
-	}
-	previousClientSessions := decodePersistedClientSessions(state.Clients)
-	currentClientSessions := attachedClientSessions(clients)
-	now := time.Now().UTC()
-	for clientID, sessionID := range currentClientSessions {
-		previousSessionID := previousClientSessions[clientID]
-		if previousSessionID == sessionID {
-			continue
-		}
-		sessionState, ok := decoded[sessionID]
-		if previousSessionID == "" && (!ok || !sessionState.Attention) {
-			continue
-		}
-		decoded[sessionID] = attention.AcknowledgeVisit(sessionState, now)
-		changed = true
-	}
-	if len(previousClientSessions) == 0 {
-		previousClientSessions = nil
-	}
-	if len(currentClientSessions) == 0 {
-		currentClientSessions = nil
-	}
-	clientsChanged := !reflect.DeepEqual(previousClientSessions, currentClientSessions)
-	if !changed && !clientsChanged {
+		state.Clients = encodePersistedClientSessions(currentClientSessions)
 		return nil
-	}
-	state.AgentAttention = attention.EncodeStateMap(decoded)
-	state.Clients = encodePersistedClientSessions(currentClientSessions)
-	return s.store.Save(ctx, serverID, state)
+	})
 }
 
 func (s *Service) liveSessionIDs(ctx context.Context) (map[string]bool, bool) {
