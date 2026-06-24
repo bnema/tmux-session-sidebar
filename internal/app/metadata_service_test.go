@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"maps"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -279,6 +280,21 @@ func (s *metadataFakeStore) Save(ctx context.Context, serverID string, state por
 	return nil
 }
 
+func (s *metadataFakeStore) Update(ctx context.Context, serverID string, update ports.StateStoreUpdate) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state := cloneMetadataState(s.state)
+	previous := cloneMetadataState(s.state)
+	if err := update(&state); err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(previous, state) {
+		s.state = cloneMetadataState(state)
+		s.saves.Add(1)
+	}
+	return nil
+}
+
 func (s *metadataFakeStore) metadata(name string) ports.GitStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -307,6 +323,10 @@ type metadataFailingSaveStore struct {
 }
 
 func (s *metadataFailingSaveStore) Save(ctx context.Context, serverID string, state ports.PersistedState) error {
+	return errors.New("save failed")
+}
+
+func (s *metadataFailingSaveStore) Update(ctx context.Context, serverID string, update ports.StateStoreUpdate) error {
 	return errors.New("save failed")
 }
 

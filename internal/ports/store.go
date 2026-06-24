@@ -1,6 +1,10 @@
 package ports
 
-import "context"
+import (
+	"context"
+	"maps"
+	"reflect"
+)
 
 type PersistedState struct {
 	Sessions       map[string]SessionMetadata `json:"sessions,omitempty"`
@@ -52,7 +56,111 @@ type SidebarState struct {
 	AutoSortRecentRunDate string `json:"autoSortRecentRunDate,omitempty"`
 }
 
+type StateStoreUpdate func(state *PersistedState) error
+
 type StateStorePort interface {
 	Load(ctx context.Context, serverID string) (PersistedState, error)
 	Save(ctx context.Context, serverID string, state PersistedState) error
+}
+
+type StateStoreUpdater interface {
+	Update(ctx context.Context, serverID string, update StateStoreUpdate) error
+}
+
+func UpdateState(ctx context.Context, store StateStorePort, serverID string, update StateStoreUpdate) error {
+	if updater, ok := store.(StateStoreUpdater); ok {
+		return updater.Update(ctx, serverID, update)
+	}
+	state, err := store.Load(ctx, serverID)
+	if err != nil {
+		return err
+	}
+	previous := ClonePersistedState(state)
+	if err := update(&state); err != nil {
+		return err
+	}
+	if reflect.DeepEqual(previous, state) {
+		return nil
+	}
+	return store.Save(ctx, serverID, state)
+}
+
+func ClonePersistedState(state PersistedState) PersistedState {
+	clone := state
+	clone.Sessions = maps.Clone(state.Sessions)
+	clone.SessionOrder = cloneStringSlice(state.SessionOrder)
+	clone.PinnedSessions = cloneStringSlice(state.PinnedSessions)
+	clone.PinColors = maps.Clone(state.PinColors)
+	clone.Sidebar = cloneSidebarState(state.Sidebar)
+	clone.SidebarLayout = cloneSidebarLayout(state.SidebarLayout)
+	clone.Clients = cloneByteMap(state.Clients)
+	clone.Heat = cloneByteMap(state.Heat)
+	clone.AgentAttention = cloneByteMap(state.AgentAttention)
+	clone.Metadata = maps.Clone(state.Metadata)
+	return clone
+}
+
+func cloneSidebarState(state *SidebarState) *SidebarState {
+	if state == nil {
+		return nil
+	}
+	clone := *state
+	return &clone
+}
+
+func cloneSidebarLayout(layout *SidebarLayout) *SidebarLayout {
+	if layout == nil {
+		return nil
+	}
+	clone := &SidebarLayout{}
+	if layout.Items == nil {
+		return clone
+	}
+	clone.Items = make([]SidebarLayoutItem, len(layout.Items))
+	for i, item := range layout.Items {
+		clone.Items[i] = item
+		if item.Category != nil {
+			category := *item.Category
+			category.Sessions = cloneSidebarLayoutSessionRefs(item.Category.Sessions)
+			clone.Items[i].Category = &category
+		}
+		if item.Separator != nil {
+			separator := *item.Separator
+			clone.Items[i].Separator = &separator
+		}
+		if item.Spacer != nil {
+			spacer := *item.Spacer
+			clone.Items[i].Spacer = &spacer
+		}
+	}
+	return clone
+}
+
+func cloneStringSlice(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	return append([]string{}, values...)
+}
+
+func cloneSidebarLayoutSessionRefs(values []SidebarLayoutSessionRef) []SidebarLayoutSessionRef {
+	if values == nil {
+		return nil
+	}
+	return append([]SidebarLayoutSessionRef{}, values...)
+}
+
+func cloneByteMap(values map[string][]byte) map[string][]byte {
+	if values == nil {
+		return nil
+	}
+	clone := make(map[string][]byte, len(values))
+	for key, value := range values {
+		if value == nil {
+			clone[key] = nil
+			continue
+		}
+		clone[key] = append([]byte{}, value...)
+	}
+	return clone
 }

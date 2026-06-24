@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/bnema/tmux-session-sidebar/internal/core/persisted"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
@@ -71,6 +73,55 @@ func (s Store) Save(_ context.Context, serverID string, state ports.PersistedSta
 	}
 	defer func() { _ = dir.Close() }()
 	return dir.Sync()
+}
+
+func (s Store) Update(ctx context.Context, serverID string, update ports.StateStoreUpdate) error {
+	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
+		return err
+	}
+	lock, err := s.acquireUpdateLock(ctx, serverID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Close() }()
+
+	state, err := s.Load(ctx, serverID)
+	if err != nil {
+		return err
+	}
+	previous := ports.ClonePersistedState(state)
+	if err := update(&state); err != nil {
+		return err
+	}
+	if reflect.DeepEqual(previous, state) {
+		return nil
+	}
+	return s.Save(ctx, serverID, state)
+}
+
+func (s Store) acquireUpdateLock(ctx context.Context, serverID string) (*os.File, error) {
+	path := filepath.Join(s.Dir, filepath.Base(serverID)+".update.lock")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return file, nil
+		}
+		if err != syscall.EWOULDBLOCK && err != syscall.EAGAIN {
+			_ = file.Close()
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			_ = file.Close()
+			return nil, ctx.Err()
+		default:
+			time.Sleep(25 * time.Millisecond)
+		}
+	}
 }
 
 func (s Store) path(serverID string) string {
