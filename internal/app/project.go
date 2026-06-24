@@ -36,6 +36,7 @@ func projectCandidates(ctx context.Context) ([]projects.Candidate, error) {
 	if err != nil {
 		return nil, err
 	}
+	fs := runtimeFilesystem()
 	var candidates []projects.Candidate
 	for root := range strings.SplitSeq(strings.TrimSpace(rootsOut), ":") {
 		root = strings.TrimSpace(root)
@@ -43,15 +44,21 @@ func projectCandidates(ctx context.Context) ([]projects.Candidate, error) {
 			continue
 		}
 		root = os.ExpandEnv(root)
-		entries, err := os.ReadDir(root)
+		resolvedRoot, err := fs.ResolvePath(root)
 		if err != nil {
+			if isMissingDependencyError(err) {
+				return nil, err
+			}
 			continue
 		}
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
+		dirs, err := fs.ListImmediateDirs(resolvedRoot)
+		if err != nil {
+			if isMissingDependencyError(err) {
+				return nil, err
 			}
-			path := filepath.Join(root, entry.Name())
+			continue
+		}
+		for _, path := range dirs {
 			candidates = append(candidates, projects.CandidateFromPath(path))
 		}
 	}
@@ -131,8 +138,7 @@ func createOrSwitchProject(ctx context.Context, client string, candidate project
 	if !plan.Create {
 		return switchClient(ctx, client, plan.SessionName, sidebar)
 	}
-	metadata := ports.SessionMetadata{Kind: "project", ProjectPath: candidate.Path, LastPath: candidate.Path}
-	if err := withPersistedSessionDuringTmuxAction(ctx, plan.SessionName, metadata, func() error {
+	if err := withPersistedSessionDuringTmuxAction(ctx, plan.SessionName, plan.Metadata(), func() error {
 		return runtimeService().CreateDetachedProjectSession(ctx, existing, plan)
 	}); err != nil {
 		return err

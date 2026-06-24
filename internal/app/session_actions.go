@@ -58,8 +58,7 @@ func createAdhoc(ctx context.Context, flags map[string]string, sidebar ports.Sid
 		})
 	}
 
-	metadata := ports.SessionMetadata{Kind: "adhoc", LastPath: path}
-	if err := withPersistedSessionDuringTmuxAction(ctx, plan.SessionName, metadata, func() error {
+	if err := withPersistedSessionDuringTmuxAction(ctx, plan.SessionName, plan.Metadata(), func() error {
 		return runtimeService().CreateDetachedAdhocSession(ctx, existing, plan)
 	}); err != nil {
 		return err

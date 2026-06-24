@@ -1968,3 +1968,28 @@ func assertClients(t *testing.T, got []ports.ClientSnapshot, want []ports.Client
 		}
 	}
 }
+
+func TestSessionMetadataRoundTripsLastPathCompatibilityOption(t *testing.T) {
+	ctx := context.Background()
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+	metadata := ports.SessionMetadata{Kind: "adhoc", ProjectPath: "/tmp/project", LastPath: "/tmp/last"}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-t", "scratch", "@session-sidebar-kind", "adhoc"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-t", "scratch", "@session-sidebar-project-path", "/tmp/project"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-t", "scratch", "@session-sidebar-last-path", "/tmp/last"}).Return(ports.Result{}, nil)
+	if err := client.SaveSessionMetadata(ctx, "scratch", metadata); err != nil {
+		t.Fatalf("SaveSessionMetadata error: %v", err)
+	}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "scratch", "#{@session-sidebar-kind}"}).Return(ports.Result{Stdout: "adhoc\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "scratch", "#{@session-sidebar-project-path}"}).Return(ports.Result{Stdout: "/tmp/project\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "scratch", "#{@session-sidebar-last-path}"}).Return(ports.Result{Stdout: "/tmp/last\n"}, nil)
+	got, err := client.LoadSessionMetadata(ctx, "scratch")
+	if err != nil {
+		t.Fatalf("LoadSessionMetadata error: %v", err)
+	}
+	if got != metadata {
+		t.Fatalf("LoadSessionMetadata() = %#v, want %#v", got, metadata)
+	}
+}
