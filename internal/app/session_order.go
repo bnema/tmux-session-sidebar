@@ -228,6 +228,13 @@ func (s scopedStateStore) Save(ctx context.Context, serverID string, state ports
 	return s.store.Save(ctx, serverID, state)
 }
 
+func (s scopedStateStore) Update(ctx context.Context, serverID string, update ports.StateStoreUpdate) error {
+	if err := EnsureRuntimeDirPrivate(s.scope.StateDir); err != nil {
+		return err
+	}
+	return ports.UpdateState(ctx, s.store, serverID, update)
+}
+
 func (s scopedStateStore) Dir() string {
 	return s.scope.StateDir
 }
@@ -251,7 +258,10 @@ func withLoadedSidebarState(ctx context.Context, fn func(store scopedStateStore,
 }
 
 func saveLoadedSidebarState(ctx context.Context, store scopedStateStore, state ports.PersistedState) error {
-	return store.Save(ctx, "tmux", state)
+	return store.Update(ctx, "tmux", func(latest *ports.PersistedState) error {
+		*latest = state
+		return nil
+	})
 }
 
 func saveSessionMetadataState(state *ports.PersistedState, name string, metadata ports.SessionMetadata) {

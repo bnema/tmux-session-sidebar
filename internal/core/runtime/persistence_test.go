@@ -526,9 +526,6 @@ func TestCaptureSessionHeatWithConfigDoesNotConsumeRecentOrderWhenHeatCaptureFai
 	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
 	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}}, nil)
 	query.EXPECT().ListClients(ctx).Return(nil, boom)
-	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
-		return reflect.DeepEqual(state.SessionOrder, []string{"beta", "alpha"}) && state.Sidebar == nil
-	})).Return(nil)
 
 	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}); err != nil {
 		t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)

@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	coreruntime "github.com/bnema/tmux-session-sidebar/internal/core/runtime"
@@ -195,131 +194,7 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 		_ = os.Remove(pidFile)
 	}()
 
-	if opts.ensureStartup {
-		if err := ensureRestoredAndCapturedOnStartup(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon ensure failed: %v\n", err)
-			return err
-		}
-	}
-	cfg := loadSidebarConfig(ctx)
-	if err := resetTransientHeatStateOnStartup(ctx); err != nil {
-		return err
-	}
-	var colorSchemeWG sync.WaitGroup
-	colorSchemeWG.Go(func() {
-		if err := NewColorSchemeService().Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: color scheme watcher stopped: %v\n", err)
-		}
-	})
-	metadataReconcile := make(chan struct{}, 1)
-	var metadataWG sync.WaitGroup
-	var metadataMu sync.Mutex
-	metadataStarted := false
-	metadataLastFailureAt := time.Time{}
-	startMetadataWatcher := func(cfg ports.ConfigSnapshot) {
-		if !cfg.MetadataSublineEnabled {
-			return
-		}
-		metadataMu.Lock()
-		if metadataStarted || metadataWatcherRestartInCooldown(time.Now(), metadataLastFailureAt) {
-			metadataMu.Unlock()
-			return
-		}
-		metadataStarted = true
-		metadataMu.Unlock()
-		metadataWG.Go(func() {
-			service := NewMetadataService()
-			service.ReconcileRequests = metadataReconcile
-			err := service.Run(ctx, cfg)
-			failed := err != nil && !errors.Is(err, context.Canceled)
-			metadataMu.Lock()
-			metadataStarted = false
-			if failed {
-				metadataLastFailureAt = time.Now()
-			} else {
-				metadataLastFailureAt = time.Time{}
-			}
-			metadataMu.Unlock()
-			if failed {
-				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: metadata watcher stopped: %v\n", err)
-			}
-		})
-	}
-	pendingFullCaptureAt := time.Time{}
-	if shouldSkipSidebarSessionRestoreForContinuum(ctx, cfg) {
-		pendingFullCaptureAt = time.Now().Add(time.Duration(continuumRestoreWindowSeconds(ctx, cfg)) * time.Second)
-	} else {
-		// captureLiveSidebarSessionsWithConfigProtected must succeed during daemon startup so the
-		// initial session snapshot is available; later captureLiveSidebarHeat ticks only log
-		// failures because stale heat/attention data is less critical than bootstrapping.
-		// The protected variant guards against destructive overwrite of restored state
-		// when only hidden/numeric sessions are visible during startup.
-		captured, err := captureLiveSidebarSessionsWithConfigProtected(ctx, cfg)
-		if err != nil {
-			return err
-		}
-		if !captured {
-			pendingFullCaptureAt = time.Now().Add(sidebarRefreshIntervalFromConfig(cfg))
-		} else {
-			startMetadataWatcher(cfg)
-		}
-	}
-	var ipcWG sync.WaitGroup
-	if ipcServer != nil && router != nil {
-		ipcWG.Go(func() {
-			if err := ipcServer.Serve(ctx, daemonIPCHandler{router: router, stdout: io.Discard, stderr: os.Stderr, mu: &sync.Mutex{}, metadataReconcile: metadataReconcile, expectedScope: scope}); err != nil && !errors.Is(err, context.Canceled) {
-				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: ipc server failed: %v\n", err)
-			}
-		})
-	}
-
-	for {
-		cfg = loadSidebarConfig(ctx)
-		if pendingFullCaptureAt.IsZero() {
-			startMetadataWatcher(cfg)
-		}
-		interval := sidebarRefreshIntervalFromConfig(cfg)
-		if !pendingFullCaptureAt.IsZero() {
-			untilCapture := time.Until(pendingFullCaptureAt)
-			if untilCapture < interval {
-				interval = max(untilCapture, 0)
-			}
-		}
-		timer := time.NewTimer(interval)
-		select {
-		case <-ctx.Done():
-			stopTimerBestEffort(timer)
-			ipcWG.Wait()
-			metadataWG.Wait()
-			colorSchemeWG.Wait()
-			return nil
-		case <-timer.C:
-		}
-		if current, err := runtimeScopeStillCurrent(ctx, scope); err != nil {
-			return err
-		} else if !current {
-			return fmt.Errorf("daemon tmux server identity is stale")
-		}
-		if !pendingFullCaptureAt.IsZero() && !time.Now().Before(pendingFullCaptureAt) {
-			captured, err := captureLiveSidebarSessionsWithConfigProtected(ctx, cfg)
-			if err != nil && !errors.Is(err, context.Canceled) {
-				fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
-				pendingFullCaptureAt = time.Now().Add(sidebarRefreshIntervalFromConfig(cfg))
-			} else if !captured {
-				pendingFullCaptureAt = time.Now().Add(sidebarRefreshIntervalFromConfig(cfg))
-			} else {
-				pendingFullCaptureAt = time.Time{}
-				refreshAllSidebarPanesBestEffort(ctx)
-				startMetadataWatcher(cfg)
-			}
-			continue
-		}
-		if captured, err := captureLiveSidebarHeat(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
-			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
-		} else if captured {
-			refreshAllSidebarPanesBestEffort(ctx)
-		}
-	}
+	return newDaemonLifecycleCoordinator(scope, ipcServer, router, opts).run(ctx)
 }
 
 func captureVisitedAgentAttentionIfEnabled(ctx context.Context, service interface {

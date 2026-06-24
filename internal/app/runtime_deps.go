@@ -217,6 +217,10 @@ func (missingStateStore) Save(context.Context, string, ports.PersistedState) err
 	return missingDependencyError("state store factory")
 }
 
+func (missingStateStore) Update(context.Context, string, ports.StateStoreUpdate) error {
+	return missingDependencyError("state store factory")
+}
+
 type missingLocker struct{}
 
 func (missingLocker) Acquire(context.Context, string) (ports.LockHandle, error) {
