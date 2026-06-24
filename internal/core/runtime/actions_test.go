@@ -8,6 +8,7 @@ import (
 	coreerrors "github.com/bnema/tmux-session-sidebar/internal/core/errors"
 	"github.com/bnema/tmux-session-sidebar/internal/core/projects"
 	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
+	"github.com/bnema/tmux-session-sidebar/internal/ports"
 	"github.com/bnema/tmux-session-sidebar/internal/ports/mocks"
 	"github.com/stretchr/testify/mock"
 )
@@ -123,28 +124,28 @@ func TestCreateSessionRollsBackWhenMetadataSaveFails(t *testing.T) {
 	}
 }
 
-func TestCreateDetachedProjectSessionDoesNotSwitchClient(t *testing.T) {
+func TestCreateDetachedProjectSessionSavesCanonicalMetadata(t *testing.T) {
 	ctx := context.Background()
 	control := mocks.NewMockControlPort(t)
 	meta := mocks.NewMockMetadataPort(t)
 	plan := ProjectSessionPlan{SessionName: "project", ProjectPath: "/tmp/project", Create: true}
 
 	control.EXPECT().CreateSession(ctx, "project", "/tmp/project").Return(nil)
-	meta.EXPECT().SaveSessionMetadata(ctx, "project", mock.Anything).Return(nil)
+	meta.EXPECT().SaveSessionMetadata(ctx, "project", ports.SessionMetadata{Kind: "project", ProjectPath: "/tmp/project", LastPath: "/tmp/project"}).Return(nil)
 
 	if err := NewService(nil, nil, control, nil).WithMetadata(meta).CreateDetachedProjectSession(ctx, []sessions.View{{Name: "alpha"}}, plan); err != nil {
 		t.Fatalf("CreateDetachedProjectSession error: %v", err)
 	}
 }
 
-func TestCreateDetachedAdhocSessionDoesNotSwitchClient(t *testing.T) {
+func TestCreateDetachedAdhocSessionSavesCanonicalMetadata(t *testing.T) {
 	ctx := context.Background()
 	control := mocks.NewMockControlPort(t)
 	meta := mocks.NewMockMetadataPort(t)
 	plan := AdhocSessionPlan{SessionName: "scratch", Path: "/tmp/scratch", Create: true}
 
 	control.EXPECT().CreateSession(ctx, "scratch", "/tmp/scratch").Return(nil)
-	meta.EXPECT().SaveSessionMetadata(ctx, "scratch", mock.Anything).Return(nil)
+	meta.EXPECT().SaveSessionMetadata(ctx, "scratch", ports.SessionMetadata{Kind: "adhoc", LastPath: "/tmp/scratch"}).Return(nil)
 
 	if err := NewService(nil, nil, control, nil).WithMetadata(meta).CreateDetachedAdhocSession(ctx, []sessions.View{{Name: "alpha"}}, plan); err != nil {
 		t.Fatalf("CreateDetachedAdhocSession error: %v", err)

@@ -61,8 +61,7 @@ func (s *Service) CreateDetachedProjectSession(ctx context.Context, existing []s
 		return err
 	}
 	if s.meta != nil {
-		metadata := ports.SessionMetadata{Kind: "project", ProjectPath: plan.ProjectPath}
-		if err := s.meta.SaveSessionMetadata(ctx, plan.SessionName, metadata); err != nil {
+		if err := s.meta.SaveSessionMetadata(ctx, plan.SessionName, plan.Metadata()); err != nil {
 			return s.rollbackCreatedSession(ctx, plan.SessionName, fmt.Errorf("save project metadata for %s: %w", plan.SessionName, err))
 		}
 	}
@@ -91,7 +90,7 @@ func (s *Service) CreateDetachedAdhocSession(ctx context.Context, existing []ses
 		return err
 	}
 	if s.meta != nil {
-		if err := s.meta.SaveSessionMetadata(ctx, plan.SessionName, ports.SessionMetadata{Kind: "adhoc"}); err != nil {
+		if err := s.meta.SaveSessionMetadata(ctx, plan.SessionName, plan.Metadata()); err != nil {
 			return s.rollbackCreatedSession(ctx, plan.SessionName, fmt.Errorf("save adhoc metadata for %s: %w", plan.SessionName, err))
 		}
 	}
@@ -143,10 +142,18 @@ type ProjectSessionPlan struct {
 	Create      bool
 }
 
+func (p ProjectSessionPlan) Metadata() ports.SessionMetadata {
+	return ports.SessionMetadata{Kind: "project", ProjectPath: p.ProjectPath, LastPath: p.ProjectPath}
+}
+
 type AdhocSessionPlan struct {
 	SessionName string
 	Path        string
 	Create      bool
+}
+
+func (p AdhocSessionPlan) Metadata() ports.SessionMetadata {
+	return ports.SessionMetadata{Kind: "adhoc", LastPath: p.Path}
 }
 
 func ValidateCreateSession(existing []sessions.View, name string) error {
