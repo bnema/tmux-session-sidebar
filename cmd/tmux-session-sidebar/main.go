@@ -36,7 +36,7 @@ var (
 func buildRuntimeRouter(ctx context.Context, runner ports.ProcessPort) (app.Router, app.RuntimeScope) {
 	tmuxClient := tmuxcli.Client{Process: runner}
 	git := gitcli.Git{Process: runner}
-	app.SetRuntimeDependencies(app.RuntimeDependencies{
+	deps := app.RuntimeDependencies{
 		Multiplexer:    tmuxClient,
 		Git:            git,
 		Filesystem:     filesystem.FS{},
@@ -60,11 +60,15 @@ func buildRuntimeRouter(ctx context.Context, runner ports.ProcessPort) (app.Rout
 		},
 		SystemColorSchemePort: portalsettings.ColorSchemeSource{},
 		SidebarUI:             uiRunner{},
-	})
+	}
 	scope := app.RuntimeScopeForProcess(ctx, runner)
+	environment := app.NewRuntimeEnvironment(deps, scope)
+	// Keep the package-global accessors populated as compatibility shims for
+	// app paths not yet converted to accept RuntimeEnvironment explicitly.
+	app.SetRuntimeDependencies(deps)
 	app.SetRuntimeScope(scope)
 	daemonLauncher := daemonctl.Launcher{Process: runner, StateDir: scope.Dir}
-	return app.NewRuntimeRouterWithDaemon(tmuxClient, ipcunix.NewClient(scope.IPCSocketPath), ipcunix.NewServer(scope.IPCSocketPath), daemonLauncher), scope
+	return app.NewRuntimeRouterWithDaemonEnvironment(environment, tmuxClient, ipcunix.NewClient(scope.IPCSocketPath), ipcunix.NewServer(scope.IPCSocketPath), daemonLauncher), scope
 }
 
 func run(args []string, stdout io.Writer, stderr io.Writer) int {

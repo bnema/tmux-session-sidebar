@@ -18,10 +18,14 @@ type ColorSchemeService struct {
 }
 
 func NewColorSchemeService() *ColorSchemeService {
+	return NewColorSchemeServiceWithEnvironment(currentRuntimeEnvironment())
+}
+
+func NewColorSchemeServiceWithEnvironment(env RuntimeEnvironment) *ColorSchemeService {
 	return &ColorSchemeService{
-		Source:    runtimeSystemColorScheme(),
-		Config:    runtimeMultiplexer(),
-		Refresher: runtimeMultiplexer(),
+		Source:    env.runtimeSystemColorScheme(),
+		Config:    env.runtimeMultiplexer(),
+		Refresher: env.runtimeMultiplexer(),
 	}
 }
 

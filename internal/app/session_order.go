@@ -193,11 +193,11 @@ func updateSidebarStateWithSnapshot(ctx context.Context, update func(*ports.Pers
 }
 
 func RuntimeDir() string {
-	return CurrentRuntimeScope().Dir
+	return currentRuntimeEnvironment().currentRuntimeScope().Dir
 }
 
 func StateDir() string {
-	return CurrentRuntimeScope().StateDir
+	return currentRuntimeEnvironment().currentRuntimeScope().StateDir
 }
 
 func LegacyStateRoot() string {
@@ -240,11 +240,15 @@ func (s scopedStateStore) Dir() string {
 }
 
 func sessionOrderStore() scopedStateStore {
-	return storeForRuntimeScope(CurrentRuntimeScope())
+	return sessionOrderStoreForEnvironment(currentRuntimeEnvironment())
 }
 
-func storeForRuntimeScope(scope RuntimeScope) scopedStateStore {
-	return scopedStateStore{scope: scope, store: runtimeStateStore(scope)}
+func sessionOrderStoreForEnvironment(env RuntimeEnvironment) scopedStateStore {
+	return storeForRuntimeEnvironmentScope(env, env.currentRuntimeScope())
+}
+
+func storeForRuntimeEnvironmentScope(env RuntimeEnvironment, scope RuntimeScope) scopedStateStore {
+	return scopedStateStore{scope: scope, store: env.runtimeStateStore(scope)}
 }
 
 func withLoadedSidebarState(ctx context.Context, fn func(store scopedStateStore, state *ports.PersistedState) error) error {
