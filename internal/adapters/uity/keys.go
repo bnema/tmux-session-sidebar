@@ -49,6 +49,33 @@ func navigationKeyDelta(msg tea.KeyPressMsg) (int, bool) {
 	}
 }
 
+func menuNavigationKeyDelta(msg tea.KeyPressMsg, mode Mode) (int, bool) {
+	if mode != ModeProject {
+		return navigationKeyDelta(msg)
+	}
+	key := msg.Key()
+	if key.Mod != 0 && !key.Mod.Contains(tea.ModAlt) {
+		return 0, false
+	}
+	switch key.Code {
+	case tea.KeyDown:
+		return 1, true
+	case tea.KeyUp:
+		return -1, true
+	}
+	if !key.Mod.Contains(tea.ModAlt) {
+		return 0, false
+	}
+	switch {
+	case key.Text == "j" || key.Code == 'j':
+		return 1, true
+	case key.Text == "k" || key.Code == 'k':
+		return -1, true
+	default:
+		return 0, false
+	}
+}
+
 func searchNavigationKeyDelta(msg tea.KeyPressMsg) (int, bool) {
 	key := msg.Key()
 	if key.Mod != 0 && !key.Mod.Contains(tea.ModAlt) {

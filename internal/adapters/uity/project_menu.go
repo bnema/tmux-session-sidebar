@@ -5,7 +5,7 @@ func (m *SidebarModel) openProjectMenu() {
 	if m.actions.LoadProjects != nil {
 		projects = m.actions.LoadProjects()
 	}
-	m.openMenu(ModeProject, projectMenuItems(projects), menuSpec{Title: "projects", Footer: "esc cancel  ↵ create", EmptyLabel: "no projects", Filterable: true, Height: 8, Choose: chooseProject})
+	m.openMenu(ModeProject, projectMenuItems(projects), menuSpec{Title: "projects", Footer: "type to filter  ↑/↓ or alt+j/k navigate  ↵ create  esc cancel", EmptyLabel: "No projects found", Filterable: true, Height: 8, Choose: chooseProject})
 }
 
 func chooseProject(m *SidebarModel, item menuItem) {
