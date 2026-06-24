@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/bnema/tmux-session-sidebar/internal/adapters/daemonctl"
+	"github.com/bnema/tmux-session-sidebar/internal/adapters/filesystem"
 	watchfsnotify "github.com/bnema/tmux-session-sidebar/internal/adapters/fsnotify"
 	"github.com/bnema/tmux-session-sidebar/internal/adapters/gitcli"
 	"github.com/bnema/tmux-session-sidebar/internal/adapters/githubrelease"
@@ -38,6 +39,7 @@ func buildRuntimeRouter(ctx context.Context, runner ports.ProcessPort) (app.Rout
 	app.SetRuntimeDependencies(app.RuntimeDependencies{
 		Multiplexer:    tmuxClient,
 		Git:            git,
+		Filesystem:     filesystem.FS{},
 		ReleaseChecker: githubrelease.Client{},
 		WatcherFactory: func() ports.FileWatcherPort { return watchfsnotify.Watcher{} },
 		StateStoreFactory: func(scope app.RuntimeScope) ports.StateStorePort {

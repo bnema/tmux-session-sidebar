@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/bnema/tmux-session-sidebar/internal/adapters/filesystem"
 	watchfsnotify "github.com/bnema/tmux-session-sidebar/internal/adapters/fsnotify"
 	"github.com/bnema/tmux-session-sidebar/internal/adapters/gitcli"
 	"github.com/bnema/tmux-session-sidebar/internal/adapters/githubrelease"
@@ -34,6 +35,7 @@ func TestMain(m *testing.M) {
 	SetRuntimeDependencies(RuntimeDependencies{
 		Multiplexer:    tmux,
 		Git:            git,
+		Filesystem:     filesystem.FS{},
 		ReleaseChecker: githubrelease.Client{},
 		WatcherFactory: func() ports.FileWatcherPort { return watchfsnotify.Watcher{} },
 		StateStoreFactory: func(scope RuntimeScope) ports.StateStorePort {

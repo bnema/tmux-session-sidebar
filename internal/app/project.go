@@ -36,6 +36,7 @@ func projectCandidates(ctx context.Context) ([]projects.Candidate, error) {
 	if err != nil {
 		return nil, err
 	}
+	fs := runtimeFilesystem()
 	var candidates []projects.Candidate
 	for root := range strings.SplitSeq(strings.TrimSpace(rootsOut), ":") {
 		root = strings.TrimSpace(root)
@@ -43,15 +44,21 @@ func projectCandidates(ctx context.Context) ([]projects.Candidate, error) {
 			continue
 		}
 		root = os.ExpandEnv(root)
-		entries, err := os.ReadDir(root)
+		resolvedRoot, err := fs.ResolvePath(root)
 		if err != nil {
+			if isMissingDependencyError(err) {
+				return nil, err
+			}
 			continue
 		}
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
+		dirs, err := fs.ListImmediateDirs(resolvedRoot)
+		if err != nil {
+			if isMissingDependencyError(err) {
+				return nil, err
 			}
-			path := filepath.Join(root, entry.Name())
+			continue
+		}
+		for _, path := range dirs {
 			candidates = append(candidates, projects.CandidateFromPath(path))
 		}
 	}

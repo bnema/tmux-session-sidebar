@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -15,6 +16,7 @@ import (
 type RuntimeDependencies struct {
 	Multiplexer           ports.RuntimePort
 	Git                   ports.GitPort
+	Filesystem            ports.FilesystemPort
 	ReleaseChecker        ports.ReleaseCheckerPort
 	WatcherFactory        func() ports.FileWatcherPort
 	StateStoreFactory     func(scope RuntimeScope) ports.StateStorePort
@@ -64,6 +66,14 @@ func runtimeGit() ports.GitPort {
 		return missingGit{}
 	}
 	return deps.Git
+}
+
+func runtimeFilesystem() ports.FilesystemPort {
+	deps := runtimeDependencies()
+	if deps.Filesystem == nil {
+		return missingFilesystem{}
+	}
+	return deps.Filesystem
 }
 
 func runtimeReleaseChecker() ports.ReleaseCheckerPort {
@@ -130,8 +140,21 @@ func runtimeSystemColorScheme() ports.SystemColorSchemePort {
 	return deps.SystemColorSchemePort
 }
 
+type appMissingDependencyError struct {
+	name string
+}
+
+func (e appMissingDependencyError) Error() string {
+	return fmt.Sprintf("app runtime dependencies missing %s", e.name)
+}
+
 func missingDependencyError(name string) error {
-	return fmt.Errorf("app runtime dependencies missing %s", name)
+	return appMissingDependencyError{name: name}
+}
+
+func isMissingDependencyError(err error) bool {
+	var missing appMissingDependencyError
+	return errors.As(err, &missing)
 }
 
 type missingReleaseChecker struct{}
@@ -172,6 +195,16 @@ func (missingGit) RepoInfo(context.Context, string) (ports.GitRepoInfo, error) {
 
 func (missingGit) WatchTargets(context.Context, string) (ports.GitWatchTargets, error) {
 	return ports.GitWatchTargets{}, missingDependencyError("git port")
+}
+
+type missingFilesystem struct{}
+
+func (missingFilesystem) ResolvePath(string) (string, error) {
+	return "", missingDependencyError("filesystem port")
+}
+
+func (missingFilesystem) ListImmediateDirs(string) ([]string, error) {
+	return nil, missingDependencyError("filesystem port")
 }
 
 type missingStateStore struct{}
