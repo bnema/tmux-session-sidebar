@@ -81,6 +81,25 @@ func TestSidebarModelFilterChipFitsThirtyColumnSidebar(t *testing.T) {
 	}
 }
 
+func TestSidebarModelASCIIFilterChipKeepsClearHintWhenShortQueryFits(t *testing.T) {
+	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{MetadataIconMode: MetadataIconsASCII})
+	model.width = 9
+	updated, _ := model.Update(keyPress("/", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(keyPress("x", 0))
+	model = requireSidebarModel(t, updated)
+	updated, _ = model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	model = requireSidebarModel(t, updated)
+
+	line := strings.Split(stripANSI(model.Render()), "\n")[0]
+	if !strings.Contains(line, "esc") {
+		t.Fatalf("ASCII filter chip line = %q, want clear hint because short query fits", line)
+	}
+	if got := metadataDisplayWidth(line); got > model.width {
+		t.Fatalf("ASCII filter chip display width = %d for %q, want <= %d", got, line, model.width)
+	}
+}
+
 func TestSidebarModelASCIIFilterChipFitsVeryNarrowSidebar(t *testing.T) {
 	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{MetadataIconMode: MetadataIconsASCII})
 	model.width = 5

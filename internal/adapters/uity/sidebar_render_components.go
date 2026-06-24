@@ -49,7 +49,11 @@ func formatFilterChip(query string, width int, icons MetadataIconMode, showClear
 	}
 	if showClearHint {
 		queryWidth := width - metadataDisplayWidth(icon) - metadataDisplayWidth("  ") - metadataDisplayWidth(filterChipClearHint)
-		if queryWidth >= metadataDisplayWidth("a"+ellipsisForIconMode(icons)) {
+		minQueryWidthWithHint := metadataDisplayWidth("a" + ellipsisForIconMode(icons))
+		if fullQueryWidth := metadataDisplayWidth(query); fullQueryWidth > 0 && fullQueryWidth < minQueryWidthWithHint {
+			minQueryWidthWithHint = fullQueryWidth
+		}
+		if queryWidth >= minQueryWidthWithHint {
 			return icon + " " + fitFilterChipQuery(query, queryWidth, icons) + " " + filterChipClearHint
 		}
 	}
