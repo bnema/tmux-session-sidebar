@@ -588,14 +588,21 @@ func (c Client) LoadSessionMetadata(ctx context.Context, sessionName string) (po
 	if err != nil {
 		return ports.SessionMetadata{}, err
 	}
-	return ports.SessionMetadata{Kind: kind, ProjectPath: projectPath}, nil
+	lastPath, err := c.displayTarget(ctx, sessionName, "#{@session-sidebar-last-path}")
+	if err != nil {
+		return ports.SessionMetadata{}, err
+	}
+	return ports.SessionMetadata{Kind: kind, ProjectPath: projectPath, LastPath: lastPath}, nil
 }
 
 func (c Client) SaveSessionMetadata(ctx context.Context, sessionName string, metadata ports.SessionMetadata) error {
 	if _, err := c.Process.Exec(ctx, "tmux", []string{"set-option", "-t", sessionName, "@session-sidebar-kind", metadata.Kind}); err != nil {
 		return err
 	}
-	_, err := c.Process.Exec(ctx, "tmux", []string{"set-option", "-t", sessionName, "@session-sidebar-project-path", metadata.ProjectPath})
+	if _, err := c.Process.Exec(ctx, "tmux", []string{"set-option", "-t", sessionName, "@session-sidebar-project-path", metadata.ProjectPath}); err != nil {
+		return err
+	}
+	_, err := c.Process.Exec(ctx, "tmux", []string{"set-option", "-t", sessionName, "@session-sidebar-last-path", metadata.LastPath})
 	return err
 }
 
