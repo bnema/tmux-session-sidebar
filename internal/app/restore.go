@@ -129,8 +129,8 @@ func captureLiveSidebarHeat(ctx context.Context, cfg ports.ConfigSnapshot) (bool
 	return err == nil, err
 }
 
-func bootstrapSidebarDaemon(ctx context.Context, _ io.Writer, ipcServer ports.IPCServerPort, router Router) error {
-	scope := CurrentRuntimeScope()
+func bootstrapSidebarDaemonForEnvironment(ctx context.Context, env RuntimeEnvironment, _ io.Writer, ipcServer ports.IPCServerPort, router Router) error {
+	scope := env.currentRuntimeScope()
 	if err := EnsureRuntimeDirPrivate(scope.Dir); err != nil {
 		return err
 	}
@@ -139,7 +139,7 @@ func bootstrapSidebarDaemon(ctx context.Context, _ io.Writer, ipcServer ports.IP
 		return err
 	}
 	defer restoreStderr()
-	return serveSidebarDaemonWithOptions(ctx, ipcServer, router, daemonServeOptions{ensureStartup: true})
+	return serveSidebarDaemonWithOptionsForEnvironment(ctx, env, ipcServer, router, daemonServeOptions{ensureStartup: true})
 }
 
 type daemonServeOptions struct {
@@ -147,11 +147,19 @@ type daemonServeOptions struct {
 }
 
 func serveSidebarDaemon(ctx context.Context, ipcServer ports.IPCServerPort, router Router) error {
-	return serveSidebarDaemonWithOptions(ctx, ipcServer, router, daemonServeOptions{})
+	return serveSidebarDaemonForEnvironment(ctx, currentRuntimeEnvironment(), ipcServer, router)
+}
+
+func serveSidebarDaemonForEnvironment(ctx context.Context, env RuntimeEnvironment, ipcServer ports.IPCServerPort, router Router) error {
+	return serveSidebarDaemonWithOptionsForEnvironment(ctx, env, ipcServer, router, daemonServeOptions{})
 }
 
 func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServerPort, router Router, opts daemonServeOptions) error {
-	scope := CurrentRuntimeScope()
+	return serveSidebarDaemonWithOptionsForEnvironment(ctx, currentRuntimeEnvironment(), ipcServer, router, opts)
+}
+
+func serveSidebarDaemonWithOptionsForEnvironment(ctx context.Context, env RuntimeEnvironment, ipcServer ports.IPCServerPort, router Router, opts daemonServeOptions) error {
+	scope := env.currentRuntimeScope()
 	if current, err := runtimeScopeStillCurrent(ctx, scope); err != nil {
 		return err
 	} else if !current {
@@ -163,7 +171,7 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 
 	acquireCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	lock, err := runtimeLocker(scope.LocksDir).Acquire(acquireCtx, "tmux-sidebar-daemon")
+	lock, err := env.runtimeLocker(scope.LocksDir).Acquire(acquireCtx, "tmux-sidebar-daemon")
 	if err != nil {
 		// A timeout/cancel here usually means another daemon already holds the lock, so
 		// treat it as a no-op instead of failing startup and racing concurrent restores.
@@ -194,7 +202,7 @@ func serveSidebarDaemonWithOptions(ctx context.Context, ipcServer ports.IPCServe
 		_ = os.Remove(pidFile)
 	}()
 
-	return newDaemonLifecycleCoordinator(scope, ipcServer, router, opts).run(ctx)
+	return newDaemonLifecycleCoordinator(env, scope, ipcServer, router, opts).run(ctx)
 }
 
 func captureVisitedAgentAttentionIfEnabled(ctx context.Context, service interface {
@@ -210,8 +218,9 @@ func withActivityDebugLogger(cfg ports.ConfigSnapshot, fn func(logger ports.Logg
 	if !cfg.ActivityDebugLog {
 		return fn(nil)
 	}
-	logPath := filepath.Join(RuntimeDir(), "activity.log")
-	logger, closer, err := runtimeActivityLogger(logPath, maxSidebarLogBytes)
+	env := currentRuntimeEnvironment()
+	logPath := filepath.Join(env.currentRuntimeScope().Dir, "activity.log")
+	logger, closer, err := env.runtimeActivityLogger(logPath, maxSidebarLogBytes)
 	if err != nil {
 		return err
 	}
@@ -231,11 +240,15 @@ func metadataWatcherRestartInCooldown(now time.Time, lastFailureAt time.Time) bo
 }
 
 func withLockedSidebarStore(ctx context.Context, fn func(scopedStateStore) error) error {
-	store := sessionOrderStore()
+	return withLockedSidebarStoreForEnvironment(ctx, currentRuntimeEnvironment(), fn)
+}
+
+func withLockedSidebarStoreForEnvironment(ctx context.Context, env RuntimeEnvironment, fn func(scopedStateStore) error) error {
+	store := sessionOrderStoreForEnvironment(env)
 	if err := ensureRuntimeStateMigrated(ctx, store.scope); err != nil {
 		return err
 	}
-	lock, err := runtimeLocker(filepath.Join(store.Dir(), "locks")).Acquire(ctx, "tmux-sidebar-state")
+	lock, err := env.runtimeLocker(filepath.Join(store.Dir(), "locks")).Acquire(ctx, "tmux-sidebar-state")
 	if err != nil {
 		return err
 	}

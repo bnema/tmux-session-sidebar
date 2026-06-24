@@ -46,15 +46,19 @@ type MetadataRepoSubscription struct {
 }
 
 func NewMetadataService() *MetadataService {
-	tmux := runtimeMultiplexer()
+	return NewMetadataServiceWithEnvironment(currentRuntimeEnvironment())
+}
+
+func NewMetadataServiceWithEnvironment(env RuntimeEnvironment) *MetadataService {
+	tmux := env.runtimeMultiplexer()
 	return &MetadataService{
-		Store:                  sessionOrderStore(),
+		Store:                  sessionOrderStoreForEnvironment(env),
 		Query:                  tmux,
 		Config:                 tmux,
-		Git:                    runtimeGit(),
-		Watcher:                runtimeWatcher(),
+		Git:                    env.runtimeGit(),
+		Watcher:                env.runtimeWatcher(),
 		Refresher:              tmux,
-		LockStore:              defaultMetadataLockStore,
+		LockStore:              defaultMetadataLockStoreForEnvironment(env),
 		Debounce:               250 * time.Millisecond,
 		ReconcileInterval:      time.Minute,
 		GitStatusTimeout:       metadataGitStatusTimeout,
@@ -63,10 +67,12 @@ func NewMetadataService() *MetadataService {
 	}
 }
 
-func defaultMetadataLockStore(ctx context.Context, fn func(ports.StateStorePort) error) error {
-	return withLockedSidebarStore(ctx, func(store scopedStateStore) error {
-		return fn(store)
-	})
+func defaultMetadataLockStoreForEnvironment(env RuntimeEnvironment) func(context.Context, func(ports.StateStorePort) error) error {
+	return func(ctx context.Context, fn func(ports.StateStorePort) error) error {
+		return withLockedSidebarStoreForEnvironment(ctx, env, func(store scopedStateStore) error {
+			return fn(store)
+		})
+	}
 }
 
 func (s *MetadataService) CaptureAndRefresh(ctx context.Context, cfg ports.ConfigSnapshot) error {

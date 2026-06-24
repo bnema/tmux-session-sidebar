@@ -52,92 +52,22 @@ func runtimeDependencies() RuntimeDependencies {
 	return runtimeDependenciesState.deps
 }
 
-func runtimeMultiplexer() ports.RuntimePort {
-	deps := runtimeDependencies()
-	if deps.Multiplexer == nil {
-		return missingRuntime{}
-	}
-	return deps.Multiplexer
-}
+func runtimeMultiplexer() ports.RuntimePort { return currentRuntimeEnvironment().runtimeMultiplexer() }
 
-func runtimeGit() ports.GitPort {
-	deps := runtimeDependencies()
-	if deps.Git == nil {
-		return missingGit{}
-	}
-	return deps.Git
-}
+func runtimeGit() ports.GitPort { return currentRuntimeEnvironment().runtimeGit() }
 
-func runtimeFilesystem() ports.FilesystemPort {
-	deps := runtimeDependencies()
-	if deps.Filesystem == nil {
-		return missingFilesystem{}
-	}
-	return deps.Filesystem
-}
-
-func runtimeReleaseChecker() ports.ReleaseCheckerPort {
-	deps := runtimeDependencies()
-	if deps.ReleaseChecker == nil {
-		return missingReleaseChecker{}
-	}
-	return deps.ReleaseChecker
-}
-
-func runtimeWatcher() ports.FileWatcherPort {
-	deps := runtimeDependencies()
-	if deps.WatcherFactory == nil {
-		return missingWatcher{}
-	}
-	return deps.WatcherFactory()
-}
-
-func runtimeStateStore(scope RuntimeScope) ports.StateStorePort {
-	deps := runtimeDependencies()
-	if deps.StateStoreFactory == nil {
-		return missingStateStore{}
-	}
-	return deps.StateStoreFactory(scope)
-}
+func runtimeFilesystem() ports.FilesystemPort { return currentRuntimeEnvironment().runtimeFilesystem() }
 
 func runtimeLocker(dir string) ports.LockerPort {
-	deps := runtimeDependencies()
-	if deps.LockerFactory == nil {
-		return missingLocker{}
-	}
-	return deps.LockerFactory(dir)
-}
-
-func runtimeActivityLogger(path string, maxBytes int64) (ports.LoggerPort, io.Closer, error) {
-	deps := runtimeDependencies()
-	if deps.ActivityLoggerFactory == nil {
-		return nil, nil, missingDependencyError("activity logger factory")
-	}
-	return deps.ActivityLoggerFactory(path, maxBytes)
+	return currentRuntimeEnvironment().runtimeLocker(dir)
 }
 
 func runtimeLogWriter(path string, maxBytes int64) (ports.SyncWriteCloser, error) {
-	deps := runtimeDependencies()
-	if deps.LogWriterFactory == nil {
-		return nil, missingDependencyError("log writer factory")
-	}
-	return deps.LogWriterFactory(path, maxBytes)
-}
-
-func runtimeSidebarUI() SidebarUIRunner {
-	deps := runtimeDependencies()
-	if deps.SidebarUI == nil {
-		return missingSidebarUI{}
-	}
-	return deps.SidebarUI
+	return currentRuntimeEnvironment().runtimeLogWriter(path, maxBytes)
 }
 
 func runtimeSystemColorScheme() ports.SystemColorSchemePort {
-	deps := runtimeDependencies()
-	if deps.SystemColorSchemePort == nil {
-		return missingSystemColorScheme{}
-	}
-	return deps.SystemColorSchemePort
+	return currentRuntimeEnvironment().runtimeSystemColorScheme()
 }
 
 type appMissingDependencyError struct {

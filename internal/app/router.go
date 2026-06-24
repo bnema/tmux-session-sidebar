@@ -24,6 +24,7 @@ type runtimeRouter struct {
 	ipcClient      ports.IPCClientPort
 	ipcServer      ports.IPCServerPort
 	daemonLauncher ports.DaemonLauncherPort
+	environment    RuntimeEnvironment
 }
 
 type RuntimeRouterSnapshot struct {
@@ -31,6 +32,7 @@ type RuntimeRouterSnapshot struct {
 	IPCClient      ports.IPCClientPort
 	IPCServer      ports.IPCServerPort
 	DaemonLauncher ports.DaemonLauncherPort
+	Environment    RuntimeEnvironment
 }
 
 func InspectRuntimeRouter(router Router) (RuntimeRouterSnapshot, bool) {
@@ -38,7 +40,7 @@ func InspectRuntimeRouter(router Router) (RuntimeRouterSnapshot, bool) {
 	if !ok {
 		return RuntimeRouterSnapshot{}, false
 	}
-	return RuntimeRouterSnapshot{Sidebar: r.sidebar, IPCClient: r.ipcClient, IPCServer: r.ipcServer, DaemonLauncher: r.daemonLauncher}, true
+	return RuntimeRouterSnapshot{Sidebar: r.sidebar, IPCClient: r.ipcClient, IPCServer: r.ipcServer, DaemonLauncher: r.daemonLauncher, Environment: r.environment}, true
 }
 
 // NewRouter composes the production command router used by the tmux bootstrap.
@@ -51,11 +53,22 @@ func NewRuntimeRouter(sidebar ports.SidebarPort, ipcClient ports.IPCClientPort, 
 }
 
 func NewRuntimeRouterWithDaemon(sidebar ports.SidebarPort, ipcClient ports.IPCClientPort, ipcServer ports.IPCServerPort, daemonLauncher ports.DaemonLauncherPort) Router {
-	return runtimeRouter{sidebar: sidebar, ipcClient: ipcClient, ipcServer: ipcServer, daemonLauncher: daemonLauncher}
+	return NewRuntimeRouterWithDaemonEnvironment(currentRuntimeEnvironment(), sidebar, ipcClient, ipcServer, daemonLauncher)
+}
+
+func NewRuntimeRouterWithDaemonEnvironment(env RuntimeEnvironment, sidebar ports.SidebarPort, ipcClient ports.IPCClientPort, ipcServer ports.IPCServerPort, daemonLauncher ports.DaemonLauncherPort) Router {
+	return runtimeRouter{sidebar: sidebar, ipcClient: ipcClient, ipcServer: ipcServer, daemonLauncher: daemonLauncher, environment: env}
 }
 
 func NewDaemonRouter(sidebar ports.SidebarPort, ipcServer ports.IPCServerPort) Router {
 	return NewRuntimeRouterWithDaemon(sidebar, nil, ipcServer, nil)
+}
+
+func (r runtimeRouter) runtimeEnvironment() RuntimeEnvironment {
+	if r.environment.isZero() {
+		return currentRuntimeEnvironment()
+	}
+	return r.environment
 }
 
 func (r runtimeRouter) direct() runtimeRouter {
@@ -111,9 +124,9 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "daemon/ensure":
 		return ensureRestoredAndCapturedOnStartup(ctx)
 	case "daemon/bootstrap":
-		return bootstrapSidebarDaemon(ctx, stderr, r.ipcServer, r.direct())
+		return bootstrapSidebarDaemonForEnvironment(ctx, r.runtimeEnvironment(), stderr, r.ipcServer, r.direct())
 	case "daemon/serve-ui":
-		return serveSidebarUI(ctx, route.Flags, stdout, r.sidebar, r.ipcClient)
+		return serveSidebarUIForEnvironment(ctx, r.runtimeEnvironment(), route.Flags, stdout, r.sidebar, r.ipcClient)
 	case "hook/client-attached":
 		return r.withMetadataReconcile(ctx, ensureRestoredAndCapturedAndRefresh(ctx, route.Flags["client"], route.Flags["session"], r.sidebar))
 	case "hook/client-detached":
@@ -131,7 +144,7 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	case "runtime/self-update":
 		return runSelfUpdate(ctx, stdout, stderr)
 	case "daemon/serve":
-		return serveSidebarDaemon(ctx, r.ipcServer, r.direct())
+		return serveSidebarDaemonForEnvironment(ctx, r.runtimeEnvironment(), r.ipcServer, r.direct())
 	default:
 		_, _ = fmt.Fprintf(stderr, "%s not implemented yet\n", route.Path)
 		return fmt.Errorf("unimplemented route: %s", route.Path)
@@ -431,8 +444,9 @@ func withResizeDebugLogger(enabled bool, fn func(ports.LoggerPort) error) error 
 	if !enabled {
 		return fn(nil)
 	}
-	logPath := filepath.Join(RuntimeDir(), "activity.log")
-	logger, closer, err := runtimeActivityLogger(logPath, maxSidebarLogBytes)
+	env := currentRuntimeEnvironment()
+	logPath := filepath.Join(env.currentRuntimeScope().Dir, "activity.log")
+	logger, closer, err := env.runtimeActivityLogger(logPath, maxSidebarLogBytes)
 	if err != nil {
 		return fn(nil)
 	}
@@ -504,7 +518,15 @@ func serveSidebarUI(ctx context.Context, flags map[string]string, stdout io.Writ
 	return runSidebarUI(ctx, flags, stdout, sidebar, ipcClient)
 }
 
+func serveSidebarUIForEnvironment(ctx context.Context, env RuntimeEnvironment, flags map[string]string, stdout io.Writer, sidebar ports.SidebarPort, ipcClient ports.IPCClientPort) error {
+	return runUIForEnvironment(ctx, env, flags, stdout, sidebar, ipcClient)
+}
+
 func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.SidebarPort, ipcClient ports.IPCClientPort) error {
+	return runUIForEnvironment(ctx, currentRuntimeEnvironment(), flags, stdout, sidebar, ipcClient)
+}
+
+func runUIForEnvironment(ctx context.Context, env RuntimeEnvironment, flags map[string]string, stdout io.Writer, sidebar ports.SidebarPort, ipcClient ports.IPCClientPort) error {
 	defer scheduleSidebarLayoutRestoreOnExit(ctx, flags, sidebar)
 	cfg := loadSidebarConfig(ctx)
 	items, err := loadSidebarTreeItemsWithConfig(ctx, cfg)
@@ -513,11 +535,11 @@ func runUI(ctx context.Context, flags map[string]string, stdout io.Writer, sideb
 	}
 	persisted, _ := loadSidebarState(ctx)
 	actions := buildSidebarActions(ctx, flags, stdout, sidebar, ipcClient)
-	options := SidebarUIOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, runtimeReleaseChecker()), AgentAttentionAnimation: cfg.AgentAttentionAnimation, Appearance: cfg.ColorSchemeAppearance}
+	options := SidebarUIOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, env.runtimeReleaseChecker()), AgentAttentionAnimation: cfg.AgentAttentionAnimation, Appearance: cfg.ColorSchemeAppearance}
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}
-	return runtimeSidebarUI().Run(ctx, items, actions, options, stdout)
+	return env.runtimeSidebarUI().Run(ctx, items, actions, options, stdout)
 }
 
 func buildSidebarActions(ctx context.Context, flags map[string]string, stdout io.Writer, sidebar ports.SidebarPort, ipcClient ports.IPCClientPort) SidebarUIActions {

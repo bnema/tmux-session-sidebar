@@ -13,14 +13,15 @@ import (
 )
 
 type daemonLifecycleCoordinator struct {
+	env       RuntimeEnvironment
 	scope     RuntimeScope
 	ipcServer ports.IPCServerPort
 	router    Router
 	opts      daemonServeOptions
 }
 
-func newDaemonLifecycleCoordinator(scope RuntimeScope, ipcServer ports.IPCServerPort, router Router, opts daemonServeOptions) daemonLifecycleCoordinator {
-	return daemonLifecycleCoordinator{scope: scope, ipcServer: ipcServer, router: router, opts: opts}
+func newDaemonLifecycleCoordinator(env RuntimeEnvironment, scope RuntimeScope, ipcServer ports.IPCServerPort, router Router, opts daemonServeOptions) daemonLifecycleCoordinator {
+	return daemonLifecycleCoordinator{env: env, scope: scope, ipcServer: ipcServer, router: router, opts: opts}
 }
 
 func (c daemonLifecycleCoordinator) run(ctx context.Context) error {
@@ -38,12 +39,12 @@ func (c daemonLifecycleCoordinator) run(ctx context.Context) error {
 
 	var colorSchemeWG sync.WaitGroup
 	colorSchemeWG.Go(func() {
-		if err := NewColorSchemeService().Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := NewColorSchemeServiceWithEnvironment(c.env).Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: color scheme watcher stopped: %v\n", err)
 		}
 	})
 
-	metadata := newDaemonMetadataLifecycle(ctx)
+	metadata := newDaemonMetadataLifecycle(ctx, c.env)
 
 	pendingFullCaptureAt, err := c.initializeCapture(ctx, cfg, metadata)
 	if err != nil {
@@ -150,6 +151,7 @@ func runPendingFullCapture(ctx context.Context, cfg ports.ConfigSnapshot, metada
 
 type daemonMetadataLifecycle struct {
 	ctx           context.Context
+	env           RuntimeEnvironment
 	reconcile     chan struct{}
 	wg            sync.WaitGroup
 	mu            sync.Mutex
@@ -157,8 +159,8 @@ type daemonMetadataLifecycle struct {
 	lastFailureAt time.Time
 }
 
-func newDaemonMetadataLifecycle(ctx context.Context) *daemonMetadataLifecycle {
-	return &daemonMetadataLifecycle{ctx: ctx, reconcile: make(chan struct{}, 1)}
+func newDaemonMetadataLifecycle(ctx context.Context, env RuntimeEnvironment) *daemonMetadataLifecycle {
+	return &daemonMetadataLifecycle{ctx: ctx, env: env, reconcile: make(chan struct{}, 1)}
 }
 
 func (m *daemonMetadataLifecycle) start(cfg ports.ConfigSnapshot) {
@@ -174,7 +176,7 @@ func (m *daemonMetadataLifecycle) start(cfg ports.ConfigSnapshot) {
 	m.mu.Unlock()
 
 	m.wg.Go(func() {
-		service := NewMetadataService()
+		service := NewMetadataServiceWithEnvironment(m.env)
 		service.ReconcileRequests = m.reconcile
 		err := service.Run(m.ctx, cfg)
 		failed := err != nil && !errors.Is(err, context.Canceled)
