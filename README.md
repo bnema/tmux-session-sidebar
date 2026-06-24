@@ -135,9 +135,9 @@ Inside the sidebar:
 | Key | Action |
 | --- | --- |
 | `j` / `k`, arrows, mouse wheel | Move selection through categories, sessions, separators, and spacers |
-| `/` | Filter sessions |
-| `Enter` | Switch to the selected session or apply a filter |
-| `Esc` | Leave the current mode, or close the sidebar |
+| `/` | Start or edit a session filter |
+| `Enter` | Switch to the selected session, or commit the active filter while searching |
+| `Esc` | Leave the current mode, clear an active filter, or close the sidebar |
 | `F5` | Reload the sidebar tree |
 | `c` | Open the create sheet: git repo, current dir, named session, project, category, separator, or spacer |
 | `n` | Create a new named session from a quick prompt |
@@ -150,6 +150,8 @@ Inside the sidebar:
 | `Alt+h` | Show or hide numeric session names when not searching/filtering |
 | `?` | Show or hide key help when not searching/filtering |
 | `Ctrl+c` | Quit the sidebar UI |
+
+When a filter is active, a filter chip appears above the session tree with the Nerd Font filter icon (``) or `/` in ASCII mode. Long filter text is ellipsized to fit the sidebar. Press `Esc` to clear the active filter.
 
 Global quick-switch keys are also installed:
 

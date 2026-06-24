@@ -873,7 +873,7 @@ func (m SidebarModel) View() tea.View {
 
 func (m SidebarModel) Render() string {
 	styles := newSidebarStylesForAppearance(m.appearance)
-	lines := []string{""}
+	lines := []string{m.topLine(styles)}
 	lines = append(lines, m.renderScrollableTree(styles)...)
 	if status := m.statusLine(); status != "" {
 		lines = append(lines, "", styles.accent.Render(status))
