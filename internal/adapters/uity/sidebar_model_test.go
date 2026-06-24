@@ -895,7 +895,7 @@ func TestSidebarModelHelpToggleOpensBottomSheetCheatSheet(t *testing.T) {
 	updated, _ = model.Update(keyPress("?", 0))
 	model = requireSidebarModel(t, updated)
 	view := stripANSI(model.Render())
-	for _, want := range []string{"keys", "navigation", "↵ switch", "c create", "n new", spaceKeySymbol + " pin", "C color", "alt+h nums", "J/K", "r rename", "d del", "esc close"} {
+	for _, want := range []string{"keys", "navigation", "↵ switch", "/ filter", "esc clear", "c create", "n new", spaceKeySymbol + " pin", "C color", "alt+h nums", "J/K", "r rename", "d del"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("help sheet missing %q in %q", want, view)
 		}

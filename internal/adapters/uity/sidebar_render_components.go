@@ -9,12 +9,80 @@ import (
 	"github.com/bnema/tmux-session-sidebar/internal/core/heat"
 )
 
+const (
+	filterChipNerdIcon     = "\uf0b0" // nf-fa-filter
+	filterChipASCIIIcon    = "/"
+	filterChipClearHint    = "esc"
+	defaultFilterChipWidth = 30
+)
+
 func padSidebarContentLines(lines []string) []string {
 	padded := make([]string, len(lines))
 	for i, line := range lines {
 		padded[i] = " " + line + " "
 	}
 	return padded
+}
+
+func (m SidebarModel) topLine(styles sidebarStyles) string {
+	if m.mode != ModeSearch && m.filter == "" {
+		return ""
+	}
+	return styles.accent.Render(formatFilterChip(m.filter, m.filterChipWidth(), m.metadataIconMode, m.filter != ""))
+}
+
+func (m SidebarModel) filterChipWidth() int {
+	width := m.width
+	if width <= 0 {
+		width = defaultFilterChipWidth
+	}
+	return max(width-2, 0)
+}
+
+func formatFilterChip(query string, width int, icons MetadataIconMode, showClearHint bool) string {
+	if width <= 0 {
+		return ""
+	}
+	icon := filterChipIcon(icons)
+	if query == "" {
+		return fitMetadataTextPreserveSpace(icon, width, icons)
+	}
+	if showClearHint {
+		queryWidth := width - metadataDisplayWidth(icon) - metadataDisplayWidth("  ") - metadataDisplayWidth(filterChipClearHint)
+		if queryWidth >= metadataDisplayWidth("a"+ellipsisForIconMode(icons)) {
+			return icon + " " + fitFilterChipQuery(query, queryWidth, icons) + " " + filterChipClearHint
+		}
+	}
+	queryWidth := width - metadataDisplayWidth(icon) - metadataDisplayWidth(" ")
+	if queryWidth <= 0 {
+		return fitMetadataTextPreserveSpace(icon, width, icons)
+	}
+	return icon + " " + fitFilterChipQuery(query, queryWidth, icons)
+}
+
+func fitFilterChipQuery(query string, width int, icons MetadataIconMode) string {
+	if width <= 0 || metadataDisplayWidth(query) <= width {
+		return query
+	}
+	ellipsis := ellipsisForIconMode(icons)
+	if width <= metadataDisplayWidth(ellipsis) {
+		return trimDisplayRight(query, width)
+	}
+	return trimDisplayRight(query, max(width-metadataDisplayWidth(ellipsis), 0)) + ellipsis
+}
+
+func filterChipIcon(icons MetadataIconMode) string {
+	if icons == MetadataIconsASCII {
+		return filterChipASCIIIcon
+	}
+	return filterChipNerdIcon
+}
+
+func ellipsisForIconMode(icons MetadataIconMode) string {
+	if icons == MetadataIconsASCII {
+		return "..."
+	}
+	return "…"
 }
 
 func (m SidebarModel) statusBarLines(styles sidebarStyles) []string {
@@ -24,7 +92,7 @@ func (m SidebarModel) statusBarLines(styles sidebarStyles) []string {
 func (m SidebarModel) helpSheetContent(styles sidebarStyles) string {
 	lines := []string{
 		styles.accent.Render("navigation"),
-		"↵ switch    / filter    esc close",
+		"↵ switch / filter esc clear",
 		"j/k move    alt+h nums",
 		spaceKeySymbol + " pin      C color",
 		"",
@@ -140,7 +208,7 @@ func (m SidebarModel) messageStyle(styles sidebarStyles) lipgloss.Style {
 func (m SidebarModel) statusLine() string {
 	switch m.mode {
 	case ModeSearch:
-		return "filter: " + m.filter
+		return ""
 	case ModeProject:
 		if m.menu.Spec.Filterable && m.menu.Filter != "" {
 			return m.menu.Spec.Title + ": " + m.menu.Filter
