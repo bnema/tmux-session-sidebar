@@ -100,13 +100,13 @@ func captureLiveSidebarSessions(ctx context.Context) error {
 	})
 }
 
-func captureLiveSidebarSessionsWithConfigProtected(ctx context.Context, cfg ports.ConfigSnapshot) (bool, error) {
+func captureLiveSidebarSessionsWithConfigProtectedPreservingOrder(ctx context.Context, cfg ports.ConfigSnapshot) (bool, error) {
 	captured := false
 	err := withLockedSidebarStore(ctx, func(store scopedStateStore) error {
 		return withActivityDebugLogger(cfg, func(logger ports.LoggerPort) error {
 			service := runtimeServiceWithStore(store).WithLogger(logger)
 			var err error
-			captured, err = service.CaptureLiveSessionsWithConfigProtected(ctx, "tmux", cfg)
+			captured, err = service.CaptureLiveSessionsWithConfigProtectedPreservingOrder(ctx, "tmux", cfg)
 			if err != nil || !captured {
 				return err
 			}

@@ -561,6 +561,89 @@ func TestCaptureSessionHeatWithConfigDoesNotConsumeRecentOrderWhenPaneSampleFail
 	}
 }
 
+func TestCaptureLiveSessionsWithConfigProtectedPreservingOrderRetriesWhenHeatCaptureFails(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	boom := errors.New("list clients failed")
+	store := mocks.NewMockStateStorePort(t)
+	query := mocks.NewMockQueryPort(t)
+	initial := ports.PersistedState{
+		SessionOrder: []string{"gamma", "beta", "alpha"},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: time.Now().Add(-5 * time.Minute)},
+			"beta":  {LastActiveAt: time.Now().Add(-2 * time.Hour)},
+			"gamma": {LastActiveAt: time.Now().Add(-3 * time.Hour)},
+		}),
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}, nil)
+	query.EXPECT().SessionPath(ctx, "alpha").Return("", nil)
+	query.EXPECT().SessionPath(ctx, "beta").Return("", nil)
+	query.EXPECT().SessionPath(ctx, "gamma").Return("", nil)
+	query.EXPECT().ListClients(ctx).Return(nil, boom)
+	var saved ports.PersistedState
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		saved = state
+		return reflect.DeepEqual(state.SessionOrder, []string{"gamma", "beta", "alpha"})
+	})).Return(nil)
+
+	captured, err := NewService(nil, query, nil, store).CaptureLiveSessionsWithConfigProtectedPreservingOrder(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour})
+	if err != nil {
+		t.Fatalf("CaptureLiveSessionsWithConfigProtectedPreservingOrder error: %v", err)
+	}
+	if captured {
+		t.Fatal("CaptureLiveSessionsWithConfigProtectedPreservingOrder captured = true, want false so startup retries")
+	}
+	if saved.Sidebar != nil {
+		t.Fatalf("Sidebar = %#v, want no recent-sort marker until heat capture succeeds", saved.Sidebar)
+	}
+}
+
+func TestCaptureLiveSessionsWithConfigProtectedPreservingOrderRetriesWhenBaselineIncomplete(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	now := time.Now()
+	store := mocks.NewMockStateStorePort(t)
+	query := runtimeTestQuery{
+		live: []ports.SessionSnapshot{{ID: "$1", Name: "alpha"}, {ID: "$2", Name: "beta"}, {ID: "$3", Name: "gamma"}},
+		panes: []ports.PaneSnapshot{
+			{PaneID: "%1", SessionID: "$1", SessionName: "alpha"},
+			{PaneID: "%2", SessionID: "$2", SessionName: "beta"},
+			{PaneID: "%3", SessionID: "$3", SessionName: "gamma"},
+		},
+		captureText:   "startup baseline",
+		captureErrors: map[string]error{"%2": errors.New("capture-pane failed")},
+	}
+	initial := ports.PersistedState{
+		SessionOrder: []string{"gamma", "beta", "alpha"},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-5 * time.Minute)},
+			"beta":  {LastActiveAt: now.Add(-2 * time.Hour)},
+			"gamma": {LastActiveAt: now.Add(-3 * time.Hour)},
+		}),
+	}
+	store.EXPECT().Load(ctx, serverID).Return(initial, nil)
+	var saved ports.PersistedState
+	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
+		saved = state
+		return reflect.DeepEqual(state.SessionOrder, []string{"gamma", "beta", "alpha"})
+	})).Return(nil)
+
+	captured, err := NewService(nil, query, nil, store).CaptureLiveSessionsWithConfigProtectedPreservingOrder(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour})
+	if err != nil {
+		t.Fatalf("CaptureLiveSessionsWithConfigProtectedPreservingOrder error: %v", err)
+	}
+	if captured {
+		t.Fatal("CaptureLiveSessionsWithConfigProtectedPreservingOrder captured = true, want false so startup retries")
+	}
+	if saved.Sidebar != nil {
+		t.Fatalf("Sidebar = %#v, want no recent-sort marker until baseline capture completes", saved.Sidebar)
+	}
+	if !reflect.DeepEqual(saved.Heat, initial.Heat) {
+		t.Fatalf("Heat changed after incomplete baseline capture; got %#v want preserved %#v", saved.Heat, initial.Heat)
+	}
+}
+
 func TestCaptureSessionHeatWithConfigAutoSortsCompleteCategoriesWhenAnotherCategoryPaneSampleFails(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
