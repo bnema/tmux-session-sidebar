@@ -178,6 +178,10 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 				}
 				return saveSidebarVisibility(ctx, true, client)
 			}
+			mover, ok := sidebar.(ports.SidebarSwitchPort)
+			if !ok {
+				return fmt.Errorf("owner-scoped sidebar switch requires atomic tmux move+switch support")
+			}
 			ownerPane, err := sidebar.FindSidebarPaneForClient(ctx, client)
 			if err != nil {
 				return err
@@ -188,10 +192,6 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 				if err != nil {
 					return err
 				}
-			}
-			mover, ok := sidebar.(ports.SidebarSwitchPort)
-			if !ok {
-				return fmt.Errorf("owner-scoped sidebar switch requires atomic tmux move+switch support")
 			}
 			if err := mover.AttachSidebarForClientAndSwitchClient(ctx, client, sessionName, ownerPane.PaneID, cfg.Width); err != nil {
 				return fmt.Errorf("preposition sidebar and switch to %q: %w", sessionName, err)

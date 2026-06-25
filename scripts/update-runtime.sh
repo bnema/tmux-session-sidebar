@@ -470,7 +470,7 @@ EOF
 stop_runtime_subcommand_processes() {
   local failed pid pids subcommand="$1"
   if [ -z "$PS_BIN" ]; then
-    pkill_runtime_subcommand "$subcommand"
+    TMUX_SESSION_SIDEBAR_STOP_STALE_ANY_PATH=1 pkill_runtime_subcommand "$subcommand"
     return
   fi
   pids="$(runtime_subcommand_pids "$subcommand")"
@@ -516,7 +516,11 @@ pkill_runtime_subcommand() {
     log_update "pkill not found; cannot stop runtime $subcommand processes"
     return 1
   fi
-  pattern="$(ere_escape "$runtime_bin daemon $subcommand")"
+  if [ "${TMUX_SESSION_SIDEBAR_STOP_STALE_ANY_PATH:-}" = 1 ]; then
+    pattern="$(ere_escape "/tmux-session-sidebar daemon $subcommand")"
+  else
+    pattern="$(ere_escape "$runtime_bin daemon $subcommand")"
+  fi
   "$PKILL_BIN" -f "$pattern" 2>/dev/null
   status="$?"
   case "$status" in

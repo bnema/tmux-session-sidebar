@@ -62,6 +62,31 @@ func TestSidebarStateClosingOneVisibleClientLeavesOtherOpen(t *testing.T) {
 	}
 }
 
+func TestSidebarStateClosingOwnerChoosesDeterministicNextOwner(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := context.Background()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{
+			Open:           true,
+			OwnerClient:    "client-b",
+			VisibleClients: map[string]bool{"client-z": true, "client-a": true, "client-b": true},
+		}
+	}); err != nil {
+		t.Fatalf("seed sidebar state: %v", err)
+	}
+	if err := saveSidebarVisibility(ctx, false, "client-b"); err != nil {
+		t.Fatalf("close owner visibility: %v", err)
+	}
+
+	state, err := persistedSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("persistedSidebarState: %v", err)
+	}
+	if state.OwnerClient != "client-a" {
+		t.Fatalf("OwnerClient = %q, want deterministic lexicographic successor client-a", state.OwnerClient)
+	}
+}
+
 func TestSidebarStateLegacyOwnerOpenAppliesOnlyToOwnerClient(t *testing.T) {
 	state := ports.SidebarState{Open: true, OwnerClient: "client-1"}
 

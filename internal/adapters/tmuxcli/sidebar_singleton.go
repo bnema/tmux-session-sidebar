@@ -233,6 +233,10 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 }
 
 func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return fmt.Errorf("missing sidebar owner client")
+	}
 	paneID = strings.TrimSpace(paneID)
 	if err := c.requireSidebarPane(ctx, paneID); err != nil {
 		return err
@@ -394,7 +398,10 @@ func (c Client) cleanupParkingWindows(ctx context.Context, keepWindowID string) 
 	if len(windows) <= 1 {
 		return
 	}
-	keepWindows := c.markedSidebarWindowIDsBestEffort(ctx)
+	keepWindows, ok := c.markedSidebarWindowIDsBestEffort(ctx)
+	if !ok {
+		return
+	}
 	if keepWindowID != "" {
 		keepWindows[keepWindowID] = true
 	}
@@ -406,11 +413,11 @@ func (c Client) cleanupParkingWindows(ctx context.Context, keepWindowID string) 
 	}
 }
 
-func (c Client) markedSidebarWindowIDsBestEffort(ctx context.Context) map[string]bool {
+func (c Client) markedSidebarWindowIDsBestEffort(ctx context.Context) (map[string]bool, bool) {
 	windows := map[string]bool{}
 	panes, err := c.listMarkedSidebarPanes(ctx)
 	if err != nil {
-		return windows
+		return nil, false
 	}
 	for _, pane := range panes {
 		windowID := strings.TrimSpace(pane.WindowID)
@@ -418,7 +425,7 @@ func (c Client) markedSidebarWindowIDsBestEffort(ctx context.Context) map[string
 			windows[windowID] = true
 		}
 	}
-	return windows
+	return windows, true
 }
 
 func (c Client) ensureParkingSession(ctx context.Context) error {

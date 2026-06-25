@@ -1063,8 +1063,8 @@ esac
 	if err != nil {
 		t.Fatalf("loadSidebarState error: %v", err)
 	}
-	if next.Sidebar == nil || !next.Sidebar.Open || next.Sidebar.OwnerClient != "/dev/new" {
-		t.Fatalf("sidebar state = %#v, want open adopted by /dev/new", next.Sidebar)
+	if next.Sidebar == nil || !next.Sidebar.Open || next.Sidebar.OwnerClient != "/dev/new" || !next.Sidebar.VisibleClients["/dev/new"] || len(next.Sidebar.VisibleClients) != 1 {
+		t.Fatalf("sidebar state = %#v, want open adopted by /dev/new only", next.Sidebar)
 	}
 	if len(next.PinnedSessions) != 1 || next.PinnedSessions[0] != "alpha" {
 		t.Fatalf("pinned sessions changed during adoption: %#v", next.PinnedSessions)

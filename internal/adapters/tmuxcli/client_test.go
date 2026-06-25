@@ -1199,6 +1199,13 @@ func TestAttachSingletonSidebarRollsBackToSourceWindowAfterPostJoinFailures(t *t
 	}
 }
 
+func TestAttachSidebarForClientAndSwitchClientRejectsBlankClient(t *testing.T) {
+	err := (Client{Process: mocks.NewMockProcessPort(t)}).AttachSidebarForClientAndSwitchClient(t.Context(), " \t", "beta", "%9", "20")
+	if err == nil || !strings.Contains(err.Error(), "missing sidebar owner client") {
+		t.Fatalf("AttachSidebarForClientAndSwitchClient error = %v, want missing owner client", err)
+	}
+}
+
 func TestAttachSingletonSidebarAndSwitchClientRunsMoveAndSwitchInOneTmuxCommand(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
@@ -2035,15 +2042,35 @@ func TestCleanupParkingWindowsPreservesMarkedSidebarWindows(t *testing.T) {
 
 	(Client{Process: rec}).cleanupParkingWindows(ctx, "@current")
 
+	killed := killedWindows(rec.calls)
+	if killed["@oldSidebar"] || !killed["@stale"] || killed["@current"] {
+		t.Fatalf("killed windows = %#v, want only @stale", killed)
+	}
+}
+
+func TestCleanupParkingWindowsPreservesAllWindowsWhenMarkedPaneDiscoveryFails(t *testing.T) {
+	ctx := t.Context()
+	rec := newRecPort(t)
+	rec.handle([]string{"list-windows", "-t", singletonSidebarSessionName, "-F", "#{window_id}"},
+		func(args []string) (string, string) { return "@oldSidebar\n@stale\n@current", "" })
+	rec.handleErr([]string{"list-panes", "-a", "-f", "#{==:#{" + optionSidebarPane + "},1}", "-F", "#{pane_id}\t#{window_id}\t#{pane_dead}"},
+		func(args []string) (string, string) { return "", "tmux unavailable" }, errors.New("list panes failed"))
+
+	(Client{Process: rec}).cleanupParkingWindows(ctx, "@current")
+
+	if killed := killedWindows(rec.calls); len(killed) != 0 {
+		t.Fatalf("killed windows = %#v, want fail-closed cleanup with no kills", killed)
+	}
+}
+
+func killedWindows(calls [][]string) map[string]bool {
 	killed := map[string]bool{}
-	for _, call := range rec.calls {
+	for _, call := range calls {
 		if len(call) == 3 && call[0] == "kill-window" && call[1] == "-t" {
 			killed[call[2]] = true
 		}
 	}
-	if killed["@oldSidebar"] || !killed["@stale"] || killed["@current"] {
-		t.Fatalf("killed windows = %#v, want only @stale", killed)
-	}
+	return killed
 }
 
 // TestFindSingletonSidebarCleansUpDeadPaneReferences verifies that FindSingletonSidebar

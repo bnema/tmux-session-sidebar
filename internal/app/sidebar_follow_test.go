@@ -28,7 +28,9 @@ case "$1" in
 esac
 `)
 
-	if err := switchClient(ctx, "client-2", "beta", nil); err != nil {
+	tmuxPort := mocks.NewMockSidebarPort(t)
+
+	if err := switchClient(ctx, "client-2", "beta", tmuxPort); err != nil {
 		t.Fatalf("switchClient error: %v", err)
 	}
 	state, err := persistedSidebarState(ctx)
@@ -163,6 +165,24 @@ esac
 	assertOps(t, ops, []string{"find-owner", "move-switch-owner"})
 }
 
+func TestSwitchClientRequiresAtomicSidebarSwitchBeforeEnsuringOwnerPane(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1", VisibleClients: map[string]bool{"client-1": true}}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	tmuxPort := mocks.NewMockSidebarPort(t)
+	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "=beta:").Return(ports.PaneRef{WindowID: "@beta"}, nil)
+
+	err := switchClient(ctx, "client-1", "beta", tmuxPort)
+	if err == nil || !strings.Contains(err.Error(), "requires atomic tmux move+switch support") {
+		t.Fatalf("switchClient error = %v, want missing atomic switch support", err)
+	}
+}
+
 func TestSwitchClientDoesNotSaveVisibilityIfAtomicSwitchFails(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
@@ -219,6 +239,7 @@ func TestWithSidebarFollowPreservesGlobalSidebarWhenConfiguredToStayOpen(t *test
 	defer restore()
 
 	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, nil)
 	tmuxPort.EXPECT().EnsureSidebarForClient(ctx, "client-1", mock.MatchedBy(matchesDaemonServeUICommand())).Run(func(context.Context, string, []string) {
 		ops = append(ops, "ensure-owner")
 	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
@@ -257,6 +278,7 @@ func TestWithSidebarFollowReopensGlobalSidebarWhenConfiguredToStayOpen(t *testin
 	defer restore()
 
 	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, nil)
 	tmuxPort.EXPECT().EnsureSidebarForClient(ctx, "client-1", mock.MatchedBy(matchesDaemonServeUICommand())).Run(func(context.Context, string, []string) {
 		ops = append(ops, "ensure-owner")
 	}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
@@ -273,6 +295,31 @@ func TestWithSidebarFollowReopensGlobalSidebarWhenConfiguredToStayOpen(t *testin
 	}
 
 	assertOps(t, ops, []string{"ensure-owner", "attach-target"})
+}
+
+func TestReconcileSidebarVisibilityClosesExistingPaneWhenConfiguredCloseAfterSwitch(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1", VisibleClients: map[string]bool{"client-1": true}}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	tmuxPort := mocks.NewMockSidebarPort(t)
+	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(true, nil)
+	tmuxPort.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
+	tmuxPort.EXPECT().ParkSidebarForClient(ctx, "client-1", "%9").Return(nil)
+
+	if err := reconcileSidebarVisibilityForClient(ctx, "client-1", tmuxPort); err != nil {
+		t.Fatalf("reconcileSidebarVisibilityForClient error: %v", err)
+	}
+	state, err := persistedSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("persistedSidebarState error: %v", err)
+	}
+	if state.Open || state.VisibleClients["client-1"] {
+		t.Fatalf("state = %#v, want client-1 closed", state)
+	}
 }
 
 func TestWithSidebarFollowClosesOpenSidebarWhenConfiguredCloseAfterSwitch(t *testing.T) {
@@ -359,7 +406,7 @@ type switchCapableSidebarPort struct {
 
 func (s *switchCapableSidebarPort) AttachSidebarForClientAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error {
 	if s.switchFn == nil {
-		return nil
+		return errors.New("test switchCapableSidebarPort missing switchFn")
 	}
 	return s.switchFn(ctx, clientID, sessionName, paneID, width)
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
@@ -86,12 +87,17 @@ func visibleClientsFromLegacySidebarState(state ports.SidebarState) map[string]b
 }
 
 func firstVisibleClient(visible map[string]bool) string {
+	clients := make([]string, 0, len(visible))
 	for client, isVisible := range visible {
 		if isVisible {
-			return client
+			clients = append(clients, client)
 		}
 	}
-	return ""
+	sort.Strings(clients)
+	if len(clients) == 0 {
+		return ""
+	}
+	return clients[0]
 }
 
 func anyVisibleClient(visible map[string]bool) bool {

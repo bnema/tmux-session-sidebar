@@ -254,6 +254,7 @@ func TestReconcileSidebarVisibilityForClientIsIdempotentWhenPaneExists(t *testin
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
 	tmux := mocks.NewMockSidebarPort(t)
+	tmux.EXPECT().CloseAfterSwitch(ctx).Return(false, nil).Twice()
 	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil).Twice()
 
 	for i := 0; i < 2; i++ {
