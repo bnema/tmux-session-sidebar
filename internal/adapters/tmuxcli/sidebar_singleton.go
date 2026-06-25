@@ -255,13 +255,7 @@ func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clien
 		width = "30"
 	}
 	if currentWindowID == windowID {
-		if err := c.resizePaneWidth(ctx, paneID, width); err != nil {
-			return err
-		}
-		if err := c.switchClientToExactTarget(ctx, clientID, target); err != nil {
-			return err
-		}
-		return c.selectPaneRightOf(ctx, paneID)
+		return c.resizeSwitchMarkAndSelectSidebarPane(ctx, clientID, target, paneID, width)
 	}
 	sourceCloseWeights, _ := c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
 	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
@@ -293,6 +287,22 @@ func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clien
 	}
 	c.rebalanceSourceWindowAfterSidebarMoveBestEffort(ctx, currentWindowID, sourceCloseWeights)
 	c.captureAttachedSidebarWidthBaselineBestEffort(ctx, windowID, paneID, width)
+	return nil
+}
+
+func (c Client) resizeSwitchMarkAndSelectSidebarPane(ctx context.Context, clientID string, target string, paneID string, width string) error {
+	args := []string{cmdResizePane, "-t", paneID, "-x", width}
+	args = append(args, ";")
+	args = append(args, switchClientArgs(clientID, target)...)
+	args = append(args,
+		";", cmdSetOption, "-p", "-t", paneID, optionSidebarPane, "1",
+		";", cmdSetOption, "-p", "-t", paneID, optionSidebarOwnerClient, clientID,
+		";", cmdSelectPane, "-t", paneID, "-R",
+	)
+	result, err := c.Process.Exec(ctx, tmuxBinary, args)
+	if err != nil {
+		return wrapTmuxError(result, err)
+	}
 	return nil
 }
 

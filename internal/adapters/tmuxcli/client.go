@@ -343,11 +343,6 @@ func (c Client) SwitchClientSession(ctx context.Context, clientID string, sessio
 	return err
 }
 
-func (c Client) switchClientToExactTarget(ctx context.Context, clientID string, target string) error {
-	_, err := c.Process.Exec(ctx, tmuxBinary, switchClientArgs(clientID, target))
-	return err
-}
-
 func switchClientArgs(clientID string, target string) []string {
 	args := []string{cmdSwitchClient}
 	if clientID != "" {

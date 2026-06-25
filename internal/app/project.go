@@ -167,24 +167,25 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 				return closeSidebar(ctx, client, sidebar)
 			}
 			target := exactSessionWindowTarget(sessionName)
-			targetSidebar, err := sidebar.FindSidebarPane(ctx, target)
+			ownerPane, err := sidebar.FindSidebarPaneForClient(ctx, client)
 			if err != nil {
 				return err
 			}
-			if targetSidebar.PaneID != "" {
+			targetRef, err := sidebar.FindSidebarPane(ctx, target)
+			if err != nil {
+				return err
+			}
+			if ownerPane.PaneID != "" && ownerPane.WindowID != "" && ownerPane.WindowID == targetRef.WindowID {
 				output, err := tmux(ctx, appendSwitchClientArgs(client, sessionName)...)
 				if err != nil {
 					return tmuxCommandError("switch client session", output, err)
 				}
-				return saveSidebarVisibility(ctx, true, client)
+				saveSidebarVisibilityAfterCommittedSwitch(ctx, client)
+				return nil
 			}
 			mover, ok := sidebar.(ports.SidebarSwitchPort)
 			if !ok {
 				return fmt.Errorf("owner-scoped sidebar switch requires atomic tmux move+switch support")
-			}
-			ownerPane, err := sidebar.FindSidebarPaneForClient(ctx, client)
-			if err != nil {
-				return err
 			}
 			cfg := loadSidebarConfig(ctx)
 			if ownerPane.PaneID == "" {
@@ -196,7 +197,8 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 			if err := mover.AttachSidebarForClientAndSwitchClient(ctx, client, sessionName, ownerPane.PaneID, cfg.Width); err != nil {
 				return fmt.Errorf("preposition sidebar and switch to %q: %w", sessionName, err)
 			}
-			return saveSidebarVisibility(ctx, true, client)
+			saveSidebarVisibilityAfterCommittedSwitch(ctx, client)
+			return nil
 		}
 	}
 	output, err := tmux(ctx, appendSwitchClientArgs(client, sessionName)...)
@@ -204,6 +206,12 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 		return tmuxCommandError("switch client session", output, err)
 	}
 	return nil
+}
+
+func saveSidebarVisibilityAfterCommittedSwitch(ctx context.Context, client string) {
+	if err := saveSidebarVisibility(ctx, true, client); err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: save sidebar visibility after switch failed: %v\n", err)
+	}
 }
 
 func appendSwitchClientArgs(client string, sessionName string) []string {
