@@ -150,7 +150,7 @@ test_stops_pidfile_daemon_before_fallback_and_reload() {
   [ "$scan_line" -lt "$tmux_line" ] || fail "restart should scan runtime processes before tmux reload"
 }
 
-test_stops_stale_pidfile_daemon_from_previous_runtime_path() {
+test_ignores_stale_pidfile_daemon_from_previous_runtime_path_by_default() {
   local inspect_count root state_dir
   root="$(new_fixture)"
   state_dir="$root/statehome/tmux-session-sidebar"
@@ -160,7 +160,20 @@ test_stops_stale_pidfile_daemon_from_previous_runtime_path() {
   TEST_PS_OLD_RUNTIME_MATCH_ONCE=1 XDG_STATE_HOME="$root/statehome" run_restart "$root"
 
   inspect_count="$(grep -cF 'ps -o command= -p 123' "$root/log" || true)"
-  [ "$inspect_count" = 2 ] || fail "restart should treat previous-build tmux-session-sidebar daemon pid as stoppable and wait for exit; inspected $inspect_count times"
+  [ "$inspect_count" = 1 ] || fail "restart should inspect stale previous-build daemon pid once and not stop it by default; inspected $inspect_count times"
+}
+
+test_stops_stale_pidfile_daemon_from_previous_runtime_path_when_enabled() {
+  local inspect_count root state_dir
+  root="$(new_fixture)"
+  state_dir="$root/statehome/tmux-session-sidebar"
+  mkdir -p "$state_dir"
+  printf '123\n' >"$state_dir/daemon.pid"
+
+  TMUX_SESSION_SIDEBAR_STOP_STALE_ANY_PATH=1 TEST_PS_OLD_RUNTIME_MATCH_ONCE=1 XDG_STATE_HOME="$root/statehome" run_restart "$root"
+
+  inspect_count="$(grep -cF 'ps -o command= -p 123' "$root/log" || true)"
+  [ "$inspect_count" = 2 ] || fail "restart should treat previous-build tmux-session-sidebar daemon pid as stoppable when stale-any-path is enabled; inspected $inspect_count times"
 }
 
 test_stops_scanned_previous_runtime_paths_when_enabled() {
@@ -180,7 +193,8 @@ test_stops_scanned_previous_runtime_paths_when_enabled() {
 test_restarts_tmux_sidebar_runtime_processes_and_hidden_session
 test_sources_active_tmux_config_files
 test_stops_pidfile_daemon_before_fallback_and_reload
-test_stops_stale_pidfile_daemon_from_previous_runtime_path
+test_ignores_stale_pidfile_daemon_from_previous_runtime_path_by_default
+test_stops_stale_pidfile_daemon_from_previous_runtime_path_when_enabled
 test_stops_scanned_previous_runtime_paths_when_enabled
 
 echo "restart-runtime tests passed"

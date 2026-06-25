@@ -429,7 +429,7 @@ is_runtime_pid() {
   esac
   [ -n "$PS_BIN" ] || return 1
   command="$($PS_BIN -o command= -p "$pid" 2>/dev/null || true)"
-  runtime_command_matches "$command" "$subcommand"
+  runtime_command_matches_exact "$command" "$subcommand" || { [ "${TMUX_SESSION_SIDEBAR_STOP_STALE_ANY_PATH:-}" = 1 ] && runtime_command_matches "$command" "$subcommand"; }
 }
 
 wait_for_pid_exit() {
