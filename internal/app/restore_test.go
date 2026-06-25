@@ -997,14 +997,14 @@ esac
 	}
 }
 
-func TestHookClientAttachedAdoptsPersistedOpenSidebarAfterRestart(t *testing.T) {
+func TestHookClientAttachedRestoresPersistedVisibleSidebarAfterRestart(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	store := sessionOrderStore()
 	state, err := store.Load(t.Context(), "tmux")
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "/dev/old"}
+	state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "/dev/old", VisibleClients: map[string]bool{"/dev/new": true}}
 	state.SessionOrder = []string{"alpha"}
 	state.PinnedSessions = []string{"alpha"}
 	if err := store.Save(t.Context(), "tmux", state); err != nil {

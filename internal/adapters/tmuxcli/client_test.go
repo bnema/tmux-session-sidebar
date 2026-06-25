@@ -670,6 +670,109 @@ func TestFindSidebarPaneIgnoresDeadMarkedPane(t *testing.T) {
 	}
 }
 
+func TestFindSidebarPaneReturnsMarkedPaneRegardlessOfOwner(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", "#{pane_id}\t#{@session-sidebar-pane}\t#{pane_dead}"}).Return(ports.Result{Stdout: "%9\t1\t0\n"}, nil)
+
+	got, err := client.FindSidebarPane(ctx, "client-1")
+	if err != nil {
+		t.Fatalf("FindSidebarPane error: %v", err)
+	}
+	if got != (ports.PaneRef{PaneID: "%9", WindowID: "@1"}) {
+		t.Fatalf("FindSidebarPane = %#v, want owner-agnostic marked pane", got)
+	}
+}
+
+func TestOwnerScopedSidebarPaneLifecycle(t *testing.T) {
+	command := []string{"tmux-session-sidebar", "daemon", "serve-ui"}
+	t.Run("find filters by owner and cleans dead panes", func(t *testing.T) {
+		ctx := t.Context()
+		process := mocks.NewMockProcessPort(t)
+		process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-a", "-f", "#{&&:#{==:#{@session-sidebar-pane},1},#{==:#{@session-sidebar-owner-client},client-A}}", "-F", "#{pane_id}\t#{window_id}\t#{pane_dead}"}).Return(ports.Result{Stdout: "%9\t@1\t1\n%10\t@2\t0\n"}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"kill-pane", "-t", "%9"}).Return(ports.Result{}, nil)
+
+		got, err := (Client{Process: process}).FindSidebarPaneForClient(ctx, "client-A")
+		if err != nil {
+			t.Fatalf("FindSidebarPaneForClient error: %v", err)
+		}
+		if got != (ports.PaneRef{PaneID: "%10", WindowID: "@2"}) {
+			t.Fatalf("FindSidebarPaneForClient = %#v, want live owner-scoped pane", got)
+		}
+	})
+
+	t.Run("ensure creates and marks sidebar owner when no owner pane exists", func(t *testing.T) {
+		ctx := t.Context()
+		process := mocks.NewMockProcessPort(t)
+		process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-a", "-f", "#{&&:#{==:#{@session-sidebar-pane},1},#{==:#{@session-sidebar-owner-client},client-A}}", "-F", "#{pane_id}\t#{window_id}\t#{pane_dead}"}).Return(ports.Result{}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"has-session", "-t", "__tmux-session-sidebar"}).Return(ports.Result{Stderr: "can't find session\n"}, errors.New("missing"))
+		process.EXPECT().Exec(ctx, "tmux", []string{"new-session", "-d", "-s", "__tmux-session-sidebar", "-n", "sidebar", "-P", "-F", "#{pane_id}\t#{window_id}", "tmux-session-sidebar", "daemon", "serve-ui"}).Return(ports.Result{Stdout: "%9\t@hidden\n"}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1", ";", "set-option", "-p", "-t", "%9", "@session-sidebar-owner-client", "client-A"}).Return(ports.Result{}, nil)
+
+		got, err := (Client{Process: process}).EnsureSidebarForClient(ctx, "client-A", command)
+		if err != nil {
+			t.Fatalf("EnsureSidebarForClient error: %v", err)
+		}
+		if got != (ports.PaneRef{PaneID: "%9", WindowID: "@hidden"}) {
+			t.Fatalf("EnsureSidebarForClient = %#v, want created pane", got)
+		}
+	})
+
+	t.Run("ensure reuses only matching owner pane", func(t *testing.T) {
+		ctx := t.Context()
+		process := mocks.NewMockProcessPort(t)
+		process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-a", "-f", "#{&&:#{==:#{@session-sidebar-pane},1},#{==:#{@session-sidebar-owner-client},client-A}}", "-F", "#{pane_id}\t#{window_id}\t#{pane_dead}"}).Return(ports.Result{Stdout: "%9\t@hidden\t0\n"}, nil)
+
+		got, err := (Client{Process: process}).EnsureSidebarForClient(ctx, "client-A", command)
+		if err != nil {
+			t.Fatalf("EnsureSidebarForClient error: %v", err)
+		}
+		if got != (ports.PaneRef{PaneID: "%9", WindowID: "@hidden"}) {
+			t.Fatalf("EnsureSidebarForClient = %#v, want matching owner pane", got)
+		}
+	})
+
+	t.Run("attach marks owner on pane", func(t *testing.T) {
+		ctx := t.Context()
+		process := mocks.NewMockProcessPort(t)
+		process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1", ";", "set-option", "-p", "-t", "%9", "@session-sidebar-owner-client", "client-A"}).Return(ports.Result{}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-A", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9"}).Return(ports.Result{}, nil)
+
+		got, err := (Client{Process: process}).AttachSidebarForClient(ctx, "client-A", "%9", "20")
+		if err != nil {
+			t.Fatalf("AttachSidebarForClient error: %v", err)
+		}
+		if got != (ports.PaneRef{PaneID: "%9", WindowID: "@1"}) {
+			t.Fatalf("AttachSidebarForClient = %#v, want attached pane", got)
+		}
+	})
+
+	t.Run("park keeps owner marker before moving pane", func(t *testing.T) {
+		ctx := t.Context()
+		process := mocks.NewMockProcessPort(t)
+		allowSidebarCloseRebalanceCaptureMaybe(process, ctx, "@1", "%9", "")
+		process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1", ";", "set-option", "-p", "-t", "%9", "@session-sidebar-owner-client", "client-A"}).Return(ports.Result{}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"has-session", "-t", "__tmux-session-sidebar"}).Return(ports.Result{}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"break-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@hidden\n"}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"list-windows", "-t", "__tmux-session-sidebar", "-F", "#{window_id}"}).Return(ports.Result{Stdout: "@hidden\n"}, nil)
+
+		if err := (Client{Process: process}).ParkSidebarForClient(ctx, "client-A", "%9"); err != nil {
+			t.Fatalf("ParkSidebarForClient error: %v", err)
+		}
+	})
+}
+
 func TestSingletonSidebarPaneLifecycle(t *testing.T) {
 	command := []string{"tmux-session-sidebar", "daemon", "serve-ui"}
 	tests := []struct {
@@ -1110,6 +1213,7 @@ func TestAttachSingletonSidebarAndSwitchClientRunsMoveAndSwitchInOneTmuxCommand(
 	process.EXPECT().Exec(ctx, "tmux", []string{
 		"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2",
 		";", "set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1",
+		";", "set-option", "-p", "-t", "%9", "@session-sidebar-owner-client", "client-1",
 		";", "resize-pane", "-t", "%9", "-x", "20",
 		";", "switch-client", "-c", "client-1", "-t", "=beta:",
 		";", "select-pane", "-t", "%9", "-R",
@@ -1196,6 +1300,7 @@ func TestAttachSingletonSidebarAndSwitchClientKeepsSourceLayoutWhenCombinedComma
 	rec.handleErr([]string{
 		"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2",
 		";", "set-option", "-p", "-t", "%9", optionSidebarPane, "1",
+		";", "set-option", "-p", "-t", "%9", optionSidebarOwnerClient, "client-1",
 		";", "resize-pane", "-t", "%9", "-x", "20",
 		";", "switch-client", "-c", "client-1", "-t", "=beta:",
 		";", "select-pane", "-t", "%9", "-R",
@@ -1281,6 +1386,7 @@ func TestAttachSingletonSidebarAndSwitchClientRollsBackWhenCombinedCommandFails(
 	rec.handleErr([]string{
 		"join-pane", "-hbf", "-d", "-l", "20", "-s", "%9", "-t", "@2",
 		";", "set-option", "-p", "-t", "%9", optionSidebarPane, "1",
+		";", "set-option", "-p", "-t", "%9", optionSidebarOwnerClient, "client-1",
 		";", "resize-pane", "-t", "%9", "-x", "20",
 		";", "switch-client", "-c", "client-1", "-t", "=beta:",
 		";", "select-pane", "-t", "%9", "-R",
@@ -1448,6 +1554,7 @@ func TestAttachSingletonSidebarAndSwitchClientRebalancesSourceWindowAfterSuccess
 	rec.handle([]string{
 		"join-pane", "-hbf", "-d", "-l", "30", "-s", "%9", "-t", "@2",
 		";", "set-option", "-p", "-t", "%9", optionSidebarPane, "1",
+		";", "set-option", "-p", "-t", "%9", optionSidebarOwnerClient, "client-1",
 		";", "resize-pane", "-t", "%9", "-x", "30",
 		";", "switch-client", "-c", "client-1", "-t", "=beta:",
 		";", "select-pane", "-t", "%9", "-R",

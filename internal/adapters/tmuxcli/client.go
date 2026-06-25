@@ -43,6 +43,7 @@ const (
 	escapedFormatPaneID = "##{pane_id}"
 
 	optionSidebarPane             = "@session-sidebar-pane"
+	optionSidebarOwnerClient      = "@session-sidebar-owner-client"
 	optionSidebarWindowLayout     = "@session-sidebar-window-layout"
 	optionSidebarOpenWorkBaseline = "@session-sidebar-open-work-baseline"
 	optionSidebarResizeSyncActive = "@session-sidebar-resize-sync-active"
@@ -378,6 +379,19 @@ func (c Client) KillSession(ctx context.Context, sessionName string) error {
 func (c Client) markSidebarPane(ctx context.Context, paneID string) error {
 	_, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdSetOption, "-p", "-t", strings.TrimSpace(paneID), optionSidebarPane, "1"})
 	return err
+}
+
+func (c Client) markSidebarPaneForClient(ctx context.Context, paneID string, ownerClientID string) error {
+	paneID = strings.TrimSpace(paneID)
+	ownerClientID = strings.TrimSpace(ownerClientID)
+	if ownerClientID == "" {
+		return fmt.Errorf("missing sidebar owner client")
+	}
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{
+		cmdSetOption, "-p", "-t", paneID, optionSidebarPane, "1",
+		";", cmdSetOption, "-p", "-t", paneID, optionSidebarOwnerClient, ownerClientID,
+	})
+	return wrapTmuxError(result, err)
 }
 
 func (c Client) resizePaneWidth(ctx context.Context, paneID string, width string) error {

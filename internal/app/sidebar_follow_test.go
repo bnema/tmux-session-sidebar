@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestSwitchClientAdoptsOpenSidebarForTargetClient(t *testing.T) {
+func TestSwitchClientDoesNotAdoptUnrelatedVisibleSidebar(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := context.Background()
 	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
-		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1", VisibleClients: map[string]bool{"client-1": true}}
 	}); err != nil {
 		t.Fatalf("seed sidebar state: %v", err)
 	}
@@ -35,51 +35,72 @@ esac
 	if err != nil {
 		t.Fatalf("persistedSidebarState error: %v", err)
 	}
-	if state.OwnerClient != "client-1" {
-		t.Fatalf("OwnerClient = %q, want unchanged without sidebar port", state.OwnerClient)
-	}
-
-	tmuxPort := mocks.NewMockSidebarPort(t)
-	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
-	tmuxPort.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
-	tmuxPort.EXPECT().AttachSingletonSidebar(ctx, "=gamma:", "%9", mock.Anything).Return(ports.PaneRef{PaneID: "%9", WindowID: "@3"}, nil)
-	if err := switchClient(ctx, "client-2", "gamma", tmuxPort); err != nil {
-		t.Fatalf("switchClient with sidebar error: %v", err)
-	}
-	state, err = persistedSidebarState(ctx)
-	if err != nil {
-		t.Fatalf("persistedSidebarState after switch error: %v", err)
-	}
-	if state.OwnerClient != "client-2" {
-		t.Fatalf("OwnerClient = %q, want adopted target client", state.OwnerClient)
+	if state.VisibleClients["client-2"] || state.OwnerClient != "client-1" {
+		t.Fatalf("state = %#v, want unrelated client not adopted", state)
 	}
 }
 
-func TestSwitchClientPrepositionsGlobalSidebarBeforeSwitchingSession(t *testing.T) {
+func TestSwitchClientMovesOwnerScopedSidebarAtomicallyBeforeSwitchingSession(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
-		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1", VisibleClients: map[string]bool{"client-1": true, "client-2": true}}
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
-	tmuxPort := mocks.NewMockSidebarPort(t)
+	base := mocks.NewMockSidebarPort(t)
+	tmuxPort := &switchCapableSidebarPort{MockSidebarPort: base}
 	var ops []string
 
-	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
-	tmuxPort.EXPECT().FindSingletonSidebar(ctx).Run(func(context.Context) {
-		ops = append(ops, "find-singleton")
-	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil).Once()
-	tmuxPort.EXPECT().AttachSingletonSidebar(ctx, "=beta:", "%9", mock.Anything).Run(func(context.Context, string, string, string) {
-		ops = append(ops, "attach-target")
-	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@new"}, nil)
+	base.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	base.EXPECT().FindSidebarPane(ctx, "=beta:").Run(func(context.Context, string) {
+		ops = append(ops, "find-target")
+	}).Return(ports.PaneRef{WindowID: "@beta"}, nil)
+	base.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Run(func(context.Context, string) {
+		ops = append(ops, "find-owner")
+	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
+	tmuxPort.switchFn = func(_ context.Context, clientID, sessionName, paneID, width string) error {
+		if clientID != "client-1" || sessionName != "beta" || paneID != "%9" || width == "" {
+			t.Fatalf("atomic switch args = %q %q %q %q", clientID, sessionName, paneID, width)
+		}
+		ops = append(ops, "move-switch-owner")
+		return nil
+	}
 
+	if err := switchClient(ctx, "client-1", "beta", tmuxPort); err != nil {
+		t.Fatalf("switchClient error: %v", err)
+	}
+	assertOps(t, ops, []string{"find-target", "find-owner", "move-switch-owner"})
+	state, err := persistedSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("persistedSidebarState error: %v", err)
+	}
+	if !state.VisibleClients["client-1"] || !state.VisibleClients["client-2"] {
+		t.Fatalf("VisibleClients = %#v, want both clients preserved", state.VisibleClients)
+	}
+}
+
+func TestSwitchClientToWindowWithExistingSidebarSwitchesWithoutAddingSidebar(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1", VisibleClients: map[string]bool{"client-1": true, "client-2": true}}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	base := mocks.NewMockSidebarPort(t)
+	var ops []string
+
+	base.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	base.EXPECT().FindSidebarPane(ctx, "=beta:").Run(func(context.Context, string) {
+		ops = append(ops, "find-target-sidebar")
+	}).Return(ports.PaneRef{PaneID: "%22", WindowID: "@beta"}, nil)
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
 		if name != "tmux" {
 			t.Fatalf("command name = %q, want tmux", name)
 		}
 		if strings.Join(args, "\x00") == "switch-client\x00-c\x00client-1\x00-t\x00=beta:" {
-			ops = append(ops, "switch-client")
+			ops = append(ops, "switch-only")
 			return "", nil
 		}
 		t.Fatalf("unexpected command args: %#v", args)
@@ -87,40 +108,38 @@ func TestSwitchClientPrepositionsGlobalSidebarBeforeSwitchingSession(t *testing.
 	})
 	defer restore()
 
-	if err := switchClient(ctx, "client-1", "beta", tmuxPort); err != nil {
+	if err := switchClient(ctx, "client-1", "beta", base); err != nil {
 		t.Fatalf("switchClient error: %v", err)
 	}
-	assertOps(t, ops, []string{"find-singleton", "attach-target", "switch-client"})
+	assertOps(t, ops, []string{"find-target-sidebar", "switch-only"})
 }
 
-func TestCreateProjectSwitchPrepositionsGlobalSidebarBeforeSwitchingSession(t *testing.T) {
+func TestCreateProjectSwitchMovesOwnerScopedSidebarBeforeSwitchingSession(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
-		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1", VisibleClients: map[string]bool{"client-1": true}}
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
-	tmuxPort := mocks.NewMockSidebarPort(t)
+	base := mocks.NewMockSidebarPort(t)
+	tmuxPort := &switchCapableSidebarPort{MockSidebarPort: base}
 	var ops []string
-	var logPath string
 
-	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
-	tmuxPort.EXPECT().FindSingletonSidebar(ctx).Run(func(context.Context) {
-		ops = append(ops, "find-singleton")
-	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil).Once()
-	tmuxPort.EXPECT().AttachSingletonSidebar(ctx, "=beta:", "%9", mock.Anything).Run(func(context.Context, string, string, string) {
-		log, err := os.ReadFile(logPath)
-		if err != nil && !os.IsNotExist(err) {
-			t.Fatalf("read fake tmux log: %v", err)
+	base.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	base.EXPECT().FindSidebarPane(ctx, "=beta:").Return(ports.PaneRef{WindowID: "@beta"}, nil)
+	base.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Run(func(context.Context, string) {
+		ops = append(ops, "find-owner")
+	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
+	tmuxPort.switchFn = func(_ context.Context, clientID, sessionName, paneID, _ string) error {
+		if clientID != "client-1" || sessionName != "beta" || paneID != "%9" {
+			t.Fatalf("atomic switch args = %q %q %q", clientID, sessionName, paneID)
 		}
-		if strings.Contains(string(log), "switch-client") {
-			t.Fatal("sidebar attach happened after switch-client; want preposition before switching")
-		}
-		ops = append(ops, "attach-target")
-	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@new"}, nil)
+		ops = append(ops, "move-switch-owner")
+		return nil
+	}
 
-	logPath = installFakeTmux(t, `#!/usr/bin/env bash
+	installFakeTmux(t, `#!/usr/bin/env bash
 case "$1" in
   list-sessions)
     printf '$2\tbeta\t1\t0\n'
@@ -130,9 +149,6 @@ case "$1" in
       @session-sidebar-width) printf '20\n' ;;
       *) printf '\n' ;;
     esac
-    ;;
-  switch-client)
-    printf 'switch-client\n' >> "$TMUX_LOG"
     ;;
   *)
     printf 'unexpected tmux args: %s\n' "$*" >&2
@@ -144,52 +160,38 @@ esac
 	if err := createProject(ctx, map[string]string{"client": "client-1", "project-path": "/work/beta"}, nil, tmuxPort); err != nil {
 		t.Fatalf("createProject error: %v", err)
 	}
-	assertOps(t, ops, []string{"find-singleton", "attach-target"})
-	if !strings.Contains(readLog(t, logPath), "switch-client") {
-		t.Fatal("tmux switch-client was not called")
-	}
+	assertOps(t, ops, []string{"find-owner", "move-switch-owner"})
 }
 
-func TestSwitchClientRestoresSidebarIfPrepositionedSwitchFails(t *testing.T) {
+func TestSwitchClientDoesNotSaveVisibilityIfAtomicSwitchFails(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
-		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1"}
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1", VisibleClients: map[string]bool{"client-1": true}}
 	}); err != nil {
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
-	tmuxPort := mocks.NewMockSidebarPort(t)
-	var ops []string
+	base := mocks.NewMockSidebarPort(t)
+	tmuxPort := &switchCapableSidebarPort{MockSidebarPort: base}
 
-	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
-	tmuxPort.EXPECT().FindSingletonSidebar(ctx).Run(func(context.Context) {
-		ops = append(ops, "find-singleton")
-	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil).Once()
-	tmuxPort.EXPECT().AttachSingletonSidebar(ctx, "=beta:", "%9", mock.Anything).Run(func(context.Context, string, string, string) {
-		ops = append(ops, "attach-target")
-	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@new"}, nil).Once()
-	tmuxPort.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%9", mock.Anything).Run(func(context.Context, string, string, string) {
-		ops = append(ops, "rollback-attach")
-	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil).Once()
-
-	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
-		if name != "tmux" {
-			t.Fatalf("command name = %q, want tmux", name)
-		}
-		if strings.Join(args, "\x00") == "switch-client\x00-c\x00client-1\x00-t\x00=beta:" {
-			ops = append(ops, "switch-client")
-			return "no such session\n", errors.New("exit status 1")
-		}
-		t.Fatalf("unexpected command args: %#v", args)
-		return "", nil
-	})
-	defer restore()
+	base.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	base.EXPECT().FindSidebarPane(ctx, "=beta:").Return(ports.PaneRef{WindowID: "@beta"}, nil)
+	base.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
+	tmuxPort.switchFn = func(context.Context, string, string, string, string) error {
+		return errors.New("switch failed")
+	}
 
 	err := switchClient(ctx, "client-1", "beta", tmuxPort)
 	if err == nil {
 		t.Fatal("switchClient error = nil, want failure")
 	}
-	assertOps(t, ops, []string{"find-singleton", "attach-target", "switch-client", "rollback-attach"})
+	state, err := persistedSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("persistedSidebarState error: %v", err)
+	}
+	if !state.VisibleClients["client-1"] || state.VisibleClients["client-2"] || state.OwnerClient != "client-1" {
+		t.Fatalf("state after failed switch = %#v, want unchanged", state)
+	}
 }
 
 func TestWithSidebarFollowPreservesGlobalSidebarWhenConfiguredToStayOpen(t *testing.T) {
@@ -217,10 +219,10 @@ func TestWithSidebarFollowPreservesGlobalSidebarWhenConfiguredToStayOpen(t *test
 	defer restore()
 
 	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
-	tmuxPort.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Run(func(context.Context, []string) {
-		ops = append(ops, "ensure-singleton")
+	tmuxPort.EXPECT().EnsureSidebarForClient(ctx, "client-1", mock.MatchedBy(matchesDaemonServeUICommand())).Run(func(context.Context, string, []string) {
+		ops = append(ops, "ensure-owner")
 	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
-	tmuxPort.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%9", mock.Anything).Run(func(context.Context, string, string, string) {
+	tmuxPort.EXPECT().AttachSidebarForClient(ctx, "client-1", "%9", mock.Anything).Run(func(context.Context, string, string, string) {
 		ops = append(ops, "attach-target")
 	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@new"}, nil)
 
@@ -236,7 +238,7 @@ func TestWithSidebarFollowPreservesGlobalSidebarWhenConfiguredToStayOpen(t *test
 		{"switch-client", "-c", "client-1", "-t", "beta"},
 	}
 	assertCallSubsequence(t, calls, wantSubsequence)
-	assertOps(t, ops, []string{"ensure-singleton", "attach-target"})
+	assertOps(t, ops, []string{"ensure-owner", "attach-target"})
 }
 
 func TestWithSidebarFollowReopensGlobalSidebarWhenConfiguredToStayOpen(t *testing.T) {
@@ -255,10 +257,10 @@ func TestWithSidebarFollowReopensGlobalSidebarWhenConfiguredToStayOpen(t *testin
 	defer restore()
 
 	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
-	tmuxPort.EXPECT().EnsureSingletonSidebar(ctx, mock.MatchedBy(matchesDaemonServeUICommand())).Run(func(context.Context, []string) {
-		ops = append(ops, "ensure-singleton")
+	tmuxPort.EXPECT().EnsureSidebarForClient(ctx, "client-1", mock.MatchedBy(matchesDaemonServeUICommand())).Run(func(context.Context, string, []string) {
+		ops = append(ops, "ensure-owner")
 	}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
-	tmuxPort.EXPECT().AttachSingletonSidebar(ctx, "client-1", "%10", mock.Anything).Run(func(context.Context, string, string, string) {
+	tmuxPort.EXPECT().AttachSidebarForClient(ctx, "client-1", "%10", mock.Anything).Run(func(context.Context, string, string, string) {
 		ops = append(ops, "attach-target")
 	}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@new"}, nil)
 
@@ -270,7 +272,7 @@ func TestWithSidebarFollowReopensGlobalSidebarWhenConfiguredToStayOpen(t *testin
 		t.Fatalf("withSidebarFollow returned error: %v", err)
 	}
 
-	assertOps(t, ops, []string{"ensure-singleton", "attach-target"})
+	assertOps(t, ops, []string{"ensure-owner", "attach-target"})
 }
 
 func TestWithSidebarFollowClosesOpenSidebarWhenConfiguredCloseAfterSwitch(t *testing.T) {
@@ -290,8 +292,8 @@ func TestWithSidebarFollowClosesOpenSidebarWhenConfiguredCloseAfterSwitch(t *tes
 	defer restore()
 
 	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(true, nil)
-	tmuxPort.EXPECT().FindSingletonSidebar(ctx).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
-	tmuxPort.EXPECT().ParkSingletonSidebar(ctx, "%9").Return(nil)
+	tmuxPort.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
+	tmuxPort.EXPECT().ParkSidebarForClient(ctx, "client-1", "%9").Return(nil)
 
 	err := withSidebarFollow(ctx, "client-1", tmuxPort, func() error {
 		_, _ = tmux(ctx, "switch-client", "-c", "client-1", "-t", "beta")
@@ -348,6 +350,18 @@ func TestWithSidebarFollowAllowsNilSidebarAfterActionWhenStateSaysFollow(t *test
 	if !called {
 		t.Fatal("action was not called")
 	}
+}
+
+type switchCapableSidebarPort struct {
+	*mocks.MockSidebarPort
+	switchFn func(context.Context, string, string, string, string) error
+}
+
+func (s *switchCapableSidebarPort) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error {
+	if s.switchFn == nil {
+		return nil
+	}
+	return s.switchFn(ctx, clientID, sessionName, paneID, width)
 }
 
 func stubCommandRunner(t *testing.T, runner func(context.Context, string, ...string) (string, error)) func() {

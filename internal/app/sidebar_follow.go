@@ -40,12 +40,19 @@ func reconcileSidebarVisibilityForClient(ctx context.Context, client string, sid
 	if !shouldFollow {
 		return nil
 	}
+	pane, err := sidebar.FindSidebarPane(ctx, client)
+	if err != nil {
+		return err
+	}
+	if pane.PaneID != "" {
+		return nil
+	}
 	return applySidebarVisibilityForClient(ctx, client, sidebar)
 }
 
 func applySidebarVisibilityForClient(ctx context.Context, client string, sidebar ports.SidebarPort) error {
 	if closeAfterSwitch(ctx, sidebar) {
-		return closeSidebar(ctx, sidebar)
+		return closeSidebar(ctx, client, sidebar)
 	}
 	return openSidebarForClientWithoutFocus(ctx, client, "", "", sidebar)
 }

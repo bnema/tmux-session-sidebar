@@ -102,9 +102,13 @@ type ControlPort interface {
 type SidebarPort interface {
 	CloseAfterSwitch(ctx context.Context) (bool, error)
 	FindSidebarPane(ctx context.Context, target string) (PaneRef, error)
+	FindSidebarPaneForClient(ctx context.Context, ownerClientID string) (PaneRef, error)
 	FindSingletonSidebar(ctx context.Context) (PaneRef, error)
+	EnsureSidebarForClient(ctx context.Context, ownerClientID string, command []string) (PaneRef, error)
 	EnsureSingletonSidebar(ctx context.Context, command []string) (PaneRef, error)
+	AttachSidebarForClient(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
 	AttachSingletonSidebar(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
+	ParkSidebarForClient(ctx context.Context, ownerClientID string, paneID string) error
 	ParkSingletonSidebar(ctx context.Context, paneID string) error
 	RefreshSidebar(ctx context.Context, clientID string) error
 	ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error

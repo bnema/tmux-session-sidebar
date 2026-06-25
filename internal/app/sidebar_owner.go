@@ -4,8 +4,6 @@ import (
 	"context"
 	"os"
 	"strings"
-
-	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 type sidebarOwnerResolver struct {
@@ -30,19 +28,6 @@ func (r sidebarOwnerResolver) ResolveActionClient(ctx context.Context, flags map
 		}
 	}
 	return strings.TrimSpace(state.OwnerClient)
-}
-
-func (r sidebarOwnerResolver) AdoptOpenSidebar(ctx context.Context, client string) error {
-	client = strings.TrimSpace(client)
-	if client == "" {
-		return nil
-	}
-	return updateSidebarState(ctx, func(state *ports.PersistedState) {
-		if state.Sidebar == nil || !state.Sidebar.Open {
-			return
-		}
-		state.Sidebar.OwnerClient = client
-	})
 }
 
 func (r sidebarOwnerResolver) uniqueClientViewingVisibleSidebarPane(ctx context.Context) string {

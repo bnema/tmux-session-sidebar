@@ -49,11 +49,12 @@ type SidebarLayoutSpacer struct {
 }
 
 type SidebarState struct {
-	ShowNumericSessions   bool   `json:"showNumericSessions,omitempty"`
-	Open                  bool   `json:"open,omitempty"`
-	OwnerClient           string `json:"ownerClient,omitempty"`
-	AutoSortRecentRunAt   string `json:"autoSortRecentRunAt,omitempty"`
-	AutoSortRecentRunDate string `json:"autoSortRecentRunDate,omitempty"`
+	ShowNumericSessions   bool            `json:"showNumericSessions,omitempty"`
+	Open                  bool            `json:"open,omitempty"`
+	OwnerClient           string          `json:"ownerClient,omitempty"`
+	VisibleClients        map[string]bool `json:"visibleClients,omitempty"`
+	AutoSortRecentRunAt   string          `json:"autoSortRecentRunAt,omitempty"`
+	AutoSortRecentRunDate string          `json:"autoSortRecentRunDate,omitempty"`
 }
 
 type StateStoreUpdate func(state *PersistedState) error
@@ -105,6 +106,7 @@ func cloneSidebarState(state *SidebarState) *SidebarState {
 		return nil
 	}
 	clone := *state
+	clone.VisibleClients = maps.Clone(state.VisibleClients)
 	return &clone
 }
 

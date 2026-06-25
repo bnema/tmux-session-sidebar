@@ -154,9 +154,6 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 		return err
 	}
 	if client != "" && sidebar != nil {
-		if err := newSidebarOwnerResolver().AdoptOpenSidebar(ctx, client); err != nil {
-			return err
-		}
 		shouldFollow, err := sidebarShouldBeVisibleForClient(ctx, client)
 		if err != nil {
 			return err
@@ -167,33 +164,44 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 				if err != nil {
 					return tmuxCommandError("switch client session", output, err)
 				}
-				return closeSidebar(ctx, sidebar)
+				return closeSidebar(ctx, client, sidebar)
 			}
-			singleton, err := sidebar.FindSingletonSidebar(ctx)
+			target := exactSessionWindowTarget(sessionName)
+			targetSidebar, err := sidebar.FindSidebarPane(ctx, target)
+			if err != nil {
+				return err
+			}
+			if targetSidebar.PaneID != "" {
+				output, err := tmux(ctx, appendSwitchClientArgs(client, sessionName)...)
+				if err != nil {
+					return tmuxCommandError("switch client session", output, err)
+				}
+				return saveSidebarVisibility(ctx, true, client)
+			}
+			ownerPane, err := sidebar.FindSidebarPaneForClient(ctx, client)
 			if err != nil {
 				return err
 			}
 			cfg := loadSidebarConfig(ctx)
-			if singleton.PaneID == "" {
-				singleton, err = ensureSingletonSidebarPane(ctx, sidebar)
+			if ownerPane.PaneID == "" {
+				ownerPane, err = ensureSidebarPaneForClient(ctx, client, sidebar)
 				if err != nil {
 					return err
 				}
 			}
 			if mover, ok := sidebar.(ports.SidebarSwitchPort); ok {
-				if err := mover.AttachSingletonSidebarAndSwitchClient(ctx, client, sessionName, singleton.PaneID, cfg.Width); err != nil {
+				if err := mover.AttachSingletonSidebarAndSwitchClient(ctx, client, sessionName, ownerPane.PaneID, cfg.Width); err != nil {
 					return fmt.Errorf("preposition sidebar and switch to %q: %w", sessionName, err)
 				}
 				return saveSidebarVisibility(ctx, true, client)
 			}
-			target := exactSessionWindowTarget(sessionName)
-			if _, err := sidebar.AttachSingletonSidebar(ctx, target, singleton.PaneID, cfg.Width); err != nil {
+			if _, err := sidebar.AttachSingletonSidebar(ctx, target, ownerPane.PaneID, cfg.Width); err != nil {
 				return fmt.Errorf("preposition sidebar into target session %q: %w", sessionName, err)
 			}
 			output, err := tmux(ctx, appendSwitchClientArgs(client, sessionName)...)
 			if err != nil {
 				switchErr := tmuxCommandError("switch client session", output, err)
-				if _, rollbackErr := sidebar.AttachSingletonSidebar(ctx, client, singleton.PaneID, cfg.Width); rollbackErr != nil {
+				if _, rollbackErr := sidebar.AttachSidebarForClient(ctx, client, ownerPane.PaneID, cfg.Width); rollbackErr != nil {
 					return errors.Join(switchErr, fmt.Errorf("restore sidebar after failed switch to %q: %w", sessionName, rollbackErr))
 				}
 				return switchErr

@@ -9,6 +9,22 @@ import (
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
+func (c Client) FindSidebarPaneForClient(ctx context.Context, ownerClientID string) (ports.PaneRef, error) {
+	ownerClientID = strings.TrimSpace(ownerClientID)
+	if ownerClientID == "" {
+		return ports.PaneRef{}, fmt.Errorf("missing sidebar owner client")
+	}
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-f", "#{&&:#{==:#{" + optionSidebarPane + "},1},#{==:#{" + optionSidebarOwnerClient + "}," + ownerClientID + "}}", "-F", formatPaneID + "\t" + formatWindowID + "\t#{pane_dead}"})
+	if err != nil {
+		return ports.PaneRef{}, wrapTmuxError(result, err)
+	}
+	output := strings.TrimSpace(result.Stdout)
+	if err := c.cleanupDeadPaneRefs(ctx, output); err != nil {
+		return ports.PaneRef{}, err
+	}
+	return parseOptionalPaneRef(filterLivePaneRefs(output))
+}
+
 func (c Client) FindSingletonSidebar(ctx context.Context) (ports.PaneRef, error) {
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-f", "#{==:#{" + optionSidebarPane + "},1}", "-F", formatPaneID + "\t" + formatWindowID + "\t#{pane_dead}"})
 	if err != nil {
@@ -21,6 +37,31 @@ func (c Client) FindSingletonSidebar(ctx context.Context) (ports.PaneRef, error)
 	return parseOptionalPaneRef(filterLivePaneRefs(output))
 }
 
+func (c Client) EnsureSidebarForClient(ctx context.Context, ownerClientID string, command []string) (ports.PaneRef, error) {
+	ownerClientID = strings.TrimSpace(ownerClientID)
+	if ownerClientID == "" {
+		return ports.PaneRef{}, fmt.Errorf("missing sidebar owner client")
+	}
+	if len(command) == 0 {
+		return ports.PaneRef{}, fmt.Errorf("missing singleton sidebar command")
+	}
+	existing, err := c.FindSidebarPaneForClient(ctx, ownerClientID)
+	if err != nil || existing.PaneID != "" {
+		return existing, err
+	}
+	ref, err := c.createParkedSidebar(ctx, command)
+	if err != nil {
+		return ports.PaneRef{}, err
+	}
+	if err := c.markSidebarPaneForClient(ctx, ref.PaneID, ownerClientID); err != nil {
+		if cleanupErr := c.killPane(ctx, ref.PaneID); cleanupErr != nil {
+			return ports.PaneRef{}, errors.Join(err, fmt.Errorf("cleanup unmarked singleton sidebar pane %s: %w", ref.PaneID, cleanupErr))
+		}
+		return ports.PaneRef{}, err
+	}
+	return ref, nil
+}
+
 func (c Client) EnsureSingletonSidebar(ctx context.Context, command []string) (ports.PaneRef, error) {
 	if len(command) == 0 {
 		return ports.PaneRef{}, fmt.Errorf("missing singleton sidebar command")
@@ -29,6 +70,20 @@ func (c Client) EnsureSingletonSidebar(ctx context.Context, command []string) (p
 	if err != nil || existing.PaneID != "" {
 		return existing, err
 	}
+	ref, err := c.createParkedSidebar(ctx, command)
+	if err != nil {
+		return ports.PaneRef{}, err
+	}
+	if err := c.markSidebarPane(ctx, ref.PaneID); err != nil {
+		if cleanupErr := c.killPane(ctx, ref.PaneID); cleanupErr != nil {
+			return ports.PaneRef{}, errors.Join(err, fmt.Errorf("cleanup unmarked singleton sidebar pane %s: %w", ref.PaneID, cleanupErr))
+		}
+		return ports.PaneRef{}, err
+	}
+	return ref, nil
+}
+
+func (c Client) createParkedSidebar(ctx context.Context, command []string) (ports.PaneRef, error) {
 	var args []string
 	if err := c.parkingSessionExists(ctx); err == nil {
 		args = []string{cmdNewWindow, "-d", "-t", singletonSidebarSessionName + ":", "-n", singletonSidebarWindowName, "-P", "-F", formatPaneID + "\t" + formatWindowID}
@@ -42,17 +97,7 @@ func (c Client) EnsureSingletonSidebar(ctx context.Context, command []string) (p
 	if err != nil {
 		return ports.PaneRef{}, wrapTmuxError(result, err)
 	}
-	ref, err := parsePaneRef(strings.TrimRight(result.Stdout, "\r\n"))
-	if err != nil {
-		return ports.PaneRef{}, err
-	}
-	if err := c.markSidebarPane(ctx, ref.PaneID); err != nil {
-		if cleanupErr := c.killPane(ctx, ref.PaneID); cleanupErr != nil {
-			return ports.PaneRef{}, errors.Join(err, fmt.Errorf("cleanup unmarked singleton sidebar pane %s: %w", ref.PaneID, cleanupErr))
-		}
-		return ports.PaneRef{}, err
-	}
-	return ref, nil
+	return parsePaneRef(strings.TrimRight(result.Stdout, "\r\n"))
 }
 
 type sidebarAttachFocus int
@@ -61,6 +106,13 @@ const (
 	sidebarAttachFocusSidebar sidebarAttachFocus = iota
 	sidebarAttachFocusWorkPaneRight
 )
+
+func (c Client) AttachSidebarForClient(ctx context.Context, clientID string, paneID string, width string) (ports.PaneRef, error) {
+	if err := c.markSidebarPaneForClient(ctx, paneID, clientID); err != nil {
+		return ports.PaneRef{}, err
+	}
+	return c.attachSingletonSidebar(ctx, clientID, paneID, width, sidebarAttachFocusSidebar, true)
+}
 
 func (c Client) AttachSingletonSidebar(ctx context.Context, clientID string, paneID string, width string) (ports.PaneRef, error) {
 	return c.attachSingletonSidebar(ctx, clientID, paneID, width, sidebarAttachFocusSidebar, true)
@@ -189,6 +241,7 @@ func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clien
 	args := []string{
 		cmdJoinPane, "-hbf", "-d", "-l", width, "-s", paneID, "-t", windowID,
 		";", cmdSetOption, "-p", "-t", paneID, optionSidebarPane, "1",
+		";", cmdSetOption, "-p", "-t", paneID, optionSidebarOwnerClient, clientID,
 		";", cmdResizePane, "-t", paneID, "-x", width,
 	}
 	args = append(args, ";")
@@ -246,6 +299,13 @@ func (c Client) clearSourceWindowLayoutBestEffort(ctx context.Context, windowID 
 		return
 	}
 	_ = c.ClearSavedWindowLayout(ctx, windowID)
+}
+
+func (c Client) ParkSidebarForClient(ctx context.Context, ownerClientID string, paneID string) error {
+	if err := c.markSidebarPaneForClient(ctx, paneID, ownerClientID); err != nil {
+		return err
+	}
+	return c.ParkSingletonSidebar(ctx, paneID)
 }
 
 func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {

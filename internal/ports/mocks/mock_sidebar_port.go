@@ -38,6 +38,84 @@ func (_m *MockSidebarPort) EXPECT() *MockSidebarPort_Expecter {
 	return &MockSidebarPort_Expecter{mock: &_m.Mock}
 }
 
+// AttachSidebarForClient provides a mock function for the type MockSidebarPort
+func (_mock *MockSidebarPort) AttachSidebarForClient(ctx context.Context, clientID string, paneID string, width string) (ports.PaneRef, error) {
+	ret := _mock.Called(ctx, clientID, paneID, width)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AttachSidebarForClient")
+	}
+
+	var r0 ports.PaneRef
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (ports.PaneRef, error)); ok {
+		return returnFunc(ctx, clientID, paneID, width)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) ports.PaneRef); ok {
+		r0 = returnFunc(ctx, clientID, paneID, width)
+	} else {
+		r0 = ret.Get(0).(ports.PaneRef)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
+		r1 = returnFunc(ctx, clientID, paneID, width)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockSidebarPort_AttachSidebarForClient_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AttachSidebarForClient'
+type MockSidebarPort_AttachSidebarForClient_Call struct {
+	*mock.Call
+}
+
+// AttachSidebarForClient is a helper method to define mock.On call
+//   - ctx context.Context
+//   - clientID string
+//   - paneID string
+//   - width string
+func (_e *MockSidebarPort_Expecter) AttachSidebarForClient(ctx any, clientID any, paneID any, width any) *MockSidebarPort_AttachSidebarForClient_Call {
+	return &MockSidebarPort_AttachSidebarForClient_Call{Call: _e.mock.On("AttachSidebarForClient", ctx, clientID, paneID, width)}
+}
+
+func (_c *MockSidebarPort_AttachSidebarForClient_Call) Run(run func(ctx context.Context, clientID string, paneID string, width string)) *MockSidebarPort_AttachSidebarForClient_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *MockSidebarPort_AttachSidebarForClient_Call) Return(paneRef ports.PaneRef, err error) *MockSidebarPort_AttachSidebarForClient_Call {
+	_c.Call.Return(paneRef, err)
+	return _c
+}
+
+func (_c *MockSidebarPort_AttachSidebarForClient_Call) RunAndReturn(run func(ctx context.Context, clientID string, paneID string, width string) (ports.PaneRef, error)) *MockSidebarPort_AttachSidebarForClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // AttachSingletonSidebar provides a mock function for the type MockSidebarPort
 func (_mock *MockSidebarPort) AttachSingletonSidebar(ctx context.Context, clientID string, paneID string, width string) (ports.PaneRef, error) {
 	ret := _mock.Called(ctx, clientID, paneID, width)
@@ -176,6 +254,78 @@ func (_c *MockSidebarPort_CloseAfterSwitch_Call) RunAndReturn(run func(ctx conte
 	return _c
 }
 
+// EnsureSidebarForClient provides a mock function for the type MockSidebarPort
+func (_mock *MockSidebarPort) EnsureSidebarForClient(ctx context.Context, ownerClientID string, command []string) (ports.PaneRef, error) {
+	ret := _mock.Called(ctx, ownerClientID, command)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EnsureSidebarForClient")
+	}
+
+	var r0 ports.PaneRef
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) (ports.PaneRef, error)); ok {
+		return returnFunc(ctx, ownerClientID, command)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) ports.PaneRef); ok {
+		r0 = returnFunc(ctx, ownerClientID, command)
+	} else {
+		r0 = ret.Get(0).(ports.PaneRef)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string) error); ok {
+		r1 = returnFunc(ctx, ownerClientID, command)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockSidebarPort_EnsureSidebarForClient_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EnsureSidebarForClient'
+type MockSidebarPort_EnsureSidebarForClient_Call struct {
+	*mock.Call
+}
+
+// EnsureSidebarForClient is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerClientID string
+//   - command []string
+func (_e *MockSidebarPort_Expecter) EnsureSidebarForClient(ctx any, ownerClientID any, command any) *MockSidebarPort_EnsureSidebarForClient_Call {
+	return &MockSidebarPort_EnsureSidebarForClient_Call{Call: _e.mock.On("EnsureSidebarForClient", ctx, ownerClientID, command)}
+}
+
+func (_c *MockSidebarPort_EnsureSidebarForClient_Call) Run(run func(ctx context.Context, ownerClientID string, command []string)) *MockSidebarPort_EnsureSidebarForClient_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockSidebarPort_EnsureSidebarForClient_Call) Return(paneRef ports.PaneRef, err error) *MockSidebarPort_EnsureSidebarForClient_Call {
+	_c.Call.Return(paneRef, err)
+	return _c
+}
+
+func (_c *MockSidebarPort_EnsureSidebarForClient_Call) RunAndReturn(run func(ctx context.Context, ownerClientID string, command []string) (ports.PaneRef, error)) *MockSidebarPort_EnsureSidebarForClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // EnsureSingletonSidebar provides a mock function for the type MockSidebarPort
 func (_mock *MockSidebarPort) EnsureSingletonSidebar(ctx context.Context, command []string) (ports.PaneRef, error) {
 	ret := _mock.Called(ctx, command)
@@ -308,6 +458,72 @@ func (_c *MockSidebarPort_FindSidebarPane_Call) RunAndReturn(run func(ctx contex
 	return _c
 }
 
+// FindSidebarPaneForClient provides a mock function for the type MockSidebarPort
+func (_mock *MockSidebarPort) FindSidebarPaneForClient(ctx context.Context, ownerClientID string) (ports.PaneRef, error) {
+	ret := _mock.Called(ctx, ownerClientID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindSidebarPaneForClient")
+	}
+
+	var r0 ports.PaneRef
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (ports.PaneRef, error)); ok {
+		return returnFunc(ctx, ownerClientID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ports.PaneRef); ok {
+		r0 = returnFunc(ctx, ownerClientID)
+	} else {
+		r0 = ret.Get(0).(ports.PaneRef)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, ownerClientID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockSidebarPort_FindSidebarPaneForClient_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindSidebarPaneForClient'
+type MockSidebarPort_FindSidebarPaneForClient_Call struct {
+	*mock.Call
+}
+
+// FindSidebarPaneForClient is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerClientID string
+func (_e *MockSidebarPort_Expecter) FindSidebarPaneForClient(ctx any, ownerClientID any) *MockSidebarPort_FindSidebarPaneForClient_Call {
+	return &MockSidebarPort_FindSidebarPaneForClient_Call{Call: _e.mock.On("FindSidebarPaneForClient", ctx, ownerClientID)}
+}
+
+func (_c *MockSidebarPort_FindSidebarPaneForClient_Call) Run(run func(ctx context.Context, ownerClientID string)) *MockSidebarPort_FindSidebarPaneForClient_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockSidebarPort_FindSidebarPaneForClient_Call) Return(paneRef ports.PaneRef, err error) *MockSidebarPort_FindSidebarPaneForClient_Call {
+	_c.Call.Return(paneRef, err)
+	return _c
+}
+
+func (_c *MockSidebarPort_FindSidebarPaneForClient_Call) RunAndReturn(run func(ctx context.Context, ownerClientID string) (ports.PaneRef, error)) *MockSidebarPort_FindSidebarPaneForClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FindSingletonSidebar provides a mock function for the type MockSidebarPort
 func (_mock *MockSidebarPort) FindSingletonSidebar(ctx context.Context) (ports.PaneRef, error) {
 	ret := _mock.Called(ctx)
@@ -364,6 +580,69 @@ func (_c *MockSidebarPort_FindSingletonSidebar_Call) Return(paneRef ports.PaneRe
 }
 
 func (_c *MockSidebarPort_FindSingletonSidebar_Call) RunAndReturn(run func(ctx context.Context) (ports.PaneRef, error)) *MockSidebarPort_FindSingletonSidebar_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ParkSidebarForClient provides a mock function for the type MockSidebarPort
+func (_mock *MockSidebarPort) ParkSidebarForClient(ctx context.Context, ownerClientID string, paneID string) error {
+	ret := _mock.Called(ctx, ownerClientID, paneID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ParkSidebarForClient")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, ownerClientID, paneID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockSidebarPort_ParkSidebarForClient_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ParkSidebarForClient'
+type MockSidebarPort_ParkSidebarForClient_Call struct {
+	*mock.Call
+}
+
+// ParkSidebarForClient is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerClientID string
+//   - paneID string
+func (_e *MockSidebarPort_Expecter) ParkSidebarForClient(ctx any, ownerClientID any, paneID any) *MockSidebarPort_ParkSidebarForClient_Call {
+	return &MockSidebarPort_ParkSidebarForClient_Call{Call: _e.mock.On("ParkSidebarForClient", ctx, ownerClientID, paneID)}
+}
+
+func (_c *MockSidebarPort_ParkSidebarForClient_Call) Run(run func(ctx context.Context, ownerClientID string, paneID string)) *MockSidebarPort_ParkSidebarForClient_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockSidebarPort_ParkSidebarForClient_Call) Return(err error) *MockSidebarPort_ParkSidebarForClient_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockSidebarPort_ParkSidebarForClient_Call) RunAndReturn(run func(ctx context.Context, ownerClientID string, paneID string) error) *MockSidebarPort_ParkSidebarForClient_Call {
 	_c.Call.Return(run)
 	return _c
 }

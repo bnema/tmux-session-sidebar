@@ -155,36 +155,3 @@ esac
 		t.Fatalf("uniqueClientViewingVisibleSidebarPane = %q, want empty when only internal client views sidebar pane", got)
 	}
 }
-
-func TestSidebarOwnerResolverAdoptsOnlyOpenSidebar(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	ctx := context.Background()
-	resolver := sidebarOwnerResolver{environ: func(string) string { return "" }}
-
-	if err := resolver.AdoptOpenSidebar(ctx, "client-1"); err != nil {
-		t.Fatalf("AdoptOpenSidebar closed: %v", err)
-	}
-	state, err := persistedSidebarState(ctx)
-	if err != nil {
-		t.Fatalf("persistedSidebarState closed: %v", err)
-	}
-	if state.OwnerClient != "" {
-		t.Fatalf("closed owner = %q, want empty", state.OwnerClient)
-	}
-
-	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
-		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-old"}
-	}); err != nil {
-		t.Fatalf("seed open sidebar: %v", err)
-	}
-	if err := resolver.AdoptOpenSidebar(ctx, "client-new"); err != nil {
-		t.Fatalf("AdoptOpenSidebar open: %v", err)
-	}
-	state, err = persistedSidebarState(ctx)
-	if err != nil {
-		t.Fatalf("persistedSidebarState open: %v", err)
-	}
-	if state.OwnerClient != "client-new" {
-		t.Fatalf("open owner = %q, want client-new", state.OwnerClient)
-	}
-}

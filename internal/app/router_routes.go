@@ -37,7 +37,7 @@ func (r runtimeRouter) handleSidebarRoute(ctx context.Context, route Route) erro
 	case "sidebar/open":
 		return openSidebar(ctx, route.Flags, r.sidebar)
 	case "sidebar/close":
-		return closeSidebar(ctx, r.sidebar)
+		return closeSidebar(ctx, route.Flags["client"], r.sidebar)
 	case "sidebar/refresh":
 		return refreshSidebar(ctx, route.Flags["client"], r.sidebar)
 	default:
