@@ -404,6 +404,23 @@ ensure_runtime() {
   ensure_source_runtime
 }
 
+runtime_command_matches_exact() {
+  local command="$1" subcommand="$2"
+  case "$command" in
+    "$runtime_bin daemon $subcommand"|"$runtime_bin daemon $subcommand "*) return 0 ;;
+  esac
+  return 1
+}
+
+runtime_command_matches() {
+  local command="$1" subcommand="$2"
+  runtime_command_matches_exact "$command" "$subcommand" && return 0
+  case "$command" in
+    *"/tmux-session-sidebar daemon $subcommand"|*"/tmux-session-sidebar daemon $subcommand "*) return 0 ;;
+  esac
+  return 1
+}
+
 is_runtime_pid() {
   local pid="$1" subcommand="$2" command
   [ -n "$pid" ] || return 1
@@ -412,10 +429,7 @@ is_runtime_pid() {
   esac
   [ -n "$PS_BIN" ] || return 1
   command="$($PS_BIN -o command= -p "$pid" 2>/dev/null || true)"
-  case "$command" in
-    "$runtime_bin daemon $subcommand"|"$runtime_bin daemon $subcommand "*) return 0 ;;
-  esac
-  return 1
+  runtime_command_matches_exact "$command" "$subcommand" || { [ "${TMUX_SESSION_SIDEBAR_STOP_STALE_ANY_PATH:-}" = 1 ] && runtime_command_matches "$command" "$subcommand"; }
 }
 
 wait_for_pid_exit() {
@@ -432,6 +446,43 @@ wait_for_pid_exit() {
     "$SLEEP_BIN" 0.1
   done
   ! is_runtime_pid "$pid" "$subcommand"
+}
+
+runtime_subcommand_pids() {
+  local command pid subcommand="$1"
+  [ -n "$PS_BIN" ] || return 1
+  while IFS= read -r line; do
+    line="${line#${line%%[![:space:]]*}}"
+    pid="${line%%[[:space:]]*}"
+    command="${line#"$pid"}"
+    command="${command#${command%%[![:space:]]*}}"
+    case "$pid" in
+      *[!0-9]*|"") continue ;;
+    esac
+    if runtime_command_matches_exact "$command" "$subcommand" || { [ "${TMUX_SESSION_SIDEBAR_STOP_STALE_ANY_PATH:-}" = 1 ] && runtime_command_matches "$command" "$subcommand"; }; then
+      printf '%s\n' "$pid"
+    fi
+  done <<EOF
+$($PS_BIN -eo pid=,command= 2>/dev/null || true)
+EOF
+}
+
+stop_runtime_subcommand_processes() {
+  local failed pid pids subcommand="$1"
+  if [ -z "$PS_BIN" ]; then
+    TMUX_SESSION_SIDEBAR_STOP_STALE_ANY_PATH=1 pkill_runtime_subcommand "$subcommand"
+    return
+  fi
+  pids="$(runtime_subcommand_pids "$subcommand")"
+  [ -n "$pids" ] || return 0
+  failed=0
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    stop_pid "$pid" "$subcommand" || failed=1
+  done <<EOF
+$pids
+EOF
+  return "$failed"
 }
 
 stop_pid() {
@@ -465,7 +516,11 @@ pkill_runtime_subcommand() {
     log_update "pkill not found; cannot stop runtime $subcommand processes"
     return 1
   fi
-  pattern="$(ere_escape "$runtime_bin daemon $subcommand")"
+  if [ "${TMUX_SESSION_SIDEBAR_STOP_STALE_ANY_PATH:-}" = 1 ]; then
+    pattern="$(ere_escape "/tmux-session-sidebar daemon $subcommand")"
+  else
+    pattern="$(ere_escape "$runtime_bin daemon $subcommand")"
+  fi
   "$PKILL_BIN" -f "$pattern" 2>/dev/null
   status="$?"
   case "$status" in
@@ -491,9 +546,9 @@ stop_runtime_processes() {
       return 1
     fi
   fi
-  pkill_runtime_subcommand serve-ui || return 1
-  pkill_runtime_subcommand bootstrap || return 1
-  pkill_runtime_subcommand serve || return 1
+  stop_runtime_subcommand_processes serve-ui || return 1
+  stop_runtime_subcommand_processes bootstrap || return 1
+  stop_runtime_subcommand_processes serve || return 1
   [ -n "$TMUX_BIN" ] || return 0
   "$TMUX_BIN" kill-session -t "$SIDEBAR_SESSION_NAME" 2>/dev/null || true
 }
@@ -627,11 +682,12 @@ update_runtime_one_shot() {
 
 usage() {
   cat >&2 <<'USAGE'
-usage: update-runtime.sh [--ensure|--restart-only]
+usage: update-runtime.sh [--ensure|--restart-only|--stop-only]
 
 Without flags, force-refresh the release runtime, atomically install it, and restart tmux-session-sidebar.
   --ensure        Ensure a runtime exists and print its path without restarting.
   --restart-only  Stop the current runtime/UI and reload tmux without rebuilding/downloading.
+  --stop-only     Stop the current runtime/UI without reloading tmux.
 USAGE
 }
 
@@ -640,6 +696,7 @@ main() {
     "") update_runtime_one_shot ;;
     --ensure) acquire_update_lock; ensure_runtime ;;
     --restart-only) acquire_update_lock; restart_tmux_runtime ;;
+    --stop-only) acquire_update_lock; stop_runtime_processes ;;
     -h|--help) usage ;;
     *) usage; exit 2 ;;
   esac

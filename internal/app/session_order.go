@@ -353,6 +353,7 @@ func clonePersistedState(state ports.PersistedState) ports.PersistedState {
 	}
 	if state.Sidebar != nil {
 		sidebar := *state.Sidebar
+		sidebar.VisibleClients = maps.Clone(state.Sidebar.VisibleClients)
 		clone.Sidebar = &sidebar
 	}
 	if state.SidebarLayout != nil {

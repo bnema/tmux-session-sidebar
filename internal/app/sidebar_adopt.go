@@ -16,7 +16,7 @@ func adoptPersistedOpenSidebar(ctx context.Context, client string, sidebar ports
 	if err != nil {
 		return err
 	}
-	if !state.Open {
+	if !sidebarStateAppliesToClient(state, client) {
 		return nil
 	}
 	pane, err := sidebar.FindSidebarPane(ctx, client)
@@ -24,20 +24,7 @@ func adoptPersistedOpenSidebar(ctx context.Context, client string, sidebar ports
 		return err
 	}
 	if pane.PaneID != "" {
-		if state.OwnerClient != client {
-			return saveSidebarVisibility(ctx, true, client)
-		}
 		return nil
-	}
-	singleton, err := sidebar.FindSingletonSidebar(ctx)
-	if err != nil {
-		return err
-	}
-	if singleton.PaneID != "" {
-		return nil
-	}
-	if err := saveSidebarVisibility(ctx, true, client); err != nil {
-		return err
 	}
 	return applySidebarVisibilityForClient(ctx, client, sidebar)
 }
