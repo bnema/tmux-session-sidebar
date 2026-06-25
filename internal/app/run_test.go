@@ -96,6 +96,36 @@ func TestRunDispatchesCommands(t *testing.T) {
 	}
 }
 
+func TestRunTreatsDaemonServeContextCanceledAsCleanShutdown(t *testing.T) {
+	t.Run("daemon serve context canceled exits cleanly", func(t *testing.T) {
+		stdout := new(bytes.Buffer)
+		stderr := new(bytes.Buffer)
+		router := &recordingRouter{err: context.Canceled}
+
+		exitCode := Run(context.Background(), []string{"daemon", "serve"}, stdout, stderr, router)
+		if exitCode != 0 {
+			t.Fatalf("exit code = %d, want 0; stderr=%q", exitCode, stderr.String())
+		}
+		if got := stderr.String(); got != "" {
+			t.Fatalf("stderr = %q, want empty", got)
+		}
+	})
+
+	t.Run("other routes still report context canceled", func(t *testing.T) {
+		stdout := new(bytes.Buffer)
+		stderr := new(bytes.Buffer)
+		router := &recordingRouter{err: context.Canceled}
+
+		exitCode := Run(context.Background(), []string{"daemon", "ensure"}, stdout, stderr, router)
+		if exitCode != 1 {
+			t.Fatalf("exit code = %d, want 1", exitCode)
+		}
+		if got := stderr.String(); got != "Error: context canceled\n" {
+			t.Fatalf("stderr = %q, want context canceled error", got)
+		}
+	})
+}
+
 func TestRunShowsVersion(t *testing.T) {
 	oldVersion, oldCommit, oldDate, oldBuiltBy := version, commit, date, builtBy
 	version, commit, date, builtBy = "1.2.3", "abc123", "2026-05-25T07:00:00Z", "test"
