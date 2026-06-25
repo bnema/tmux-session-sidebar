@@ -62,12 +62,7 @@ dev-runtime:
 		if [ -x "$$runtime_bin" ]; then \
 			"$$runtime_bin" sidebar close >/dev/null 2>&1 || true; \
 		fi; \
-		pkill -f "$$runtime_bin daemon serve-ui" 2>/dev/null || true; \
-		pkill -f "$$runtime_bin daemon bootstrap" 2>/dev/null || true; \
-		pkill -f "$$runtime_bin daemon serve" 2>/dev/null || true; \
-		if command -v tmux >/dev/null 2>&1; then \
-			tmux kill-session -t __tmux-session-sidebar 2>/dev/null || true; \
-		fi; \
+		TMUX_SESSION_SIDEBAR_STOP_STALE_ANY_PATH=1 bash scripts/update-runtime.sh --stop-only; \
 		echo "Updated dev runtime -> $$runtime_bin"; \
 		echo "Dev runtime marker written to .bin/.dev-runtime"; \
 		echo "Sidebar closed; reopen it manually to use the dev binary."

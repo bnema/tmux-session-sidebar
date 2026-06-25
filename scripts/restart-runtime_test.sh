@@ -49,11 +49,45 @@ TMUX
   cat >"$fakebin/ps" <<'PS'
 #!/usr/bin/env bash
 printf 'ps %s\n' "$*" >>"$TEST_LOG"
+case "$*" in
+  "-o command= -p 456")
+    count_file="$TEST_ROOT/ps-456-count"
+    count="$(cat "$count_file" 2>/dev/null || printf 0)"
+    printf '%s' "$((count + 1))" >"$count_file"
+    [ "$count" = 0 ] && printf '/tmp/old-build/tmux-session-sidebar daemon serve-ui\n'
+    exit 0
+    ;;
+  "-o command= -p 457")
+    count_file="$TEST_ROOT/ps-457-count"
+    count="$(cat "$count_file" 2>/dev/null || printf 0)"
+    printf '%s' "$((count + 1))" >"$count_file"
+    [ "$count" = 0 ] && printf '/tmp/old-build/tmux-session-sidebar daemon bootstrap\n'
+    exit 0
+    ;;
+  "-o command= -p 458")
+    count_file="$TEST_ROOT/ps-458-count"
+    count="$(cat "$count_file" 2>/dev/null || printf 0)"
+    printf '%s' "$((count + 1))" >"$count_file"
+    [ "$count" = 0 ] && printf '/tmp/old-build/tmux-session-sidebar daemon serve\n'
+    exit 0
+    ;;
+  "-eo pid=,command=")
+    if [ "${TEST_PS_SCAN_OLD_RUNTIME:-}" = 1 ]; then
+      printf '456 /tmp/old-build/tmux-session-sidebar daemon serve-ui\n'
+      printf '457 /tmp/old-build/tmux-session-sidebar daemon bootstrap\n'
+      printf '458 /tmp/old-build/tmux-session-sidebar daemon serve\n'
+    fi
+    exit 0
+    ;;
+esac
 count_file="$TEST_ROOT/ps-count"
 count="$(cat "$count_file" 2>/dev/null || printf 0)"
 printf '%s' "$((count + 1))" >"$count_file"
 if [ "${TEST_PS_MATCH_ONCE:-}" = 1 ] && [ "$count" = 0 ]; then
   printf '%s daemon serve\n' "$TEST_RUNTIME"
+fi
+if [ "${TEST_PS_OLD_RUNTIME_MATCH_ONCE:-}" = 1 ] && [ "$count" = 0 ]; then
+  printf '/tmp/old-build/tmux-session-sidebar daemon serve\n'
 fi
 PS
   chmod +x "$fakebin/pkill" "$fakebin/tmux" "$fakebin/ps"
@@ -68,32 +102,28 @@ run_restart() {
 }
 
 test_restarts_tmux_sidebar_runtime_processes_and_hidden_session() {
-  local root runtime_pattern runtime_path
+  local root
   root="$(new_fixture)"
   run_restart "$root"
-  runtime_path="$(cd "$(dirname "$0")/.." && pwd)/.bin/tmux-session-sidebar"
-  runtime_pattern="${runtime_path//./\\.}"
-  assert_line_equals "$root/log" 1 "pkill -f $runtime_pattern daemon serve-ui" "restart should stop existing sidebar UI first with escaped plugin-local runtime scope"
-  assert_line_equals "$root/log" 2 "pkill -f $runtime_pattern daemon bootstrap" "restart should stop plugin bootstrap daemon with escaped plugin-local runtime scope"
-  assert_line_equals "$root/log" 3 "pkill -f $runtime_pattern daemon serve" "restart should stop existing daemon next with escaped plugin-local runtime scope"
+  assert_line_equals "$root/log" 1 "ps -eo pid=,command=" "restart should scan sidebar UI processes first"
+  assert_line_equals "$root/log" 2 "ps -eo pid=,command=" "restart should scan plugin bootstrap daemon processes next"
+  assert_line_equals "$root/log" 3 "ps -eo pid=,command=" "restart should scan daemon serve processes next"
   assert_line_equals "$root/log" 4 "tmux kill-session -t __tmux-session-sidebar" "restart should remove hidden sidebar session"
   assert_line_equals "$root/log" 5 "tmux display-message -p #{config_files}" "restart should inspect active tmux config files before fallback"
   assert_line_equals "$root/log" 6 "tmux source-file $HOME/.tmux.conf" "restart should reload fallback tmux config last"
 }
 
 test_sources_active_tmux_config_files() {
-  local root first_conf second_conf runtime_path runtime_pattern
+  local root first_conf second_conf
   root="$(new_fixture)"
   first_conf="$root/first.conf"
   second_conf="$root/second.conf"
   : >"$first_conf"
   : >"$second_conf"
   TEST_TMUX_CONFIG_FILES="$first_conf,$second_conf" run_restart "$root"
-  runtime_path="$(cd "$(dirname "$0")/.." && pwd)/.bin/tmux-session-sidebar"
-  runtime_pattern="${runtime_path//./\\.}"
-  assert_line_equals "$root/log" 1 "pkill -f $runtime_pattern daemon serve-ui" "restart should stop sidebar UI before sourcing configs"
-  assert_line_equals "$root/log" 2 "pkill -f $runtime_pattern daemon bootstrap" "restart should stop bootstrap daemon before sourcing configs"
-  assert_line_equals "$root/log" 3 "pkill -f $runtime_pattern daemon serve" "restart should stop serve daemon before sourcing configs"
+  assert_line_equals "$root/log" 1 "ps -eo pid=,command=" "restart should scan sidebar UI before sourcing configs"
+  assert_line_equals "$root/log" 2 "ps -eo pid=,command=" "restart should scan bootstrap daemon before sourcing configs"
+  assert_line_equals "$root/log" 3 "ps -eo pid=,command=" "restart should scan serve daemon before sourcing configs"
   assert_line_equals "$root/log" 4 "tmux kill-session -t __tmux-session-sidebar" "restart should remove hidden sidebar session before sourcing configs"
   assert_line_equals "$root/log" 5 "tmux display-message -p #{config_files}" "restart should query active tmux config files"
   assert_line_equals "$root/log" 6 "tmux source-file $first_conf" "restart should reload first active tmux config"
@@ -112,16 +142,45 @@ test_stops_pidfile_daemon_before_fallback_and_reload() {
   TEST_PS_MATCH_ONCE=1 XDG_STATE_HOME="$root/statehome" run_restart "$root"
 
   assert_line_equals "$root/log" 1 "ps -o command= -p 123" "restart should inspect daemon pidfile before fallback kills"
-  local pkill_line tmux_line
-  pkill_line="$(line_number_for "$root/log" "pkill -f $runtime_pattern daemon serve")"
+  local scan_line tmux_line
+  scan_line="$(line_number_for "$root/log" "ps -eo pid=,command=")"
   tmux_line="$(line_number_for "$root/log" "tmux source-file $HOME/.tmux.conf")"
-  [ -n "$pkill_line" ] || fail "restart should still run scoped daemon fallback after pidfile handling"
+  [ -n "$scan_line" ] || fail "restart should still scan for runtime processes after pidfile handling"
   [ -n "$tmux_line" ] || fail "restart should reload tmux after pidfile handling"
-  [ "$pkill_line" -lt "$tmux_line" ] || fail "restart should run scoped daemon fallback before tmux reload"
+  [ "$scan_line" -lt "$tmux_line" ] || fail "restart should scan runtime processes before tmux reload"
+}
+
+test_stops_stale_pidfile_daemon_from_previous_runtime_path() {
+  local inspect_count root state_dir
+  root="$(new_fixture)"
+  state_dir="$root/statehome/tmux-session-sidebar"
+  mkdir -p "$state_dir"
+  printf '123\n' >"$state_dir/daemon.pid"
+
+  TEST_PS_OLD_RUNTIME_MATCH_ONCE=1 XDG_STATE_HOME="$root/statehome" run_restart "$root"
+
+  inspect_count="$(grep -cF 'ps -o command= -p 123' "$root/log" || true)"
+  [ "$inspect_count" = 2 ] || fail "restart should treat previous-build tmux-session-sidebar daemon pid as stoppable and wait for exit; inspected $inspect_count times"
+}
+
+test_stops_scanned_previous_runtime_paths_when_enabled() {
+  local root serve_count ui_count bootstrap_count
+  root="$(new_fixture)"
+
+  TMUX_SESSION_SIDEBAR_STOP_STALE_ANY_PATH=1 TEST_PS_SCAN_OLD_RUNTIME=1 run_restart "$root"
+
+  ui_count="$(grep -cF 'ps -o command= -p 456' "$root/log" || true)"
+  bootstrap_count="$(grep -cF 'ps -o command= -p 457' "$root/log" || true)"
+  serve_count="$(grep -cF 'ps -o command= -p 458' "$root/log" || true)"
+  [ "$ui_count" = 2 ] || fail "restart should stop and wait for scanned previous-build serve-ui pid; inspected $ui_count times"
+  [ "$bootstrap_count" = 2 ] || fail "restart should stop and wait for scanned previous-build bootstrap pid; inspected $bootstrap_count times"
+  [ "$serve_count" = 2 ] || fail "restart should stop and wait for scanned previous-build serve pid; inspected $serve_count times"
 }
 
 test_restarts_tmux_sidebar_runtime_processes_and_hidden_session
 test_sources_active_tmux_config_files
 test_stops_pidfile_daemon_before_fallback_and_reload
+test_stops_stale_pidfile_daemon_from_previous_runtime_path
+test_stops_scanned_previous_runtime_paths_when_enabled
 
 echo "restart-runtime tests passed"
