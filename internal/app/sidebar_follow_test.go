@@ -222,7 +222,7 @@ func TestWithSidebarFollowPreservesGlobalSidebarWhenConfiguredToStayOpen(t *test
 	tmuxPort.EXPECT().EnsureSidebarForClient(ctx, "client-1", mock.MatchedBy(matchesDaemonServeUICommand())).Run(func(context.Context, string, []string) {
 		ops = append(ops, "ensure-owner")
 	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
-	tmuxPort.EXPECT().AttachSidebarForClient(ctx, "client-1", "%9", mock.Anything).Run(func(context.Context, string, string, string) {
+	tmuxPort.EXPECT().AttachSidebarForClient(ctx, "client-1", "client-1", "%9", mock.Anything).Run(func(context.Context, string, string, string, string) {
 		ops = append(ops, "attach-target")
 	}).Return(ports.PaneRef{PaneID: "%9", WindowID: "@new"}, nil)
 
@@ -260,7 +260,7 @@ func TestWithSidebarFollowReopensGlobalSidebarWhenConfiguredToStayOpen(t *testin
 	tmuxPort.EXPECT().EnsureSidebarForClient(ctx, "client-1", mock.MatchedBy(matchesDaemonServeUICommand())).Run(func(context.Context, string, []string) {
 		ops = append(ops, "ensure-owner")
 	}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@hidden"}, nil)
-	tmuxPort.EXPECT().AttachSidebarForClient(ctx, "client-1", "%10", mock.Anything).Run(func(context.Context, string, string, string) {
+	tmuxPort.EXPECT().AttachSidebarForClient(ctx, "client-1", "client-1", "%10", mock.Anything).Run(func(context.Context, string, string, string, string) {
 		ops = append(ops, "attach-target")
 	}).Return(ports.PaneRef{PaneID: "%10", WindowID: "@new"}, nil)
 
@@ -357,7 +357,7 @@ type switchCapableSidebarPort struct {
 	switchFn func(context.Context, string, string, string, string) error
 }
 
-func (s *switchCapableSidebarPort) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error {
+func (s *switchCapableSidebarPort) AttachSidebarForClientAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error {
 	if s.switchFn == nil {
 		return nil
 	}

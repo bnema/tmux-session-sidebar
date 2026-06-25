@@ -189,22 +189,12 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 					return err
 				}
 			}
-			if mover, ok := sidebar.(ports.SidebarSwitchPort); ok {
-				if err := mover.AttachSingletonSidebarAndSwitchClient(ctx, client, sessionName, ownerPane.PaneID, cfg.Width); err != nil {
-					return fmt.Errorf("preposition sidebar and switch to %q: %w", sessionName, err)
-				}
-				return saveSidebarVisibility(ctx, true, client)
+			mover, ok := sidebar.(ports.SidebarSwitchPort)
+			if !ok {
+				return fmt.Errorf("owner-scoped sidebar switch requires atomic tmux move+switch support")
 			}
-			if _, err := sidebar.AttachSingletonSidebar(ctx, target, ownerPane.PaneID, cfg.Width); err != nil {
-				return fmt.Errorf("preposition sidebar into target session %q: %w", sessionName, err)
-			}
-			output, err := tmux(ctx, appendSwitchClientArgs(client, sessionName)...)
-			if err != nil {
-				switchErr := tmuxCommandError("switch client session", output, err)
-				if _, rollbackErr := sidebar.AttachSidebarForClient(ctx, client, ownerPane.PaneID, cfg.Width); rollbackErr != nil {
-					return errors.Join(switchErr, fmt.Errorf("restore sidebar after failed switch to %q: %w", sessionName, rollbackErr))
-				}
-				return switchErr
+			if err := mover.AttachSidebarForClientAndSwitchClient(ctx, client, sessionName, ownerPane.PaneID, cfg.Width); err != nil {
+				return fmt.Errorf("preposition sidebar and switch to %q: %w", sessionName, err)
 			}
 			return saveSidebarVisibility(ctx, true, client)
 		}

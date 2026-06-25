@@ -26,15 +26,29 @@ func (c Client) FindSidebarPaneForClient(ctx context.Context, ownerClientID stri
 }
 
 func (c Client) FindSingletonSidebar(ctx context.Context) (ports.PaneRef, error) {
+	panes, err := c.listMarkedSidebarPanes(ctx)
+	if err != nil {
+		return ports.PaneRef{}, err
+	}
+	if len(panes) == 0 {
+		return ports.PaneRef{}, nil
+	}
+	if len(panes) > 1 {
+		return ports.PaneRef{}, fmt.Errorf("FindSingletonSidebar: multiple marked sidebar panes found: %v", panes)
+	}
+	return panes[0], nil
+}
+
+func (c Client) listMarkedSidebarPanes(ctx context.Context) ([]ports.PaneRef, error) {
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-f", "#{==:#{" + optionSidebarPane + "},1}", "-F", formatPaneID + "\t" + formatWindowID + "\t#{pane_dead}"})
 	if err != nil {
-		return ports.PaneRef{}, wrapTmuxError(result, err)
+		return nil, wrapTmuxError(result, err)
 	}
 	output := strings.TrimSpace(result.Stdout)
 	if err := c.cleanupDeadPaneRefs(ctx, output); err != nil {
-		return ports.PaneRef{}, err
+		return nil, err
 	}
-	return parseOptionalPaneRef(filterLivePaneRefs(output))
+	return parsePaneRefs(filterLivePaneRefs(output))
 }
 
 func (c Client) EnsureSidebarForClient(ctx context.Context, ownerClientID string, command []string) (ports.PaneRef, error) {
@@ -107,15 +121,22 @@ const (
 	sidebarAttachFocusWorkPaneRight
 )
 
-func (c Client) AttachSidebarForClient(ctx context.Context, clientID string, paneID string, width string) (ports.PaneRef, error) {
-	if err := c.markSidebarPaneForClient(ctx, paneID, clientID); err != nil {
+func (c Client) AttachSidebarForClient(ctx context.Context, ownerClientID string, targetID string, paneID string, width string) (ports.PaneRef, error) {
+	if err := c.markSidebarPaneForClient(ctx, paneID, ownerClientID); err != nil {
 		return ports.PaneRef{}, err
 	}
-	return c.attachSingletonSidebar(ctx, clientID, paneID, width, sidebarAttachFocusSidebar, true)
+	return c.attachSingletonSidebar(ctx, targetID, paneID, width, sidebarAttachFocusSidebar, true)
 }
 
 func (c Client) AttachSingletonSidebar(ctx context.Context, clientID string, paneID string, width string) (ports.PaneRef, error) {
 	return c.attachSingletonSidebar(ctx, clientID, paneID, width, sidebarAttachFocusSidebar, true)
+}
+
+func (c Client) AttachSidebarForClientWithoutFocus(ctx context.Context, ownerClientID string, targetID string, paneID string, width string) (ports.PaneRef, error) {
+	if err := c.markSidebarPaneForClient(ctx, paneID, ownerClientID); err != nil {
+		return ports.PaneRef{}, err
+	}
+	return c.attachSingletonSidebar(ctx, targetID, paneID, width, sidebarAttachFocusWorkPaneRight, true)
 }
 
 func (c Client) AttachSingletonSidebarWithoutFocus(ctx context.Context, clientID string, paneID string, width string) (ports.PaneRef, error) {
@@ -208,6 +229,10 @@ func (c Client) rollbackAttachedSidebarAfterJoin(ctx context.Context, paneID str
 }
 
 func (c Client) AttachSingletonSidebarAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error {
+	return c.AttachSidebarForClientAndSwitchClient(ctx, clientID, sessionName, paneID, width)
+}
+
+func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error {
 	paneID = strings.TrimSpace(paneID)
 	if err := c.requireSidebarPane(ctx, paneID); err != nil {
 		return err
@@ -308,6 +333,19 @@ func (c Client) ParkSidebarForClient(ctx context.Context, ownerClientID string, 
 	return c.ParkSingletonSidebar(ctx, paneID)
 }
 
+func (c Client) ParkAllSidebars(ctx context.Context) error {
+	panes, err := c.listMarkedSidebarPanes(ctx)
+	if err != nil {
+		return err
+	}
+	for _, pane := range panes {
+		if err := c.ParkSingletonSidebar(ctx, pane.PaneID); err != nil {
+			return fmt.Errorf("park sidebar pane %s: %w", pane.PaneID, err)
+		}
+	}
+	return nil
+}
+
 func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	paneID = strings.TrimSpace(paneID)
 	if err := c.requireSidebarPane(ctx, paneID); err != nil {
@@ -356,12 +394,31 @@ func (c Client) cleanupParkingWindows(ctx context.Context, keepWindowID string) 
 	if len(windows) <= 1 {
 		return
 	}
+	keepWindows := c.markedSidebarWindowIDsBestEffort(ctx)
+	if keepWindowID != "" {
+		keepWindows[keepWindowID] = true
+	}
 	for _, windowID := range windows {
-		if windowID == keepWindowID {
+		if keepWindows[windowID] {
 			continue
 		}
 		_, _ = c.Process.Exec(ctx, tmuxBinary, []string{"kill-window", "-t", windowID})
 	}
+}
+
+func (c Client) markedSidebarWindowIDsBestEffort(ctx context.Context) map[string]bool {
+	windows := map[string]bool{}
+	panes, err := c.listMarkedSidebarPanes(ctx)
+	if err != nil {
+		return windows
+	}
+	for _, pane := range panes {
+		windowID := strings.TrimSpace(pane.WindowID)
+		if windowID != "" {
+			windows[windowID] = true
+		}
+	}
+	return windows
 }
 
 func (c Client) ensureParkingSession(ctx context.Context) error {
@@ -454,22 +511,35 @@ func filterLivePaneRefs(output string) string {
 }
 
 func parseOptionalPaneRef(output string) (ports.PaneRef, error) {
+	refs, err := parsePaneRefs(output)
+	if err != nil {
+		return ports.PaneRef{}, err
+	}
+	if len(refs) == 0 {
+		return ports.PaneRef{}, nil
+	}
+	if len(refs) > 1 {
+		return ports.PaneRef{}, fmt.Errorf("parseOptionalPaneRef: multiple marked sidebar panes found: %q", strings.TrimSpace(output))
+	}
+	return refs[0], nil
+}
+
+func parsePaneRefs(output string) ([]ports.PaneRef, error) {
 	trimmed := strings.TrimSpace(output)
 	if trimmed == "" {
-		return ports.PaneRef{}, nil
+		return nil, nil
 	}
-	lines := make([]string, 0, 2)
+	refs := []ports.PaneRef{}
 	for line := range strings.SplitSeq(trimmed, "\n") {
 		line = strings.TrimSpace(line)
-		if line != "" {
-			lines = append(lines, line)
+		if line == "" {
+			continue
 		}
+		ref, err := parsePaneRef(line)
+		if err != nil {
+			return nil, err
+		}
+		refs = append(refs, ref)
 	}
-	if len(lines) == 0 {
-		return ports.PaneRef{}, nil
-	}
-	if len(lines) > 1 {
-		return ports.PaneRef{}, fmt.Errorf("parseOptionalPaneRef: multiple marked sidebar panes found: %q", trimmed)
-	}
-	return parsePaneRef(lines[0])
+	return refs, nil
 }

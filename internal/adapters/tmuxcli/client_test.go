@@ -740,12 +740,12 @@ func TestOwnerScopedSidebarPaneLifecycle(t *testing.T) {
 		process := mocks.NewMockProcessPort(t)
 		process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1", ";", "set-option", "-p", "-t", "%9", "@session-sidebar-owner-client", "client-A"}).Return(ports.Result{}, nil)
 		process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
-		process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-A", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "target-window", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
 		process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
 		process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
 		process.EXPECT().Exec(ctx, "tmux", []string{"select-pane", "-t", "%9"}).Return(ports.Result{}, nil)
 
-		got, err := (Client{Process: process}).AttachSidebarForClient(ctx, "client-A", "%9", "20")
+		got, err := (Client{Process: process}).AttachSidebarForClient(ctx, "client-A", "target-window", "%9", "20")
 		if err != nil {
 			t.Fatalf("AttachSidebarForClient error: %v", err)
 		}
@@ -1633,6 +1633,7 @@ func TestParkSingletonSidebar(t *testing.T) {
 				// The stale saved hidden-layout option is cleared best-effort after break-pane.
 				process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"list-windows", "-t", "__tmux-session-sidebar", "-F", "#{window_id}"}).Return(ports.Result{Stdout: "@stale\n@parked\n"}, nil)
+				process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-a", "-f", "#{==:#{" + optionSidebarPane + "},1}", "-F", "#{pane_id}\t#{window_id}\t#{pane_dead}"}).Return(ports.Result{Stdout: "%9\t@parked\t0\n"}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"kill-window", "-t", "@stale"}).Return(ports.Result{}, nil)
 			},
 		},
@@ -1997,6 +1998,8 @@ func TestParkSingletonSidebarKillsStaleWindows(t *testing.T) {
 		func(args []string) (string, string) { return "", "" })
 	rec2.handle([]string{"list-windows", "-t", singletonSidebarSessionName, "-F", "#{window_id}"},
 		func(args []string) (string, string) { return "@stale\n@parked", "" })
+	rec2.handle([]string{"list-panes", "-a", "-f", "#{==:#{" + optionSidebarPane + "},1}", "-F", "#{pane_id}\t#{window_id}\t#{pane_dead}"},
+		func(args []string) (string, string) { return "%9\t@parked\t0", "" })
 	rec2.handle([]string{"kill-window", "-t", "@stale"},
 		func(args []string) (string, string) { return "", "" })
 
@@ -2017,6 +2020,29 @@ func TestParkSingletonSidebarKillsStaleWindows(t *testing.T) {
 		for i, c := range rec2.calls {
 			t.Logf("  call %d: %v", i, c)
 		}
+	}
+}
+
+func TestCleanupParkingWindowsPreservesMarkedSidebarWindows(t *testing.T) {
+	ctx := t.Context()
+	rec := newRecPort(t)
+	rec.handle([]string{"list-windows", "-t", singletonSidebarSessionName, "-F", "#{window_id}"},
+		func(args []string) (string, string) { return "@oldSidebar\n@stale\n@current", "" })
+	rec.handle([]string{"list-panes", "-a", "-f", "#{==:#{" + optionSidebarPane + "},1}", "-F", "#{pane_id}\t#{window_id}\t#{pane_dead}"},
+		func(args []string) (string, string) { return "%old\t@oldSidebar\t0\n%current\t@current\t0", "" })
+	rec.handle([]string{"kill-window", "-t", "@stale"},
+		func(args []string) (string, string) { return "", "" })
+
+	(Client{Process: rec}).cleanupParkingWindows(ctx, "@current")
+
+	killed := map[string]bool{}
+	for _, call := range rec.calls {
+		if len(call) == 3 && call[0] == "kill-window" && call[1] == "-t" {
+			killed[call[2]] = true
+		}
+	}
+	if killed["@oldSidebar"] || !killed["@stale"] || killed["@current"] {
+		t.Fatalf("killed windows = %#v, want only @stale", killed)
 	}
 }
 

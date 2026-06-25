@@ -223,23 +223,11 @@ func (missingRuntime) FindSidebarPaneForClient(context.Context, string) (ports.P
 	return ports.PaneRef{}, missingDependencyError("multiplexer port")
 }
 
-func (missingRuntime) FindSingletonSidebar(context.Context) (ports.PaneRef, error) {
-	return ports.PaneRef{}, missingDependencyError("multiplexer port")
-}
-
 func (missingRuntime) EnsureSidebarForClient(context.Context, string, []string) (ports.PaneRef, error) {
 	return ports.PaneRef{}, missingDependencyError("multiplexer port")
 }
 
-func (missingRuntime) EnsureSingletonSidebar(context.Context, []string) (ports.PaneRef, error) {
-	return ports.PaneRef{}, missingDependencyError("multiplexer port")
-}
-
-func (missingRuntime) AttachSidebarForClient(context.Context, string, string, string) (ports.PaneRef, error) {
-	return ports.PaneRef{}, missingDependencyError("multiplexer port")
-}
-
-func (missingRuntime) AttachSingletonSidebar(context.Context, string, string, string) (ports.PaneRef, error) {
+func (missingRuntime) AttachSidebarForClient(context.Context, string, string, string, string) (ports.PaneRef, error) {
 	return ports.PaneRef{}, missingDependencyError("multiplexer port")
 }
 
@@ -247,7 +235,7 @@ func (missingRuntime) ParkSidebarForClient(context.Context, string, string) erro
 	return missingDependencyError("multiplexer port")
 }
 
-func (missingRuntime) ParkSingletonSidebar(context.Context, string) error {
+func (missingRuntime) ParkAllSidebars(context.Context) error {
 	return missingDependencyError("multiplexer port")
 }
 

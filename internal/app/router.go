@@ -221,22 +221,27 @@ func openSidebarForClient(ctx context.Context, client string, attachTarget strin
 func openSidebarForClientWithoutFocus(ctx context.Context, client string, attachTarget string, width string, sidebar ports.SidebarPort) error {
 	attach := sidebar.AttachSidebarForClient
 	if follower, ok := sidebar.(ports.SidebarFollowPort); ok {
-		attach = follower.AttachSingletonSidebarWithoutFocus
+		attach = follower.AttachSidebarForClientWithoutFocus
 	}
 	return openSidebarForClientWith(ctx, client, attachTarget, width, sidebar, attach)
 }
 
-func openSidebarForClientWith(ctx context.Context, client string, attachTarget string, width string, sidebar ports.SidebarPort, attach func(context.Context, string, string, string) (ports.PaneRef, error)) error {
+func openSidebarForClientWith(ctx context.Context, client string, attachTarget string, width string, sidebar ports.SidebarPort, attach func(context.Context, string, string, string, string) (ports.PaneRef, error)) error {
 	client = strings.TrimSpace(client)
 	if client == "" {
 		return nil
 	}
+	previousState, err := loadSidebarState(ctx)
+	if err != nil {
+		return err
+	}
+	previousSidebar := clonePersistedState(previousState).Sidebar
 	if err := saveSidebarVisibility(ctx, true, client); err != nil {
 		return err
 	}
 	ownerPane, err := ensureSidebarPaneForClient(ctx, client, sidebar)
 	if err != nil {
-		rollbackSidebarVisibility(ctx, client, err)
+		rollbackSidebarVisibility(ctx, previousSidebar, err)
 		return err
 	}
 	width = strings.TrimSpace(width)
@@ -244,19 +249,28 @@ func openSidebarForClientWith(ctx context.Context, client string, attachTarget s
 		cfg := loadSidebarConfig(ctx)
 		width = cfg.Width
 	}
-	if strings.TrimSpace(attachTarget) == "" {
+	attachTarget = strings.TrimSpace(attachTarget)
+	if attachTarget == "" {
 		attachTarget = client
 	}
-	_, err = attach(ctx, attachTarget, ownerPane.PaneID, width)
+	_, err = attach(ctx, client, attachTarget, ownerPane.PaneID, width)
 	if err != nil {
-		rollbackSidebarVisibility(ctx, client, err)
+		rollbackSidebarVisibility(ctx, previousSidebar, err)
 		return err
 	}
 	return nil
 }
 
-func rollbackSidebarVisibility(ctx context.Context, client string, original error) {
-	if err := saveSidebarVisibility(ctx, false, client); err != nil {
+func rollbackSidebarVisibility(ctx context.Context, previous *ports.SidebarState, original error) {
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		if previous == nil {
+			state.Sidebar = nil
+			return
+		}
+		restored := *previous
+		restored.VisibleClients = maps.Clone(previous.VisibleClients)
+		state.Sidebar = &restored
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: rollback sidebar visibility after open failure failed: %v (original error: %v)\n", err, original)
 	}
 }
@@ -264,11 +278,7 @@ func rollbackSidebarVisibility(ctx context.Context, client string, original erro
 func closeSidebar(ctx context.Context, client string, sidebar ports.SidebarPort) error {
 	client = strings.TrimSpace(client)
 	if client == "" {
-		singleton, err := sidebar.FindSingletonSidebar(ctx)
-		if err != nil {
-			return err
-		}
-		if err := parkVisibleSidebar(ctx, sidebar, singleton.PaneID); err != nil {
+		if err := sidebar.ParkAllSidebars(ctx); err != nil {
 			return err
 		}
 		return saveSidebarVisibility(ctx, false, "")
@@ -291,13 +301,6 @@ func ensureSidebarPaneForClient(ctx context.Context, client string, sidebar port
 		return ports.PaneRef{}, err
 	}
 	return sidebar.EnsureSidebarForClient(ctx, client, []string{exe, "daemon", "serve-ui"})
-}
-
-func parkVisibleSidebar(ctx context.Context, sidebar ports.SidebarPort, paneID string) error {
-	if strings.TrimSpace(paneID) == "" {
-		return nil
-	}
-	return sidebar.ParkSingletonSidebar(ctx, paneID)
 }
 
 type sidebarResizeHookContext struct {
