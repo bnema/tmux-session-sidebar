@@ -93,7 +93,7 @@ func supportedAgentHookDefs() []agentHookDef {
 			BinaryName:           "omp",
 			ConfigDir:            ".omp/agent",
 			ConfigFile:           "extensions/cmux-session.ts",
-			ConfigDirEnvOverride: "PI_CODING_AGENT_DIR",
+			ConfigDirEnvOverride: "OMP_CODING_AGENT_DIR",
 			DisableEnvVar:        "TMUX_SESSION_SIDEBAR_OMP_HOOKS_DISABLED",
 			Format:               agentHookFormatOMPExtension,
 		},

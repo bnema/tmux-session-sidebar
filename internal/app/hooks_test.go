@@ -334,10 +334,37 @@ func TestOMPExtensionSourceMapsEventsAndDisableEnvExactly(t *testing.T) {
 	}
 }
 
-func TestOMPInstallHonorsPICodingAgentDirOverride(t *testing.T) {
+func TestOMPInstallIgnoresPICodingAgentDirOverride(t *testing.T) {
+	piOverride := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PI_CODING_AGENT_DIR", piOverride)
+	t.Setenv("OMP_CODING_AGENT_DIR", "")
+	def := mustAgentHookDef(t, "omp")
+	wantPath := filepath.Join(home, ".omp", "agent", "extensions", "cmux-session.ts")
+	if got := def.configPath(); got != wantPath {
+		t.Fatalf("omp config path = %q, want %q", got, wantPath)
+	}
+	if err := installHooksForAgent(new(bytes.Buffer), def, true); err != nil {
+		t.Fatalf("installHooksForAgent error: %v", err)
+	}
+	content, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("read OMP extension: %v", err)
+	}
+	if !strings.Contains(string(content), def.ownedMarker()) {
+		t.Fatalf("OMP extension missing marker:\n%s", content)
+	}
+	if _, err := os.Stat(filepath.Join(piOverride, "extensions", "cmux-session.ts")); !os.IsNotExist(err) {
+		t.Fatalf("OMP wrote to PI_CODING_AGENT_DIR override, err=%v", err)
+	}
+}
+
+func TestOMPInstallHonorsOMPCodingAgentDirOverride(t *testing.T) {
 	override := t.TempDir()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("PI_CODING_AGENT_DIR", override)
+	t.Setenv("PI_CODING_AGENT_DIR", t.TempDir())
+	t.Setenv("OMP_CODING_AGENT_DIR", override)
 	def := mustAgentHookDef(t, "omp")
 	wantPath := filepath.Join(override, "extensions", "cmux-session.ts")
 	if got := def.configPath(); got != wantPath {
