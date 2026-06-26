@@ -61,12 +61,13 @@ func (c daemonLifecycleCoordinator) initializeCapture(ctx context.Context, cfg p
 	if shouldSkipSidebarSessionRestoreForContinuum(ctx, cfg) {
 		return time.Now().Add(time.Duration(continuumRestoreWindowSeconds(ctx, cfg)) * time.Second), nil
 	}
-	// captureLiveSidebarSessionsWithConfigProtected must succeed during daemon startup so the
-	// initial session snapshot is available; later captureLiveSidebarHeat ticks only log
-	// failures because stale heat/attention data is less critical than bootstrapping.
+	// The initial config capture must populate heat baselines without consuming
+	// the recent-order auto-sort interval. Startup has just cleared transient heat
+	// state, so sorting here would use stale LastActiveAt values and overwrite the
+	// restored persisted order before real post-startup activity exists.
 	// The protected variant guards against destructive overwrite of restored state
 	// when only hidden/numeric sessions are visible during startup.
-	captured, err := captureLiveSidebarSessionsWithConfigProtected(ctx, cfg)
+	captured, err := captureLiveSidebarSessionsWithConfigProtectedPreservingOrder(ctx, cfg)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -136,7 +137,7 @@ func daemonNextRefreshInterval(cfg ports.ConfigSnapshot, pendingFullCaptureAt ti
 }
 
 func runPendingFullCapture(ctx context.Context, cfg ports.ConfigSnapshot, metadata *daemonMetadataLifecycle) time.Time {
-	captured, err := captureLiveSidebarSessionsWithConfigProtected(ctx, cfg)
+	captured, err := captureLiveSidebarSessionsWithConfigProtectedPreservingOrder(ctx, cfg)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: daemon capture failed: %v\n", err)
 		return time.Now().Add(sidebarRefreshIntervalFromConfig(cfg))

@@ -622,6 +622,144 @@ esac
 	}
 }
 
+func TestDaemonInitialConfigCapturePreservesStartupSessionOrder(t *testing.T) {
+	cfg := seedStartupOrderCaptureFixture(t)
+
+	if err := ensureRestoredAndCapturedOnStartup(context.Background()); err != nil {
+		t.Fatalf("ensureRestoredAndCapturedOnStartup error: %v", err)
+	}
+	if err := resetTransientHeatStateOnStartup(context.Background()); err != nil {
+		t.Fatalf("resetTransientHeatStateOnStartup error: %v", err)
+	}
+	ctx := context.Background()
+	pendingFullCaptureAt, err := (daemonLifecycleCoordinator{}).initializeCapture(ctx, cfg, newDaemonMetadataLifecycle(ctx, RuntimeEnvironment{}))
+	if err != nil {
+		t.Fatalf("initializeCapture error: %v", err)
+	}
+	if !pendingFullCaptureAt.IsZero() {
+		t.Fatalf("pendingFullCaptureAt = %v, want no delayed capture after initial protected capture", pendingFullCaptureAt)
+	}
+
+	assertStartupOrderPreservedThroughImmediateHeatTick(t, cfg)
+}
+
+func TestDaemonPendingFullCapturePreservesStartupSessionOrder(t *testing.T) {
+	cfg := seedStartupOrderCaptureFixture(t)
+
+	if err := resetTransientHeatStateOnStartup(context.Background()); err != nil {
+		t.Fatalf("resetTransientHeatStateOnStartup error: %v", err)
+	}
+	ctx := context.Background()
+	pendingFullCaptureAt := runPendingFullCapture(ctx, cfg, newDaemonMetadataLifecycle(ctx, RuntimeEnvironment{}))
+	if !pendingFullCaptureAt.IsZero() {
+		t.Fatalf("pendingFullCaptureAt = %v, want no delayed capture after pending full capture succeeds", pendingFullCaptureAt)
+	}
+
+	assertStartupOrderPreservedThroughImmediateHeatTick(t, cfg)
+}
+
+func seedStartupOrderCaptureFixture(t *testing.T) ports.ConfigSnapshot {
+	t.Helper()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	alphaPath := t.TempDir()
+	betaPath := t.TempDir()
+	gammaPath := t.TempDir()
+	store := sessionOrderStore()
+	state, err := store.Load(t.Context(), "tmux")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	base := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
+	state.Sessions = map[string]ports.SessionMetadata{
+		"alpha": {Kind: "captured", LastPath: alphaPath},
+		"beta":  {Kind: "captured", LastPath: betaPath},
+		"gamma": {Kind: "captured", LastPath: gammaPath},
+	}
+	state.SessionOrder = []string{"gamma", "beta", "alpha"}
+	state.Heat = map[string][]byte{
+		"alpha": mustMarshalHeatState(t, heat.State{UpdatedAt: base, LastActiveAt: base.Add(-5 * time.Minute), RecentActivityAt: base.Add(-5 * time.Minute), LastVisitedAt: base.Add(-4 * time.Minute), Panes: map[string]heat.PaneState{"%old-alpha": {Fingerprint: "old-alpha"}}}),
+		"beta":  mustMarshalHeatState(t, heat.State{UpdatedAt: base, LastActiveAt: base.Add(-2 * time.Hour), Panes: map[string]heat.PaneState{"%old-beta": {Fingerprint: "old-beta"}}}),
+		"gamma": mustMarshalHeatState(t, heat.State{UpdatedAt: base, LastActiveAt: base.Add(-3 * time.Hour), Panes: map[string]heat.PaneState{"%old-gamma": {Fingerprint: "old-gamma"}}}),
+	}
+	if err := store.Save(t.Context(), "tmux", state); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	t.Setenv("ALPHA_PATH", alphaPath)
+	t.Setenv("BETA_PATH", betaPath)
+	t.Setenv("GAMMA_PATH", gammaPath)
+	installFakeTmux(t, `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMUX_LOG"
+case "$1" in
+  show-options)
+    case "${@: -1}" in
+      @session-sidebar-key) printf 'M-b\n' ;;
+      @session-sidebar-width) printf '30\n' ;;
+      @session-sidebar-project-roots) printf '\n' ;;
+      @session-sidebar-close-after-switch) printf 'off\n' ;;
+      @session-sidebar-heat-colors) printf 'on\n' ;;
+      @session-sidebar-heat-half-life-hours) printf '8\n' ;;
+      @session-sidebar-heat-stale-hours) printf '24\n' ;;
+      @session-sidebar-heat-refresh-seconds) printf '5\n' ;;
+      @session-sidebar-heat-recent) printf '1h\n' ;;
+      @session-sidebar-heat-max-highlighted) printf '0\n' ;;
+      @session-sidebar-activity-debug-log) printf 'off\n' ;;
+      @session-sidebar-agent-attention) printf 'off\n' ;;
+      @session-sidebar-agent-attention-animation) printf 'pulse\n' ;;
+      @session-sidebar-auto-sort-recent) printf '24h\n' ;;
+      @session-sidebar-restore-sessions) printf 'on\n' ;;
+      @session-sidebar-continuum-grace-seconds) printf '0\n' ;;
+      @session-sidebar-color-scheme) printf 'system\n' ;;
+      @session-sidebar-metadata-subline) printf 'off\n' ;;
+      @session-sidebar-metadata-inactive) printf 'off\n' ;;
+      *) printf '\n' ;;
+    esac ;;
+  list-sessions) printf '$1\talpha\t1\t0\n$2\tbeta\t1\t0\n$3\tgamma\t1\t1\n' ;;
+  list-clients) printf '/dev/pts/test\t$3\t@gamma\t%%gamma\tgamma\n' ;;
+  list-panes)
+    case "$*" in
+      *'#{session_name}\t#{window_active}\t#{pane_active}\t#{pane_current_path}'*)
+        printf 'alpha\t1\t1\t%s\nbeta\t1\t1\t%s\ngamma\t1\t1\t%s\n' "$ALPHA_PATH" "$BETA_PATH" "$GAMMA_PATH" ;;
+      *)
+        printf '%%alpha\t$1\talpha\t@alpha\t%s\tvim\t0\t\t0\n%%beta\t$2\tbeta\t@beta\t%s\tvim\t0\t\t0\n%%gamma\t$3\tgamma\t@gamma\t%s\tvim\t0\t\t0\n' "$ALPHA_PATH" "$BETA_PATH" "$GAMMA_PATH" ;;
+    esac ;;
+  capture-pane)
+    case "$*" in
+      *%alpha*) printf 'alpha startup baseline\n' ;;
+      *%beta*) printf 'beta startup baseline\n' ;;
+      *%gamma*) printf 'gamma startup baseline\n' ;;
+    esac ;;
+esac
+`)
+	return ports.ConfigSnapshot{HeatColorsEnabled: true, HeatHalfLifeHours: 8, HeatStaleHours: 24, AutoSortRecentInterval: 24 * time.Hour, RestoreSessionsMode: "on"}
+}
+
+func assertStartupOrderPreservedThroughImmediateHeatTick(t *testing.T, cfg ports.ConfigSnapshot) {
+	t.Helper()
+	assertStartupOrderPreservedAndDeferred(t)
+	captured, err := captureLiveSidebarHeat(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("captureLiveSidebarHeat error: %v", err)
+	}
+	if !captured {
+		t.Fatal("captureLiveSidebarHeat captured = false, want true")
+	}
+	assertStartupOrderPreservedAndDeferred(t)
+}
+
+func assertStartupOrderPreservedAndDeferred(t *testing.T) {
+	t.Helper()
+	next, err := loadSidebarState(context.Background())
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if got, want := next.SessionOrder, []string{"gamma", "beta", "alpha"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("SessionOrder = %#v, want startup order preserved %#v", got, want)
+	}
+	if next.Sidebar == nil || next.Sidebar.AutoSortRecentRunAt == "" {
+		t.Fatalf("AutoSortRecentRunAt = %#v, want startup capture to defer the next recent-sort tick", next.Sidebar)
+	}
+}
+
 func mustMarshalHeatState(t *testing.T, state heat.State) []byte {
 	t.Helper()
 	encoded, err := json.Marshal(state)
