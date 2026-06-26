@@ -1135,14 +1135,14 @@ esac
 	}
 }
 
-func TestHookClientAttachedAdoptsPersistedOpenSidebarAfterRestart(t *testing.T) {
+func TestHookClientAttachedRestoresPersistedVisibleSidebarAfterRestart(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	store := sessionOrderStore()
 	state, err := store.Load(t.Context(), "tmux")
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "/dev/old"}
+	state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "/dev/old", VisibleClients: map[string]bool{"/dev/new": true}}
 	state.SessionOrder = []string{"alpha"}
 	state.PinnedSessions = []string{"alpha"}
 	if err := store.Save(t.Context(), "tmux", state); err != nil {
@@ -1201,8 +1201,8 @@ esac
 	if err != nil {
 		t.Fatalf("loadSidebarState error: %v", err)
 	}
-	if next.Sidebar == nil || !next.Sidebar.Open || next.Sidebar.OwnerClient != "/dev/new" {
-		t.Fatalf("sidebar state = %#v, want open adopted by /dev/new", next.Sidebar)
+	if next.Sidebar == nil || !next.Sidebar.Open || next.Sidebar.OwnerClient != "/dev/new" || !next.Sidebar.VisibleClients["/dev/new"] || len(next.Sidebar.VisibleClients) != 1 {
+		t.Fatalf("sidebar state = %#v, want open adopted by /dev/new only", next.Sidebar)
 	}
 	if len(next.PinnedSessions) != 1 || next.PinnedSessions[0] != "alpha" {
 		t.Fatalf("pinned sessions changed during adoption: %#v", next.PinnedSessions)

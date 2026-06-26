@@ -154,6 +154,7 @@ func withResolvedColorSchemeAppearance(ctx context.Context, cfg ports.ConfigSnap
 
 func defaultSidebarConfig() ports.ConfigSnapshot {
 	return ports.ConfigSnapshot{
+		Width:                   "30",
 		HeatColorsEnabled:       true,
 		HeatHalfLifeHours:       8,
 		HeatStaleHours:          24,

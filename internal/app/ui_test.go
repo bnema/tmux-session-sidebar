@@ -14,6 +14,13 @@ import (
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
+func TestDefaultSidebarConfigIncludesSidebarWidth(t *testing.T) {
+	cfg := defaultSidebarConfig()
+	if cfg.Width != "30" {
+		t.Fatalf("default width = %q, want 30", cfg.Width)
+	}
+}
+
 func TestEffectiveUIClientFallsBackToPersistedSidebarOwner(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("TMUX_PANE", "")

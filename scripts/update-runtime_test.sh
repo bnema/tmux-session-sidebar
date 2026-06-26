@@ -483,11 +483,25 @@ test_download_release_candidate_scopes_signature_paths_locally() {
   esac
 }
 
+test_stop_only_without_ps_uses_any_path_pkill_patterns() {
+  local root
+  root="$(new_fixture)"
+  prepare_fake_tools "$root"
+  rm -f "$root/fakebin/ps"
+
+  PATH="$root/fakebin" run_update "$root" --stop-only
+
+  assert_file_contains "$root/pkill.log" "pkill -f /tmux-session-sidebar daemon serve-ui" "no-ps stop should pkill stale serve-ui runtimes by any path"
+  assert_file_contains "$root/pkill.log" "pkill -f /tmux-session-sidebar daemon bootstrap" "no-ps stop should pkill stale bootstrap runtimes by any path"
+  assert_file_contains "$root/pkill.log" "pkill -f /tmux-session-sidebar daemon serve" "no-ps stop should pkill stale serve runtimes by any path"
+}
+
 test_signature_verification_passes_for_valid_release
 test_missing_signature_asset_fails_install
 test_bad_signature_fails_install
 test_release_only_mode_fails_on_missing_signature
 test_download_release_candidate_preserves_missing_openssl_exit_code
 test_download_release_candidate_scopes_signature_paths_locally
+test_stop_only_without_ps_uses_any_path_pkill_patterns
 
 echo "update-runtime tests passed"

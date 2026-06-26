@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
@@ -26,12 +27,18 @@ func ensurePersistedSidebarState(state *ports.PersistedState) *ports.SidebarStat
 }
 
 func sidebarStateAppliesToClient(state ports.SidebarState, client string) bool {
+	client = strings.TrimSpace(client)
+	if state.VisibleClients != nil {
+		return client != "" && state.VisibleClients[client]
+	}
 	if !state.Open {
 		return false
 	}
 	owner := strings.TrimSpace(state.OwnerClient)
-	client = strings.TrimSpace(client)
-	return owner == "" || owner == client
+	if owner == "" {
+		return client == ""
+	}
+	return owner == client
 }
 
 func sidebarShouldBeVisibleForClient(ctx context.Context, client string) (bool, error) {
@@ -45,13 +52,59 @@ func sidebarShouldBeVisibleForClient(ctx context.Context, client string) (bool, 
 func saveSidebarVisibility(ctx context.Context, open bool, client string) error {
 	return updateSidebarState(ctx, func(state *ports.PersistedState) {
 		sidebar := ensurePersistedSidebarState(state)
-		sidebar.Open = open
+		client = strings.TrimSpace(client)
+		if sidebar.VisibleClients == nil {
+			sidebar.VisibleClients = visibleClientsFromLegacySidebarState(*sidebar)
+		}
 		if open {
-			if trimmed := strings.TrimSpace(client); trimmed != "" {
-				sidebar.OwnerClient = trimmed
+			if client != "" {
+				sidebar.VisibleClients[client] = true
+				sidebar.OwnerClient = client
+			}
+		} else if client != "" {
+			delete(sidebar.VisibleClients, client)
+			if strings.TrimSpace(sidebar.OwnerClient) == client {
+				sidebar.OwnerClient = firstVisibleClient(sidebar.VisibleClients)
 			}
 		} else {
+			sidebar.VisibleClients = map[string]bool{}
 			sidebar.OwnerClient = ""
 		}
+		sidebar.Open = anyVisibleClient(sidebar.VisibleClients)
 	})
+}
+
+func visibleClientsFromLegacySidebarState(state ports.SidebarState) map[string]bool {
+	visible := map[string]bool{}
+	if !state.Open {
+		return visible
+	}
+	owner := strings.TrimSpace(state.OwnerClient)
+	if owner != "" {
+		visible[owner] = true
+	}
+	return visible
+}
+
+func firstVisibleClient(visible map[string]bool) string {
+	clients := make([]string, 0, len(visible))
+	for client, isVisible := range visible {
+		if isVisible {
+			clients = append(clients, client)
+		}
+	}
+	sort.Strings(clients)
+	if len(clients) == 0 {
+		return ""
+	}
+	return clients[0]
+}
+
+func anyVisibleClient(visible map[string]bool) bool {
+	for _, isVisible := range visible {
+		if isVisible {
+			return true
+		}
+	}
+	return false
 }

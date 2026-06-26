@@ -156,6 +156,9 @@ func dispatchRoute(ctx context.Context, router Router, stdout io.Writer, stderr 
 		return runtimeError{err: errors.New("missing router")}
 	}
 	if err := router.Handle(ctx, route, stdout, stderr); err != nil {
+		if route.Path == "daemon/serve" && errors.Is(err, context.Canceled) {
+			return nil
+		}
 		return runtimeError{err: err}
 	}
 	return nil

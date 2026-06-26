@@ -102,26 +102,26 @@ type ControlPort interface {
 type SidebarPort interface {
 	CloseAfterSwitch(ctx context.Context) (bool, error)
 	FindSidebarPane(ctx context.Context, target string) (PaneRef, error)
-	FindSingletonSidebar(ctx context.Context) (PaneRef, error)
-	EnsureSingletonSidebar(ctx context.Context, command []string) (PaneRef, error)
-	AttachSingletonSidebar(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
-	ParkSingletonSidebar(ctx context.Context, paneID string) error
+	FindSidebarPaneForClient(ctx context.Context, ownerClientID string) (PaneRef, error)
+	EnsureSidebarForClient(ctx context.Context, ownerClientID string, command []string) (PaneRef, error)
+	AttachSidebarForClient(ctx context.Context, ownerClientID string, targetID string, paneID string, width string) (PaneRef, error)
+	ParkSidebarForClient(ctx context.Context, ownerClientID string, paneID string) error
+	ParkAllSidebars(ctx context.Context) error
 	RefreshSidebar(ctx context.Context, clientID string) error
 	ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error
 }
 
 type SidebarSwitchPort interface {
-	// AttachSingletonSidebarAndSwitchClient moves the sidebar to sessionName,
-	// switches the client there, and leaves focus on the work pane next to the
-	// sidebar instead of focusing the sidebar pane itself.
-	AttachSingletonSidebarAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error
+	// AttachSidebarForClientAndSwitchClient moves the client's sidebar to
+	// sessionName, switches the client there, and leaves focus on the work pane
+	// next to the sidebar instead of focusing the sidebar pane itself.
+	AttachSidebarForClientAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error
 }
 
 type SidebarFollowPort interface {
-	// AttachSingletonSidebarWithoutFocus attaches the sidebar while preserving
-	// focus in the work pane. Callers may fall back to AttachSingletonSidebar
-	// when an adapter does not implement this optional behavior.
-	AttachSingletonSidebarWithoutFocus(ctx context.Context, clientID string, paneID string, width string) (PaneRef, error)
+	// AttachSidebarForClientWithoutFocus attaches the owner's sidebar to targetID
+	// while preserving focus in the work pane.
+	AttachSidebarForClientWithoutFocus(ctx context.Context, ownerClientID string, targetID string, paneID string, width string) (PaneRef, error)
 }
 
 // SidebarResizeOptions configures optional resize behavior. Logger may be nil;
