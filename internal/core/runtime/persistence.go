@@ -189,13 +189,13 @@ func (s *Service) captureLiveSessions(ctx context.Context, serverID string, opts
 			capture := heatCaptureResult{}
 			heatRequired := SessionHeatCaptureRequired(*opts.snapshot)
 			previousHeat := maps.Clone(state.Heat)
+			now := s.now()
 			if heatRequired {
-				capture = s.captureHeatIntoState(ctx, state, live, heatConfigFromSnapshot(*opts.snapshot))
+				capture = s.captureHeatIntoStateAt(ctx, state, live, heatConfigFromSnapshot(*opts.snapshot), now.UTC())
 			}
 			if opts.requireCompleteHeatCapture && heatRequired && !capture.complete {
 				state.Heat = previousHeat
 			}
-			now := time.Now()
 			if opts.applyRecentSessionOrder {
 				applyRecentSessionOrderAfterCapture(state, live, *opts.snapshot, now, capture)
 			} else if !opts.requireCompleteHeatCapture || !heatRequired || capture.complete {
@@ -227,8 +227,9 @@ func (s *Service) CaptureSessionHeatWithConfig(ctx context.Context, serverID str
 		return err
 	}
 	return ports.UpdateState(ctx, s.store, serverID, func(state *ports.PersistedState) error {
-		capture := s.captureHeatIntoState(ctx, state, live, heatConfigFromSnapshot(snapshot))
-		applyRecentSessionOrderAfterCapture(state, live, snapshot, time.Now(), capture)
+		now := s.now()
+		capture := s.captureHeatIntoStateAt(ctx, state, live, heatConfigFromSnapshot(snapshot), now.UTC())
+		applyRecentSessionOrderAfterCapture(state, live, snapshot, now, capture)
 		return nil
 	})
 }
@@ -518,6 +519,10 @@ func usefulPath(path string) bool {
 }
 
 func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.PersistedState, live []ports.SessionSnapshot, cfg heatConfig) heatCaptureResult {
+	return s.captureHeatIntoStateAt(ctx, state, live, cfg, s.now().UTC())
+}
+
+func (s *Service) captureHeatIntoStateAt(ctx context.Context, state *ports.PersistedState, live []ports.SessionSnapshot, cfg heatConfig, now time.Time) heatCaptureResult {
 	if state == nil {
 		return heatCaptureResult{}
 	}
@@ -534,7 +539,7 @@ func (s *Service) captureHeatIntoState(ctx context.Context, state *ports.Persist
 		live,
 		clients,
 		observations,
-		time.Now().UTC(),
+		now,
 		cfg.halfLife,
 		cfg.staleAfter,
 	)
@@ -579,6 +584,13 @@ func (s *Service) logHeatTrace(sessionName string, trace heat.Trace) {
 		{Key: "observed_activity", Value: trace.ObservedActivity},
 		{Key: "visited", Value: trace.Visited},
 	})
+}
+
+func (s *Service) now() time.Time {
+	if s != nil && s.clock != nil {
+		return s.clock.Now()
+	}
+	return time.Now()
 }
 
 func heatConfigFromSnapshot(snapshot ports.ConfigSnapshot) heatConfig {

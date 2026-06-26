@@ -40,6 +40,7 @@ type Service struct {
 	meta    ports.MetadataPort
 	store   ports.StateStorePort
 	logger  ports.LoggerPort
+	clock   ports.ClockPort
 }
 
 // NewService creates a Service from its adapter ports. Methods validate the
@@ -61,5 +62,10 @@ func (s *Service) WithMetadata(meta ports.MetadataPort) *Service {
 
 func (s *Service) WithLogger(logger ports.LoggerPort) *Service {
 	s.logger = logger
+	return s
+}
+
+func (s *Service) WithClock(clock ports.ClockPort) *Service {
+	s.clock = clock
 	return s
 }

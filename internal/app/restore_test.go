@@ -714,7 +714,7 @@ case "$1" in
       *) printf '\n' ;;
     esac ;;
   list-sessions) printf '$1\talpha\t1\t0\n$2\tbeta\t1\t0\n$3\tgamma\t1\t1\n' ;;
-  list-clients) printf '/dev/pts/test\t$3\t@gamma\t%gamma\tgamma\n' ;;
+  list-clients) printf '/dev/pts/test\t$3\t@gamma\t%%gamma\tgamma\n' ;;
   list-panes)
     case "$*" in
       *'#{session_name}\t#{window_active}\t#{pane_active}\t#{pane_current_path}'*)
