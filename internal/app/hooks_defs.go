@@ -16,6 +16,7 @@ const (
 	agentHookFormatNestedJSON     agentHookFormat = "nested-json"
 	agentHookFormatOpenCodePlugin agentHookFormat = "opencode-plugin"
 	agentHookFormatPiExtension    agentHookFormat = "pi-extension"
+	agentHookFormatOMPExtension   agentHookFormat = "omp-extension"
 	agentHookFormatAmpPlugin      agentHookFormat = "amp-plugin"
 	agentHookFormatRovoYAML       agentHookFormat = "rovo-yaml"
 )
@@ -85,6 +86,16 @@ func supportedAgentHookDefs() []agentHookDef {
 			ConfigDirEnvOverride: "PI_CODING_AGENT_DIR",
 			DisableEnvVar:        "TMUX_SESSION_SIDEBAR_PI_HOOKS_DISABLED",
 			Format:               agentHookFormatPiExtension,
+		},
+		{
+			Name:                 "omp",
+			DisplayName:          "OMP",
+			BinaryName:           "omp",
+			ConfigDir:            ".omp/agent",
+			ConfigFile:           "extensions/cmux-session.ts",
+			ConfigDirEnvOverride: "PI_CODING_AGENT_DIR",
+			DisableEnvVar:        "TMUX_SESSION_SIDEBAR_OMP_HOOKS_DISABLED",
+			Format:               agentHookFormatOMPExtension,
 		},
 		{
 			Name:          "amp",

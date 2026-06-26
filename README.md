@@ -255,6 +255,7 @@ Or install one integration:
 ```bash
 ~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks codex install
 ~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks pi install
+~/.tmux/plugins/tmux-session-sidebar/.bin/tmux-session-sidebar hooks omp install
 ```
 
 See [docs/agent-hooks.md](docs/agent-hooks.md) for the supported-agent list and uninstall commands.
