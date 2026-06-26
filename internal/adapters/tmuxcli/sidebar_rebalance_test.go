@@ -297,6 +297,29 @@ func TestCaptureAttachedSidebarWidthBaselineSkipsDuringRecentResizeSync(t *testi
 	assertRecUsedAllHandlers(t, rec)
 }
 
+func TestCaptureAttachedSidebarWidthBaselinePreservesSavedBaselineOnSidebarWidthMismatch(t *testing.T) {
+	ctx := t.Context()
+	rec := newRecPort(t)
+
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSyncActive}, func([]string) (string, string) {
+		return "0", ""
+	})
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSuppressUntil}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"display-message", "-p", "-t", "@27", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
+		return "181\t48", ""
+	})
+	rec.handle([]string{"list-panes", "-t", "@27", "-F", formatSidebarRebalancePane}, func([]string) (string, string) {
+		return "%183\t0\t0\t20\t48\t1\n%27\t21\t0\t79\t48\t0\n%185\t101\t0\t80\t48\t0", ""
+	})
+
+	if err := (Client{Process: rec}).CaptureAttachedSidebarWidthBaseline(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
+		t.Fatalf("CaptureAttachedSidebarWidthBaseline error: %v", err)
+	}
+	assertRecUsedAllHandlers(t, rec)
+}
+
 func TestCaptureAttachedSidebarWidthBaselineClearsSavedBaselineWhenCaptureIsInvalid(t *testing.T) {
 	ctx := t.Context()
 	rec := newRecPort(t)

@@ -171,7 +171,7 @@ func (c Client) attachSingletonSidebar(ctx context.Context, targetID string, pan
 	}
 	var sourceCloseWeights []sidebarWorkWeight
 	if clearSourceWindowLayout {
-		sourceCloseWeights, _ = c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
+		sourceCloseWeights, _, _ = c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
 	}
 	// Save target hidden layout for rollback if the multi-step attach fails.
 	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
@@ -256,7 +256,7 @@ func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clien
 	}
 	if currentWindowID == windowID {
 		preSyncSidebarWidth, _ := c.displayTarget(ctx, paneID, "#{pane_width}")
-		preSyncWeights, _ := c.captureSidebarWorkWeights(ctx, windowID, paneID, preSyncSidebarWidth, sidebarWorkWeightByGroupWidth)
+		preSyncWeights, _, _ := c.captureSidebarWorkWeights(ctx, windowID, paneID, preSyncSidebarWidth, sidebarWorkWeightByGroupWidth)
 		if err := c.SyncAttachedSidebarWidth(ctx, windowID, paneID, width, ports.SidebarResizeOptions{}); err != nil {
 			return err
 		}
@@ -266,7 +266,7 @@ func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clien
 		}
 		return nil
 	}
-	sourceCloseWeights, _ := c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
+	sourceCloseWeights, _, _ := c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
 	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
 		return err
 	}
@@ -383,7 +383,7 @@ func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	if err != nil {
 		return err
 	}
-	horizontalCloseWeights, _ := c.captureSidebarWorkWeights(ctx, sourceWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
+	horizontalCloseWeights, _, _ := c.captureSidebarWorkWeights(ctx, sourceWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
 	if err := c.ensureParkingSession(ctx); err != nil {
 		return err
 	}
