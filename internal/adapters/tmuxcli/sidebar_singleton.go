@@ -255,7 +255,7 @@ func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clien
 		width = "30"
 	}
 	if currentWindowID == windowID {
-		return c.resizeSwitchMarkAndSelectSidebarPane(ctx, clientID, target, paneID, width)
+		return c.syncSwitchMarkAndSelectSidebarPane(ctx, clientID, target, windowID, paneID, width)
 	}
 	sourceCloseWeights, _ := c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
 	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
@@ -290,10 +290,18 @@ func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clien
 	return nil
 }
 
-func (c Client) resizeSwitchMarkAndSelectSidebarPane(ctx context.Context, clientID string, target string, paneID string, width string) error {
-	args := []string{cmdResizePane, "-t", paneID, "-x", width}
-	args = append(args, ";")
-	args = append(args, switchClientArgs(clientID, target)...)
+func (c Client) syncSwitchMarkAndSelectSidebarPane(ctx context.Context, clientID string, target string, windowID string, paneID string, width string) error {
+	if err := c.SyncAttachedSidebarWidth(ctx, windowID, paneID, width, ports.SidebarResizeOptions{}); err != nil {
+		return err
+	}
+	if err := c.switchMarkAndSelectSidebarPane(ctx, clientID, target, paneID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c Client) switchMarkAndSelectSidebarPane(ctx context.Context, clientID string, target string, paneID string) error {
+	args := switchClientArgs(clientID, target)
 	args = append(args,
 		";", cmdSetOption, "-p", "-t", paneID, optionSidebarPane, "1",
 		";", cmdSetOption, "-p", "-t", paneID, optionSidebarOwnerClient, clientID,

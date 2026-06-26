@@ -7,11 +7,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
 const formatSidebarRebalancePane = "#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{?@session-sidebar-pane,1,0}"
+
+const sidebarResizeBaselineSuppressDuration = 2 * time.Second
 
 type sidebarRebalancePane struct {
 	PaneID  string
@@ -75,6 +78,17 @@ func (c Client) CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowI
 		c.resizeDebug("resize-baseline-capture-skip", ports.LogField{Key: "reason", Value: "resize-sync-active"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "pane", Value: paneID})
 		return nil
 	}
+	suppressed, err := c.sidebarResizeBaselineCaptureSuppressed(ctx, windowID)
+	if err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
+		return err
+	}
+	if suppressed {
+		c.resizeDebug("resize-baseline-capture-skip", ports.LogField{Key: "reason", Value: "resize-sync-recent"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "pane", Value: paneID})
+		return nil
+	}
 	weights, err := c.captureSidebarWorkWeights(ctx, windowID, paneID, width, sidebarWorkWeightByGroupWidth)
 	if err != nil {
 		if isTmuxTargetGone(err) {
@@ -109,6 +123,9 @@ func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, p
 		return err
 	}
 	c.setSidebarResizeSyncActiveBestEffort(ctx, windowID, true)
+	if len(weights) >= 2 {
+		c.suppressResizeBaselineCaptureBestEffort(ctx, windowID)
+	}
 	defer c.setSidebarResizeSyncActiveBestEffort(ctx, windowID, false)
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdResizePane, "-t", paneID, "-x", width})
 	if err != nil {
@@ -259,6 +276,27 @@ func (c Client) setSidebarResizeSyncActiveBestEffort(ctx context.Context, window
 		return
 	}
 	_ = c.clearWindowOptionValue(ctx, windowID, optionSidebarResizeSyncActive)
+}
+
+func (c Client) suppressResizeBaselineCaptureBestEffort(ctx context.Context, windowID string) {
+	deadline := strconv.FormatInt(time.Now().Add(sidebarResizeBaselineSuppressDuration).UnixNano(), 10)
+	_ = c.setWindowOptionValue(ctx, windowID, optionSidebarResizeSuppressUntil, deadline)
+}
+
+func (c Client) sidebarResizeBaselineCaptureSuppressed(ctx context.Context, windowID string) (bool, error) {
+	raw, err := c.windowOptionValue(ctx, windowID, optionSidebarResizeSuppressUntil)
+	if err != nil {
+		return false, err
+	}
+	if raw == "" {
+		return false, nil
+	}
+	deadline, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil {
+		c.resizeDebug("resize-baseline-suppress-invalid", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "raw", Value: raw}, ports.LogField{Key: "error", Value: err.Error()})
+		return false, nil
+	}
+	return time.Now().UnixNano() < deadline, nil
 }
 
 func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID string, sidebarPaneID string, weights []sidebarWorkWeight, requireSidebar bool) {

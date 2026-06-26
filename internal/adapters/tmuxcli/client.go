@@ -42,11 +42,12 @@ const (
 
 	escapedFormatPaneID = "##{pane_id}"
 
-	optionSidebarPane             = "@session-sidebar-pane"
-	optionSidebarOwnerClient      = "@session-sidebar-owner-client"
-	optionSidebarWindowLayout     = "@session-sidebar-window-layout"
-	optionSidebarOpenWorkBaseline = "@session-sidebar-open-work-baseline"
-	optionSidebarResizeSyncActive = "@session-sidebar-resize-sync-active"
+	optionSidebarPane                = "@session-sidebar-pane"
+	optionSidebarOwnerClient         = "@session-sidebar-owner-client"
+	optionSidebarWindowLayout        = "@session-sidebar-window-layout"
+	optionSidebarOpenWorkBaseline    = "@session-sidebar-open-work-baseline"
+	optionSidebarResizeSyncActive    = "@session-sidebar-resize-sync-active"
+	optionSidebarResizeSuppressUntil = "@session-sidebar-resize-suppress-until"
 
 	singletonSidebarSessionName = "__tmux-session-sidebar"
 	singletonSidebarWindowName  = "sidebar"
