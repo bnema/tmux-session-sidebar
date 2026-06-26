@@ -34,6 +34,7 @@ tmux-session-sidebar hooks <agent> uninstall
 | Grok | `grok` | `~/.grok/hooks/cmux-session.json` |
 | OpenCode | `opencode` | `~/.config/opencode/plugins/cmux-session.js` |
 | Pi | `pi` | `~/.pi/agent/extensions/cmux-session.ts` |
+| OMP | `omp` | `~/.omp/agent/extensions/cmux-session.ts` |
 | Amp | `amp` | `~/.config/amp/plugins/cmux-session.ts` |
 | Cursor CLI | `cursor-agent` | `~/.cursor/hooks.json` |
 | Gemini | `gemini` | `~/.gemini/settings.json` |
@@ -69,6 +70,7 @@ Per-process escape hatch env vars:
 - `TMUX_SESSION_SIDEBAR_GROK_HOOKS_DISABLED=1`
 - `TMUX_SESSION_SIDEBAR_OPENCODE_HOOKS_DISABLED=1`
 - `TMUX_SESSION_SIDEBAR_PI_HOOKS_DISABLED=1`
+- `TMUX_SESSION_SIDEBAR_OMP_HOOKS_DISABLED=1`
 - `TMUX_SESSION_SIDEBAR_AMP_HOOKS_DISABLED=1`
 - `TMUX_SESSION_SIDEBAR_CURSOR_HOOKS_DISABLED=1`
 - `TMUX_SESSION_SIDEBAR_GEMINI_HOOKS_DISABLED=1`
@@ -80,7 +82,7 @@ Per-process escape hatch env vars:
 
 ## Generated file headers
 
-Generated plugin/extension files carry explicit attribution to cmux’s integration design and mention the cmux repo copyright and dual-license notice, per the upstream source context.
+Generated OpenCode, Pi, and Amp plugin/extension files carry explicit attribution to cmux’s integration design and mention the cmux repo copyright and dual-license notice, per the upstream source context. The OMP extension uses OMP’s own Pi-style extension API and imports `@oh-my-pi/pi-coding-agent`.
 
 ## Reinstalling or cleaning up
 

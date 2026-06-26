@@ -97,14 +97,26 @@ export default TMUXSessionSidebarPlugin;
 }
 
 func piExtensionSource(def agentHookDef) string {
-	return fmt.Sprintf(`// %s
-// Derived from the cmux Pi extension integration design.
+	return piStyleExtensionSource(def, piStyleExtensionHeader, "@earendil-works/pi-coding-agent", "tmuxSessionSidebarPiExtension")
+}
+
+func ompExtensionSource(def agentHookDef) string {
+	return piStyleExtensionSource(def, ompStyleExtensionHeader, "@oh-my-pi/pi-coding-agent", "tmuxSessionSidebarOMPExtension")
+}
+
+const piStyleExtensionHeader = `// Derived from the cmux Pi extension integration design.
 // Copyright (c) 2024-present Manaflow, Inc.
 // cmux is dual-licensed GPL-3.0-or-later or commercial; see the cmux LICENSE for details.
-// This tmux-session-sidebar generated file is an independent implementation inspired by that integration shape.
+// This tmux-session-sidebar generated file is an independent implementation inspired by that integration shape.`
+
+const ompStyleExtensionHeader = `// Generated OMP extension for tmux-session-sidebar agent attention.`
+
+func piStyleExtensionSource(def agentHookDef, header string, importPath string, exportName string) string {
+	return fmt.Sprintf(`// %s
+%s
 // DO NOT EDIT MANUALLY. Reinstall with: tmux-session-sidebar hooks %s install
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from %q;
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -138,7 +150,7 @@ function sendHook(event: string): void {
   } catch (_) {}
 }
 
-export default function tmuxSessionSidebarPiExtension(pi: ExtensionAPI) {
+export default function %s(pi: ExtensionAPI) {
   pi.on("session_start", async () => {
     sendHook("session-start");
   });
@@ -152,7 +164,7 @@ export default function tmuxSessionSidebarPiExtension(pi: ExtensionAPI) {
     sendHook("session-end");
   });
 }
-`, def.ownedMarker(), def.Name, def.DisableEnvVar, def.Name)
+`, def.ownedMarker(), header, def.Name, importPath, def.DisableEnvVar, def.Name, exportName)
 }
 
 func ampPluginSource(def agentHookDef) string {

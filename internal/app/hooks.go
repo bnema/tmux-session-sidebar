@@ -130,6 +130,8 @@ func installHooksForAgent(stdout io.Writer, def agentHookDef, assumeYes bool) er
 		return installManagedFile(stdout, def, openCodePluginSource(def), assumeYes)
 	case agentHookFormatPiExtension:
 		return installManagedFile(stdout, def, piExtensionSource(def), assumeYes)
+	case agentHookFormatOMPExtension:
+		return installManagedFile(stdout, def, ompExtensionSource(def), assumeYes)
 	case agentHookFormatAmpPlugin:
 		return installManagedFile(stdout, def, ampPluginSource(def), assumeYes)
 	case agentHookFormatRovoYAML:
@@ -143,7 +145,7 @@ func uninstallHooksForAgent(stdout io.Writer, def agentHookDef, _ bool) error {
 	switch def.Format {
 	case agentHookFormatFlatJSON, agentHookFormatNestedJSON:
 		return uninstallJSONHooks(stdout, def)
-	case agentHookFormatOpenCodePlugin, agentHookFormatPiExtension, agentHookFormatAmpPlugin:
+	case agentHookFormatOpenCodePlugin, agentHookFormatPiExtension, agentHookFormatOMPExtension, agentHookFormatAmpPlugin:
 		return uninstallManagedFile(stdout, def)
 	case agentHookFormatRovoYAML:
 		return uninstallRovoHooks(stdout, def)
