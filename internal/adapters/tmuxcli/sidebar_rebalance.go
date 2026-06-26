@@ -12,7 +12,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
-const formatSidebarRebalancePane = "#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{?@session-sidebar-pane,1,0}"
+const formatSidebarRebalancePane = "#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{?@session-sidebar-pane,1,0}\t#{window_width}\t#{window_height}"
 
 const sidebarResizeBaselineSuppressDuration = 2 * time.Second
 
@@ -371,13 +371,15 @@ func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID 
 }
 
 func (c Client) sidebarHorizontalWorkGroups(ctx context.Context, windowID string, sidebarPaneID string, requireSidebar bool, expectedSidebarWidth int) ([]sidebarHorizontalGroup, int, error) {
-	windowWidth, windowHeight, err := c.windowDimensions(ctx, windowID)
+	panes, windowWidth, windowHeight, err := c.listSidebarRebalancePanes(ctx, windowID)
 	if err != nil {
 		return nil, 0, err
 	}
-	panes, err := c.listSidebarRebalancePanes(ctx, windowID)
-	if err != nil {
-		return nil, 0, err
+	if windowWidth == 0 || windowHeight == 0 {
+		windowWidth, windowHeight, err = c.windowDimensions(ctx, windowID)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 	var work []sidebarRebalancePane
 	if requireSidebar {
@@ -491,11 +493,12 @@ func groupHorizontalPanes(panes []sidebarRebalancePane) []sidebarHorizontalGroup
 	return groups
 }
 
-func (c Client) listSidebarRebalancePanes(ctx context.Context, windowID string) ([]sidebarRebalancePane, error) {
+func (c Client) listSidebarRebalancePanes(ctx context.Context, windowID string) ([]sidebarRebalancePane, int, int, error) {
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-t", windowID, "-F", formatSidebarRebalancePane})
 	if err != nil {
-		return nil, wrapTmuxError(result, err)
+		return nil, 0, 0, wrapTmuxError(result, err)
 	}
+	var windowWidth, windowHeight int
 	panes := make([]sidebarRebalancePane, 0)
 	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
 		line = strings.TrimSpace(line)
@@ -503,24 +506,36 @@ func (c Client) listSidebarRebalancePanes(ctx context.Context, windowID string) 
 			continue
 		}
 		fields := strings.Split(line, "\t")
-		if len(fields) != 6 {
-			return nil, fmt.Errorf("expected 6 tab-separated fields, got %d: %q", len(fields), line)
+		if len(fields) != 6 && len(fields) != 8 {
+			return nil, 0, 0, fmt.Errorf("expected 6 or 8 tab-separated fields, got %d: %q", len(fields), line)
 		}
 		left, err := strconv.Atoi(strings.TrimSpace(fields[1]))
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 		top, err := strconv.Atoi(strings.TrimSpace(fields[2]))
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 		width, err := strconv.Atoi(strings.TrimSpace(fields[3]))
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 		height, err := strconv.Atoi(strings.TrimSpace(fields[4]))
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
+		}
+		if len(fields) == 8 && windowWidth == 0 && windowHeight == 0 {
+			parsedWindowWidth, err := strconv.Atoi(strings.TrimSpace(fields[6]))
+			if err != nil {
+				return nil, 0, 0, err
+			}
+			parsedWindowHeight, err := strconv.Atoi(strings.TrimSpace(fields[7]))
+			if err != nil {
+				return nil, 0, 0, err
+			}
+			windowWidth = parsedWindowWidth
+			windowHeight = parsedWindowHeight
 		}
 		panes = append(panes, sidebarRebalancePane{
 			PaneID:  strings.TrimSpace(fields[0]),
@@ -531,9 +546,8 @@ func (c Client) listSidebarRebalancePanes(ctx context.Context, windowID string) 
 			Sidebar: parseTmuxBool(strings.TrimSpace(fields[5])),
 		})
 	}
-	return panes, nil
+	return panes, windowWidth, windowHeight, nil
 }
-
 func (c Client) windowDimensions(ctx context.Context, windowID string) (int, int, error) {
 	out, err := c.displayTarget(ctx, windowID, "#{window_width}\t#{window_height}")
 	if err != nil {
