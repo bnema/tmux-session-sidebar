@@ -65,6 +65,11 @@ run_dev_runtime() {
   TEST_LOG="$root/log" PATH="$root/fakebin:$PATH" make -C "$root" dev-runtime >/dev/null
 }
 
+run_install_plugins() {
+  local root="$1"
+  TEST_LOG="$root/log" PATH="$root/fakebin:$PATH" make -C "$root" install-plugins
+}
+
 assert_file_not_contains() {
   local file="$1" needle="$2" message="$3"
   if [ -e "$file" ] && grep -Fq -- "$needle" "$file"; then
@@ -86,6 +91,55 @@ test_dev_runtime_closes_sidebar_before_force_stopping_processes() {
   [ -f "$root/.bin/.dev-runtime" ] || fail "dev-runtime should create the dev runtime marker"
 }
 
+test_install_plugins_requires_dev_runtime_build() {
+  local root output status
+  root="$(new_fixture)"
+
+  set +e
+  output="$(run_install_plugins "$root" 2>&1)"
+  status=$?
+  set -e
+
+  [ "$status" -ne 0 ] || fail "install-plugins should fail before dev-runtime creates a build"
+  case "$output" in
+    *"No dev-runtime build available. Run 'make dev-runtime' first."*) ;;
+    *) fail "install-plugins should explain that make dev-runtime is required; output: $output" ;;
+  esac
+  [ ! -e "$root/log" ] || fail "install-plugins should not invoke any runtime when no dev-runtime build exists"
+}
+
+test_install_plugins_requires_dev_runtime_binary() {
+  local root output status
+  root="$(new_fixture)"
+  mkdir -p "$root/.bin"
+  touch "$root/.bin/.dev-runtime"
+
+  set +e
+  output="$(run_install_plugins "$root" 2>&1)"
+  status=$?
+  set -e
+
+  [ "$status" -ne 0 ] || fail "install-plugins should fail when dev-runtime marker exists without an executable runtime"
+  case "$output" in
+    *"No dev-runtime binary available at .bin/tmux-session-sidebar. Run 'make dev-runtime' first."*) ;;
+    *) fail "install-plugins should explain that the dev runtime binary is missing; output: $output" ;;
+  esac
+}
+
+test_install_plugins_uses_latest_dev_runtime_build() {
+  local root
+  root="$(new_fixture)"
+  run_dev_runtime "$root"
+  : >"$root/log"
+
+  run_install_plugins "$root" >/dev/null
+
+  assert_line_equals "$root/log" 1 "runtime hooks setup --yes" "install-plugins should run hooks setup through the latest dev runtime binary"
+}
+
 test_dev_runtime_closes_sidebar_before_force_stopping_processes
+test_install_plugins_requires_dev_runtime_build
+test_install_plugins_requires_dev_runtime_binary
+test_install_plugins_uses_latest_dev_runtime_build
 
 echo "dev-runtime tests passed"

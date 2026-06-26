@@ -3,7 +3,7 @@ PLUGIN_REPO ?= bnema/$(PLUGIN_NAME)
 TPM_DIR ?= $(HOME)/.tmux/plugins
 TARGET_DIR ?= $(TPM_DIR)/$(PLUGIN_NAME)
 
-.PHONY: install uninstall mocks test-go test-runtime-bootstrap lint test-race ci build-runtime dev-runtime prod-runtime restart-runtime update-runtime
+.PHONY: install uninstall mocks test-go test-runtime-bootstrap lint test-race ci build-runtime dev-runtime install-plugins prod-runtime restart-runtime update-runtime
 
 install:
 	@mkdir -p "$(TPM_DIR)"
@@ -66,6 +66,18 @@ dev-runtime:
 		echo "Updated dev runtime -> $$runtime_bin"; \
 		echo "Dev runtime marker written to .bin/.dev-runtime"; \
 		echo "Sidebar closed; reopen it manually to use the dev binary."
+
+install-plugins:
+	@if [ ! -f .bin/.dev-runtime ]; then \
+		echo "No dev-runtime build available. Run 'make dev-runtime' first." >&2; \
+		exit 1; \
+	fi
+	@if [ ! -x .bin/tmux-session-sidebar ]; then \
+		echo "No dev-runtime binary available at .bin/tmux-session-sidebar. Run 'make dev-runtime' first." >&2; \
+		exit 1; \
+	fi
+	@./.bin/tmux-session-sidebar hooks setup --yes
+	@echo "Installed plugins from dev runtime -> .bin/tmux-session-sidebar"
 
 prod-runtime:
 	@rm -f .bin/.dev-runtime
