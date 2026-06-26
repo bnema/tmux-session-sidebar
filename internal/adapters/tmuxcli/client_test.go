@@ -1287,7 +1287,7 @@ func TestAttachSingletonSidebarAndSwitchClientSameWindowReturnsSwitchChainFailur
 		return "@2", ""
 	})
 	rec.handle([]string{"display-message", "-p", "-t", "%9", "#{pane_width}"}, func([]string) (string, string) {
-		return "30", ""
+		return "25", ""
 	})
 	listPanesCalls := 0
 	rec.handle([]string{"display-message", "-p", "-t", "@2", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
@@ -1297,11 +1297,11 @@ func TestAttachSingletonSidebarAndSwitchClientSameWindowReturnsSwitchChainFailur
 		listPanesCalls++
 		switch listPanesCalls {
 		case 1:
-			return "%9\t0\t0\t30\t48\t1\n%27\t31\t0\t58\t48\t0\n%185\t90\t0\t91\t48\t0", ""
+			return "%9\t0\t0\t25\t48\t1\n%27\t26\t0\t58\t48\t0\n%185\t85\t0\t96\t48\t0", ""
 		case 2:
 			return "%9\t0\t0\t20\t48\t1\n%27\t21\t0\t58\t48\t0\n%185\t80\t0\t101\t48\t0", ""
 		default:
-			return "%9\t0\t0\t30\t48\t1\n%27\t31\t0\t74\t48\t0\n%185\t106\t0\t75\t48\t0", ""
+			return "%9\t0\t0\t25\t48\t1\n%27\t26\t0\t74\t48\t0\n%185\t101\t0\t80\t48\t0", ""
 		}
 	})
 	rec.handle([]string{"show-options", "-w", "-v", "-t", "@2", optionSidebarOpenWorkBaseline}, func([]string) (string, string) {
@@ -1328,7 +1328,7 @@ func TestAttachSingletonSidebarAndSwitchClientSameWindowReturnsSwitchChainFailur
 	}, func([]string) (string, string) {
 		return "", "can't find client\n"
 	}, boom)
-	rec.handle([]string{"resize-pane", "-t", "%9", "-x", "30"}, func([]string) (string, string) {
+	rec.handle([]string{"resize-pane", "-t", "%9", "-x", "25"}, func([]string) (string, string) {
 		return "", ""
 	})
 	rec.handle([]string{"resize-pane", "-t", "%27", "-x", "58"}, func([]string) (string, string) {

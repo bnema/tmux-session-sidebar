@@ -256,7 +256,7 @@ func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clien
 	}
 	if currentWindowID == windowID {
 		preSyncSidebarWidth, _ := c.displayTarget(ctx, paneID, "#{pane_width}")
-		preSyncWeights, _ := c.captureSidebarWorkWeights(ctx, windowID, paneID, "", sidebarWorkWeightByGroupWidth)
+		preSyncWeights, _ := c.captureSidebarWorkWeights(ctx, windowID, paneID, preSyncSidebarWidth, sidebarWorkWeightByGroupWidth)
 		if err := c.SyncAttachedSidebarWidth(ctx, windowID, paneID, width, ports.SidebarResizeOptions{}); err != nil {
 			return err
 		}
