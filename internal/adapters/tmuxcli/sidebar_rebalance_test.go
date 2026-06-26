@@ -221,6 +221,43 @@ func TestSyncAttachedSidebarWidthLogsBaselineAndComputedWidths(t *testing.T) {
 	assertRecUsedAllHandlers(t, rec)
 }
 
+func TestSyncAttachedSidebarWidthResizesLaterMatchedWorkGroupAfterEarlierResize(t *testing.T) {
+	ctx := t.Context()
+	rec := newRecPort(t)
+	baseline := `{"representativePaneIDs":["%27","%185","%300"],"workWidths":[70,70,60]}`
+
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarOpenWorkBaseline}, func([]string) (string, string) {
+		return baseline, ""
+	})
+	rec.handle([]string{
+		"set-option", "-wq", "-t", "@27", optionSidebarResizeSyncActive, "1",
+		";", "set-option", "-wq", "-t", "@27", optionSidebarResizeSuppressUntil, "*",
+		";", "resize-pane", "-t", "%183", "-x", "30",
+	}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"display-message", "-p", "-t", "@27", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
+		return "234\t48", ""
+	})
+	rec.handle([]string{"list-panes", "-t", "@27", "-F", formatSidebarRebalancePane}, func([]string) (string, string) {
+		return "%183\t0\t0\t30\t48\t1\n%27\t31\t0\t80\t48\t0\n%185\t112\t0\t70\t48\t0\n%300\t183\t0\t50\t48\t0", ""
+	})
+	rec.handle([]string{
+		"resize-pane", "-t", "%27", "-x", "70",
+		";", "resize-pane", "-t", "%185", "-x", "70",
+	}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"set-option", "-wu", "-t", "@27", optionSidebarResizeSyncActive}, func([]string) (string, string) {
+		return "", ""
+	})
+
+	if err := (Client{Process: rec}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
+		t.Fatalf("SyncAttachedSidebarWidth error: %v", err)
+	}
+	assertRecUsedAllHandlers(t, rec)
+}
+
 func TestSyncAttachedSidebarWidthSkipsRestoreWhenSavedBaselineNoLongerMatchesTopology(t *testing.T) {
 	ctx := t.Context()
 	rec := newRecPort(t)
@@ -320,7 +357,7 @@ func TestCaptureAttachedSidebarWidthBaselinePreservesSavedBaselineOnSidebarWidth
 	assertRecUsedAllHandlers(t, rec)
 }
 
-func TestCaptureAttachedSidebarWidthBaselineClearsSavedBaselineWhenCaptureIsInvalid(t *testing.T) {
+func TestCaptureAttachedSidebarWidthBaselineClearsSavedBaselineWhenNoWorkSplit(t *testing.T) {
 	ctx := t.Context()
 	rec := newRecPort(t)
 

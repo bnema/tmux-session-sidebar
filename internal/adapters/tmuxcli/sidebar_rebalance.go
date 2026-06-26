@@ -361,9 +361,10 @@ func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID 
 	}
 	c.resizeDebug("resize-work-weights", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "total_width", Value: totalWidth}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)}, ports.LogField{Key: "target_widths", Value: targetWidths})
 	var resizeArgs []string
+	priorResize := false
 	for i := 0; i < len(alignedGroups)-1; i++ {
 		group := alignedGroups[i]
-		if group.Width == targetWidths[i] {
+		if !priorResize && group.Width == targetWidths[i] {
 			c.resizeDebug("resize-work-pane-skip", ports.LogField{Key: "pane", Value: group.RepresentativePaneID}, ports.LogField{Key: "reason", Value: "already-target-width"}, ports.LogField{Key: "width", Value: group.Width})
 			continue
 		}
@@ -372,6 +373,7 @@ func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID 
 			resizeArgs = append(resizeArgs, ";")
 		}
 		resizeArgs = append(resizeArgs, cmdResizePane, "-t", group.RepresentativePaneID, "-x", strconv.Itoa(targetWidths[i]))
+		priorResize = true
 	}
 	if len(resizeArgs) == 0 {
 		return
