@@ -1249,9 +1249,14 @@ func TestAttachSingletonSidebarAndSwitchClientSameWindowMarksOwnerAfterSwitch(t 
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "=beta:", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{pane_width}"}).Return(ports.Result{Stdout: "20\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@2", "#{window_width}\t#{window_height}"}).Return(ports.Result{Stdout: "100\t30\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@2", "-F", formatSidebarRebalancePane}).Return(ports.Result{Stdout: "%9\t0\t0\t20\t30\t1\n%1\t21\t0\t79\t30\t0\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@2", optionSidebarOpenWorkBaseline}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@2", optionSidebarResizeSyncActive, "1"}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{
+		"set-option", "-wq", "-t", "@2", optionSidebarResizeSyncActive, "1",
+		";", "resize-pane", "-t", "%9", "-x", "20",
+	}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@2", optionSidebarResizeSyncActive}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{
 		"switch-client", "-c", "client-1", "-t", "=beta:",
@@ -1267,26 +1272,76 @@ func TestAttachSingletonSidebarAndSwitchClientSameWindowMarksOwnerAfterSwitch(t 
 
 func TestAttachSingletonSidebarAndSwitchClientSameWindowReturnsSwitchChainFailure(t *testing.T) {
 	ctx := t.Context()
-	process := mocks.NewMockProcessPort(t)
+	rec := newRecPort(t)
 	boom := errors.New("switch failed")
+	baseline := `{"representativePaneIDs":["%27","%185"],"workWidths":[74,75]}`
+	rollbackWorkSplit := false
 
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "=beta:", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@2\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-w", "-v", "-t", "@2", optionSidebarOpenWorkBaseline}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wq", "-t", "@2", optionSidebarResizeSyncActive, "1"}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"resize-pane", "-t", "%9", "-x", "20"}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@2", optionSidebarResizeSyncActive}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{
+	rec.handle([]string{"show-options", "-pv", "-t", "%9", optionSidebarPane}, func([]string) (string, string) {
+		return "1", ""
+	})
+	rec.handle([]string{"display-message", "-p", "-t", "=beta:", "#{window_id}"}, func([]string) (string, string) {
+		return "@2", ""
+	})
+	rec.handle([]string{"display-message", "-p", "-t", "%9", "#{window_id}"}, func([]string) (string, string) {
+		return "@2", ""
+	})
+	rec.handle([]string{"display-message", "-p", "-t", "%9", "#{pane_width}"}, func([]string) (string, string) {
+		return "30", ""
+	})
+	listPanesCalls := 0
+	rec.handle([]string{"display-message", "-p", "-t", "@2", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
+		return "181\t48", ""
+	})
+	rec.handle([]string{"list-panes", "-t", "@2", "-F", formatSidebarRebalancePane}, func([]string) (string, string) {
+		listPanesCalls++
+		switch listPanesCalls {
+		case 1:
+			return "%9\t0\t0\t30\t48\t1\n%27\t31\t0\t58\t48\t0\n%185\t90\t0\t91\t48\t0", ""
+		case 2:
+			return "%9\t0\t0\t20\t48\t1\n%27\t21\t0\t58\t48\t0\n%185\t80\t0\t101\t48\t0", ""
+		default:
+			return "%9\t0\t0\t30\t48\t1\n%27\t31\t0\t74\t48\t0\n%185\t106\t0\t75\t48\t0", ""
+		}
+	})
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@2", optionSidebarOpenWorkBaseline}, func([]string) (string, string) {
+		return baseline, ""
+	})
+	rec.handle([]string{
+		"set-option", "-wq", "-t", "@2", optionSidebarResizeSyncActive, "1",
+		";", "set-option", "-wq", "-t", "@2", optionSidebarResizeSuppressUntil, "*",
+		";", "resize-pane", "-t", "%9", "-x", "20",
+	}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"resize-pane", "-t", "%27", "-x", "79"}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"set-option", "-wu", "-t", "@2", optionSidebarResizeSyncActive}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handleErr([]string{
 		"switch-client", "-c", "client-1", "-t", "=beta:",
-		";", "set-option", "-p", "-t", "%9", "@session-sidebar-pane", "1",
-		";", "set-option", "-p", "-t", "%9", "@session-sidebar-owner-client", "client-1",
+		";", "set-option", "-p", "-t", "%9", optionSidebarPane, "1",
+		";", "set-option", "-p", "-t", "%9", optionSidebarOwnerClient, "client-1",
 		";", "select-pane", "-t", "%9", "-R",
-	}).Return(ports.Result{Stderr: "can't find client\n"}, boom)
+	}, func([]string) (string, string) {
+		return "", "can't find client\n"
+	}, boom)
+	rec.handle([]string{"resize-pane", "-t", "%9", "-x", "30"}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"resize-pane", "-t", "%27", "-x", "58"}, func([]string) (string, string) {
+		rollbackWorkSplit = true
+		return "", ""
+	})
 
-	err := (Client{Process: process}).AttachSingletonSidebarAndSwitchClient(ctx, "client-1", "beta", "%9", "20")
+	err := (Client{Process: rec}).AttachSingletonSidebarAndSwitchClient(ctx, "client-1", "beta", "%9", "20")
 	if !errors.Is(err, boom) {
 		t.Fatalf("AttachSingletonSidebarAndSwitchClient error = %v, want %v", err, boom)
+	}
+	if !rollbackWorkSplit {
+		t.Fatalf("expected same-window switch failure to roll back pre-sync work split; calls: %#v", rec.calls)
 	}
 }
 
@@ -1306,16 +1361,17 @@ func TestAttachSingletonSidebarAndSwitchClientSameWindowRestoresSavedWorkSplit(t
 	rec.handle([]string{"display-message", "-p", "-t", "%9", "#{window_id}"}, func([]string) (string, string) {
 		return "@2", ""
 	})
+	rec.handle([]string{"display-message", "-p", "-t", "%9", "#{pane_width}"}, func([]string) (string, string) {
+		return "30", ""
+	})
 	rec.handle([]string{"show-options", "-w", "-v", "-t", "@2", optionSidebarOpenWorkBaseline}, func([]string) (string, string) {
 		return baseline, ""
 	})
-	rec.handle([]string{"set-option", "-wq", "-t", "@2", optionSidebarResizeSyncActive, "1"}, func([]string) (string, string) {
-		return "", ""
-	})
-	rec.handle([]string{"set-option", "-wq", "-t", "@2", optionSidebarResizeSuppressUntil, "*"}, func([]string) (string, string) {
-		return "", ""
-	})
-	rec.handle([]string{"resize-pane", "-t", "%9", "-x", "30"}, func([]string) (string, string) {
+	rec.handle([]string{
+		"set-option", "-wq", "-t", "@2", optionSidebarResizeSyncActive, "1",
+		";", "set-option", "-wq", "-t", "@2", optionSidebarResizeSuppressUntil, "*",
+		";", "resize-pane", "-t", "%9", "-x", "30",
+	}, func([]string) (string, string) {
 		return "", ""
 	})
 	rec.handle([]string{"display-message", "-p", "-t", "@2", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
@@ -1323,7 +1379,7 @@ func TestAttachSingletonSidebarAndSwitchClientSameWindowRestoresSavedWorkSplit(t
 	})
 	rec.handle([]string{"list-panes", "-t", "@2", "-F", formatSidebarRebalancePane}, func([]string) (string, string) {
 		listPanesCalls++
-		if listPanesCalls == 1 {
+		if listPanesCalls <= 2 {
 			return "%9\t0\t0\t30\t48\t1\n%27\t31\t0\t58\t48\t0\n%185\t90\t0\t91\t48\t0", ""
 		}
 		return "%9\t0\t0\t30\t48\t1\n%27\t31\t0\t74\t48\t0\n%185\t106\t0\t75\t48\t0", ""

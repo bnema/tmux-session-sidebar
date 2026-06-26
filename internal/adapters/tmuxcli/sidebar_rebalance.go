@@ -122,12 +122,12 @@ func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, p
 		}
 		return err
 	}
-	c.setSidebarResizeSyncActiveBestEffort(ctx, windowID, true)
+	suppressDeadline := ""
 	if len(weights) >= 2 {
-		c.suppressResizeBaselineCaptureBestEffort(ctx, windowID)
+		suppressDeadline = resizeBaselineSuppressDeadline()
 	}
 	defer c.setSidebarResizeSyncActiveBestEffort(ctx, windowID, false)
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdResizePane, "-t", paneID, "-x", width})
+	result, err := c.resizeSidebarPaneWithSyncGuard(ctx, windowID, paneID, width, suppressDeadline)
 	if err != nil {
 		wrapped := wrapTmuxError(result, err)
 		if isTmuxTargetGone(wrapped) {
@@ -278,9 +278,17 @@ func (c Client) setSidebarResizeSyncActiveBestEffort(ctx context.Context, window
 	_ = c.clearWindowOptionValue(ctx, windowID, optionSidebarResizeSyncActive)
 }
 
-func (c Client) suppressResizeBaselineCaptureBestEffort(ctx context.Context, windowID string) {
-	deadline := strconv.FormatInt(time.Now().Add(sidebarResizeBaselineSuppressDuration).UnixNano(), 10)
-	_ = c.setWindowOptionValue(ctx, windowID, optionSidebarResizeSuppressUntil, deadline)
+func resizeBaselineSuppressDeadline() string {
+	return strconv.FormatInt(time.Now().Add(sidebarResizeBaselineSuppressDuration).UnixNano(), 10)
+}
+
+func (c Client) resizeSidebarPaneWithSyncGuard(ctx context.Context, windowID string, paneID string, width string, suppressDeadline string) (ports.Result, error) {
+	args := []string{cmdSetOption, "-wq", "-t", windowID, optionSidebarResizeSyncActive, "1"}
+	if strings.TrimSpace(suppressDeadline) != "" {
+		args = append(args, ";", cmdSetOption, "-wq", "-t", windowID, optionSidebarResizeSuppressUntil, suppressDeadline)
+	}
+	args = append(args, ";", cmdResizePane, "-t", paneID, "-x", width)
+	return c.Process.Exec(ctx, tmuxBinary, args)
 }
 
 func (c Client) sidebarResizeBaselineCaptureSuppressed(ctx context.Context, windowID string) (bool, error) {
@@ -341,6 +349,7 @@ func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID 
 		}
 	}
 	c.resizeDebug("resize-work-weights", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "total_width", Value: totalWidth}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)}, ports.LogField{Key: "target_widths", Value: targetWidths})
+	var resizeArgs []string
 	for i := 0; i < len(alignedGroups)-1; i++ {
 		group := alignedGroups[i]
 		if group.Width == targetWidths[i] {
@@ -348,9 +357,16 @@ func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID 
 			continue
 		}
 		c.resizeDebug("resize-work-pane", ports.LogField{Key: "pane", Value: group.RepresentativePaneID}, ports.LogField{Key: "from", Value: group.Width}, ports.LogField{Key: "to", Value: targetWidths[i]})
-		if err := c.resizePaneWidth(ctx, group.RepresentativePaneID, strconv.Itoa(targetWidths[i])); err != nil {
-			c.resizeDebug("resize-work-pane-error", ports.LogField{Key: "pane", Value: group.RepresentativePaneID}, ports.LogField{Key: "from", Value: group.Width}, ports.LogField{Key: "to", Value: targetWidths[i]}, ports.LogField{Key: "error", Value: err.Error()})
+		if len(resizeArgs) > 0 {
+			resizeArgs = append(resizeArgs, ";")
 		}
+		resizeArgs = append(resizeArgs, cmdResizePane, "-t", group.RepresentativePaneID, "-x", strconv.Itoa(targetWidths[i]))
+	}
+	if len(resizeArgs) == 0 {
+		return
+	}
+	if result, err := c.Process.Exec(ctx, tmuxBinary, resizeArgs); err != nil {
+		c.resizeDebug("resize-work-pane-error", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "target_widths", Value: targetWidths}, ports.LogField{Key: "error", Value: wrapTmuxError(result, err).Error()})
 	}
 }
 

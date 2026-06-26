@@ -255,7 +255,16 @@ func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clien
 		width = "30"
 	}
 	if currentWindowID == windowID {
-		return c.syncSwitchMarkAndSelectSidebarPane(ctx, clientID, target, windowID, paneID, width)
+		preSyncSidebarWidth, _ := c.displayTarget(ctx, paneID, "#{pane_width}")
+		preSyncWeights, _ := c.captureSidebarWorkWeights(ctx, windowID, paneID, "", sidebarWorkWeightByGroupWidth)
+		if err := c.SyncAttachedSidebarWidth(ctx, windowID, paneID, width, ports.SidebarResizeOptions{}); err != nil {
+			return err
+		}
+		if err := c.switchMarkAndSelectSidebarPane(ctx, clientID, target, paneID); err != nil {
+			c.restoreAttachedSidebarLayoutBestEffort(ctx, windowID, paneID, preSyncSidebarWidth, preSyncWeights)
+			return err
+		}
+		return nil
 	}
 	sourceCloseWeights, _ := c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
 	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
@@ -290,14 +299,11 @@ func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clien
 	return nil
 }
 
-func (c Client) syncSwitchMarkAndSelectSidebarPane(ctx context.Context, clientID string, target string, windowID string, paneID string, width string) error {
-	if err := c.SyncAttachedSidebarWidth(ctx, windowID, paneID, width, ports.SidebarResizeOptions{}); err != nil {
-		return err
+func (c Client) restoreAttachedSidebarLayoutBestEffort(ctx context.Context, windowID string, paneID string, sidebarWidth string, weights []sidebarWorkWeight) {
+	if strings.TrimSpace(sidebarWidth) != "" {
+		_ = c.resizePaneWidth(ctx, paneID, sidebarWidth)
 	}
-	if err := c.switchMarkAndSelectSidebarPane(ctx, clientID, target, paneID); err != nil {
-		return err
-	}
-	return nil
+	c.applySidebarWorkWeightsBestEffort(ctx, windowID, paneID, weights, true)
 }
 
 func (c Client) switchMarkAndSelectSidebarPane(ctx context.Context, clientID string, target string, paneID string) error {
