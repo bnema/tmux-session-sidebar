@@ -56,8 +56,17 @@ type heatConfig struct {
 type heatCaptureResult struct {
 	captured         bool
 	complete         bool
+	observedActivity bool
 	completeSessions map[string]bool
 }
+
+type recentSessionOrderMode int
+
+const (
+	recentSessionOrderSkip recentSessionOrderMode = iota
+	recentSessionOrderApply
+	recentSessionOrderPreserve
+)
 
 func SessionHeatCaptureRequired(snapshot ports.ConfigSnapshot) bool {
 	return snapshot.HeatColorsEnabled || snapshot.AutoSortRecentInterval > 0
@@ -137,30 +146,30 @@ func (s *Service) CaptureSessionHeat(ctx context.Context, serverID string) error
 }
 
 func (s *Service) CaptureLiveSessionsWithConfig(ctx context.Context, serverID string, snapshot ports.ConfigSnapshot) error {
-	_, err := s.captureLiveSessions(ctx, serverID, captureLiveSessionsOptions{snapshot: &snapshot, applyRecentSessionOrder: true})
+	_, err := s.captureLiveSessions(ctx, serverID, captureLiveSessionsOptions{snapshot: &snapshot, recentSessionOrder: recentSessionOrderApply})
 	return err
 }
 
 func (s *Service) CaptureLiveSessionsWithConfigProtected(ctx context.Context, serverID string, snapshot ports.ConfigSnapshot) (bool, error) {
-	return s.captureLiveSessions(ctx, serverID, captureLiveSessionsOptions{snapshot: &snapshot, protectEmpty: true, applyRecentSessionOrder: true})
+	return s.captureLiveSessions(ctx, serverID, captureLiveSessionsOptions{snapshot: &snapshot, protectEmpty: true, recentSessionOrder: recentSessionOrderApply})
 }
 
 func (s *Service) CaptureLiveSessionsWithConfigProtectedPreservingOrder(ctx context.Context, serverID string, snapshot ports.ConfigSnapshot) (bool, error) {
-	return s.captureLiveSessions(ctx, serverID, captureLiveSessionsOptions{snapshot: &snapshot, protectEmpty: true, requireCompleteHeatCapture: true})
+	return s.captureLiveSessions(ctx, serverID, captureLiveSessionsOptions{snapshot: &snapshot, protectEmpty: true, recentSessionOrder: recentSessionOrderPreserve, requireCompleteHeatCapture: true})
 }
 
 type captureLiveSessionsOptions struct {
 	snapshot                   *ports.ConfigSnapshot
 	protectEmpty               bool
-	applyRecentSessionOrder    bool
+	recentSessionOrder         recentSessionOrderMode
 	requireCompleteHeatCapture bool
 }
 
 // captureLiveSessions is the shared implementation for all CaptureLiveSessions variants.
 // snapshot controls heat config: non-nil activates captureHeatIntoState with
 // the provided config, while nil loads heat config from multiplexer and skips
-// recent-session-order. applyRecentSessionOrder controls whether a config-based
-// capture may consume the auto-sort interval and rewrite SessionOrder.
+// recent-session-order. recentSessionOrder controls whether a config-based
+// capture may rewrite SessionOrder, skip sorting, or preserve startup order.
 // protectEmpty controls whether a destructive-empty skip is applied: when true and no
 // persistable sessions are live but the persisted state is meaningful, the capture is
 // skipped to guard against overwriting restored state during startup/restore windows.
@@ -196,10 +205,14 @@ func (s *Service) captureLiveSessions(ctx context.Context, serverID string, opts
 			if opts.requireCompleteHeatCapture && heatRequired && !capture.complete {
 				state.Heat = previousHeat
 			}
-			if opts.applyRecentSessionOrder {
+			switch opts.recentSessionOrder {
+			case recentSessionOrderApply:
 				applyRecentSessionOrderAfterCapture(state, live, *opts.snapshot, now, capture)
-			} else if !opts.requireCompleteHeatCapture || !heatRequired || capture.complete {
-				deferRecentSessionOrderAfterCapture(state, *opts.snapshot, now, capture)
+			case recentSessionOrderPreserve:
+				// Startup baseline captures intentionally preserve restored order and do not
+				// consume the user's auto-sort interval. The first later capture with real
+				// pane activity is still eligible to sort immediately.
+			case recentSessionOrderSkip:
 			}
 			changed = !opts.requireCompleteHeatCapture || !heatRequired || capture.complete
 		} else {
@@ -348,7 +361,7 @@ func orderedPersistedSessionNames(state ports.PersistedState) []string {
 }
 
 func applyRecentSessionOrder(state *ports.PersistedState, live []ports.SessionSnapshot, cfg ports.ConfigSnapshot, now time.Time) {
-	applyRecentSessionOrderAfterCapture(state, live, cfg, now, heatCaptureResult{captured: true, complete: true})
+	applyRecentSessionOrderAfterCapture(state, live, cfg, now, heatCaptureResult{captured: true, complete: true, observedActivity: true})
 }
 
 func applyRecentSessionOrderAfterCapture(state *ports.PersistedState, live []ports.SessionSnapshot, cfg ports.ConfigSnapshot, now time.Time, capture heatCaptureResult) {
@@ -365,24 +378,18 @@ func applyRecentSessionOrderAfterCapture(state *ports.PersistedState, live []por
 	markRecentSessionOrderRun(state, now)
 }
 
-func deferRecentSessionOrderAfterCapture(state *ports.PersistedState, cfg ports.ConfigSnapshot, now time.Time, capture heatCaptureResult) {
-	if !recentSessionOrderCaptureDue(state, cfg, now, capture) {
-		return
-	}
-	markRecentSessionOrderRun(state, now)
-}
-
 func recentSessionOrderCaptureDue(state *ports.PersistedState, cfg ports.ConfigSnapshot, now time.Time, capture heatCaptureResult) bool {
 	if state == nil || cfg.AutoSortRecentInterval <= 0 || !capture.captured {
 		return false
 	}
+	lastRunAt, hadLastRun := time.Time{}, false
 	if state.Sidebar != nil {
-		lastRunAt, ok := autoSortRecentLastRunAt(*state.Sidebar)
-		if ok && now.Sub(lastRunAt) < cfg.AutoSortRecentInterval {
+		lastRunAt, hadLastRun = autoSortRecentLastRunAt(*state.Sidebar)
+		if hadLastRun && now.Sub(lastRunAt) < cfg.AutoSortRecentInterval {
 			return false
 		}
 	}
-	return true
+	return capture.observedActivity || heatActivityAfter(state.Heat, lastRunAt, hadLastRun)
 }
 
 func markRecentSessionOrderRun(state *ports.PersistedState, now time.Time) {
@@ -473,6 +480,18 @@ func autoSortRecentLastRunAt(sidebar ports.SidebarState) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+func heatActivityAfter(raw map[string][]byte, since time.Time, ok bool) bool {
+	if !ok {
+		return false
+	}
+	for _, state := range decodeHeatStateMap(raw) {
+		if state.LastActiveAt.After(since) {
+			return true
+		}
+	}
+	return false
+}
+
 func orderSessionsByRecentActivityPinned(order []string, live []ports.SessionSnapshot, heatStates map[string]heat.State, pinned []string) []string {
 	ordered := reconcileSessionOrder(order, live)
 	anchor := append([]string(nil), ordered...)
@@ -547,7 +566,16 @@ func (s *Service) captureHeatIntoStateAt(ctx context.Context, state *ports.Persi
 	for sessionName, trace := range traces {
 		s.logHeatTrace(sessionName, trace)
 	}
-	return heatCaptureResult{captured: true, complete: paneObservationsComplete(observations), completeSessions: paneObservationCompleteSessions(live, observations)}
+	return heatCaptureResult{captured: true, complete: paneObservationsComplete(observations), observedActivity: heatTraceObservedActivity(traces), completeSessions: paneObservationCompleteSessions(live, observations)}
+}
+
+func heatTraceObservedActivity(traces map[string]heat.Trace) bool {
+	for _, trace := range traces {
+		if trace.ObservedActivity {
+			return true
+		}
+	}
+	return false
 }
 
 func paneObservationCompleteSessions(live []ports.SessionSnapshot, observations []paneObservation) map[string]bool {

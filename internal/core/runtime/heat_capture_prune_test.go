@@ -74,7 +74,7 @@ func TestCaptureSessionHeatWithConfigCapturesWhenHeatColorsEnabled(t *testing.T)
 	}
 }
 
-func TestCaptureSessionHeatWithConfigCapturesWhenAutoSortRecentEnabled(t *testing.T) {
+func TestCaptureSessionHeatWithConfigCapturesWithoutSortingWhenAutoSortRecentEnabledAndNoActivity(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
 	store := mocks.NewMockStateStorePort(t)
@@ -83,7 +83,7 @@ func TestCaptureSessionHeatWithConfigCapturesWhenAutoSortRecentEnabled(t *testin
 	query.EXPECT().ListSessions(ctx).Return([]ports.SessionSnapshot{{ID: "$1", Name: "alpha"}}, nil)
 	query.EXPECT().ListClients(ctx).Return(nil, nil)
 	store.EXPECT().Save(ctx, serverID, mock.MatchedBy(func(state ports.PersistedState) bool {
-		return len(state.Heat) == 1 && state.Sidebar != nil && state.Sidebar.AutoSortRecentRunAt != ""
+		return len(state.Heat) == 1 && state.Sidebar == nil
 	})).Return(nil)
 
 	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: time.Hour}); err != nil {
