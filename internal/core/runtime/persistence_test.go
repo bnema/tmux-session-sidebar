@@ -325,8 +325,9 @@ func TestApplyRecentSessionOrderPartialCaptureIgnoresStaleRefsWhenCheckingCatego
 	live := []ports.SessionSnapshot{{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}}
 
 	applyRecentSessionOrderAfterCapture(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now, heatCaptureResult{
-		captured: true,
-		complete: false,
+		captured:         true,
+		complete:         false,
+		observedActivity: true,
 		completeSessions: map[string]bool{
 			"alpha": true,
 			"beta":  true,
@@ -465,6 +466,73 @@ func TestApplyRecentSessionOrderSkipsWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestAutoSortRecentRunsAfterStartupDeferralWhenActivityObserved(t *testing.T) {
+	ctx := context.Background()
+	serverID := "server"
+	startup := time.Date(2026, 6, 26, 9, 0, 0, 0, time.UTC)
+	live := []ports.SessionSnapshot{
+		{ID: "$1", Name: "alpha"},
+		{ID: "$2", Name: "beta"},
+		{ID: "$3", Name: "gamma"},
+	}
+	panes := []ports.PaneSnapshot{
+		{PaneID: "%alpha", SessionID: "$1", SessionName: "alpha"},
+		{PaneID: "%beta", SessionID: "$2", SessionName: "beta"},
+		{PaneID: "%gamma", SessionID: "$3", SessionName: "gamma"},
+	}
+	paths := map[string]string{"alpha": t.TempDir(), "beta": t.TempDir(), "gamma": t.TempDir()}
+	initialState := ports.PersistedState{
+		Sessions: map[string]ports.SessionMetadata{
+			"alpha": {Kind: "captured", LastPath: paths["alpha"]},
+			"beta":  {Kind: "captured", LastPath: paths["beta"]},
+			"gamma": {Kind: "captured", LastPath: paths["gamma"]},
+		},
+		SessionOrder: []string{"gamma", "beta", "alpha"},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {UpdatedAt: startup.Add(-time.Hour), LastActiveAt: startup.Add(-5 * time.Minute)},
+			"beta":  {UpdatedAt: startup.Add(-time.Hour), LastActiveAt: startup.Add(-2 * time.Hour)},
+			"gamma": {UpdatedAt: startup.Add(-time.Hour), LastActiveAt: startup.Add(-3 * time.Hour)},
+		}),
+	}
+
+	t.Run("enabled sorts on the first real post-startup activity", func(t *testing.T) {
+		store := &runtimeMemoryStore{state: ports.ClonePersistedState(initialState)}
+		baselineQuery := runtimeTestQuery{live: live, panes: panes, sessionPaths: paths, captureTexts: map[string]string{"%alpha": "alpha baseline", "%beta": "beta baseline", "%gamma": "gamma baseline"}}
+		captured, err := NewService(nil, baselineQuery, nil, store).WithClock(fixedClock{now: startup}).CaptureLiveSessionsWithConfigProtectedPreservingOrder(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour})
+		if err != nil {
+			t.Fatalf("CaptureLiveSessionsWithConfigProtectedPreservingOrder error: %v", err)
+		}
+		if !captured {
+			t.Fatal("CaptureLiveSessionsWithConfigProtectedPreservingOrder captured = false, want true")
+		}
+		if got, want := store.state.SessionOrder, []string{"gamma", "beta", "alpha"}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("startup SessionOrder = %#v, want preserved %#v", got, want)
+		}
+
+		activityQuery := runtimeTestQuery{live: live, panes: panes, sessionPaths: paths, captureTexts: map[string]string{"%alpha": "alpha baseline", "%beta": "beta changed", "%gamma": "gamma baseline"}}
+		if err := NewService(nil, activityQuery, nil, store).WithClock(fixedClock{now: startup.Add(time.Minute)}).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}); err != nil {
+			t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
+		}
+		if got, want := store.state.SessionOrder, []string{"beta", "alpha", "gamma"}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("SessionOrder = %#v, want first real activity to auto-sort %#v", got, want)
+		}
+	})
+
+	t.Run("disabled preserves existing order", func(t *testing.T) {
+		store := &runtimeMemoryStore{state: ports.ClonePersistedState(initialState)}
+		activityQuery := runtimeTestQuery{live: live, panes: panes, sessionPaths: paths, captureTexts: map[string]string{"%alpha": "alpha baseline", "%beta": "beta changed", "%gamma": "gamma baseline"}}
+		if err := NewService(nil, activityQuery, nil, store).WithClock(fixedClock{now: startup.Add(time.Minute)}).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{HeatColorsEnabled: true}); err != nil {
+			t.Fatalf("CaptureSessionHeatWithConfig error: %v", err)
+		}
+		if got, want := store.state.SessionOrder, []string{"gamma", "beta", "alpha"}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("SessionOrder = %#v, want unchanged when disabled %#v", got, want)
+		}
+		if store.state.Sidebar != nil {
+			t.Fatalf("Sidebar = %#v, want no auto-sort marker when disabled", store.state.Sidebar)
+		}
+	})
+}
+
 func TestCaptureLiveSessionsWithConfigReconcilesLiveSessionsBeforeRecentOrder(t *testing.T) {
 	ctx := context.Background()
 	serverID := "server"
@@ -485,6 +553,7 @@ func TestCaptureLiveSessionsWithConfigReconcilesLiveSessionsBeforeRecentOrder(t 
 	initial := ports.PersistedState{
 		Sessions:     map[string]ports.SessionMetadata{"gamma": {Kind: "captured", LastPath: t.TempDir()}},
 		SessionOrder: []string{"gamma", "alpha", "beta"},
+		Sidebar:      &ports.SidebarState{AutoSortRecentRunAt: now.Add(-25 * time.Hour).Format(time.RFC3339Nano)},
 		Heat: encodeHeatStateMap(map[string]heat.State{
 			"alpha": {LastActiveAt: now.Add(-30 * time.Minute)},
 			"beta":  {LastActiveAt: now.Add(-5 * time.Minute)},
@@ -577,6 +646,7 @@ func TestCaptureSessionHeatWithConfigUsesInjectedClockForRecentSortTimestamp(t *
 	}
 	initial := ports.PersistedState{
 		SessionOrder: []string{"alpha", "beta"},
+		Sidebar:      &ports.SidebarState{AutoSortRecentRunAt: now.Add(-25 * time.Hour).Format(time.RFC3339Nano)},
 		Heat: encodeHeatStateMap(map[string]heat.State{
 			"alpha": {LastActiveAt: now.Add(-30 * time.Minute)},
 			"beta":  {LastActiveAt: now.Add(-5 * time.Minute)},
@@ -697,8 +767,10 @@ func TestCaptureSessionHeatWithConfigAutoSortsCompleteCategoriesWhenAnotherCateg
 		captureErrors: map[string]error{"%3": errors.New("capture-pane failed")},
 	}
 
+	lastRunAt := now.Add(-25 * time.Hour).Format(time.RFC3339Nano)
 	initial := ports.PersistedState{
 		SessionOrder: []string{"alpha", "beta", "gamma"},
+		Sidebar:      &ports.SidebarState{AutoSortRecentRunAt: lastRunAt},
 		SidebarLayout: &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
 			{ID: "category:work", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:work", Name: "Work", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}, {Name: "beta"}}}},
 			{ID: "category:personal", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:personal", Name: "Personal", Sessions: []ports.SidebarLayoutSessionRef{{Name: "gamma"}}}},
@@ -716,7 +788,7 @@ func TestCaptureSessionHeatWithConfigAutoSortsCompleteCategoriesWhenAnotherCateg
 		return reflect.DeepEqual(work, []string{"beta", "alpha"}) &&
 			reflect.DeepEqual(personal, []string{"gamma"}) &&
 			reflect.DeepEqual(state.SessionOrder, []string{"alpha", "beta", "gamma"}) &&
-			state.Sidebar == nil
+			state.Sidebar != nil && state.Sidebar.AutoSortRecentRunAt == lastRunAt
 	})).Return(nil)
 
 	if err := NewService(nil, query, nil, store).CaptureSessionHeatWithConfig(ctx, serverID, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}); err != nil {
@@ -1062,6 +1134,7 @@ type runtimeTestQuery struct {
 	panes         []ports.PaneSnapshot
 	sessionPaths  map[string]string
 	captureText   string
+	captureTexts  map[string]string
 	captureError  error
 	captureErrors map[string]error
 }
@@ -1108,5 +1181,23 @@ func (q runtimeTestQuery) CapturePaneText(_ context.Context, paneID string, _ in
 	if q.captureErrors != nil && q.captureErrors[paneID] != nil {
 		return "", q.captureErrors[paneID]
 	}
+	if q.captureTexts != nil {
+		if text, ok := q.captureTexts[paneID]; ok {
+			return text, q.captureError
+		}
+	}
 	return q.captureText, q.captureError
+}
+
+type runtimeMemoryStore struct {
+	state ports.PersistedState
+}
+
+func (s *runtimeMemoryStore) Load(context.Context, string) (ports.PersistedState, error) {
+	return ports.ClonePersistedState(s.state), nil
+}
+
+func (s *runtimeMemoryStore) Save(_ context.Context, _ string, state ports.PersistedState) error {
+	s.state = ports.ClonePersistedState(state)
+	return nil
 }

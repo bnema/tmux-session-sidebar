@@ -676,6 +676,7 @@ func seedStartupOrderCaptureFixture(t *testing.T) ports.ConfigSnapshot {
 		"gamma": {Kind: "captured", LastPath: gammaPath},
 	}
 	state.SessionOrder = []string{"gamma", "beta", "alpha"}
+	state.Sidebar = &ports.SidebarState{Open: true}
 	state.Heat = map[string][]byte{
 		"alpha": mustMarshalHeatState(t, heat.State{UpdatedAt: base, LastActiveAt: base.Add(-5 * time.Minute), RecentActivityAt: base.Add(-5 * time.Minute), LastVisitedAt: base.Add(-4 * time.Minute), Panes: map[string]heat.PaneState{"%old-alpha": {Fingerprint: "old-alpha"}}}),
 		"beta":  mustMarshalHeatState(t, heat.State{UpdatedAt: base, LastActiveAt: base.Add(-2 * time.Hour), Panes: map[string]heat.PaneState{"%old-beta": {Fingerprint: "old-beta"}}}),
@@ -735,7 +736,7 @@ esac
 
 func assertStartupOrderPreservedThroughImmediateHeatTick(t *testing.T, cfg ports.ConfigSnapshot) {
 	t.Helper()
-	assertStartupOrderPreservedAndDeferred(t)
+	assertStartupOrderPreservedWithoutConsumingAutoSort(t)
 	captured, err := captureLiveSidebarHeat(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("captureLiveSidebarHeat error: %v", err)
@@ -743,10 +744,10 @@ func assertStartupOrderPreservedThroughImmediateHeatTick(t *testing.T, cfg ports
 	if !captured {
 		t.Fatal("captureLiveSidebarHeat captured = false, want true")
 	}
-	assertStartupOrderPreservedAndDeferred(t)
+	assertStartupOrderPreservedWithoutConsumingAutoSort(t)
 }
 
-func assertStartupOrderPreservedAndDeferred(t *testing.T) {
+func assertStartupOrderPreservedWithoutConsumingAutoSort(t *testing.T) {
 	t.Helper()
 	next, err := loadSidebarState(context.Background())
 	if err != nil {
@@ -755,8 +756,11 @@ func assertStartupOrderPreservedAndDeferred(t *testing.T) {
 	if got, want := next.SessionOrder, []string{"gamma", "beta", "alpha"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("SessionOrder = %#v, want startup order preserved %#v", got, want)
 	}
-	if next.Sidebar == nil || next.Sidebar.AutoSortRecentRunAt == "" {
-		t.Fatalf("AutoSortRecentRunAt = %#v, want startup capture to defer the next recent-sort tick", next.Sidebar)
+	if next.Sidebar == nil {
+		t.Fatal("Sidebar = nil, want persisted sidebar state")
+	}
+	if next.Sidebar.AutoSortRecentRunAt != "" {
+		t.Fatalf("AutoSortRecentRunAt = %q, want startup capture not to consume the recent-sort interval", next.Sidebar.AutoSortRecentRunAt)
 	}
 }
 
