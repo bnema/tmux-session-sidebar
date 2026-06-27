@@ -65,7 +65,7 @@ func runDaemonRuntimeEventProcessor(ctx context.Context, opts daemonRuntimeEvent
 				return nil
 			}
 			if err := opts.router.Handle(ctx, route, opts.stdout, opts.stderr); err != nil {
-				fmt.Fprintf(opts.stderr, "tmux-session-sidebar: runtime event %s failed: %v\n", route.Path, err)
+				_, _ = fmt.Fprintf(opts.stderr, "tmux-session-sidebar: runtime event %s failed: %v\n", route.Path, err)
 			}
 		}
 	}
