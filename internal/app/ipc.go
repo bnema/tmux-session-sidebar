@@ -16,6 +16,7 @@ type daemonIPCHandler struct {
 	stderr            io.Writer
 	mu                *sync.Mutex
 	metadataReconcile chan<- struct{}
+	runtimeEvents     chan<- ports.Request
 	expectedScope     RuntimeScope
 }
 
@@ -37,6 +38,9 @@ func (h daemonIPCHandler) HandleIPC(ctx context.Context, req ports.Request) (por
 			}
 		}
 		return ports.Response{OK: true, Message: "ok"}, nil
+	}
+	if ipcRuntimeEvent(req.Kind) {
+		return h.enqueueRuntimeEvent(ctx, req)
 	}
 	path, ok := ipcRoutePath(req.Kind)
 	if !ok {
@@ -96,6 +100,43 @@ func ipcRoutePath(kind string) (string, bool) {
 		return "sidebar/refresh", true
 	default:
 		return "", false
+	}
+}
+
+func (h daemonIPCHandler) enqueueRuntimeEvent(ctx context.Context, req ports.Request) (ports.Response, error) {
+	if h.runtimeEvents == nil {
+		return ports.Response{OK: true, Message: "ok"}, nil
+	}
+	if ipcRuntimeEventRequiresDelivery(req.Kind) {
+		select {
+		case h.runtimeEvents <- req:
+			return ports.Response{OK: true, Message: "ok"}, nil
+		case <-ctx.Done():
+			return ports.Response{OK: false, Message: ctx.Err().Error()}, ctx.Err()
+		}
+	}
+	select {
+	case h.runtimeEvents <- req:
+	default:
+	}
+	return ports.Response{OK: true, Message: "ok"}, nil
+}
+
+func ipcRuntimeEvent(kind string) bool {
+	switch kind {
+	case ports.IPCHookClientAttached, ports.IPCHookClientDetached, ports.IPCHookClientSessionChanged:
+		return true
+	default:
+		return false
+	}
+}
+
+func ipcRuntimeEventRequiresDelivery(kind string) bool {
+	switch kind {
+	case ports.IPCHookClientAttached, ports.IPCHookClientDetached:
+		return true
+	default:
+		return false
 	}
 }
 

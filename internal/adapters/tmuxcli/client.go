@@ -15,12 +15,12 @@ import (
 const (
 	tmuxBinary = "tmux"
 
-	cmdBreakPane      = "break-pane"
 	cmdCapturePane    = "capture-pane"
 	cmdDisplayMessage = "display-message"
 	cmdJoinPane       = "join-pane"
 	cmdKillPane       = "kill-pane"
 	cmdListPanes      = "list-panes"
+	cmdMovePane       = "move-pane"
 	cmdNewSession     = "new-session"
 	cmdNewWindow      = "new-window"
 	cmdResizePane     = "resize-pane"
@@ -42,11 +42,12 @@ const (
 
 	escapedFormatPaneID = "##{pane_id}"
 
-	optionSidebarPane             = "@session-sidebar-pane"
-	optionSidebarOwnerClient      = "@session-sidebar-owner-client"
-	optionSidebarWindowLayout     = "@session-sidebar-window-layout"
-	optionSidebarOpenWorkBaseline = "@session-sidebar-open-work-baseline"
-	optionSidebarResizeSyncActive = "@session-sidebar-resize-sync-active"
+	optionSidebarPane                = "@session-sidebar-pane"
+	optionSidebarOwnerClient         = "@session-sidebar-owner-client"
+	optionSidebarWindowLayout        = "@session-sidebar-window-layout"
+	optionSidebarOpenWorkBaseline    = "@session-sidebar-open-work-baseline"
+	optionSidebarResizeSyncActive    = "@session-sidebar-resize-sync-active"
+	optionSidebarResizeSuppressUntil = "@session-sidebar-resize-suppress-until"
 
 	singletonSidebarSessionName = "__tmux-session-sidebar"
 	singletonSidebarWindowName  = "sidebar"

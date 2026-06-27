@@ -10,13 +10,16 @@ import (
 const (
 	IPCErrorStaleScope = "stale_scope"
 
-	IPCSidebarOpen       = "sidebar.open"
-	IPCSidebarClose      = "sidebar.close"
-	IPCSidebarToggle     = "sidebar.toggle"
-	IPCSidebarRefresh    = "sidebar.refresh"
-	IPCMetadataReconcile = "metadata.reconcile"
-	IPCActiveClient      = "sidebar.active-client"
-	IPCHealth            = "daemon.health"
+	IPCSidebarOpen              = "sidebar.open"
+	IPCSidebarClose             = "sidebar.close"
+	IPCSidebarToggle            = "sidebar.toggle"
+	IPCSidebarRefresh           = "sidebar.refresh"
+	IPCMetadataReconcile        = "metadata.reconcile"
+	IPCActiveClient             = "sidebar.active-client"
+	IPCHookClientAttached       = "hook.client-attached"
+	IPCHookClientDetached       = "hook.client-detached"
+	IPCHookClientSessionChanged = "hook.client-session-changed"
+	IPCHealth                   = "daemon.health"
 )
 
 var (
@@ -77,6 +80,26 @@ func ActiveClientRequest(clientID string) Request {
 
 func MetadataReconcileRequest() Request {
 	return Request{Kind: IPCMetadataReconcile}
+}
+
+func ClientAttachedEventRequest(clientID string, session string) Request {
+	return hookEventRequest(IPCHookClientAttached, clientID, session)
+}
+
+func ClientDetachedEventRequest(clientID string, session string) Request {
+	return hookEventRequest(IPCHookClientDetached, clientID, session)
+}
+
+func ClientSessionChangedEventRequest(clientID string, session string) Request {
+	return hookEventRequest(IPCHookClientSessionChanged, clientID, session)
+}
+
+func hookEventRequest(kind string, clientID string, session string) Request {
+	args := map[string]string(nil)
+	if session != "" {
+		args = map[string]string{"session": session}
+	}
+	return Request{Kind: kind, ClientID: clientID, Args: args}
 }
 
 func HealthRequest() Request {

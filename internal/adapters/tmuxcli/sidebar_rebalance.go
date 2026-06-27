@@ -7,11 +7,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
-const formatSidebarRebalancePane = "#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{?@session-sidebar-pane,1,0}"
+const formatSidebarRebalancePane = "#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{?@session-sidebar-pane,1,0}\t#{window_width}\t#{window_height}"
+
+const sidebarResizeBaselineSuppressDuration = 2 * time.Second
 
 type sidebarRebalancePane struct {
 	PaneID  string
@@ -27,6 +30,13 @@ type sidebarWorkWeightMode int
 const (
 	sidebarWorkWeightByGroupWidth sidebarWorkWeightMode = iota
 	sidebarWorkWeightByGroupSpan
+)
+
+type sidebarWorkGroupCaptureStatus int
+
+const (
+	sidebarWorkGroupCaptureSkipped sidebarWorkGroupCaptureStatus = iota
+	sidebarWorkGroupCaptureObserved
 )
 
 type sidebarWorkWeight struct {
@@ -75,12 +85,27 @@ func (c Client) CaptureAttachedSidebarWidthBaseline(ctx context.Context, windowI
 		c.resizeDebug("resize-baseline-capture-skip", ports.LogField{Key: "reason", Value: "resize-sync-active"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "pane", Value: paneID})
 		return nil
 	}
-	weights, err := c.captureSidebarWorkWeights(ctx, windowID, paneID, width, sidebarWorkWeightByGroupWidth)
+	suppressed, err := c.sidebarResizeBaselineCaptureSuppressed(ctx, windowID)
 	if err != nil {
 		if isTmuxTargetGone(err) {
 			return nil
 		}
 		return err
+	}
+	if suppressed {
+		c.resizeDebug("resize-baseline-capture-skip", ports.LogField{Key: "reason", Value: "resize-sync-recent"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "pane", Value: paneID})
+		return nil
+	}
+	weights, status, err := c.captureSidebarWorkWeights(ctx, windowID, paneID, width, sidebarWorkWeightByGroupWidth)
+	if err != nil {
+		if isTmuxTargetGone(err) {
+			return nil
+		}
+		return err
+	}
+	if len(weights) < 2 && status == sidebarWorkGroupCaptureSkipped {
+		c.resizeDebug("resize-baseline-preserve", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "reason", Value: "capture-skipped"}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)})
+		return nil
 	}
 	return c.saveSidebarOpenWorkBaseline(ctx, windowID, weights)
 }
@@ -108,9 +133,12 @@ func (c Client) SyncAttachedSidebarWidth(ctx context.Context, windowID string, p
 		}
 		return err
 	}
-	c.setSidebarResizeSyncActiveBestEffort(ctx, windowID, true)
+	suppressDeadline := ""
+	if len(weights) >= 2 {
+		suppressDeadline = resizeBaselineSuppressDeadline()
+	}
 	defer c.setSidebarResizeSyncActiveBestEffort(ctx, windowID, false)
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdResizePane, "-t", paneID, "-x", width})
+	result, err := c.resizeSidebarPaneWithSyncGuard(ctx, windowID, paneID, width, suppressDeadline)
 	if err != nil {
 		wrapped := wrapTmuxError(result, err)
 		if isTmuxTargetGone(wrapped) {
@@ -155,22 +183,22 @@ func parseSidebarWidthCells(width string) (int, bool) {
 	return parsed, true
 }
 
-func (c Client) captureSidebarWorkWeights(ctx context.Context, windowID string, sidebarPaneID string, width string, mode sidebarWorkWeightMode) ([]sidebarWorkWeight, error) {
+func (c Client) captureSidebarWorkWeights(ctx context.Context, windowID string, sidebarPaneID string, width string, mode sidebarWorkWeightMode) ([]sidebarWorkWeight, sidebarWorkGroupCaptureStatus, error) {
 	expectedSidebarWidth := 0
 	if mode == sidebarWorkWeightByGroupWidth {
 		parsedWidth, ok := parseSidebarWidthCells(width)
 		if !ok {
 			c.resizeDebug("resize-capture-weights-skip", ports.LogField{Key: "reason", Value: "invalid-sidebar-width"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "width", Value: width})
-			return nil, nil
+			return nil, sidebarWorkGroupCaptureSkipped, nil
 		}
 		expectedSidebarWidth = parsedWidth
 	}
-	groups, windowWidth, err := c.sidebarHorizontalWorkGroups(ctx, windowID, sidebarPaneID, true, expectedSidebarWidth)
+	groups, windowWidth, status, err := c.sidebarHorizontalWorkGroups(ctx, windowID, sidebarPaneID, true, expectedSidebarWidth)
 	if err != nil || len(groups) == 0 {
 		if err == nil {
 			c.resizeDebug("resize-capture-weights-skip", ports.LogField{Key: "reason", Value: "no-valid-work-groups"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth})
 		}
-		return nil, err
+		return nil, status, err
 	}
 	weights := make([]sidebarWorkWeight, 0, len(groups))
 	for i, group := range groups {
@@ -184,12 +212,12 @@ func (c Client) captureSidebarWorkWeights(ctx context.Context, windowID string, 
 		}
 		if strings.TrimSpace(group.RepresentativePaneID) == "" || weight <= 0 {
 			c.resizeDebug("resize-capture-weights-skip", ports.LogField{Key: "reason", Value: "invalid-group-weight"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "group", Value: formatSidebarHorizontalGroup(group)}, ports.LogField{Key: "weight", Value: weight})
-			return nil, nil
+			return nil, sidebarWorkGroupCaptureObserved, nil
 		}
 		weights = append(weights, sidebarWorkWeight{RepresentativePaneID: group.RepresentativePaneID, Weight: weight})
 	}
 	c.resizeDebug("resize-captured-work-weights", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "mode", Value: mode.String()}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)})
-	return weights, nil
+	return weights, sidebarWorkGroupCaptureObserved, nil
 }
 
 func (c Client) saveSidebarOpenWorkBaseline(ctx context.Context, windowID string, weights []sidebarWorkWeight) error {
@@ -261,12 +289,41 @@ func (c Client) setSidebarResizeSyncActiveBestEffort(ctx context.Context, window
 	_ = c.clearWindowOptionValue(ctx, windowID, optionSidebarResizeSyncActive)
 }
 
+func resizeBaselineSuppressDeadline() string {
+	return strconv.FormatInt(time.Now().Add(sidebarResizeBaselineSuppressDuration).UnixNano(), 10)
+}
+
+func (c Client) resizeSidebarPaneWithSyncGuard(ctx context.Context, windowID string, paneID string, width string, suppressDeadline string) (ports.Result, error) {
+	args := []string{cmdSetOption, "-wq", "-t", windowID, optionSidebarResizeSyncActive, "1"}
+	if strings.TrimSpace(suppressDeadline) != "" {
+		args = append(args, ";", cmdSetOption, "-wq", "-t", windowID, optionSidebarResizeSuppressUntil, suppressDeadline)
+	}
+	args = append(args, ";", cmdResizePane, "-t", paneID, "-x", width)
+	return c.Process.Exec(ctx, tmuxBinary, args)
+}
+
+func (c Client) sidebarResizeBaselineCaptureSuppressed(ctx context.Context, windowID string) (bool, error) {
+	raw, err := c.windowOptionValue(ctx, windowID, optionSidebarResizeSuppressUntil)
+	if err != nil {
+		return false, err
+	}
+	if raw == "" {
+		return false, nil
+	}
+	deadline, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil {
+		c.resizeDebug("resize-baseline-suppress-invalid", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "raw", Value: raw}, ports.LogField{Key: "error", Value: err.Error()})
+		return false, nil
+	}
+	return time.Now().UnixNano() < deadline, nil
+}
+
 func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID string, sidebarPaneID string, weights []sidebarWorkWeight, requireSidebar bool) {
 	if len(weights) < 2 {
 		c.resizeDebug("resize-work-weights-skip", ports.LogField{Key: "reason", Value: "too-few-baseline-weights"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)})
 		return
 	}
-	groups, _, err := c.sidebarHorizontalWorkGroups(ctx, windowID, sidebarPaneID, requireSidebar, 0)
+	groups, _, _, err := c.sidebarHorizontalWorkGroups(ctx, windowID, sidebarPaneID, requireSidebar, 0)
 	if err != nil || len(groups) != len(weights) {
 		if err == nil {
 			c.resizeDebug("resize-work-weights-skip", ports.LogField{Key: "reason", Value: "group-count-mismatch"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)}, ports.LogField{Key: "groups", Value: formatSidebarHorizontalGroups(groups)})
@@ -303,49 +360,57 @@ func (c Client) applySidebarWorkWeightsBestEffort(ctx context.Context, windowID 
 		}
 	}
 	c.resizeDebug("resize-work-weights", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "total_width", Value: totalWidth}, ports.LogField{Key: "weights", Value: formatSidebarWorkWeights(weights)}, ports.LogField{Key: "target_widths", Value: targetWidths})
+	var resizeArgs []string
+	priorResize := false
 	for i := 0; i < len(alignedGroups)-1; i++ {
 		group := alignedGroups[i]
-		if group.Width == targetWidths[i] {
+		if !priorResize && group.Width == targetWidths[i] {
 			c.resizeDebug("resize-work-pane-skip", ports.LogField{Key: "pane", Value: group.RepresentativePaneID}, ports.LogField{Key: "reason", Value: "already-target-width"}, ports.LogField{Key: "width", Value: group.Width})
 			continue
 		}
 		c.resizeDebug("resize-work-pane", ports.LogField{Key: "pane", Value: group.RepresentativePaneID}, ports.LogField{Key: "from", Value: group.Width}, ports.LogField{Key: "to", Value: targetWidths[i]})
-		if err := c.resizePaneWidth(ctx, group.RepresentativePaneID, strconv.Itoa(targetWidths[i])); err != nil {
-			c.resizeDebug("resize-work-pane-error", ports.LogField{Key: "pane", Value: group.RepresentativePaneID}, ports.LogField{Key: "from", Value: group.Width}, ports.LogField{Key: "to", Value: targetWidths[i]}, ports.LogField{Key: "error", Value: err.Error()})
+		if len(resizeArgs) > 0 {
+			resizeArgs = append(resizeArgs, ";")
 		}
+		resizeArgs = append(resizeArgs, cmdResizePane, "-t", group.RepresentativePaneID, "-x", strconv.Itoa(targetWidths[i]))
+		priorResize = true
+	}
+	if len(resizeArgs) == 0 {
+		return
+	}
+	if result, err := c.Process.Exec(ctx, tmuxBinary, resizeArgs); err != nil {
+		c.resizeDebug("resize-work-pane-error", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "target_widths", Value: targetWidths}, ports.LogField{Key: "error", Value: wrapTmuxError(result, err).Error()})
 	}
 }
 
-func (c Client) sidebarHorizontalWorkGroups(ctx context.Context, windowID string, sidebarPaneID string, requireSidebar bool, expectedSidebarWidth int) ([]sidebarHorizontalGroup, int, error) {
-	windowWidth, windowHeight, err := c.windowDimensions(ctx, windowID)
+func (c Client) sidebarHorizontalWorkGroups(ctx context.Context, windowID string, sidebarPaneID string, requireSidebar bool, expectedSidebarWidth int) ([]sidebarHorizontalGroup, int, sidebarWorkGroupCaptureStatus, error) {
+	panes, windowWidth, windowHeight, err := c.listSidebarRebalancePanes(ctx, windowID)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, sidebarWorkGroupCaptureSkipped, err
 	}
-	panes, err := c.listSidebarRebalancePanes(ctx, windowID)
-	if err != nil {
-		return nil, 0, err
+	if windowWidth == 0 || windowHeight == 0 {
+		windowWidth, windowHeight, err = c.windowDimensions(ctx, windowID)
+		if err != nil {
+			return nil, 0, sidebarWorkGroupCaptureSkipped, err
+		}
 	}
 	var work []sidebarRebalancePane
 	if requireSidebar {
-		if len(panes) < 3 {
-			c.resizeDebug("resize-work-groups-skip", ports.LogField{Key: "reason", Value: "too-few-panes"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "require_sidebar", Value: requireSidebar}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)})
-			return nil, 0, nil
-		}
 		sidebar, nonSidebar := splitSidebarAndWorkPanes(panes, sidebarPaneID)
 		if sidebar == nil || !sidebar.Sidebar || sidebar.Left != 0 || sidebar.Top != 0 || sidebar.Height != windowHeight {
 			c.resizeDebug("resize-work-groups-skip", ports.LogField{Key: "reason", Value: "invalid-sidebar-shape"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "require_sidebar", Value: requireSidebar}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)})
-			return nil, 0, nil
+			return nil, 0, sidebarWorkGroupCaptureSkipped, nil
 		}
 		if expectedSidebarWidth > 0 && sidebar.Width != expectedSidebarWidth {
 			c.resizeDebug("resize-work-groups-skip", ports.LogField{Key: "reason", Value: "sidebar-width-mismatch"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "actual_sidebar_width", Value: sidebar.Width}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)})
-			return nil, 0, nil
+			return nil, 0, sidebarWorkGroupCaptureSkipped, nil
 		}
 		work = nonSidebar
 	} else {
 		for _, pane := range panes {
 			if pane.Sidebar {
 				c.resizeDebug("resize-work-groups-skip", ports.LogField{Key: "reason", Value: "unexpected-sidebar-pane"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "require_sidebar", Value: requireSidebar}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)})
-				return nil, 0, nil
+				return nil, 0, sidebarWorkGroupCaptureSkipped, nil
 			}
 		}
 		work = panes
@@ -353,10 +418,10 @@ func (c Client) sidebarHorizontalWorkGroups(ctx context.Context, windowID string
 	groups := groupHorizontalPanes(work)
 	if len(groups) < 2 || !validSidebarHorizontalGroups(groups, windowHeight) {
 		c.resizeDebug("resize-work-groups-skip", ports.LogField{Key: "reason", Value: "invalid-work-groups"}, ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "require_sidebar", Value: requireSidebar}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)}, ports.LogField{Key: "groups", Value: formatSidebarHorizontalGroups(groups)})
-		return nil, 0, nil
+		return nil, 0, sidebarWorkGroupCaptureObserved, nil
 	}
 	c.resizeDebug("resize-work-groups", ports.LogField{Key: "window", Value: windowID}, ports.LogField{Key: "sidebar", Value: sidebarPaneID}, ports.LogField{Key: "require_sidebar", Value: requireSidebar}, ports.LogField{Key: "expected_sidebar_width", Value: expectedSidebarWidth}, ports.LogField{Key: "window_width", Value: windowWidth}, ports.LogField{Key: "window_height", Value: windowHeight}, ports.LogField{Key: "panes", Value: formatSidebarRebalancePanes(panes)}, ports.LogField{Key: "groups", Value: formatSidebarHorizontalGroups(groups)})
-	return groups, windowWidth, nil
+	return groups, windowWidth, sidebarWorkGroupCaptureObserved, nil
 }
 
 func validSidebarHorizontalGroups(groups []sidebarHorizontalGroup, windowHeight int) bool {
@@ -437,11 +502,12 @@ func groupHorizontalPanes(panes []sidebarRebalancePane) []sidebarHorizontalGroup
 	return groups
 }
 
-func (c Client) listSidebarRebalancePanes(ctx context.Context, windowID string) ([]sidebarRebalancePane, error) {
+func (c Client) listSidebarRebalancePanes(ctx context.Context, windowID string) ([]sidebarRebalancePane, int, int, error) {
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-t", windowID, "-F", formatSidebarRebalancePane})
 	if err != nil {
-		return nil, wrapTmuxError(result, err)
+		return nil, 0, 0, wrapTmuxError(result, err)
 	}
+	var windowWidth, windowHeight int
 	panes := make([]sidebarRebalancePane, 0)
 	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
 		line = strings.TrimSpace(line)
@@ -449,24 +515,36 @@ func (c Client) listSidebarRebalancePanes(ctx context.Context, windowID string) 
 			continue
 		}
 		fields := strings.Split(line, "\t")
-		if len(fields) != 6 {
-			return nil, fmt.Errorf("expected 6 tab-separated fields, got %d: %q", len(fields), line)
+		if len(fields) != 6 && len(fields) != 8 {
+			return nil, 0, 0, fmt.Errorf("expected 6 or 8 tab-separated fields, got %d: %q", len(fields), line)
 		}
 		left, err := strconv.Atoi(strings.TrimSpace(fields[1]))
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 		top, err := strconv.Atoi(strings.TrimSpace(fields[2]))
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 		width, err := strconv.Atoi(strings.TrimSpace(fields[3]))
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 		height, err := strconv.Atoi(strings.TrimSpace(fields[4]))
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
+		}
+		if len(fields) == 8 && windowWidth == 0 && windowHeight == 0 {
+			parsedWindowWidth, err := strconv.Atoi(strings.TrimSpace(fields[6]))
+			if err != nil {
+				return nil, 0, 0, err
+			}
+			parsedWindowHeight, err := strconv.Atoi(strings.TrimSpace(fields[7]))
+			if err != nil {
+				return nil, 0, 0, err
+			}
+			windowWidth = parsedWindowWidth
+			windowHeight = parsedWindowHeight
 		}
 		panes = append(panes, sidebarRebalancePane{
 			PaneID:  strings.TrimSpace(fields[0]),
@@ -477,9 +555,8 @@ func (c Client) listSidebarRebalancePanes(ctx context.Context, windowID string) 
 			Sidebar: parseTmuxBool(strings.TrimSpace(fields[5])),
 		})
 	}
-	return panes, nil
+	return panes, windowWidth, windowHeight, nil
 }
-
 func (c Client) windowDimensions(ctx context.Context, windowID string) (int, int, error) {
 	out, err := c.displayTarget(ctx, windowID, "#{window_width}\t#{window_height}")
 	if err != nil {

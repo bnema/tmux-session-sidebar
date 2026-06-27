@@ -171,7 +171,7 @@ func (c Client) attachSingletonSidebar(ctx context.Context, targetID string, pan
 	}
 	var sourceCloseWeights []sidebarWorkWeight
 	if clearSourceWindowLayout {
-		sourceCloseWeights, _ = c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
+		sourceCloseWeights, _, _ = c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
 	}
 	// Save target hidden layout for rollback if the multi-step attach fails.
 	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
@@ -255,9 +255,18 @@ func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clien
 		width = "30"
 	}
 	if currentWindowID == windowID {
-		return c.resizeSwitchMarkAndSelectSidebarPane(ctx, clientID, target, paneID, width)
+		preSyncSidebarWidth, _ := c.displayTarget(ctx, paneID, "#{pane_width}")
+		preSyncWeights, _, _ := c.captureSidebarWorkWeights(ctx, windowID, paneID, preSyncSidebarWidth, sidebarWorkWeightByGroupWidth)
+		if err := c.SyncAttachedSidebarWidth(ctx, windowID, paneID, width, ports.SidebarResizeOptions{}); err != nil {
+			return err
+		}
+		if err := c.switchMarkAndSelectSidebarPane(ctx, clientID, target, paneID); err != nil {
+			c.restoreAttachedSidebarLayoutBestEffort(ctx, windowID, paneID, preSyncSidebarWidth, preSyncWeights)
+			return err
+		}
+		return nil
 	}
-	sourceCloseWeights, _ := c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
+	sourceCloseWeights, _, _ := c.captureSidebarWorkWeights(ctx, currentWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
 	if err := c.saveTargetWindowLayoutBeforeAttach(ctx, windowID); err != nil {
 		return err
 	}
@@ -290,10 +299,15 @@ func (c Client) AttachSidebarForClientAndSwitchClient(ctx context.Context, clien
 	return nil
 }
 
-func (c Client) resizeSwitchMarkAndSelectSidebarPane(ctx context.Context, clientID string, target string, paneID string, width string) error {
-	args := []string{cmdResizePane, "-t", paneID, "-x", width}
-	args = append(args, ";")
-	args = append(args, switchClientArgs(clientID, target)...)
+func (c Client) restoreAttachedSidebarLayoutBestEffort(ctx context.Context, windowID string, paneID string, sidebarWidth string, weights []sidebarWorkWeight) {
+	if strings.TrimSpace(sidebarWidth) != "" {
+		_ = c.resizePaneWidth(ctx, paneID, sidebarWidth)
+	}
+	c.applySidebarWorkWeightsBestEffort(ctx, windowID, paneID, weights, true)
+}
+
+func (c Client) switchMarkAndSelectSidebarPane(ctx context.Context, clientID string, target string, paneID string) error {
+	args := switchClientArgs(clientID, target)
 	args = append(args,
 		";", cmdSetOption, "-p", "-t", paneID, optionSidebarPane, "1",
 		";", cmdSetOption, "-p", "-t", paneID, optionSidebarOwnerClient, clientID,
@@ -369,17 +383,17 @@ func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	if err != nil {
 		return err
 	}
-	horizontalCloseWeights, _ := c.captureSidebarWorkWeights(ctx, sourceWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
+	horizontalCloseWeights, _, _ := c.captureSidebarWorkWeights(ctx, sourceWindowID, paneID, "", sidebarWorkWeightByGroupSpan)
 	if err := c.ensureParkingSession(ctx); err != nil {
 		return err
 	}
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdBreakPane, "-d", "-s", paneID, "-t", singletonSidebarSessionName + ":"})
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdMovePane, "-d", "-s", paneID, "-t", singletonSidebarSessionName + ":"})
 	if err != nil {
 		return wrapTmuxError(result, err)
 	}
 	c.applySidebarWorkWeightsBestEffort(ctx, sourceWindowID, "", horizontalCloseWeights, false)
 	// Best-effort cleanup of the stale saved hidden-layout option. After
-	// break-pane removes the sidebar, tmux natively redistributes the
+	// move-pane removes the sidebar, tmux natively redistributes the
 	// window, making any saved pre-sidebar layout stale unless the close path
 	// first rebalances top-level horizontal work-group widths.
 	c.clearSourceWindowLayoutBestEffort(ctx, sourceWindowID)
@@ -388,7 +402,7 @@ func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	if err == nil {
 		c.cleanupParkingWindows(ctx, parkedWindowID)
 	}
-	// After break-pane, tmux naturally redistributes remaining panes.
+	// After move-pane, tmux naturally redistributes remaining panes.
 	// The live layout is authoritative — no hidden-layout restore is needed.
 	return nil
 }

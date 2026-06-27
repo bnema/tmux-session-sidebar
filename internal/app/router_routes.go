@@ -11,6 +11,12 @@ func (r runtimeRouter) handleIPCRoute(ctx context.Context, route Route, stderr i
 		return false, nil
 	}
 	if err := r.sendIPC(ctx, route); err != nil {
+		if routeUsesRuntimeEventIPC(route.Path) {
+			if ipcUnavailableForBootstrap(err) {
+				return true, nil
+			}
+			return true, err
+		}
 		shouldFallback := r.sidebar != nil && ipcUnavailableForBootstrap(err)
 		if !shouldFallback {
 			return true, err

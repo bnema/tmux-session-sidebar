@@ -16,6 +16,14 @@ func shouldSkipSidebarSessionRestoreForContinuum(ctx context.Context, cfg ports.
 	case "on":
 		return false
 	}
+	return continuumRestoreInProgress(ctx, cfg)
+}
+
+func continuumRestoreInProgress(ctx context.Context, cfg ports.ConfigSnapshot) bool {
+	switch strings.ToLower(strings.TrimSpace(cfg.RestoreSessionsMode)) {
+	case "off", "on":
+		return false
+	}
 	if !tmuxOptionBool(ctx, "@continuum-restore") {
 		return false
 	}

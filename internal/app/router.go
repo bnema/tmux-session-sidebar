@@ -124,7 +124,17 @@ func (r runtimeRouter) withMetadataReconcile(ctx context.Context, err error) err
 
 func routeUsesIPC(path string) bool {
 	switch path {
-	case "sidebar/toggle", "sidebar/open", "sidebar/close", "sidebar/refresh":
+	case "sidebar/toggle", "sidebar/open", "sidebar/close", "sidebar/refresh",
+		"hook/client-attached", "hook/client-detached", "hook/client-session-changed":
+		return true
+	default:
+		return false
+	}
+}
+
+func routeUsesRuntimeEventIPC(path string) bool {
+	switch path {
+	case "hook/client-attached", "hook/client-detached", "hook/client-session-changed":
 		return true
 	default:
 		return false
@@ -146,6 +156,12 @@ func (r runtimeRouter) sendIPC(ctx context.Context, route Route) error {
 		resp, err = r.ipcClient.Send(ctx, ports.SidebarCloseRequest(client))
 	case "sidebar/refresh":
 		resp, err = r.ipcClient.Send(ctx, ports.SidebarRefreshRequest(client))
+	case "hook/client-attached":
+		resp, err = r.ipcClient.Send(ctx, ports.ClientAttachedEventRequest(client, route.Flags["session"]))
+	case "hook/client-detached":
+		resp, err = r.ipcClient.Send(ctx, ports.ClientDetachedEventRequest(client, route.Flags["session"]))
+	case "hook/client-session-changed":
+		resp, err = r.ipcClient.Send(ctx, ports.ClientSessionChangedEventRequest(client, route.Flags["session"]))
 	default:
 		return nil
 	}

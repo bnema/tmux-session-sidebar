@@ -1,9 +1,12 @@
 package tmuxcli
 
 import (
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
@@ -16,10 +19,11 @@ func TestSyncAttachedSidebarWidthUsesSavedBaselineProportions(t *testing.T) {
 	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarOpenWorkBaseline}, func([]string) (string, string) {
 		return baseline, ""
 	})
-	rec.handle([]string{"set-option", "-wq", "-t", "@27", optionSidebarResizeSyncActive, "1"}, func([]string) (string, string) {
-		return "", ""
-	})
-	rec.handle([]string{"resize-pane", "-t", "%183", "-x", "30"}, func([]string) (string, string) {
+	rec.handle([]string{
+		"set-option", "-wq", "-t", "@27", optionSidebarResizeSyncActive, "1",
+		";", "set-option", "-wq", "-t", "@27", optionSidebarResizeSuppressUntil, "*",
+		";", "resize-pane", "-t", "%183", "-x", "30",
+	}, func([]string) (string, string) {
 		return "", ""
 	})
 	rec.handle([]string{"display-message", "-p", "-t", "@27", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
@@ -37,6 +41,112 @@ func TestSyncAttachedSidebarWidthUsesSavedBaselineProportions(t *testing.T) {
 
 	if err := (Client{Process: rec}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
 		t.Fatalf("SyncAttachedSidebarWidth error: %v", err)
+	}
+	assertRecUsedAllHandlers(t, rec)
+}
+
+func TestSyncAttachedSidebarWidthSuppressDeadlineIsFutureAndSkipsImmediateCapture(t *testing.T) {
+	ctx := t.Context()
+	rec := newRecPort(t)
+	baseline := `{"representativePaneIDs":["%27","%185"],"workWidths":[74,75]}`
+	var suppressDeadline string
+
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarOpenWorkBaseline}, func([]string) (string, string) {
+		return baseline, ""
+	})
+	rec.handle([]string{
+		"set-option", "-wq", "-t", "@27", optionSidebarResizeSyncActive, "1",
+		";", "set-option", "-wq", "-t", "@27", optionSidebarResizeSuppressUntil, "*",
+		";", "resize-pane", "-t", "%183", "-x", "30",
+	}, func(args []string) (string, string) {
+		suppressDeadline = args[12]
+		return "", ""
+	})
+	rec.handle([]string{"display-message", "-p", "-t", "@27", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
+		return "181\t48", ""
+	})
+	rec.handle([]string{"list-panes", "-t", "@27", "-F", formatSidebarRebalancePane}, func([]string) (string, string) {
+		return "%183\t0\t0\t30\t48\t1\n%27\t31\t0\t91\t48\t0\n%185\t123\t0\t58\t48\t0", ""
+	})
+	rec.handle([]string{"resize-pane", "-t", "%27", "-x", "74"}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"set-option", "-wu", "-t", "@27", optionSidebarResizeSyncActive}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSyncActive}, func([]string) (string, string) {
+		return "0", ""
+	})
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSuppressUntil}, func([]string) (string, string) {
+		return suppressDeadline, ""
+	})
+
+	before := time.Now().UnixNano()
+	if err := (Client{Process: rec}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
+		t.Fatalf("SyncAttachedSidebarWidth error: %v", err)
+	}
+	deadline, err := strconv.ParseInt(suppressDeadline, 10, 64)
+	if err != nil {
+		t.Fatalf("suppress deadline should parse as int64: %v", err)
+	}
+	if deadline <= before {
+		t.Fatalf("suppress deadline = %d, want after sync start %d", deadline, before)
+	}
+	if deadline > time.Now().Add(sidebarResizeBaselineSuppressDuration+time.Second).UnixNano() {
+		t.Fatalf("suppress deadline = %d, want within expected suppression window", deadline)
+	}
+	if err := (Client{Process: rec}).CaptureAttachedSidebarWidthBaseline(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
+		t.Fatalf("CaptureAttachedSidebarWidthBaseline error: %v", err)
+	}
+	assertRecUsedAllHandlers(t, rec)
+}
+
+func TestSyncAttachedSidebarWidthDoesNotSuppressWithoutSavedBaseline(t *testing.T) {
+	ctx := t.Context()
+	rec := newRecPort(t)
+
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarOpenWorkBaseline}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{
+		"set-option", "-wq", "-t", "@27", optionSidebarResizeSyncActive, "1",
+		";", "resize-pane", "-t", "%183", "-x", "30",
+	}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"set-option", "-wu", "-t", "@27", optionSidebarResizeSyncActive}, func([]string) (string, string) {
+		return "", ""
+	})
+
+	if err := (Client{Process: rec}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
+		t.Fatalf("SyncAttachedSidebarWidth error: %v", err)
+	}
+	assertRecUsedAllHandlers(t, rec)
+}
+
+func TestSyncAttachedSidebarWidthClearsActiveWhenResizeFails(t *testing.T) {
+	ctx := t.Context()
+	rec := newRecPort(t)
+	boom := errors.New("resize failed")
+	baseline := `{"representativePaneIDs":["%27","%185"],"workWidths":[74,75]}`
+
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarOpenWorkBaseline}, func([]string) (string, string) {
+		return baseline, ""
+	})
+	rec.handleErr([]string{
+		"set-option", "-wq", "-t", "@27", optionSidebarResizeSyncActive, "1",
+		";", "set-option", "-wq", "-t", "@27", optionSidebarResizeSuppressUntil, "*",
+		";", "resize-pane", "-t", "%183", "-x", "30",
+	}, func([]string) (string, string) {
+		return "", "resize failed\n"
+	}, boom)
+	rec.handle([]string{"set-option", "-wu", "-t", "@27", optionSidebarResizeSyncActive}, func([]string) (string, string) {
+		return "", ""
+	})
+
+	err := (Client{Process: rec}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{})
+	if !errors.Is(err, boom) {
+		t.Fatalf("SyncAttachedSidebarWidth error = %v, want %v", err, boom)
 	}
 	assertRecUsedAllHandlers(t, rec)
 }
@@ -73,10 +183,11 @@ func TestSyncAttachedSidebarWidthLogsBaselineAndComputedWidths(t *testing.T) {
 	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarOpenWorkBaseline}, func([]string) (string, string) {
 		return baseline, ""
 	})
-	rec.handle([]string{"set-option", "-wq", "-t", "@27", optionSidebarResizeSyncActive, "1"}, func([]string) (string, string) {
-		return "", ""
-	})
-	rec.handle([]string{"resize-pane", "-t", "%183", "-x", "30"}, func([]string) (string, string) {
+	rec.handle([]string{
+		"set-option", "-wq", "-t", "@27", optionSidebarResizeSyncActive, "1",
+		";", "set-option", "-wq", "-t", "@27", optionSidebarResizeSuppressUntil, "*",
+		";", "resize-pane", "-t", "%183", "-x", "30",
+	}, func([]string) (string, string) {
 		return "", ""
 	})
 	rec.handle([]string{"display-message", "-p", "-t", "@27", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
@@ -110,6 +221,43 @@ func TestSyncAttachedSidebarWidthLogsBaselineAndComputedWidths(t *testing.T) {
 	assertRecUsedAllHandlers(t, rec)
 }
 
+func TestSyncAttachedSidebarWidthResizesLaterMatchedWorkGroupAfterEarlierResize(t *testing.T) {
+	ctx := t.Context()
+	rec := newRecPort(t)
+	baseline := `{"representativePaneIDs":["%27","%185","%300"],"workWidths":[70,70,60]}`
+
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarOpenWorkBaseline}, func([]string) (string, string) {
+		return baseline, ""
+	})
+	rec.handle([]string{
+		"set-option", "-wq", "-t", "@27", optionSidebarResizeSyncActive, "1",
+		";", "set-option", "-wq", "-t", "@27", optionSidebarResizeSuppressUntil, "*",
+		";", "resize-pane", "-t", "%183", "-x", "30",
+	}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"display-message", "-p", "-t", "@27", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
+		return "234\t48", ""
+	})
+	rec.handle([]string{"list-panes", "-t", "@27", "-F", formatSidebarRebalancePane}, func([]string) (string, string) {
+		return "%183\t0\t0\t30\t48\t1\n%27\t31\t0\t80\t48\t0\n%185\t112\t0\t70\t48\t0\n%300\t183\t0\t50\t48\t0", ""
+	})
+	rec.handle([]string{
+		"resize-pane", "-t", "%27", "-x", "70",
+		";", "resize-pane", "-t", "%185", "-x", "70",
+	}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"set-option", "-wu", "-t", "@27", optionSidebarResizeSyncActive}, func([]string) (string, string) {
+		return "", ""
+	})
+
+	if err := (Client{Process: rec}).SyncAttachedSidebarWidth(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
+		t.Fatalf("SyncAttachedSidebarWidth error: %v", err)
+	}
+	assertRecUsedAllHandlers(t, rec)
+}
+
 func TestSyncAttachedSidebarWidthSkipsRestoreWhenSavedBaselineNoLongerMatchesTopology(t *testing.T) {
 	ctx := t.Context()
 	rec := newRecPort(t)
@@ -118,10 +266,11 @@ func TestSyncAttachedSidebarWidthSkipsRestoreWhenSavedBaselineNoLongerMatchesTop
 	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarOpenWorkBaseline}, func([]string) (string, string) {
 		return baseline, ""
 	})
-	rec.handle([]string{"set-option", "-wq", "-t", "@27", optionSidebarResizeSyncActive, "1"}, func([]string) (string, string) {
-		return "", ""
-	})
-	rec.handle([]string{"resize-pane", "-t", "%183", "-x", "30"}, func([]string) (string, string) {
+	rec.handle([]string{
+		"set-option", "-wq", "-t", "@27", optionSidebarResizeSyncActive, "1",
+		";", "set-option", "-wq", "-t", "@27", optionSidebarResizeSuppressUntil, "*",
+		";", "resize-pane", "-t", "%183", "-x", "30",
+	}, func([]string) (string, string) {
 		return "", ""
 	})
 	rec.handle([]string{"display-message", "-p", "-t", "@27", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
@@ -139,13 +288,84 @@ func TestSyncAttachedSidebarWidthSkipsRestoreWhenSavedBaselineNoLongerMatchesTop
 	}
 	assertRecUsedAllHandlers(t, rec)
 }
+func TestCaptureAttachedSidebarWidthBaselineProceedsAfterExpiredSuppressDeadline(t *testing.T) {
+	ctx := t.Context()
+	rec := newRecPort(t)
+	expired := fmt.Sprintf("%d", time.Now().Add(-time.Minute).UnixNano())
+	baseline := `{"representativePaneIDs":["%27","%185"],"workWidths":[74,75]}`
 
-func TestCaptureAttachedSidebarWidthBaselineClearsSavedBaselineWhenCaptureIsInvalid(t *testing.T) {
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSyncActive}, func([]string) (string, string) {
+		return "0", ""
+	})
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSuppressUntil}, func([]string) (string, string) {
+		return expired, ""
+	})
+	rec.handle([]string{"display-message", "-p", "-t", "@27", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
+		return "181\t48", ""
+	})
+	rec.handle([]string{"list-panes", "-t", "@27", "-F", formatSidebarRebalancePane}, func([]string) (string, string) {
+		return "%183\t0\t0\t30\t48\t1\n%27\t31\t0\t74\t48\t0\n%185\t106\t0\t75\t48\t0", ""
+	})
+	rec.handle([]string{"set-option", "-wq", "-t", "@27", optionSidebarOpenWorkBaseline, baseline}, func([]string) (string, string) {
+		return "", ""
+	})
+
+	if err := (Client{Process: rec}).CaptureAttachedSidebarWidthBaseline(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
+		t.Fatalf("CaptureAttachedSidebarWidthBaseline error: %v", err)
+	}
+	assertRecUsedAllHandlers(t, rec)
+}
+
+func TestCaptureAttachedSidebarWidthBaselineSkipsDuringRecentResizeSync(t *testing.T) {
+	ctx := t.Context()
+	rec := newRecPort(t)
+	deadline := fmt.Sprintf("%d", time.Now().Add(time.Minute).UnixNano())
+
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSyncActive}, func([]string) (string, string) {
+		return "0", ""
+	})
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSuppressUntil}, func([]string) (string, string) {
+		return deadline, ""
+	})
+
+	if err := (Client{Process: rec}).CaptureAttachedSidebarWidthBaseline(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
+		t.Fatalf("CaptureAttachedSidebarWidthBaseline error: %v", err)
+	}
+	assertRecUsedAllHandlers(t, rec)
+}
+
+func TestCaptureAttachedSidebarWidthBaselinePreservesSavedBaselineOnSidebarWidthMismatch(t *testing.T) {
 	ctx := t.Context()
 	rec := newRecPort(t)
 
 	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSyncActive}, func([]string) (string, string) {
 		return "0", ""
+	})
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSuppressUntil}, func([]string) (string, string) {
+		return "", ""
+	})
+	rec.handle([]string{"display-message", "-p", "-t", "@27", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
+		return "181\t48", ""
+	})
+	rec.handle([]string{"list-panes", "-t", "@27", "-F", formatSidebarRebalancePane}, func([]string) (string, string) {
+		return "%183\t0\t0\t20\t48\t1\n%27\t21\t0\t79\t48\t0\n%185\t101\t0\t80\t48\t0", ""
+	})
+
+	if err := (Client{Process: rec}).CaptureAttachedSidebarWidthBaseline(ctx, "@27", "%183", "30", ports.SidebarResizeOptions{}); err != nil {
+		t.Fatalf("CaptureAttachedSidebarWidthBaseline error: %v", err)
+	}
+	assertRecUsedAllHandlers(t, rec)
+}
+
+func TestCaptureAttachedSidebarWidthBaselineClearsSavedBaselineWhenNoWorkSplit(t *testing.T) {
+	ctx := t.Context()
+	rec := newRecPort(t)
+
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSyncActive}, func([]string) (string, string) {
+		return "0", ""
+	})
+	rec.handle([]string{"show-options", "-w", "-v", "-t", "@27", optionSidebarResizeSuppressUntil}, func([]string) (string, string) {
+		return "", ""
 	})
 	rec.handle([]string{"display-message", "-p", "-t", "@27", "#{window_width}\t#{window_height}"}, func([]string) (string, string) {
 		return "181\t48", ""
