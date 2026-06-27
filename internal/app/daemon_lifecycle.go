@@ -37,24 +37,37 @@ func (c daemonLifecycleCoordinator) run(ctx context.Context) error {
 		return err
 	}
 
-	var colorSchemeWG sync.WaitGroup
-	colorSchemeWG.Go(func() {
-		if err := NewColorSchemeServiceWithEnvironment(c.env).Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: color scheme watcher stopped: %v\n", err)
-		}
-	})
+	daemonCtx, stopDaemon := context.WithCancel(ctx)
+	defer stopDaemon()
 
-	metadata := newDaemonMetadataLifecycle(ctx, c.env)
+	metadata := newDaemonMetadataLifecycle(daemonCtx, c.env)
 
-	pendingFullCaptureAt, err := c.initializeCapture(ctx, cfg, metadata)
+	pendingFullCaptureAt, err := c.initializeCapture(daemonCtx, cfg, metadata)
 	if err != nil {
 		return err
 	}
 
-	var ipcWG sync.WaitGroup
-	c.startIPC(ctx, metadata.reconcile, &ipcWG)
+	var colorSchemeWG sync.WaitGroup
+	colorSchemeWG.Go(func() {
+		if err := NewColorSchemeServiceWithEnvironment(c.env).Run(daemonCtx); err != nil && !errors.Is(err, context.Canceled) {
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: color scheme watcher stopped: %v\n", err)
+		}
+	})
 
-	return c.runRefreshLoop(ctx, pendingFullCaptureAt, metadata, &ipcWG, &colorSchemeWG)
+	runtimeEvents := make(chan ports.Request, 128)
+	var eventWG sync.WaitGroup
+	c.startRuntimeEventProcessor(daemonCtx, runtimeEvents, &eventWG)
+
+	var ipcWG sync.WaitGroup
+	c.startIPC(daemonCtx, metadata.reconcile, runtimeEvents, &ipcWG)
+
+	err = c.runRefreshLoop(daemonCtx, pendingFullCaptureAt, metadata)
+	stopDaemon()
+	ipcWG.Wait()
+	eventWG.Wait()
+	metadata.wait()
+	colorSchemeWG.Wait()
+	return err
 }
 
 func (c daemonLifecycleCoordinator) initializeCapture(ctx context.Context, cfg ports.ConfigSnapshot, metadata *daemonMetadataLifecycle) (time.Time, error) {
@@ -78,19 +91,36 @@ func (c daemonLifecycleCoordinator) initializeCapture(ctx context.Context, cfg p
 	return time.Time{}, nil
 }
 
-func (c daemonLifecycleCoordinator) startIPC(ctx context.Context, metadataReconcile chan<- struct{}, ipcWG *sync.WaitGroup) {
+func (c daemonLifecycleCoordinator) startRuntimeEventProcessor(ctx context.Context, runtimeEvents <-chan ports.Request, eventWG *sync.WaitGroup) {
+	if c.router == nil {
+		return
+	}
+	eventWG.Go(func() {
+		if err := runDaemonRuntimeEventProcessor(ctx, daemonRuntimeEventProcessorOptions{
+			router: c.router,
+			events: runtimeEvents,
+			ready:  runtimeEventsReadyAfterRestore,
+			stdout: io.Discard,
+			stderr: os.Stderr,
+		}); err != nil && !errors.Is(err, context.Canceled) {
+			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: runtime event processor failed: %v\n", err)
+		}
+	})
+}
+
+func (c daemonLifecycleCoordinator) startIPC(ctx context.Context, metadataReconcile chan<- struct{}, runtimeEvents chan<- ports.Request, ipcWG *sync.WaitGroup) {
 	if c.ipcServer == nil || c.router == nil {
 		return
 	}
 	ipcWG.Go(func() {
-		handler := daemonIPCHandler{router: c.router, stdout: io.Discard, stderr: os.Stderr, mu: &sync.Mutex{}, metadataReconcile: metadataReconcile, expectedScope: c.scope}
+		handler := daemonIPCHandler{router: c.router, stdout: io.Discard, stderr: os.Stderr, mu: &sync.Mutex{}, metadataReconcile: metadataReconcile, runtimeEvents: runtimeEvents, expectedScope: c.scope}
 		if err := c.ipcServer.Serve(ctx, handler); err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: ipc server failed: %v\n", err)
 		}
 	})
 }
 
-func (c daemonLifecycleCoordinator) runRefreshLoop(ctx context.Context, pendingFullCaptureAt time.Time, metadata *daemonMetadataLifecycle, ipcWG *sync.WaitGroup, colorSchemeWG *sync.WaitGroup) error {
+func (c daemonLifecycleCoordinator) runRefreshLoop(ctx context.Context, pendingFullCaptureAt time.Time, metadata *daemonMetadataLifecycle) error {
 	for {
 		cfg := loadSidebarConfig(ctx)
 		if pendingFullCaptureAt.IsZero() {
@@ -101,9 +131,6 @@ func (c daemonLifecycleCoordinator) runRefreshLoop(ctx context.Context, pendingF
 		select {
 		case <-ctx.Done():
 			stopTimerBestEffort(timer)
-			ipcWG.Wait()
-			metadata.wait()
-			colorSchemeWG.Wait()
 			return nil
 		case <-timer.C:
 		}
