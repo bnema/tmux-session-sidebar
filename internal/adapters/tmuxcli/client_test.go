@@ -1275,6 +1275,7 @@ func TestAttachSingletonSidebarAndSwitchClientSameWindowReturnsSwitchChainFailur
 	rec := newRecPort(t)
 	boom := errors.New("switch failed")
 	baseline := `{"representativePaneIDs":["%27","%185"],"workWidths":[74,75]}`
+	rollbackSidebarWidth := false
 	rollbackWorkSplit := false
 
 	rec.handle([]string{"show-options", "-pv", "-t", "%9", optionSidebarPane}, func([]string) (string, string) {
@@ -1329,6 +1330,7 @@ func TestAttachSingletonSidebarAndSwitchClientSameWindowReturnsSwitchChainFailur
 		return "", "can't find client\n"
 	}, boom)
 	rec.handle([]string{"resize-pane", "-t", "%9", "-x", "25"}, func([]string) (string, string) {
+		rollbackSidebarWidth = true
 		return "", ""
 	})
 	rec.handle([]string{"resize-pane", "-t", "%27", "-x", "58"}, func([]string) (string, string) {
@@ -1339,6 +1341,9 @@ func TestAttachSingletonSidebarAndSwitchClientSameWindowReturnsSwitchChainFailur
 	err := (Client{Process: rec}).AttachSingletonSidebarAndSwitchClient(ctx, "client-1", "beta", "%9", "20")
 	if !errors.Is(err, boom) {
 		t.Fatalf("AttachSingletonSidebarAndSwitchClient error = %v, want %v", err, boom)
+	}
+	if !rollbackSidebarWidth {
+		t.Fatalf("expected same-window switch failure to restore sidebar width; calls: %#v", rec.calls)
 	}
 	if !rollbackWorkSplit {
 		t.Fatalf("expected same-window switch failure to roll back pre-sync work split; calls: %#v", rec.calls)
