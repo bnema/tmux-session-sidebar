@@ -15,12 +15,12 @@ import (
 const (
 	tmuxBinary = "tmux"
 
-	cmdBreakPane      = "break-pane"
 	cmdCapturePane    = "capture-pane"
 	cmdDisplayMessage = "display-message"
 	cmdJoinPane       = "join-pane"
 	cmdKillPane       = "kill-pane"
 	cmdListPanes      = "list-panes"
+	cmdMovePane       = "move-pane"
 	cmdNewSession     = "new-session"
 	cmdNewWindow      = "new-window"
 	cmdResizePane     = "resize-pane"

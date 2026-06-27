@@ -387,13 +387,13 @@ func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	if err := c.ensureParkingSession(ctx); err != nil {
 		return err
 	}
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdBreakPane, "-d", "-s", paneID, "-t", singletonSidebarSessionName + ":"})
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdMovePane, "-d", "-s", paneID, "-t", singletonSidebarSessionName + ":"})
 	if err != nil {
 		return wrapTmuxError(result, err)
 	}
 	c.applySidebarWorkWeightsBestEffort(ctx, sourceWindowID, "", horizontalCloseWeights, false)
 	// Best-effort cleanup of the stale saved hidden-layout option. After
-	// break-pane removes the sidebar, tmux natively redistributes the
+	// move-pane removes the sidebar, tmux natively redistributes the
 	// window, making any saved pre-sidebar layout stale unless the close path
 	// first rebalances top-level horizontal work-group widths.
 	c.clearSourceWindowLayoutBestEffort(ctx, sourceWindowID)
@@ -402,7 +402,7 @@ func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
 	if err == nil {
 		c.cleanupParkingWindows(ctx, parkedWindowID)
 	}
-	// After break-pane, tmux naturally redistributes remaining panes.
+	// After move-pane, tmux naturally redistributes remaining panes.
 	// The live layout is authoritative — no hidden-layout restore is needed.
 	return nil
 }

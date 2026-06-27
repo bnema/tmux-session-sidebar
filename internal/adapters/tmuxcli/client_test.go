@@ -765,7 +765,7 @@ func TestOwnerScopedSidebarPaneLifecycle(t *testing.T) {
 		process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
 		process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
 		process.EXPECT().Exec(ctx, "tmux", []string{"has-session", "-t", "__tmux-session-sidebar"}).Return(ports.Result{}, nil)
-		process.EXPECT().Exec(ctx, "tmux", []string{"break-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
+		process.EXPECT().Exec(ctx, "tmux", []string{"move-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
 		process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
 		process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@hidden\n"}, nil)
 		process.EXPECT().Exec(ctx, "tmux", []string{"list-windows", "-t", "__tmux-session-sidebar", "-F", "#{window_id}"}).Return(ports.Result{Stdout: "@hidden\n"}, nil)
@@ -1750,7 +1750,7 @@ func TestParkSingletonSidebar(t *testing.T) {
 			name: "creates hidden session then breaks marked pane into it",
 			setup: func(ctx context.Context, process *mocks.MockProcessPort) {
 				process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
-				// display-message for WindowID is called twice: once before break-pane
+				// display-message for WindowID is called twice: once before move-pane
 				// (validate pane exists -> @1) and once after (resolve parked window -> @parked).
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil).Once()
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_width}\t#{window_height}"}).Return(ports.Result{Stdout: "100\t30\n"}, nil)
@@ -1758,8 +1758,8 @@ func TestParkSingletonSidebar(t *testing.T) {
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@parked\n"}, nil).Once()
 				process.EXPECT().Exec(ctx, "tmux", []string{"has-session", "-t", "__tmux-session-sidebar"}).Return(ports.Result{Stderr: "can't find session\n"}, errors.New("missing"))
 				process.EXPECT().Exec(ctx, "tmux", []string{"new-session", "-d", "-s", "__tmux-session-sidebar", "-n", "sidebar-parked"}).Return(ports.Result{}, nil)
-				process.EXPECT().Exec(ctx, "tmux", []string{"break-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
-				// The stale saved hidden-layout option is cleared best-effort after break-pane.
+				process.EXPECT().Exec(ctx, "tmux", []string{"move-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
+				// The stale saved hidden-layout option is cleared best-effort after move-pane.
 				process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"list-windows", "-t", "__tmux-session-sidebar", "-F", "#{window_id}"}).Return(ports.Result{Stdout: "@parked\n"}, nil)
 			},
@@ -1768,15 +1768,15 @@ func TestParkSingletonSidebar(t *testing.T) {
 			name: "cleans stale parking windows after parking marked pane",
 			setup: func(ctx context.Context, process *mocks.MockProcessPort) {
 				process.EXPECT().Exec(ctx, "tmux", []string{"show-options", "-pv", "-t", "%9", "@session-sidebar-pane"}).Return(ports.Result{Stdout: "1\n"}, nil)
-				// display-message for WindowID is called twice: once before break-pane
+				// display-message for WindowID is called twice: once before move-pane
 				// (validate pane exists -> @1) and once after (resolve parked window -> @parked).
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil).Once()
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_width}\t#{window_height}"}).Return(ports.Result{Stdout: "100\t30\n"}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", formatSidebarRebalancePane}).Return(ports.Result{Stdout: "%9\t0\t0\t100\t30\t1\n"}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@parked\n"}, nil).Once()
 				process.EXPECT().Exec(ctx, "tmux", []string{"has-session", "-t", "__tmux-session-sidebar"}).Return(ports.Result{}, nil)
-				process.EXPECT().Exec(ctx, "tmux", []string{"break-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
-				// The stale saved hidden-layout option is cleared best-effort after break-pane.
+				process.EXPECT().Exec(ctx, "tmux", []string{"move-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
+				// The stale saved hidden-layout option is cleared best-effort after move-pane.
 				process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"list-windows", "-t", "__tmux-session-sidebar", "-F", "#{window_id}"}).Return(ports.Result{Stdout: "@stale\n@parked\n"}, nil)
 				process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-a", "-f", "#{==:#{" + optionSidebarPane + "},1}", "-F", "#{pane_id}\t#{window_id}\t#{pane_dead}"}).Return(ports.Result{Stdout: "%9\t@parked\t0\n"}, nil)
@@ -1807,7 +1807,7 @@ func TestParkSingletonSidebar(t *testing.T) {
 
 func TestParkSingletonSidebarSucceedsWithoutHiddenLayoutRestore(t *testing.T) {
 	// Park does not save a visible-layout snapshot or restore a hidden layout.
-	// Once break-pane removes the sidebar, tmux's live layout is authoritative.
+	// Once move-pane removes the sidebar, tmux's live layout is authoritative.
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
 
@@ -1816,8 +1816,8 @@ func TestParkSingletonSidebarSucceedsWithoutHiddenLayoutRestore(t *testing.T) {
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "@1", "#{window_width}\t#{window_height}"}).Return(ports.Result{Stdout: "100\t30\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", formatSidebarRebalancePane}).Return(ports.Result{Stdout: "%9\t0\t0\t100\t30\t1\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"has-session", "-t", "__tmux-session-sidebar"}).Return(ports.Result{}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"break-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
-	// The stale saved hidden-layout option is cleared best-effort after break-pane.
+	process.EXPECT().Exec(ctx, "tmux", []string{"move-pane", "-d", "-s", "%9", "-t", "__tmux-session-sidebar:"}).Return(ports.Result{}, nil)
+	// The stale saved hidden-layout option is cleared best-effort after move-pane.
 	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", "@session-sidebar-window-layout"}).Return(ports.Result{}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "%9", "#{window_id}"}).Return(ports.Result{Stdout: "@parked\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"list-windows", "-t", "__tmux-session-sidebar", "-F", "#{window_id}"}).Return(ports.Result{Stdout: "@parked\n"}, nil)
@@ -2102,9 +2102,9 @@ func TestParkSingletonSidebarKillsStaleWindows(t *testing.T) {
 		func(args []string) (string, string) { return paneID + "\t0\t0\t100\t30\t1", "" })
 	rec.handle([]string{"has-session", "-t", singletonSidebarSessionName},
 		func(args []string) (string, string) { return "", "" })
-	rec.handle([]string{"break-pane", "-d", "-s", paneID, "-t", singletonSidebarSessionName + ":"},
+	rec.handle([]string{"move-pane", "-d", "-s", paneID, "-t", singletonSidebarSessionName + ":"},
 		func(args []string) (string, string) { return "", "" })
-	// The stale saved hidden-layout option is cleared best-effort after break-pane.
+	// The stale saved hidden-layout option is cleared best-effort after move-pane.
 	rec.handle([]string{"set-option", "-wu", "-t", "@1", optionSidebarWindowLayout},
 		func(args []string) (string, string) { return "", "" })
 	rec.handle([]string{"list-windows", "-t", singletonSidebarSessionName, "-F", "#{window_id}"},
@@ -2137,9 +2137,9 @@ func TestParkSingletonSidebarKillsStaleWindows(t *testing.T) {
 		func(args []string) (string, string) { return paneID + "\t0\t0\t100\t30\t1", "" })
 	rec2.handle([]string{"has-session", "-t", singletonSidebarSessionName},
 		func(args []string) (string, string) { return "", "" })
-	rec2.handle([]string{"break-pane", "-d", "-s", paneID, "-t", singletonSidebarSessionName + ":"},
+	rec2.handle([]string{"move-pane", "-d", "-s", paneID, "-t", singletonSidebarSessionName + ":"},
 		func(args []string) (string, string) { return "", "" })
-	// The stale saved hidden-layout option is cleared best-effort after break-pane.
+	// The stale saved hidden-layout option is cleared best-effort after move-pane.
 	rec2.handle([]string{"set-option", "-wu", "-t", "@1", optionSidebarWindowLayout},
 		func(args []string) (string, string) { return "", "" })
 	rec2.handle([]string{"list-windows", "-t", singletonSidebarSessionName, "-F", "#{window_id}"},
