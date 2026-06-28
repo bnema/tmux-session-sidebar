@@ -175,6 +175,11 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 			if err != nil {
 				return err
 			}
+			if targetRef.PaneID != "" && targetRef.PaneID != ownerPane.PaneID {
+				if err := sidebar.ParkSidebarForClient(ctx, client, targetRef.PaneID); err != nil {
+					return err
+				}
+			}
 			if ownerPane.PaneID != "" && ownerPane.WindowID != "" && ownerPane.WindowID == targetRef.WindowID {
 				output, err := tmux(ctx, appendSwitchClientArgs(client, sessionName)...)
 				if err != nil {

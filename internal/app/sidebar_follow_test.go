@@ -100,6 +100,9 @@ func TestSwitchClientToWindowWithExistingOwnerSidebarSwitchesWithoutAddingSideba
 	base.EXPECT().FindSidebarPane(ctx, "=beta:").Run(func(context.Context, string) {
 		ops = append(ops, "find-target-window")
 	}).Return(ports.PaneRef{PaneID: "%22", WindowID: "@beta"}, nil)
+	base.EXPECT().ParkSidebarForClient(ctx, "client-1", "%22").Run(func(context.Context, string, string) {
+		ops = append(ops, "park-target-sidebar")
+	}).Return(nil)
 	restore := stubCommandRunner(t, func(_ context.Context, name string, args ...string) (string, error) {
 		if name != "tmux" {
 			t.Fatalf("command name = %q, want tmux", name)
@@ -116,10 +119,10 @@ func TestSwitchClientToWindowWithExistingOwnerSidebarSwitchesWithoutAddingSideba
 	if err := switchClient(ctx, "client-1", "beta", base); err != nil {
 		t.Fatalf("switchClient error: %v", err)
 	}
-	assertOps(t, ops, []string{"find-owner", "find-target-window", "switch-only"})
+	assertOps(t, ops, []string{"find-owner", "find-target-window", "park-target-sidebar", "switch-only"})
 }
 
-func TestSwitchClientDoesNotAdoptUnrelatedSidebarAlreadyInTargetWindow(t *testing.T) {
+func TestSwitchClientParksUnrelatedSidebarAlreadyInTargetWindow(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
 	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
@@ -138,6 +141,9 @@ func TestSwitchClientDoesNotAdoptUnrelatedSidebarAlreadyInTargetWindow(t *testin
 	base.EXPECT().FindSidebarPane(ctx, "=beta:").Run(func(context.Context, string) {
 		ops = append(ops, "find-target-unrelated")
 	}).Return(ports.PaneRef{PaneID: "%22", WindowID: "@beta"}, nil)
+	base.EXPECT().ParkSidebarForClient(ctx, "client-1", "%22").Run(func(context.Context, string, string) {
+		ops = append(ops, "park-target-unrelated")
+	}).Return(nil)
 	tmuxPort.switchFn = func(_ context.Context, clientID, sessionName, paneID, _ string) error {
 		if clientID != "client-1" || sessionName != "beta" || paneID != "%9" {
 			t.Fatalf("atomic switch args = %q %q %q", clientID, sessionName, paneID)
@@ -149,7 +155,7 @@ func TestSwitchClientDoesNotAdoptUnrelatedSidebarAlreadyInTargetWindow(t *testin
 	if err := switchClient(ctx, "client-1", "beta", tmuxPort); err != nil {
 		t.Fatalf("switchClient error: %v", err)
 	}
-	assertOps(t, ops, []string{"find-owner", "find-target-unrelated", "move-owner"})
+	assertOps(t, ops, []string{"find-owner", "find-target-unrelated", "park-target-unrelated", "move-owner"})
 	state, err := persistedSidebarState(ctx)
 	if err != nil {
 		t.Fatalf("persistedSidebarState error: %v", err)
@@ -379,6 +385,7 @@ func TestReconcileSidebarVisibilityClosesExistingPaneWhenConfiguredCloseAfterSwi
 	}
 	tmuxPort := mocks.NewMockSidebarPort(t)
 	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(true, nil)
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, nil)
 	tmuxPort.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
 	tmuxPort.EXPECT().ParkSidebarForClient(ctx, "client-1", "%9").Return(nil)
 
@@ -411,6 +418,7 @@ func TestWithSidebarFollowClosesOpenSidebarWhenConfiguredCloseAfterSwitch(t *tes
 	defer restore()
 
 	tmuxPort.EXPECT().CloseAfterSwitch(ctx).Return(true, nil)
+	tmuxPort.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, nil)
 	tmuxPort.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@old"}, nil)
 	tmuxPort.EXPECT().ParkSidebarForClient(ctx, "client-1", "%9").Return(nil)
 

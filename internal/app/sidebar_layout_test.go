@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -182,6 +183,34 @@ func TestToggleSidebarOpensWhenPersistedOpenStateHasNoVisiblePane(t *testing.T) 
 	}
 }
 
+func TestToggleSidebarParksAllVisibleSidebarPanesInClientWindow(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1", VisibleClients: map[string]bool{"client-1": true}}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	tmux := mocks.NewMockSidebarPort(t)
+
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{PaneID: "%old", WindowID: "@1"}, nil).Twice()
+	tmux.EXPECT().ParkSidebarForClient(ctx, "client-1", "%old").Return(nil).Once()
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{PaneID: "%current", WindowID: "@1"}, nil).Once()
+	tmux.EXPECT().ParkSidebarForClient(ctx, "client-1", "%current").Return(nil).Once()
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{WindowID: "@1"}, nil).Once()
+
+	if err := toggleSidebar(ctx, map[string]string{"client": "client-1"}, tmux); err != nil {
+		t.Fatalf("toggleSidebar returned error: %v", err)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if state.Sidebar == nil || state.Sidebar.Open || state.Sidebar.VisibleClients["client-1"] {
+		t.Fatalf("sidebar state = %#v, want client-1 closed", state.Sidebar)
+	}
+}
+
 func TestCloseSidebarWithoutClientParksAllOwnerScopedPanes(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
@@ -215,6 +244,7 @@ func TestCloseSidebarForClientParksOnlyThatClientAndPreservesOtherVisibleClients
 		t.Fatalf("updateSidebarState error: %v", err)
 	}
 	tmux := mocks.NewMockSidebarPort(t)
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{WindowID: "@1"}, nil)
 	tmux.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Return(ports.PaneRef{PaneID: "%10", WindowID: "@1"}, nil)
 	tmux.EXPECT().ParkSidebarForClient(ctx, "client-1", "%10").Return(nil)
 
@@ -227,6 +257,31 @@ func TestCloseSidebarForClientParksOnlyThatClientAndPreservesOtherVisibleClients
 	}
 	if !state.Sidebar.Open || state.Sidebar.VisibleClients["client-1"] || !state.Sidebar.VisibleClients["client-2"] {
 		t.Fatalf("sidebar state after client close = %#v, want only client-2 visible", state.Sidebar)
+	}
+}
+
+func TestCloseSidebarForClientRepairsHiddenDuplicateOwnerPanes(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-1", VisibleClients: map[string]bool{"client-1": true}}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	tmux := mocks.NewMockSidebarPort(t)
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{WindowID: "@1"}, nil)
+	tmux.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Return(ports.PaneRef{}, fmt.Errorf("%w for owner %q", ports.ErrDuplicateSidebarPanes, "client-1"))
+	tmux.EXPECT().RepairSidebarPanesForClient(ctx, "client-1").Return(nil)
+
+	if err := closeSidebar(ctx, "client-1", tmux); err != nil {
+		t.Fatalf("closeSidebar returned error: %v", err)
+	}
+	state, err := loadSidebarState(ctx)
+	if err != nil {
+		t.Fatalf("loadSidebarState error: %v", err)
+	}
+	if state.Sidebar.Open || state.Sidebar.VisibleClients["client-1"] {
+		t.Fatalf("sidebar state after repair close = %#v, want client-1 closed", state.Sidebar)
 	}
 }
 
@@ -426,6 +481,7 @@ func TestRuntimeRouterUsesDirectFallbackForUnavailableIPCSocket(t *testing.T) {
 	ipc := mocks.NewMockIPCClientPort(t)
 	tmux := mocks.NewMockSidebarPort(t)
 	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, ports.ErrIPCConnectionRefused)
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, nil)
 	tmux.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 	tmux.EXPECT().ParkSidebarForClient(ctx, "client-1", "%9").Return(nil)
 
@@ -441,6 +497,7 @@ func TestRuntimeRouterUsesDirectFallbackForStaleScopedIPC(t *testing.T) {
 	ipc := mocks.NewMockIPCClientPort(t)
 	tmux := mocks.NewMockSidebarPort(t)
 	ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{OK: false, Message: "daemon tmux server identity is stale", ErrorCode: ports.IPCErrorStaleScope}, nil)
+	tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, nil)
 	tmux.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil)
 	tmux.EXPECT().ParkSidebarForClient(ctx, "client-1", "%9").Return(nil)
 
@@ -459,6 +516,7 @@ func TestRuntimeRouterEnsuresDaemonBeforeDirectFallbackForUnavailableIPC(t *test
 	mock.InOrder(
 		ipc.EXPECT().Send(ctx, ports.SidebarCloseRequest("client-1")).Return(ports.Response{}, ports.ErrIPCSocketMissing).Call,
 		daemon.EXPECT().EnsureStarted(ctx).Return(nil).Call,
+		tmux.EXPECT().FindSidebarPane(ctx, "client-1").Return(ports.PaneRef{}, nil).Call,
 		tmux.EXPECT().FindSidebarPaneForClient(ctx, "client-1").Return(ports.PaneRef{PaneID: "%9", WindowID: "@1"}, nil).Call,
 		tmux.EXPECT().ParkSidebarForClient(ctx, "client-1", "%9").Return(nil).Call,
 	)

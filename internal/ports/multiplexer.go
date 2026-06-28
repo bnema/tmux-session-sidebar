@@ -65,6 +65,7 @@ type PaneSize struct {
 }
 
 var ErrMultiplexerTargetGone = errors.New("multiplexer target gone")
+var ErrDuplicateSidebarPanes = errors.New("duplicate sidebar panes")
 
 type PaneRef struct {
 	PaneID   string
@@ -106,6 +107,7 @@ type SidebarPort interface {
 	EnsureSidebarForClient(ctx context.Context, ownerClientID string, command []string) (PaneRef, error)
 	AttachSidebarForClient(ctx context.Context, ownerClientID string, targetID string, paneID string, width string) (PaneRef, error)
 	ParkSidebarForClient(ctx context.Context, ownerClientID string, paneID string) error
+	RepairSidebarPanesForClient(ctx context.Context, ownerClientID string) error
 	ParkAllSidebars(ctx context.Context) error
 	RefreshSidebar(ctx context.Context, clientID string) error
 	ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error

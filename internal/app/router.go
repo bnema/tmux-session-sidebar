@@ -83,6 +83,19 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 	if routeRequiresSidebar(route.Path) && r.sidebar == nil {
 		return fmt.Errorf("runtime router: sidebar port is required for %s", route.Path)
 	}
+	return r.handleDirectRoute(ctx, route, stdout, stderr)
+}
+
+func (r runtimeRouter) handleDirectRoute(ctx context.Context, route Route, stdout io.Writer, stderr io.Writer) error {
+	if directRouteMutatesSidebar(route.Path) {
+		return r.withSidebarMutationLock(ctx, func() error {
+			return r.handleDirectRouteUnlocked(ctx, route, stdout, stderr)
+		})
+	}
+	return r.handleDirectRouteUnlocked(ctx, route, stdout, stderr)
+}
+
+func (r runtimeRouter) handleDirectRouteUnlocked(ctx context.Context, route Route, stdout io.Writer, stderr io.Writer) error {
 	if isSidebarRoute(route.Path) {
 		return r.handleSidebarRoute(ctx, route)
 	}
@@ -93,6 +106,27 @@ func (r runtimeRouter) Handle(ctx context.Context, route Route, stdout io.Writer
 		return r.handleHookRoute(ctx, route)
 	}
 	return r.handleRuntimeRoute(ctx, route, stdout, stderr)
+}
+
+func (r runtimeRouter) withSidebarMutationLock(ctx context.Context, fn func() error) error {
+	scope := r.runtimeEnvironment().Scope
+	lock, err := r.runtimeEnvironment().runtimeLocker(scope.LocksDir).Acquire(ctx, "tmux-sidebar-mutation")
+	if err != nil {
+		return err
+	}
+	defer releaseSidebarLock(lock)
+	return fn()
+}
+
+func directRouteMutatesSidebar(path string) bool {
+	switch path {
+	case "sidebar/toggle", "sidebar/open", "sidebar/close",
+		"action/quick-switch", "action/switch", "action/kill", "action/create-project", "action/create-current-git-project", "action/create-adhoc",
+		"hook/client-attached", "hook/client-session-changed":
+		return true
+	default:
+		return false
+	}
 }
 
 func ipcUnavailableForBootstrap(err error) bool {
@@ -299,13 +333,32 @@ func closeSidebar(ctx context.Context, client string, sidebar ports.SidebarPort)
 		}
 		return saveSidebarVisibility(ctx, false, "")
 	}
-	pane, err := sidebar.FindSidebarPaneForClient(ctx, client)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(pane.PaneID) != "" {
+	closedVisible := false
+	for {
+		pane, err := sidebar.FindSidebarPane(ctx, client)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(pane.PaneID) == "" {
+			break
+		}
 		if err := sidebar.ParkSidebarForClient(ctx, client, pane.PaneID); err != nil {
 			return err
+		}
+		closedVisible = true
+	}
+	if !closedVisible {
+		pane, err := sidebar.FindSidebarPaneForClient(ctx, client)
+		if errors.Is(err, ports.ErrDuplicateSidebarPanes) {
+			err = sidebar.RepairSidebarPanesForClient(ctx, client)
+		}
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(pane.PaneID) != "" {
+			if err := sidebar.ParkSidebarForClient(ctx, client, pane.PaneID); err != nil {
+				return err
+			}
 		}
 	}
 	return saveSidebarVisibility(ctx, false, client)
