@@ -35,7 +35,7 @@ func (c Client) findSidebarPanesForClient(ctx context.Context, ownerClientID str
 	refs := []ports.PaneRef{}
 	for _, pane := range panes {
 		if strings.TrimSpace(pane.OwnerClientID) == ownerClientID {
-			refs = append(refs, pane.PaneRef)
+			refs = append(refs, pane)
 		}
 	}
 	return refs, nil
@@ -410,7 +410,7 @@ func (c Client) RepairSidebarPanesForClient(ctx context.Context, ownerClientID s
 	if err != nil {
 		return err
 	}
-	ownerPanes := []markedSidebarPaneOwner{}
+	ownerPanes := []ports.PaneRef{}
 	for _, pane := range panes {
 		if strings.TrimSpace(pane.OwnerClientID) == ownerClientID {
 			ownerPanes = append(ownerPanes, pane)
@@ -427,7 +427,7 @@ func (c Client) ParkAllSidebars(ctx context.Context) error {
 	return c.parkMarkedSidebarPaneOwners(ctx, panes)
 }
 
-func (c Client) parkMarkedSidebarPaneOwners(ctx context.Context, panes []markedSidebarPaneOwner) error {
+func (c Client) parkMarkedSidebarPaneOwners(ctx context.Context, panes []ports.PaneRef) error {
 	keptOwnerPane := map[string]string{}
 	killedPane := map[string]bool{}
 	for _, pane := range panes {
@@ -457,12 +457,7 @@ func (c Client) parkMarkedSidebarPaneOwners(ctx context.Context, panes []markedS
 	return nil
 }
 
-type markedSidebarPaneOwner struct {
-	ports.PaneRef
-	OwnerClientID string
-}
-
-func (c Client) listMarkedSidebarPaneOwners(ctx context.Context) ([]markedSidebarPaneOwner, error) {
+func (c Client) listMarkedSidebarPaneOwners(ctx context.Context) ([]ports.PaneRef, error) {
 	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-f", "#{==:#{" + optionSidebarPane + "},1}", "-F", formatPaneID + "\t" + formatWindowID + "\t#{pane_dead}\t#{" + optionSidebarOwnerClient + "}"})
 	if err != nil {
 		return nil, wrapTmuxError(result, err)
@@ -661,12 +656,12 @@ func parsePaneRefs(output string) ([]ports.PaneRef, error) {
 	return refs, nil
 }
 
-func parseMarkedSidebarPaneOwners(output string) ([]markedSidebarPaneOwner, error) {
+func parseMarkedSidebarPaneOwners(output string) ([]ports.PaneRef, error) {
 	trimmed := strings.TrimSpace(output)
 	if trimmed == "" {
 		return nil, nil
 	}
-	refs := []markedSidebarPaneOwner{}
+	refs := []ports.PaneRef{}
 	for line := range strings.SplitSeq(trimmed, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -676,17 +671,14 @@ func parseMarkedSidebarPaneOwners(output string) ([]markedSidebarPaneOwner, erro
 		if len(fields) < 2 {
 			return nil, fmt.Errorf("parseMarkedSidebarPaneOwners: invalid pane line %q", line)
 		}
-		ownerClientID := ""
-		if len(fields) >= 4 {
-			ownerClientID = strings.TrimSpace(fields[3])
+		ref := ports.PaneRef{
+			PaneID:   strings.TrimSpace(fields[0]),
+			WindowID: strings.TrimSpace(fields[1]),
 		}
-		refs = append(refs, markedSidebarPaneOwner{
-			PaneRef: ports.PaneRef{
-				PaneID:   strings.TrimSpace(fields[0]),
-				WindowID: strings.TrimSpace(fields[1]),
-			},
-			OwnerClientID: ownerClientID,
-		})
+		if len(fields) >= 4 {
+			ref.OwnerClientID = strings.TrimSpace(fields[3])
+		}
+		refs = append(refs, ref)
 	}
 	return refs, nil
 }

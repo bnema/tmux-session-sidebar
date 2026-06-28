@@ -300,14 +300,18 @@ func (c Client) FindSidebarPane(ctx context.Context, target string) (ports.PaneR
 	if err != nil {
 		return ports.PaneRef{}, err
 	}
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-t", windowID, "-F", formatPaneID + "\t" + formatSidebarPane + "\t#{pane_dead}"})
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-t", windowID, "-F", formatPaneID + "\t" + formatSidebarPane + "\t#{pane_dead}\t#{" + optionSidebarOwnerClient + "}"})
 	if err != nil {
 		return ports.PaneRef{}, wrapTmuxError(result, err)
 	}
 	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
 		fields := strings.Split(line, "\t")
 		if len(fields) >= 3 && fields[1] == "1" && !parseTmuxBool(fields[2]) {
-			return ports.PaneRef{PaneID: fields[0], WindowID: windowID}, nil
+			ref := ports.PaneRef{PaneID: fields[0], WindowID: windowID}
+			if len(fields) >= 4 {
+				ref.OwnerClientID = strings.TrimSpace(fields[3])
+			}
+			return ref, nil
 		}
 	}
 	return ports.PaneRef{WindowID: windowID}, nil

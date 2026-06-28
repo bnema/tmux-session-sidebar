@@ -68,8 +68,9 @@ var ErrMultiplexerTargetGone = errors.New("multiplexer target gone")
 var ErrDuplicateSidebarPanes = errors.New("duplicate sidebar panes")
 
 type PaneRef struct {
-	PaneID   string
-	WindowID string
+	PaneID        string
+	WindowID      string
+	OwnerClientID string
 }
 
 type SessionMetadata struct {

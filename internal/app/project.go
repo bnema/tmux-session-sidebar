@@ -175,20 +175,27 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 			if err != nil {
 				return err
 			}
-			if targetRef.PaneID != "" && targetRef.PaneID != ownerPane.PaneID {
-				if err := sidebar.ParkSidebarForClient(ctx, client, targetRef.PaneID); err != nil {
+			mover, ok := sidebar.(ports.SidebarSwitchPort)
+			if targetRef.PaneID != "" {
+				reusableTarget, err := targetSidebarReusableForClient(ctx, targetRef, client)
+				if err != nil {
+					return err
+				}
+				if reusableTarget {
+					if !ok {
+						return fmt.Errorf("target-window sidebar adoption requires atomic tmux move+switch support")
+					}
+					if err := adoptTargetSidebar(ctx, mover, client, sessionName, targetRef, loadSidebarConfig(ctx)); err != nil {
+						return err
+					}
+					saveSidebarVisibilityAfterCommittedSwitch(ctx, client)
+					parkPreviousSidebarAfterAdoption(ctx, sidebar, client, ownerPane, targetRef)
+					return nil
+				}
+				if err := parkNonReusableTargetSidebar(ctx, sidebar, client, ownerPane, targetRef); err != nil {
 					return err
 				}
 			}
-			if ownerPane.PaneID != "" && ownerPane.WindowID != "" && ownerPane.WindowID == targetRef.WindowID {
-				output, err := tmux(ctx, appendSwitchClientArgs(client, sessionName)...)
-				if err != nil {
-					return tmuxCommandError("switch client session", output, err)
-				}
-				saveSidebarVisibilityAfterCommittedSwitch(ctx, client)
-				return nil
-			}
-			mover, ok := sidebar.(ports.SidebarSwitchPort)
 			if !ok {
 				return fmt.Errorf("owner-scoped sidebar switch requires atomic tmux move+switch support")
 			}
@@ -211,6 +218,45 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 		return tmuxCommandError("switch client session", output, err)
 	}
 	return nil
+}
+
+func adoptTargetSidebar(ctx context.Context, mover ports.SidebarSwitchPort, client string, sessionName string, targetRef ports.PaneRef, cfg ports.ConfigSnapshot) error {
+	if err := mover.AttachSidebarForClientAndSwitchClient(ctx, client, sessionName, targetRef.PaneID, cfg.Width); err != nil {
+		return fmt.Errorf("adopt target sidebar and switch to %q: %w", sessionName, err)
+	}
+	return nil
+}
+
+func parkPreviousSidebarAfterAdoption(ctx context.Context, sidebar ports.SidebarPort, client string, ownerPane ports.PaneRef, targetRef ports.PaneRef) {
+	if ownerPane.PaneID == "" || ownerPane.PaneID == targetRef.PaneID {
+		return
+	}
+	if err := sidebar.ParkSidebarForClient(ctx, client, ownerPane.PaneID); err != nil {
+		fmt.Fprintf(os.Stderr, "tmux-session-sidebar: park previous sidebar after switch failed for client %q pane %q: %v\n", client, ownerPane.PaneID, err)
+	}
+}
+
+func parkNonReusableTargetSidebar(ctx context.Context, sidebar ports.SidebarPort, client string, ownerPane ports.PaneRef, targetRef ports.PaneRef) error {
+	if targetRef.PaneID == "" || targetRef.PaneID == ownerPane.PaneID {
+		return nil
+	}
+	targetOwner := strings.TrimSpace(targetRef.OwnerClientID)
+	if targetOwner == "" {
+		targetOwner = client
+	}
+	return sidebar.ParkSidebarForClient(ctx, targetOwner, targetRef.PaneID)
+}
+
+func targetSidebarReusableForClient(ctx context.Context, targetRef ports.PaneRef, client string) (bool, error) {
+	owner := strings.TrimSpace(targetRef.OwnerClientID)
+	if owner == "" || owner == strings.TrimSpace(client) {
+		return true, nil
+	}
+	state, err := persistedSidebarState(ctx)
+	if err != nil {
+		return false, err
+	}
+	return sidebarStateAppliesToClient(state, owner), nil
 }
 
 func saveSidebarVisibilityAfterCommittedSwitch(ctx context.Context, client string) {
