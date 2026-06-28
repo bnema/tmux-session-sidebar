@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
@@ -13,12 +14,13 @@ import (
 const defaultRuntimeEventDebounce = 250 * time.Millisecond
 
 type daemonRuntimeEventProcessorOptions struct {
-	router   Router
-	events   <-chan ports.Request
-	debounce time.Duration
-	ready    func(context.Context) bool
-	stdout   io.Writer
-	stderr   io.Writer
+	router            Router
+	events            <-chan ports.Request
+	debounce          time.Duration
+	ready             func(context.Context) bool
+	stdout            io.Writer
+	stderr            io.Writer
+	sidebarMutationMu *sync.Mutex
 }
 
 func runDaemonRuntimeEventProcessor(ctx context.Context, opts daemonRuntimeEventProcessorOptions) error {
@@ -64,11 +66,19 @@ func runDaemonRuntimeEventProcessor(ctx context.Context, opts daemonRuntimeEvent
 			if ctx.Err() != nil {
 				return nil
 			}
-			if err := opts.router.Handle(ctx, route, opts.stdout, opts.stderr); err != nil {
+			if err := handleRuntimeEventRoute(ctx, opts, route); err != nil {
 				_, _ = fmt.Fprintf(opts.stderr, "tmux-session-sidebar: runtime event %s failed: %v\n", route.Path, err)
 			}
 		}
 	}
+}
+
+func handleRuntimeEventRoute(ctx context.Context, opts daemonRuntimeEventProcessorOptions, route Route) error {
+	if opts.sidebarMutationMu != nil && directRouteMutatesSidebar(route.Path) {
+		opts.sidebarMutationMu.Lock()
+		defer opts.sidebarMutationMu.Unlock()
+	}
+	return opts.router.Handle(ctx, route, opts.stdout, opts.stderr)
 }
 
 func waitRuntimeEvent(ctx context.Context, events <-chan ports.Request) (ports.Request, bool) {

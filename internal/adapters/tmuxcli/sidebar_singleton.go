@@ -10,19 +10,35 @@ import (
 )
 
 func (c Client) FindSidebarPaneForClient(ctx context.Context, ownerClientID string) (ports.PaneRef, error) {
-	ownerClientID = strings.TrimSpace(ownerClientID)
-	if ownerClientID == "" {
-		return ports.PaneRef{}, fmt.Errorf("missing sidebar owner client")
-	}
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-f", "#{&&:#{==:#{" + optionSidebarPane + "},1},#{==:#{" + optionSidebarOwnerClient + "}," + ownerClientID + "}}", "-F", formatPaneID + "\t" + formatWindowID + "\t#{pane_dead}"})
+	refs, err := c.findSidebarPanesForClient(ctx, ownerClientID)
 	if err != nil {
-		return ports.PaneRef{}, wrapTmuxError(result, err)
-	}
-	output := strings.TrimSpace(result.Stdout)
-	if err := c.cleanupDeadPaneRefs(ctx, output); err != nil {
 		return ports.PaneRef{}, err
 	}
-	return parseOptionalPaneRef(filterLivePaneRefs(output))
+	if len(refs) == 0 {
+		return ports.PaneRef{}, nil
+	}
+	if len(refs) > 1 {
+		return ports.PaneRef{}, fmt.Errorf("%w for owner %q: %v", ports.ErrDuplicateSidebarPanes, strings.TrimSpace(ownerClientID), refs)
+	}
+	return refs[0], nil
+}
+
+func (c Client) findSidebarPanesForClient(ctx context.Context, ownerClientID string) ([]ports.PaneRef, error) {
+	ownerClientID = strings.TrimSpace(ownerClientID)
+	if ownerClientID == "" {
+		return nil, fmt.Errorf("missing sidebar owner client")
+	}
+	panes, err := c.listMarkedSidebarPaneOwners(ctx)
+	if err != nil {
+		return nil, err
+	}
+	refs := []ports.PaneRef{}
+	for _, pane := range panes {
+		if strings.TrimSpace(pane.OwnerClientID) == ownerClientID {
+			refs = append(refs, pane.PaneRef)
+		}
+	}
+	return refs, nil
 }
 
 func (c Client) FindSingletonSidebar(ctx context.Context) (ports.PaneRef, error) {
@@ -355,23 +371,107 @@ func (c Client) clearSourceWindowLayoutBestEffort(ctx context.Context, windowID 
 }
 
 func (c Client) ParkSidebarForClient(ctx context.Context, ownerClientID string, paneID string) error {
+	paneID = strings.TrimSpace(paneID)
+	ownerPanes, err := c.findSidebarPanesForClient(ctx, ownerClientID)
+	if err != nil {
+		return err
+	}
+	paneAlreadyOwned := false
+	ownerHasAnotherPane := false
+	for _, ownerPane := range ownerPanes {
+		ownerPaneID := strings.TrimSpace(ownerPane.PaneID)
+		if ownerPaneID == "" {
+			continue
+		}
+		if ownerPaneID == paneID {
+			paneAlreadyOwned = true
+			continue
+		}
+		ownerHasAnotherPane = true
+	}
+	if ownerHasAnotherPane {
+		if paneAlreadyOwned {
+			return c.killPane(ctx, paneID)
+		}
+		return c.ParkSingletonSidebar(ctx, paneID)
+	}
 	if err := c.markSidebarPaneForClient(ctx, paneID, ownerClientID); err != nil {
 		return err
 	}
 	return c.ParkSingletonSidebar(ctx, paneID)
 }
 
-func (c Client) ParkAllSidebars(ctx context.Context) error {
-	panes, err := c.listMarkedSidebarPanes(ctx)
+func (c Client) RepairSidebarPanesForClient(ctx context.Context, ownerClientID string) error {
+	ownerClientID = strings.TrimSpace(ownerClientID)
+	if ownerClientID == "" {
+		return fmt.Errorf("missing sidebar owner client")
+	}
+	panes, err := c.listMarkedSidebarPaneOwners(ctx)
 	if err != nil {
 		return err
 	}
+	ownerPanes := []markedSidebarPaneOwner{}
 	for _, pane := range panes {
-		if err := c.ParkSingletonSidebar(ctx, pane.PaneID); err != nil {
-			return fmt.Errorf("park sidebar pane %s: %w", pane.PaneID, err)
+		if strings.TrimSpace(pane.OwnerClientID) == ownerClientID {
+			ownerPanes = append(ownerPanes, pane)
+		}
+	}
+	return c.parkMarkedSidebarPaneOwners(ctx, ownerPanes)
+}
+
+func (c Client) ParkAllSidebars(ctx context.Context) error {
+	panes, err := c.listMarkedSidebarPaneOwners(ctx)
+	if err != nil {
+		return err
+	}
+	return c.parkMarkedSidebarPaneOwners(ctx, panes)
+}
+
+func (c Client) parkMarkedSidebarPaneOwners(ctx context.Context, panes []markedSidebarPaneOwner) error {
+	keptOwnerPane := map[string]string{}
+	killedPane := map[string]bool{}
+	for _, pane := range panes {
+		owner := strings.TrimSpace(pane.OwnerClientID)
+		paneID := strings.TrimSpace(pane.PaneID)
+		if owner == "" {
+			continue
+		}
+		if keptPaneID := keptOwnerPane[owner]; keptPaneID != "" && keptPaneID != paneID {
+			if err := c.killPane(ctx, paneID); err != nil {
+				return fmt.Errorf("kill duplicate sidebar pane %s for owner %s: %w", paneID, owner, err)
+			}
+			killedPane[paneID] = true
+			continue
+		}
+		keptOwnerPane[owner] = paneID
+	}
+	for _, pane := range panes {
+		paneID := strings.TrimSpace(pane.PaneID)
+		if paneID == "" || killedPane[paneID] {
+			continue
+		}
+		if err := c.ParkSingletonSidebar(ctx, paneID); err != nil {
+			return fmt.Errorf("park sidebar pane %s: %w", paneID, err)
 		}
 	}
 	return nil
+}
+
+type markedSidebarPaneOwner struct {
+	ports.PaneRef
+	OwnerClientID string
+}
+
+func (c Client) listMarkedSidebarPaneOwners(ctx context.Context) ([]markedSidebarPaneOwner, error) {
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-a", "-f", "#{==:#{" + optionSidebarPane + "},1}", "-F", formatPaneID + "\t" + formatWindowID + "\t#{pane_dead}\t#{" + optionSidebarOwnerClient + "}"})
+	if err != nil {
+		return nil, wrapTmuxError(result, err)
+	}
+	output := strings.TrimSpace(result.Stdout)
+	if err := c.cleanupDeadPaneRefs(ctx, output); err != nil {
+		return nil, err
+	}
+	return parseMarkedSidebarPaneOwners(filterLivePaneRefs(output))
 }
 
 func (c Client) ParkSingletonSidebar(ctx context.Context, paneID string) error {
@@ -541,20 +641,6 @@ func filterLivePaneRefs(output string) string {
 	return strings.Join(live, "\n")
 }
 
-func parseOptionalPaneRef(output string) (ports.PaneRef, error) {
-	refs, err := parsePaneRefs(output)
-	if err != nil {
-		return ports.PaneRef{}, err
-	}
-	if len(refs) == 0 {
-		return ports.PaneRef{}, nil
-	}
-	if len(refs) > 1 {
-		return ports.PaneRef{}, fmt.Errorf("parseOptionalPaneRef: multiple marked sidebar panes found: %q", strings.TrimSpace(output))
-	}
-	return refs[0], nil
-}
-
 func parsePaneRefs(output string) ([]ports.PaneRef, error) {
 	trimmed := strings.TrimSpace(output)
 	if trimmed == "" {
@@ -571,6 +657,36 @@ func parsePaneRefs(output string) ([]ports.PaneRef, error) {
 			return nil, err
 		}
 		refs = append(refs, ref)
+	}
+	return refs, nil
+}
+
+func parseMarkedSidebarPaneOwners(output string) ([]markedSidebarPaneOwner, error) {
+	trimmed := strings.TrimSpace(output)
+	if trimmed == "" {
+		return nil, nil
+	}
+	refs := []markedSidebarPaneOwner{}
+	for line := range strings.SplitSeq(trimmed, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) < 2 {
+			return nil, fmt.Errorf("parseMarkedSidebarPaneOwners: invalid pane line %q", line)
+		}
+		ownerClientID := ""
+		if len(fields) >= 4 {
+			ownerClientID = strings.TrimSpace(fields[3])
+		}
+		refs = append(refs, markedSidebarPaneOwner{
+			PaneRef: ports.PaneRef{
+				PaneID:   strings.TrimSpace(fields[0]),
+				WindowID: strings.TrimSpace(fields[1]),
+			},
+			OwnerClientID: ownerClientID,
+		})
 	}
 	return refs, nil
 }

@@ -235,6 +235,10 @@ func (missingRuntime) ParkSidebarForClient(context.Context, string, string) erro
 	return missingDependencyError("multiplexer port")
 }
 
+func (missingRuntime) RepairSidebarPanesForClient(context.Context, string) error {
+	return missingDependencyError("multiplexer port")
+}
+
 func (missingRuntime) ParkAllSidebars(context.Context) error {
 	return missingDependencyError("multiplexer port")
 }

@@ -557,6 +557,63 @@ func (_c *MockSidebarPort_RefreshSidebar_Call) RunAndReturn(run func(ctx context
 	return _c
 }
 
+// RepairSidebarPanesForClient provides a mock function for the type MockSidebarPort
+func (_mock *MockSidebarPort) RepairSidebarPanesForClient(ctx context.Context, ownerClientID string) error {
+	ret := _mock.Called(ctx, ownerClientID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RepairSidebarPanesForClient")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, ownerClientID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockSidebarPort_RepairSidebarPanesForClient_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RepairSidebarPanesForClient'
+type MockSidebarPort_RepairSidebarPanesForClient_Call struct {
+	*mock.Call
+}
+
+// RepairSidebarPanesForClient is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerClientID string
+func (_e *MockSidebarPort_Expecter) RepairSidebarPanesForClient(ctx any, ownerClientID any) *MockSidebarPort_RepairSidebarPanesForClient_Call {
+	return &MockSidebarPort_RepairSidebarPanesForClient_Call{Call: _e.mock.On("RepairSidebarPanesForClient", ctx, ownerClientID)}
+}
+
+func (_c *MockSidebarPort_RepairSidebarPanesForClient_Call) Run(run func(ctx context.Context, ownerClientID string)) *MockSidebarPort_RepairSidebarPanesForClient_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockSidebarPort_RepairSidebarPanesForClient_Call) Return(err error) *MockSidebarPort_RepairSidebarPanesForClient_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockSidebarPort_RepairSidebarPanesForClient_Call) RunAndReturn(run func(ctx context.Context, ownerClientID string) error) *MockSidebarPort_RepairSidebarPanesForClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ScheduleSidebarRestoreOnExit provides a mock function for the type MockSidebarPort
 func (_mock *MockSidebarPort) ScheduleSidebarRestoreOnExit(ctx context.Context, clientID string, paneID string) error {
 	ret := _mock.Called(ctx, clientID, paneID)

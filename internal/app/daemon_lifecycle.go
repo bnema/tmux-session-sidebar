@@ -55,11 +55,12 @@ func (c daemonLifecycleCoordinator) run(ctx context.Context) error {
 	})
 
 	runtimeEvents := make(chan ports.Request, 128)
+	sidebarMutationMu := &sync.Mutex{}
 	var eventWG sync.WaitGroup
-	c.startRuntimeEventProcessor(daemonCtx, runtimeEvents, &eventWG)
+	c.startRuntimeEventProcessor(daemonCtx, runtimeEvents, sidebarMutationMu, &eventWG)
 
 	var ipcWG sync.WaitGroup
-	c.startIPC(daemonCtx, metadata.reconcile, runtimeEvents, &ipcWG)
+	c.startIPC(daemonCtx, metadata.reconcile, runtimeEvents, sidebarMutationMu, &ipcWG)
 
 	err = c.runRefreshLoop(daemonCtx, pendingFullCaptureAt, metadata)
 	stopDaemon()
@@ -91,29 +92,30 @@ func (c daemonLifecycleCoordinator) initializeCapture(ctx context.Context, cfg p
 	return time.Time{}, nil
 }
 
-func (c daemonLifecycleCoordinator) startRuntimeEventProcessor(ctx context.Context, runtimeEvents <-chan ports.Request, eventWG *sync.WaitGroup) {
+func (c daemonLifecycleCoordinator) startRuntimeEventProcessor(ctx context.Context, runtimeEvents <-chan ports.Request, sidebarMutationMu *sync.Mutex, eventWG *sync.WaitGroup) {
 	if c.router == nil {
 		return
 	}
 	eventWG.Go(func() {
 		if err := runDaemonRuntimeEventProcessor(ctx, daemonRuntimeEventProcessorOptions{
-			router: c.router,
-			events: runtimeEvents,
-			ready:  runtimeEventsReadyAfterRestore,
-			stdout: io.Discard,
-			stderr: os.Stderr,
+			router:            c.router,
+			events:            runtimeEvents,
+			ready:             runtimeEventsReadyAfterRestore,
+			stdout:            io.Discard,
+			stderr:            os.Stderr,
+			sidebarMutationMu: sidebarMutationMu,
 		}); err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: runtime event processor failed: %v\n", err)
 		}
 	})
 }
 
-func (c daemonLifecycleCoordinator) startIPC(ctx context.Context, metadataReconcile chan<- struct{}, runtimeEvents chan<- ports.Request, ipcWG *sync.WaitGroup) {
+func (c daemonLifecycleCoordinator) startIPC(ctx context.Context, metadataReconcile chan<- struct{}, runtimeEvents chan<- ports.Request, sidebarMutationMu *sync.Mutex, ipcWG *sync.WaitGroup) {
 	if c.ipcServer == nil || c.router == nil {
 		return
 	}
 	ipcWG.Go(func() {
-		handler := daemonIPCHandler{router: c.router, stdout: io.Discard, stderr: os.Stderr, mu: &sync.Mutex{}, metadataReconcile: metadataReconcile, runtimeEvents: runtimeEvents, expectedScope: c.scope}
+		handler := daemonIPCHandler{router: c.router, stdout: io.Discard, stderr: os.Stderr, mu: sidebarMutationMu, metadataReconcile: metadataReconcile, runtimeEvents: runtimeEvents, expectedScope: c.scope}
 		if err := c.ipcServer.Serve(ctx, handler); err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "tmux-session-sidebar: ipc server failed: %v\n", err)
 		}
