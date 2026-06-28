@@ -1,34 +1,31 @@
 # Agent Instructions
 
-## Architecture map
+## What this project is
 
-- `cmd/tmux-session-sidebar` wires CLI commands, runtime dependencies, and UI runner entry points.
-- `internal/app` coordinates application use cases: daemon loops, hooks, metadata capture, sidebar state, restore/resurrect, IPC, and tmux-facing orchestration.
-- `internal/core` contains domain logic for config, sessions, sidebar layout, heat, search, persisted state, runtime aggregation, and versioning. Keep it adapter-free.
-- `internal/ports` defines boundaries used by app/core code. Adapters implement these ports; avoid importing concrete adapters into core logic.
-- `internal/adapters/*` contains concrete integrations for tmux, git, filesystem watching, state storage, IPC, logging, releases, and process execution.
-- `internal/ports/mocks` contains generated mocks. Regenerate with `make mocks`; do not hand-edit generated files.
-- `scripts/` contains plugin/runtime shell helpers and their shell tests.
-- `plans/` contains executor-oriented implementation plans for larger changes.
+- Go 1.26 TPM plugin/runtime for a left-hand tmux session sidebar.
+- The Go daemon owns the sidebar UI pane, parks it in hidden session `__tmux-session-sidebar`, and shell scripts bootstrap/install/update the runtime binary.
+
+## Architecture boundaries
+
+- `cmd/tmux-session-sidebar`: main entry point and CLI wiring; keep it as thin as possible.
+- `internal/app`: target boundary for new changes is runtime/bootstrap orchestration and dependency injection only.
+- `internal/core`: target home for all entities and business logic; keep it adapter-free.
+- `internal/ports`: interfaces used by app/core. `internal/ports/mocks` is generated; regenerate with `make mocks`, never hand-edit.
+- `internal/adapters/*`: concrete tmux, git, filesystem, IPC, logging, release, process, and watcher integrations behind ports.
+- `scripts/`: plugin/runtime shell helpers and their shell tests.
+- `plans/`: executor-oriented implementation plans; read the relevant plan before executing one.
 
 ## Verification commands
 
-Use focused tests while iterating, then run the relevant gate before handing off:
+- Focused Go tests: `make test-go`
+- Shell/bootstrap tests: `make test-runtime-bootstrap`
+- Race tests: `make test-race`
+- Lint: `make lint`
+- CI-equivalent gate: `make ci`
 
-```bash
-make test-go
-make test-runtime-bootstrap
-make test-race
-make lint
-make ci
-```
+## Runtime/log paths
 
-`make ci` is the CI-equivalent gate: shell/bootstrap tests, race-enabled Go tests, and lint.
-
-## Safety constraints
-
-- Treat tmux runtime state and files under the user's runtime directories as user data. Prefer temporary test directories and injected ports in tests.
-- Be careful with release/update scripts and runtime binary management; avoid changing install/update semantics without shell test coverage.
-- Hook installers edit user-owned agent config files. Preserve user content, comments, permissions, and write config updates atomically.
-- Keep dependency direction clean: app may compose ports and adapters, core should remain independent of adapters, and adapters should stay behind `internal/ports` interfaces.
-- Prefer test-first changes for behavior and performance-sensitive code paths. Preserve behavior for missing tmux sessions, missing git repositories, detached HEADs, malformed state, and disabled config flags.
+- State root: `${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar`.
+- Live daemon stderr log inside tmux: `${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar/servers/<hash>/errors.log`.
+- Outside tmux, legacy log path: `${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar/errors.log`.
+- Optional activity debug log: `${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-sidebar/activity.log`.
