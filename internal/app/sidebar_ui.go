@@ -14,6 +14,8 @@ import (
 type SidebarUIOptions struct {
 	ShowNumericItems        bool
 	Version                 string
+	ReleaseCheckVersion     string
+	SourceBuild             bool
 	CheckUpdateAvailable    func(currentVersion string) (bool, error)
 	MetadataIconMode        viewmodel.MetadataIconMode
 	AgentAttentionAnimation config.AgentAttentionAnimation

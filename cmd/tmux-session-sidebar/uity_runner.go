@@ -17,6 +17,8 @@ func (uiRunner) Run(ctx context.Context, items []viewmodel.TreeItem, actions app
 	model := uity.NewTreeSidebarModelWithOptions(items, toUIActions(actions), uity.SidebarOptions{
 		ShowNumericItems:        options.ShowNumericItems,
 		Version:                 options.Version,
+		ReleaseCheckVersion:     options.ReleaseCheckVersion,
+		SourceBuild:             options.SourceBuild,
 		CheckUpdateAvailable:    options.CheckUpdateAvailable,
 		MetadataIconMode:        uity.MetadataIconMode(options.MetadataIconMode),
 		AgentAttentionAnimation: options.AgentAttentionAnimation,

@@ -568,7 +568,15 @@ func runUIForEnvironment(ctx context.Context, env RuntimeEnvironment, flags map[
 	}
 	persisted, _ := loadSidebarState(ctx)
 	actions := buildSidebarActions(ctx, flags, stdout, sidebar, ipcClient)
-	options := SidebarUIOptions{Version: version, CheckUpdateAvailable: newUpdateAvailableCheck(ctx, env.runtimeReleaseChecker()), AgentAttentionAnimation: cfg.AgentAttentionAnimation, Appearance: cfg.ColorSchemeAppearance}
+	build := currentBuildMetadata()
+	options := SidebarUIOptions{
+		Version:                 build.Display(),
+		ReleaseCheckVersion:     build.ReleaseCheckVersion(),
+		SourceBuild:             build.IsSource(),
+		CheckUpdateAvailable:    newUpdateAvailableCheck(ctx, env.runtimeReleaseChecker()),
+		AgentAttentionAnimation: cfg.AgentAttentionAnimation,
+		Appearance:              cfg.ColorSchemeAppearance,
+	}
 	if persisted.Sidebar != nil {
 		options.ShowNumericItems = persisted.Sidebar.ShowNumericSessions
 	}

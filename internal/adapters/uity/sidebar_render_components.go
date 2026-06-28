@@ -127,7 +127,7 @@ func (m SidebarModel) collapsedHelpLine(styles sidebarStyles) string {
 
 func displayVersion(version string) string {
 	version = strings.TrimSpace(version)
-	if version == "" || version == "dev" || strings.HasPrefix(version, "v") {
+	if version == "" || version == "dev" || strings.HasPrefix(version, "v") || strings.HasPrefix(version, "dev.") {
 		return version
 	}
 	return "v" + version

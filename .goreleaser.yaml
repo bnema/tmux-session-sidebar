@@ -24,6 +24,9 @@ builds:
         -X github.com/bnema/tmux-session-sidebar/internal/app.commit={{ .Commit }}
         -X github.com/bnema/tmux-session-sidebar/internal/app.date={{ .CommitDate }}
         -X github.com/bnema/tmux-session-sidebar/internal/app.builtBy=goreleaser
+        -X github.com/bnema/tmux-session-sidebar/internal/app.tag={{ .Tag }}
+        -X github.com/bnema/tmux-session-sidebar/internal/app.distance=0
+        -X github.com/bnema/tmux-session-sidebar/internal/app.dirty=false
 
 archives:
   - id: tmux-session-sidebar

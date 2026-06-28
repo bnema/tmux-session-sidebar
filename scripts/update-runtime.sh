@@ -125,6 +125,29 @@ plugin_head() {
   printf 'unknown\n'
 }
 
+source_build_ldflags() {
+  local commit date describe dirty dirty_status distance ldflags_prefix rest short_commit tag version
+  [ -n "$GIT_BIN" ] || return 1
+  describe="$($GIT_BIN -C "$PLUGIN_DIR" describe --tags --long --match 'v[0-9]*' 2>/dev/null)" || return 1
+  commit="$($GIT_BIN -C "$PLUGIN_DIR" rev-parse HEAD 2>/dev/null)" || return 1
+  date="$($GIT_BIN -C "$PLUGIN_DIR" show -s --format=%cI HEAD 2>/dev/null)" || return 1
+  dirty_status="$($GIT_BIN -C "$PLUGIN_DIR" status --porcelain --untracked-files=all -- . ':(exclude).bin' 2>/dev/null)" || return 1
+
+  short_commit="${describe##*-}"
+  rest="${describe%-*}"
+  distance="${rest##*-}"
+  tag="${rest%-*}"
+  [ -n "$tag" ] || return 1
+  [ -n "$distance" ] || return 1
+  [ -n "$short_commit" ] || return 1
+
+  dirty=false
+  [ -z "$dirty_status" ] || dirty=true
+  version="$tag"
+  ldflags_prefix="github.com/bnema/tmux-session-sidebar/internal/app"
+  printf '%s\n' "-X $ldflags_prefix.version=$version -X $ldflags_prefix.commit=$commit -X $ldflags_prefix.date=$date -X $ldflags_prefix.builtBy=source -X $ldflags_prefix.tag=$tag -X $ldflags_prefix.distance=$distance -X $ldflags_prefix.dirty=$dirty"
+}
+
 release_os() {
   [ -n "$UNAME_BIN" ] || return 1
   case "$($UNAME_BIN -s 2>/dev/null || true)" in
@@ -316,11 +339,16 @@ download_release_candidate() {
 }
 
 build_source_candidate() {
-  local candidate="$1"
+  local candidate="$1" ldflags
   [ -n "$GO_BIN" ] || return 1
+  ldflags="$(source_build_ldflags 2>/dev/null || true)"
   "$MKDIR_BIN" -p "$("$DIRNAME_BIN" "$candidate")" || return 1
   log_update "building runtime candidate at $candidate"
-  (cd "$PLUGIN_DIR" && "$GO_BIN" build -o "$candidate" ./cmd/tmux-session-sidebar) || return 1
+  if [ -n "$ldflags" ]; then
+    (cd "$PLUGIN_DIR" && "$GO_BIN" build -ldflags "$ldflags" -o "$candidate" ./cmd/tmux-session-sidebar) || return 1
+  else
+    (cd "$PLUGIN_DIR" && "$GO_BIN" build -o "$candidate" ./cmd/tmux-session-sidebar) || return 1
+  fi
   validate_runtime "$candidate" || return 1
 }
 

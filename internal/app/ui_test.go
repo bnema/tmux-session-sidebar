@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/internal/core/attention"
 	"github.com/bnema/tmux-session-sidebar/internal/core/config"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
+	"github.com/bnema/tmux-session-sidebar/internal/viewmodel"
 )
 
 func TestDefaultSidebarConfigIncludesSidebarWidth(t *testing.T) {
@@ -72,6 +74,82 @@ esac
 	}
 	if got := string(logData); !strings.Contains(got, "switch-client -c client-2 -t =beta:") {
 		t.Fatalf("switch target used stale client, log = %q", got)
+	}
+}
+
+type noopSidebarPort struct{}
+
+func (noopSidebarPort) CloseAfterSwitch(context.Context) (bool, error) { return false, nil }
+func (noopSidebarPort) FindSidebarPane(context.Context, string) (ports.PaneRef, error) {
+	return ports.PaneRef{}, nil
+}
+func (noopSidebarPort) FindSidebarPaneForClient(context.Context, string) (ports.PaneRef, error) {
+	return ports.PaneRef{}, nil
+}
+func (noopSidebarPort) EnsureSidebarForClient(context.Context, string, []string) (ports.PaneRef, error) {
+	return ports.PaneRef{}, nil
+}
+func (noopSidebarPort) AttachSidebarForClient(context.Context, string, string, string, string) (ports.PaneRef, error) {
+	return ports.PaneRef{}, nil
+}
+func (noopSidebarPort) ParkSidebarForClient(context.Context, string, string) error { return nil }
+func (noopSidebarPort) RepairSidebarPanesForClient(context.Context, string) error  { return nil }
+func (noopSidebarPort) ParkAllSidebars(context.Context) error                      { return nil }
+func (noopSidebarPort) RefreshSidebar(context.Context, string) error               { return nil }
+func (noopSidebarPort) ScheduleSidebarRestoreOnExit(context.Context, string, string) error {
+	return nil
+}
+
+type capturingSidebarUIRunner struct {
+	options *SidebarUIOptions
+}
+
+func (r capturingSidebarUIRunner) Run(_ context.Context, _ []viewmodel.TreeItem, _ SidebarUIActions, options SidebarUIOptions, _ io.Writer) error {
+	*r.options = options
+	return nil
+}
+
+func TestRunUIForEnvironmentPassesBuildMetadataOptions(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	installFakeTmux(t, `#!/usr/bin/env bash
+case "$1" in
+  show-options) printf '\n' ;;
+  display-message) printf 'alpha\n' ;;
+  list-sessions) printf '$1\talpha\t1\t1\n' ;;
+  list-clients) ;;
+  *) printf 'unexpected tmux command: %s\n' "$*" >&2; exit 1 ;;
+esac
+`)
+	oldVersion, oldCommit, oldDate, oldBuiltBy, oldTag, oldDistance, oldDirty := version, commit, date, builtBy, tag, distance, dirty
+	oldReadBuildInfo := readBuildInfo
+	readBuildInfo = func() (*debug.BuildInfo, bool) { return nil, false }
+	version, commit, date, builtBy, tag, distance, dirty = "0.23.1", "abc123456789", "2026-05-25T07:00:00Z", "source", "v0.23.0", "2", "true"
+	defer func() {
+		version, commit, date, builtBy, tag, distance, dirty = oldVersion, oldCommit, oldDate, oldBuiltBy, oldTag, oldDistance, oldDirty
+		readBuildInfo = oldReadBuildInfo
+	}()
+
+	captured := SidebarUIOptions{}
+	deps := runtimeDependencies()
+	updatedDeps := deps
+	updatedDeps.SidebarUI = capturingSidebarUIRunner{options: &captured}
+	SetRuntimeDependencies(updatedDeps)
+	t.Cleanup(func() { SetRuntimeDependencies(deps) })
+
+	if err := runUIForEnvironment(context.Background(), currentRuntimeEnvironment(), map[string]string{}, io.Discard, noopSidebarPort{}, nil); err != nil {
+		t.Fatalf("runUIForEnvironment error: %v", err)
+	}
+	if captured.Version != "v0.23.0+2.gabc1234*" || captured.ReleaseCheckVersion != "" || !captured.SourceBuild {
+		t.Fatalf("sidebar options = %#v, want source build metadata", captured)
+	}
+
+	version, commit, date, builtBy, tag, distance, dirty = "0.23.1", "abc123456789", "2026-05-25T07:00:00Z", "goreleaser", "v0.23.1", "0", "false"
+	captured = SidebarUIOptions{}
+	if err := runUIForEnvironment(context.Background(), currentRuntimeEnvironment(), map[string]string{}, io.Discard, noopSidebarPort{}, nil); err != nil {
+		t.Fatalf("runUIForEnvironment release error: %v", err)
+	}
+	if captured.Version != "v0.23.1" || captured.ReleaseCheckVersion != "v0.23.1" || captured.SourceBuild {
+		t.Fatalf("sidebar options = %#v, want release build metadata", captured)
 	}
 }
 

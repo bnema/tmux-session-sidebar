@@ -11,7 +11,7 @@ import (
 func TestUpdateCheckStateInitStartsImmediateCheckAndSchedulesTick(t *testing.T) {
 	calls := 0
 	ticks := make([]time.Duration, 0, 1)
-	state := newUpdateCheckState("0.10.2", func(current string) (bool, error) {
+	state := newUpdateCheckState("0.10.2", "0.10.2", false, func(current string) (bool, error) {
 		calls++
 		if current != "0.10.2" {
 			t.Fatalf("current version = %q, want 0.10.2", current)
@@ -45,7 +45,7 @@ func TestUpdateCheckStateInitStartsImmediateCheckAndSchedulesTick(t *testing.T) 
 func TestUpdateCheckStateTickStartsCheckAndSchedulesNextTick(t *testing.T) {
 	calls := 0
 	ticks := 0
-	state := newUpdateCheckState("v0.10.2", func(string) (bool, error) {
+	state := newUpdateCheckState("v0.10.2", "v0.10.2", false, func(string) (bool, error) {
 		calls++
 		return false, nil
 	})
@@ -74,6 +74,34 @@ func TestUpdateCheckStateTickStartsCheckAndSchedulesNextTick(t *testing.T) {
 	}
 }
 
+func TestUpdateCheckStateTreatsSourceBuildAsAvailableWithoutRemoteCheck(t *testing.T) {
+	state := newUpdateCheckState("v0.23.1+2.gabc1234*", "", true, func(string) (bool, error) {
+		t.Fatal("source build should not run remote update check")
+		return false, nil
+	})
+	if !state.available {
+		t.Fatal("source build should show update indicator")
+	}
+	if cmd := state.initCmd(); cmd != nil {
+		t.Fatal("source build should not schedule update check")
+	}
+}
+
+func TestUpdateCheckStateUsesReleaseCheckVersionForRemoteCheck(t *testing.T) {
+	state := newUpdateCheckState("v0.23.1+2.gabc1234*", "v0.23.1", false, func(current string) (bool, error) {
+		if current != "v0.23.1" {
+			t.Fatalf("current version = %q, want release check version", current)
+		}
+		return false, nil
+	})
+	state.pending = false
+	if _, cmd := state.startCheckCmd(); cmd == nil {
+		t.Fatal("release build should schedule update check")
+	} else {
+		runUpdateCheckCmd(t, cmd)
+	}
+}
+
 func TestUpdateCheckStateStopsWhenNotCheckableOrAvailable(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -88,7 +116,7 @@ func TestUpdateCheckStateStopsWhenNotCheckableOrAvailable(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			state := newUpdateCheckState(tt.version, tt.check)
+			state := newUpdateCheckState(tt.version, tt.version, false, tt.check)
 			state.available = tt.available
 			state.tick = func(time.Duration) tea.Cmd {
 				t.Fatal("tick should not be scheduled")
@@ -105,7 +133,7 @@ func TestUpdateCheckStateStopsWhenNotCheckableOrAvailable(t *testing.T) {
 }
 
 func TestUpdateCheckStateStopsAfterUpdateFound(t *testing.T) {
-	state := newUpdateCheckState("0.10.2", func(string) (bool, error) {
+	state := newUpdateCheckState("0.10.2", "0.10.2", false, func(string) (bool, error) {
 		return true, nil
 	})
 	state.pending = false
@@ -137,7 +165,7 @@ func TestUpdateCheckStateStopsAfterUpdateFound(t *testing.T) {
 func TestUpdateCheckStateDoesNotOverlapChecks(t *testing.T) {
 	calls := 0
 	ticks := 0
-	state := newUpdateCheckState("0.10.2", func(string) (bool, error) {
+	state := newUpdateCheckState("0.10.2", "0.10.2", false, func(string) (bool, error) {
 		calls++
 		return false, nil
 	})
@@ -164,7 +192,7 @@ func TestUpdateCheckStateDoesNotOverlapChecks(t *testing.T) {
 }
 
 func TestUpdateCheckStateClearsPendingOnError(t *testing.T) {
-	state := newUpdateCheckState("0.10.2", func(string) (bool, error) {
+	state := newUpdateCheckState("0.10.2", "0.10.2", false, func(string) (bool, error) {
 		return false, errors.New("network")
 	})
 	state.pending = false
