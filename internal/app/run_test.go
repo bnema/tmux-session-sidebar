@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"testing"
@@ -127,28 +128,66 @@ func TestRunTreatsDaemonServeContextCanceledAsCleanShutdown(t *testing.T) {
 }
 
 func TestRunShowsVersion(t *testing.T) {
-	oldVersion, oldCommit, oldDate, oldBuiltBy := version, commit, date, builtBy
-	version, commit, date, builtBy = "1.2.3", "abc123", "2026-05-25T07:00:00Z", "test"
-	defer func() { version, commit, date, builtBy = oldVersion, oldCommit, oldDate, oldBuiltBy }()
+	oldVersion, oldCommit, oldDate, oldBuiltBy, oldTag, oldDistance, oldDirty := version, commit, date, builtBy, tag, distance, dirty
+	oldReadBuildInfo := readBuildInfo
+	readBuildInfo = func() (*debug.BuildInfo, bool) { return nil, false }
+	defer func() {
+		version, commit, date, builtBy, tag, distance, dirty = oldVersion, oldCommit, oldDate, oldBuiltBy, oldTag, oldDistance, oldDirty
+		readBuildInfo = oldReadBuildInfo
+	}()
 
-	stdout := new(bytes.Buffer)
-	stderr := new(bytes.Buffer)
-	router := &recordingRouter{}
+	tests := []struct {
+		name      string
+		settings  [7]string
+		firstLine string
+		wantLines []string
+	}{
+		{
+			name:      "source build",
+			settings:  [7]string{"0.23.1", "abc123456789", "2026-05-25T07:00:00Z", "source", "v0.23.0", "2", "true"},
+			firstLine: "tmux-session-sidebar v0.23.0+2.gabc1234*",
+			wantLines: []string{"commit: abc123456789", "tag: v0.23.0", "distance: 2", "dirty: true", "date: 2026-05-25T07:00:00Z", "builtBy: source"},
+		},
+		{
+			name:      "release build",
+			settings:  [7]string{"0.23.1", "abc123456789", "2026-05-25T07:00:00Z", "goreleaser", "v0.23.1", "0", "false"},
+			firstLine: "tmux-session-sidebar v0.23.1",
+			wantLines: []string{"commit: abc123456789", "tag: v0.23.1", "distance: 0", "dirty: false", "date: 2026-05-25T07:00:00Z", "builtBy: goreleaser"},
+		},
+		{
+			name:      "unknown metadata placeholders",
+			settings:  [7]string{"dev", "unknown", "unknown", "source", "", "", ""},
+			firstLine: "tmux-session-sidebar dev",
+			wantLines: []string{"commit: unknown", "tag: ", "distance: ", "dirty: unknown", "date: unknown", "builtBy: source"},
+		},
+	}
 
-	exitCode := Run(context.Background(), []string{"version"}, stdout, stderr, router)
-	if exitCode != 0 {
-		t.Fatalf("exit code = %d, want 0; stderr=%q", exitCode, stderr.String())
-	}
-	if got := stderr.String(); got != "" {
-		t.Fatalf("stderr = %q, want empty", got)
-	}
-	for _, want := range []string{"tmux-session-sidebar 1.2.3", "commit: abc123", "date: 2026-05-25T07:00:00Z", "builtBy: test"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
-		}
-	}
-	if router.route.Path != "" {
-		t.Fatalf("route = %q, want no dispatch", router.route.Path)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			version, commit, date, builtBy, tag, distance, dirty = tt.settings[0], tt.settings[1], tt.settings[2], tt.settings[3], tt.settings[4], tt.settings[5], tt.settings[6]
+			stdout := new(bytes.Buffer)
+			stderr := new(bytes.Buffer)
+			router := &recordingRouter{}
+
+			exitCode := Run(context.Background(), []string{"version"}, stdout, stderr, router)
+			if exitCode != 0 {
+				t.Fatalf("exit code = %d, want 0; stderr=%q", exitCode, stderr.String())
+			}
+			if got := stderr.String(); got != "" {
+				t.Fatalf("stderr = %q, want empty", got)
+			}
+			if firstLine := strings.Split(strings.TrimSpace(stdout.String()), "\n")[0]; firstLine != tt.firstLine {
+				t.Fatalf("first line = %q, want %q\n%s", firstLine, tt.firstLine, stdout.String())
+			}
+			for _, want := range tt.wantLines {
+				if !strings.Contains(stdout.String(), want) {
+					t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
+				}
+			}
+			if router.route.Path != "" {
+				t.Fatalf("route = %q, want no dispatch", router.route.Path)
+			}
+		})
 	}
 }
 

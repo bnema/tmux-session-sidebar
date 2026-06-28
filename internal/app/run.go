@@ -18,10 +18,13 @@ type Router interface {
 }
 
 var (
-	version = "dev"
-	commit  = "unknown"
-	date    = "unknown"
-	builtBy = "source"
+	version  = "dev"
+	commit   = "unknown"
+	date     = "unknown"
+	builtBy  = "source"
+	tag      = ""
+	distance = ""
+	dirty    = ""
 )
 
 type runtimeError struct {
@@ -72,8 +75,12 @@ func newRootCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, rou
 		Short: "Print version information",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			_, _ = fmt.Fprintf(stdout, "tmux-session-sidebar %s\ncommit: %s\ndate: %s\nbuiltBy: %s\n", version, commit, date, builtBy)
-			return nil
+			meta := currentBuildMetadata()
+			_, err := fmt.Fprintf(stdout,
+				"tmux-session-sidebar %s\ncommit: %s\ntag: %s\ndistance: %s\ndirty: %s\ndate: %s\nbuiltBy: %s\n",
+				meta.Display(), meta.DetailCommit(), meta.Tag, meta.DistanceString(), meta.DirtyString(), meta.DetailDate(), meta.BuiltBy,
+			)
+			return err
 		},
 	})
 	command.AddCommand(leafCommand("self-update", "Update the installed plugin runtime", runRoute("runtime/self-update")))

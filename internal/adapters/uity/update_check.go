@@ -20,7 +20,7 @@ type updateCheckTickMsg struct{}
 type updateCheckTickFunc func(time.Duration) tea.Cmd
 
 type updateCheckState struct {
-	version              string
+	releaseCheckVersion  string
 	checkUpdateAvailable func(currentVersion string) (bool, error)
 	available            bool
 	pending              bool
@@ -28,11 +28,13 @@ type updateCheckState struct {
 	tick                 updateCheckTickFunc
 }
 
-func newUpdateCheckState(version string, check func(currentVersion string) (bool, error)) updateCheckState {
+func newUpdateCheckState(version string, releaseCheckVersion string, sourceBuild bool, check func(currentVersion string) (bool, error)) updateCheckState {
+	version = strings.TrimSpace(version)
+	releaseCheckVersion = strings.TrimSpace(releaseCheckVersion)
 	state := updateCheckState{
-		version:              version,
+		releaseCheckVersion:  releaseCheckVersion,
 		checkUpdateAvailable: check,
-		available:            displayVersion(version) == "dev",
+		available:            sourceBuild || displayVersion(version) == "dev",
 		interval:             updateCheckInterval,
 		tick:                 defaultUpdateCheckTick,
 	}
@@ -86,7 +88,7 @@ func (s updateCheckState) startCheckCmd() (updateCheckState, tea.Cmd) {
 
 func (s updateCheckState) checkCmd() tea.Cmd {
 	return func() tea.Msg {
-		available, err := s.checkUpdateAvailable(s.version)
+		available, err := s.checkUpdateAvailable(s.releaseCheckVersion)
 		if err != nil {
 			return updateAvailableMsg{}
 		}
@@ -106,5 +108,5 @@ func (s updateCheckState) tickCmd() tea.Cmd {
 }
 
 func (s updateCheckState) shouldCheck() bool {
-	return !s.available && s.checkUpdateAvailable != nil && coreversion.CheckableReleaseVersion(strings.TrimSpace(s.version))
+	return !s.available && s.checkUpdateAvailable != nil && coreversion.CheckableReleaseVersion(s.releaseCheckVersion)
 }

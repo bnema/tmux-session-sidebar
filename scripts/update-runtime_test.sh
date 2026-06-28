@@ -227,6 +227,105 @@ exit "$status"
 EOF
 }
 
+run_source_build_ldflags_probe() {
+  local root="$1" dirty_state="${2:-dirty}"
+  TEST_ROOT="$root" TEST_DIRTY_STATE="$dirty_state" UPDATE_RUNTIME_PATH="$root/plugin/scripts/update-runtime.sh" bash <<'EOF'
+set -euo pipefail
+
+temp_script="$TEST_ROOT/sourceable-update-runtime.sh"
+sed '$d' "$UPDATE_RUNTIME_PATH" >"$temp_script"
+cat >"$TEST_ROOT/fake-git" <<'GITFAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'git %s\n' "$*" >>"$TEST_ROOT/git.log"
+[ "${1:-}" = -C ] && shift 2
+case "${1:-}" in
+  describe)
+    [ "$*" = "describe --tags --long --match v[0-9]*" ] || exit 9
+    printf 'v1.2.3-4-gabc1234\n'
+    ;;
+  rev-parse)
+    [ "${2:-}" = HEAD ] || exit 9
+    printf 'abcdef1234567890abcdef1234567890abcdef12\n'
+    ;;
+  show)
+    [ "$*" = "show -s --format=%cI HEAD" ] || exit 9
+    printf '2026-06-28T12:34:56+00:00\n'
+    ;;
+  status)
+    case "$*" in
+      status\ --porcelain\ --untracked-files=all\ --\ .\ :\(exclude\).bin) ;;
+      *) exit 9 ;;
+    esac
+    case "${TEST_DIRTY_STATE:-dirty}" in
+      dirty) printf '?? untracked-file\n' ;;
+      runtime) : ;; # updater-owned .bin files are excluded by the pathspec.
+      clean) : ;;
+      *) exit 9 ;;
+    esac
+    ;;
+  *) exit 9 ;;
+esac
+GITFAKE
+chmod +x "$TEST_ROOT/fake-git"
+# shellcheck source=/dev/null
+source "$temp_script"
+GIT_BIN="$TEST_ROOT/fake-git"
+PLUGIN_DIR="$TEST_ROOT/plugin"
+source_build_ldflags
+EOF
+}
+
+run_source_build_candidate_fallback_probe() {
+  local root="$1"
+  TEST_ROOT="$root" UPDATE_RUNTIME_PATH="$root/plugin/scripts/update-runtime.sh" bash <<'EOF'
+set -euo pipefail
+
+temp_script="$TEST_ROOT/sourceable-update-runtime.sh"
+sed '$d' "$UPDATE_RUNTIME_PATH" >"$temp_script"
+cat >"$TEST_ROOT/fake-git" <<'GITFAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'git %s\n' "$*" >>"$TEST_ROOT/git-fallback.log"
+[ "${1:-}" = -C ] && shift 2
+case "${1:-}" in
+  describe) exit 1 ;;
+  *) exit 9 ;;
+esac
+GITFAKE
+chmod +x "$TEST_ROOT/fake-git"
+cat >"$TEST_ROOT/fake-go" <<'GOFAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'go %s\n' "$*" >>"$TEST_ROOT/go-fallback.log"
+out=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) shift; out="$1" ;;
+  esac
+  shift || true
+done
+[ -n "$out" ] || exit 9
+cat >"$out" <<'RUNTIME'
+#!/usr/bin/env bash
+if [ "${1:-}" = version ]; then
+  echo "tmux-session-sidebar dev"
+else
+  echo source-runtime
+fi
+RUNTIME
+chmod +x "$out"
+GOFAKE
+chmod +x "$TEST_ROOT/fake-go"
+# shellcheck source=/dev/null
+source "$temp_script"
+GIT_BIN="$TEST_ROOT/fake-git"
+GO_BIN="$TEST_ROOT/fake-go"
+PLUGIN_DIR="$TEST_ROOT/plugin"
+build_source_candidate "$TEST_ROOT/plugin/.bin/fallback-runtime"
+EOF
+}
+
 test_manual_update_refreshes_release_replaces_runtime_and_restarts_tmux() {
   local root expected
   root="$(new_fixture)"
@@ -364,11 +463,67 @@ test_make_update_runtime_target_uses_central_update_path() {
   assert_file_contains "$(dirname "$0")/../Makefile" "@TMUX_SESSION_SIDEBAR_BUILD_FROM_SOURCE=1 bash scripts/update-runtime.sh" "restart-runtime target should use the central one-shot source updater"
 }
 
+test_source_build_ldflags_include_git_metadata_and_dirty_state() {
+  local root output
+  root="$(new_fixture)"
+  output="$root/source-ldflags.txt"
+
+  run_source_build_ldflags_probe "$root" >"$output"
+
+  assert_file_contains "$output" "github.com/bnema/tmux-session-sidebar/internal/app.version=v1.2.3" "source ldflags should include version from git tag"
+  assert_file_contains "$output" "github.com/bnema/tmux-session-sidebar/internal/app.commit=abcdef1234567890abcdef1234567890abcdef12" "source ldflags should include full commit"
+  assert_file_contains "$output" "github.com/bnema/tmux-session-sidebar/internal/app.date=2026-06-28T12:34:56+00:00" "source ldflags should include commit date"
+  assert_file_contains "$output" "github.com/bnema/tmux-session-sidebar/internal/app.builtBy=source" "source ldflags should identify source builds"
+  assert_file_contains "$output" "github.com/bnema/tmux-session-sidebar/internal/app.tag=v1.2.3" "source ldflags should include tag"
+  assert_file_contains "$output" "github.com/bnema/tmux-session-sidebar/internal/app.distance=4" "source ldflags should include distance"
+  assert_file_contains "$output" "github.com/bnema/tmux-session-sidebar/internal/app.dirty=true" "source ldflags should mark fake untracked state dirty"
+  assert_file_contains "$root/git.log" ":(exclude).bin" "dirty detection should ignore updater-owned runtime files"
+}
+
+
+test_source_build_ldflags_marks_clean_git_state() {
+  local root output
+  root="$(new_fixture)"
+  output="$root/source-ldflags-clean.txt"
+
+  run_source_build_ldflags_probe "$root" clean >"$output"
+
+  assert_file_contains "$output" "github.com/bnema/tmux-session-sidebar/internal/app.dirty=false" "source ldflags should mark empty status clean"
+  assert_file_contains "$root/git.log" ":(exclude).bin" "clean dirty detection should ignore updater-owned runtime files"
+}
+
+
+test_source_build_ldflags_ignores_runtime_files() {
+  local root output
+  root="$(new_fixture)"
+  output="$root/source-ldflags-runtime.txt"
+
+  run_source_build_ldflags_probe "$root" runtime >"$output"
+
+  assert_file_contains "$output" "github.com/bnema/tmux-session-sidebar/internal/app.dirty=false" "source ldflags should ignore updater-owned runtime files"
+  assert_file_contains "$root/git.log" ":(exclude).bin" "dirty detection should exclude runtime artifacts"
+}
+
+
+test_source_build_candidate_falls_back_without_ldflags_when_describe_fails() {
+  local root
+  root="$(new_fixture)"
+
+  run_source_build_candidate_fallback_probe "$root"
+
+  assert_file_contains "$root/go-fallback.log" "go build -o $root/plugin/.bin/fallback-runtime ./cmd/tmux-session-sidebar" "source build should fall back to plain go build when git describe fails"
+  assert_file_not_contains "$root/go-fallback.log" "-ldflags" "fallback source build should not pass ldflags"
+}
+
 test_manual_update_refreshes_release_replaces_runtime_and_restarts_tmux
 test_invalid_candidate_preserves_existing_runtime_and_does_not_restart
 test_release_only_update_does_not_fall_back_to_source_build
 test_restart_failure_restores_previous_runtime_and_stamp
 test_make_update_runtime_target_uses_central_update_path
+test_source_build_ldflags_include_git_metadata_and_dirty_state
+test_source_build_ldflags_marks_clean_git_state
+test_source_build_ldflags_ignores_runtime_files
+test_source_build_candidate_falls_back_without_ldflags_when_describe_fails
 
 # ---------------------------------------------------------------------------
 # Signature verification tests

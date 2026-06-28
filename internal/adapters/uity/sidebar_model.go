@@ -82,6 +82,8 @@ type SelfUpdateFinishedMsg struct {
 type SidebarOptions struct {
 	ShowNumericItems        bool
 	Version                 string
+	ReleaseCheckVersion     string
+	SourceBuild             bool
 	CheckUpdateAvailable    func(currentVersion string) (bool, error)
 	MetadataIconMode        MetadataIconMode
 	AgentAttentionAnimation config.AgentAttentionAnimation
@@ -150,7 +152,7 @@ func NewTreeSidebarModelWithOptions(treeItems []TreeItem, actions Actions, optio
 		mode:                             ModeBrowse,
 		showNumeric:                      options.ShowNumericItems,
 		version:                          options.Version,
-		updateCheck:                      newUpdateCheckState(options.Version, options.CheckUpdateAvailable),
+		updateCheck:                      newUpdateCheckState(options.Version, options.ReleaseCheckVersion, options.SourceBuild, options.CheckUpdateAvailable),
 		updateSpinner:                    updateSpinner,
 		metadataIconMode:                 iconMode,
 		appearance:                       options.Appearance,

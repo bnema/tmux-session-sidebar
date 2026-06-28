@@ -60,8 +60,21 @@ func TestSidebarModelViewEnablesMouseWheelEvents(t *testing.T) {
 	}
 }
 
+func TestSidebarStatusBarRendersSourceBuildDisplay(t *testing.T) {
+	tests := []string{"v0.23.1+2.gabc1234*", "dev.gabc1234*"}
+	for _, version := range tests {
+		t.Run(version, func(t *testing.T) {
+			model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: version, SourceBuild: true, Appearance: config.ColorSchemeAppearanceDark})
+			line := stripANSI(model.statusBarLines(newSidebarStylesForAppearance(config.ColorSchemeAppearanceDark))[0])
+			if !strings.Contains(line, version) {
+				t.Fatalf("status line = %q, want source build display %q", line, version)
+			}
+		})
+	}
+}
+
 func TestSidebarModelFocusChangesReleaseBadgeBackgroundOnly(t *testing.T) {
-	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "1.2.3", Appearance: config.ColorSchemeAppearanceDark})
+	model := newTestSidebarModelWithOptions([]SessionItem{{Name: "alpha"}}, Actions{}, SidebarOptions{Version: "1.2.3", ReleaseCheckVersion: "1.2.3", Appearance: config.ColorSchemeAppearanceDark})
 	model.updateCheck.available = true
 	styles := newSidebarStylesForAppearance(config.ColorSchemeAppearanceDark)
 	unfocusedLine := model.statusBarLines(styles)[0]
