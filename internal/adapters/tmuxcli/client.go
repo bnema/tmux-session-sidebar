@@ -296,21 +296,42 @@ func (c Client) WindowID(ctx context.Context, target string) (string, error) {
 }
 
 func (c Client) FindSidebarPane(ctx context.Context, target string) (ports.PaneRef, error) {
-	windowID, err := c.WindowID(ctx, target)
+	refs, windowID, err := c.findSidebarPanes(ctx, target)
 	if err != nil {
 		return ports.PaneRef{}, err
 	}
-	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-t", windowID, "-F", formatPaneID + "\t" + formatSidebarPane + "\t#{pane_dead}"})
-	if err != nil {
-		return ports.PaneRef{}, wrapTmuxError(result, err)
+	if len(refs) == 0 {
+		return ports.PaneRef{WindowID: windowID}, nil
 	}
+	return refs[0], nil
+}
+
+func (c Client) FindSidebarPanes(ctx context.Context, target string) ([]ports.PaneRef, error) {
+	refs, _, err := c.findSidebarPanes(ctx, target)
+	return refs, err
+}
+
+func (c Client) findSidebarPanes(ctx context.Context, target string) ([]ports.PaneRef, string, error) {
+	windowID, err := c.WindowID(ctx, target)
+	if err != nil {
+		return nil, "", err
+	}
+	result, err := c.Process.Exec(ctx, tmuxBinary, []string{cmdListPanes, "-t", windowID, "-F", formatPaneID + "\t" + formatSidebarPane + "\t#{pane_dead}\t#{" + optionSidebarOwnerClient + "}"})
+	if err != nil {
+		return nil, "", wrapTmuxError(result, err)
+	}
+	refs := []ports.PaneRef{}
 	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
 		fields := strings.Split(line, "\t")
 		if len(fields) >= 3 && fields[1] == "1" && !parseTmuxBool(fields[2]) {
-			return ports.PaneRef{PaneID: fields[0], WindowID: windowID}, nil
+			ref := ports.PaneRef{PaneID: fields[0], WindowID: windowID}
+			if len(fields) >= 4 {
+				ref.OwnerClientID = strings.TrimSpace(fields[3])
+			}
+			refs = append(refs, ref)
 		}
 	}
-	return ports.PaneRef{WindowID: windowID}, nil
+	return refs, windowID, nil
 }
 
 func (c Client) CloseAfterSwitch(ctx context.Context) (bool, error) {

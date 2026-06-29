@@ -662,7 +662,7 @@ func TestFindSidebarPaneIgnoresDeadMarkedPane(t *testing.T) {
 	client := Client{Process: process}
 
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", "#{pane_id}\t#{@session-sidebar-pane}\t#{pane_dead}"}).Return(ports.Result{Stdout: "%9\t1\t1\n%10\t0\t0\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", "#{pane_id}\t#{@session-sidebar-pane}\t#{pane_dead}\t#{@session-sidebar-owner-client}"}).Return(ports.Result{Stdout: "%9\t1\t1\tclient-A\n%10\t0\t0\t\n"}, nil)
 
 	got, err := client.FindSidebarPane(ctx, "client-1")
 	if err != nil {
@@ -673,20 +673,41 @@ func TestFindSidebarPaneIgnoresDeadMarkedPane(t *testing.T) {
 	}
 }
 
+func TestFindSidebarPanesReturnsAllMarkedLivePanesWithOwners(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", "#{pane_id}\t#{@session-sidebar-pane}\t#{pane_dead}\t#{@session-sidebar-owner-client}"}).Return(ports.Result{Stdout: "%9\t1\t0\tclient-A\n%10\t1\t0\tclient-B\n%11\t0\t0\t\n%12\t1\t1\tdead-client\n"}, nil)
+
+	got, err := client.FindSidebarPanes(ctx, "client-1")
+	if err != nil {
+		t.Fatalf("FindSidebarPanes error: %v", err)
+	}
+	want := []ports.PaneRef{
+		{PaneID: "%9", WindowID: "@1", OwnerClientID: "client-A"},
+		{PaneID: "%10", WindowID: "@1", OwnerClientID: "client-B"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("FindSidebarPanes = %#v, want %#v", got, want)
+	}
+}
+
 func TestFindSidebarPaneReturnsMarkedPaneRegardlessOfOwner(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)
 	client := Client{Process: process}
 
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", "#{pane_id}\t#{@session-sidebar-pane}\t#{pane_dead}"}).Return(ports.Result{Stdout: "%9\t1\t0\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", "#{pane_id}\t#{@session-sidebar-pane}\t#{pane_dead}\t#{@session-sidebar-owner-client}"}).Return(ports.Result{Stdout: "%9\t1\t0\tclient-A\n"}, nil)
 
 	got, err := client.FindSidebarPane(ctx, "client-1")
 	if err != nil {
 		t.Fatalf("FindSidebarPane error: %v", err)
 	}
-	if got != (ports.PaneRef{PaneID: "%9", WindowID: "@1"}) {
-		t.Fatalf("FindSidebarPane = %#v, want owner-agnostic marked pane", got)
+	if got != (ports.PaneRef{PaneID: "%9", WindowID: "@1", OwnerClientID: "client-A"}) {
+		t.Fatalf("FindSidebarPane = %#v, want owner-agnostic marked pane with owner", got)
 	}
 }
 
@@ -702,7 +723,7 @@ func TestOwnerScopedSidebarPaneLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FindSidebarPaneForClient error: %v", err)
 		}
-		if got != (ports.PaneRef{PaneID: "%10", WindowID: "@2"}) {
+		if got != (ports.PaneRef{PaneID: "%10", WindowID: "@2", OwnerClientID: "client-A"}) {
 			t.Fatalf("FindSidebarPaneForClient = %#v, want live owner-scoped pane", got)
 		}
 	})
@@ -733,7 +754,7 @@ func TestOwnerScopedSidebarPaneLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("EnsureSidebarForClient error: %v", err)
 		}
-		if got != (ports.PaneRef{PaneID: "%9", WindowID: "@hidden"}) {
+		if got != (ports.PaneRef{PaneID: "%9", WindowID: "@hidden", OwnerClientID: "client-A"}) {
 			t.Fatalf("EnsureSidebarForClient = %#v, want matching owner pane", got)
 		}
 	})
@@ -2033,7 +2054,7 @@ func TestScheduleSidebarRestoreOnExitClearsSavedLayoutWhenSidebarPaneIsAlreadyGo
 	client := Client{Process: process}
 
 	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
-	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", formatPaneID + "\t" + formatSidebarPane + "\t#{pane_dead}"}).Return(ports.Result{Stdout: "%2\t0\t0\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", formatPaneID + "\t" + formatSidebarPane + "\t#{pane_dead}\t#{" + optionSidebarOwnerClient + "}"}).Return(ports.Result{Stdout: "%2\t0\t0\t\n"}, nil)
 	process.EXPECT().Exec(ctx, "tmux", []string{"set-option", "-wu", "-t", "@1", optionSidebarWindowLayout}).Return(ports.Result{}, nil)
 
 	if err := client.ScheduleSidebarRestoreOnExit(ctx, "client-1", ""); err != nil {
