@@ -121,6 +121,10 @@ type SidebarSwitchPort interface {
 	AttachSidebarForClientAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error
 }
 
+type SidebarTargetPanesPort interface {
+	FindSidebarPanes(ctx context.Context, target string) ([]PaneRef, error)
+}
+
 type SidebarFollowPort interface {
 	// AttachSidebarForClientWithoutFocus attaches the owner's sidebar to targetID
 	// while preserving focus in the work pane.

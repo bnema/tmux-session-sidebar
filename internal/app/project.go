@@ -171,7 +171,7 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 			if err != nil {
 				return err
 			}
-			targetRef, err := sidebar.FindSidebarPane(ctx, target)
+			targetRef, err := bestTargetSidebarPane(ctx, sidebar, target, client, ownerPane)
 			if err != nil {
 				return err
 			}
@@ -218,6 +218,55 @@ func switchClient(ctx context.Context, client string, sessionName string, sideba
 		return tmuxCommandError("switch client session", output, err)
 	}
 	return nil
+}
+
+func bestTargetSidebarPane(ctx context.Context, sidebar ports.SidebarPort, target string, client string, ownerPane ports.PaneRef) (ports.PaneRef, error) {
+	if finder, ok := sidebar.(ports.SidebarTargetPanesPort); ok {
+		refs, err := finder.FindSidebarPanes(ctx, target)
+		if err != nil {
+			return ports.PaneRef{}, err
+		}
+		return selectBestTargetSidebarPane(ctx, refs, client, ownerPane)
+	}
+	return sidebar.FindSidebarPane(ctx, target)
+}
+
+func selectBestTargetSidebarPane(ctx context.Context, refs []ports.PaneRef, client string, ownerPane ports.PaneRef) (ports.PaneRef, error) {
+	if len(refs) == 0 {
+		return ports.PaneRef{}, nil
+	}
+	if ownerPane.PaneID != "" {
+		for _, ref := range refs {
+			if ref.PaneID == ownerPane.PaneID {
+				return ref, nil
+			}
+		}
+	}
+	client = strings.TrimSpace(client)
+	for _, ref := range refs {
+		if strings.TrimSpace(ref.OwnerClientID) == client {
+			return ref, nil
+		}
+	}
+	for _, ref := range refs {
+		owner := strings.TrimSpace(ref.OwnerClientID)
+		if owner == "" || owner == client {
+			continue
+		}
+		reusable, err := targetSidebarReusableForClient(ctx, ref, client)
+		if err != nil {
+			return ports.PaneRef{}, err
+		}
+		if reusable {
+			return ref, nil
+		}
+	}
+	for _, ref := range refs {
+		if strings.TrimSpace(ref.OwnerClientID) == "" {
+			return ref, nil
+		}
+	}
+	return refs[0], nil
 }
 
 func adoptTargetSidebar(ctx context.Context, mover ports.SidebarSwitchPort, client string, sessionName string, targetRef ports.PaneRef, cfg ports.ConfigSnapshot) error {

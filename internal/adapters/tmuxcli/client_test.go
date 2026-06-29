@@ -673,6 +673,27 @@ func TestFindSidebarPaneIgnoresDeadMarkedPane(t *testing.T) {
 	}
 }
 
+func TestFindSidebarPanesReturnsAllMarkedLivePanesWithOwners(t *testing.T) {
+	ctx := t.Context()
+	process := mocks.NewMockProcessPort(t)
+	client := Client{Process: process}
+
+	process.EXPECT().Exec(ctx, "tmux", []string{"display-message", "-p", "-t", "client-1", "#{window_id}"}).Return(ports.Result{Stdout: "@1\n"}, nil)
+	process.EXPECT().Exec(ctx, "tmux", []string{"list-panes", "-t", "@1", "-F", "#{pane_id}\t#{@session-sidebar-pane}\t#{pane_dead}\t#{@session-sidebar-owner-client}"}).Return(ports.Result{Stdout: "%9\t1\t0\tclient-A\n%10\t1\t0\tclient-B\n%11\t0\t0\t\n%12\t1\t1\tdead-client\n"}, nil)
+
+	got, err := client.FindSidebarPanes(ctx, "client-1")
+	if err != nil {
+		t.Fatalf("FindSidebarPanes error: %v", err)
+	}
+	want := []ports.PaneRef{
+		{PaneID: "%9", WindowID: "@1", OwnerClientID: "client-A"},
+		{PaneID: "%10", WindowID: "@1", OwnerClientID: "client-B"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("FindSidebarPanes = %#v, want %#v", got, want)
+	}
+}
+
 func TestFindSidebarPaneReturnsMarkedPaneRegardlessOfOwner(t *testing.T) {
 	ctx := t.Context()
 	process := mocks.NewMockProcessPort(t)

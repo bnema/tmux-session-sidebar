@@ -182,6 +182,47 @@ func TestSwitchClientAdoptsLegacyTargetWindowSidebarWithoutOwner(t *testing.T) {
 	assertOps(t, ops, []string{"adopt-legacy-target", "park-previous"})
 }
 
+func TestSwitchClientPrefersVisibleTargetSidebarOverEarlierNonVisiblePane(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	ctx := t.Context()
+	if err := updateSidebarState(ctx, func(state *ports.PersistedState) {
+		state.Sidebar = &ports.SidebarState{Open: true, OwnerClient: "client-A", VisibleClients: map[string]bool{"client-A": true, "client-B": true}}
+	}); err != nil {
+		t.Fatalf("updateSidebarState error: %v", err)
+	}
+	base := mocks.NewMockSidebarPort(t)
+	tmuxPort := &targetPanesSwitchCapableSidebarPort{switchCapableSidebarPort: &switchCapableSidebarPort{MockSidebarPort: base}}
+	var ops []string
+
+	base.EXPECT().CloseAfterSwitch(ctx).Return(false, nil)
+	base.EXPECT().FindSidebarPaneForClient(ctx, "client-B").Return(ports.PaneRef{PaneID: "%b", WindowID: "@other", OwnerClientID: "client-B"}, nil)
+	tmuxPort.targetPanesFn = func(_ context.Context, target string) ([]ports.PaneRef, error) {
+		if target != "=gordon:" {
+			t.Fatalf("target = %q, want =gordon:", target)
+		}
+		ops = append(ops, "find-target-panes")
+		return []ports.PaneRef{
+			{PaneID: "%stale", WindowID: "@gordon", OwnerClientID: "other-client"},
+			{PaneID: "%a", WindowID: "@gordon", OwnerClientID: "client-A"},
+		}, nil
+	}
+	base.EXPECT().ParkSidebarForClient(ctx, "client-B", "%b").Run(func(context.Context, string, string) {
+		ops = append(ops, "park-previous-b")
+	}).Return(nil)
+	tmuxPort.switchFn = func(_ context.Context, clientID, sessionName, paneID, _ string) error {
+		if clientID != "client-B" || sessionName != "gordon" || paneID != "%a" {
+			t.Fatalf("atomic switch args = %q %q %q", clientID, sessionName, paneID)
+		}
+		ops = append(ops, "adopt-visible-target")
+		return nil
+	}
+
+	if err := switchClient(ctx, "client-B", "gordon", tmuxPort); err != nil {
+		t.Fatalf("switchClient error: %v", err)
+	}
+	assertOps(t, ops, []string{"find-target-panes", "adopt-visible-target", "park-previous-b"})
+}
+
 func TestSwitchClientAdoptsTargetWindowSidebarOwnedByAnotherVisibleClient(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx := t.Context()
@@ -678,6 +719,18 @@ func TestWithSidebarFollowAllowsNilSidebarAfterActionWhenStateSaysFollow(t *test
 type switchCapableSidebarPort struct {
 	*mocks.MockSidebarPort
 	switchFn func(context.Context, string, string, string, string) error
+}
+
+type targetPanesSwitchCapableSidebarPort struct {
+	*switchCapableSidebarPort
+	targetPanesFn func(context.Context, string) ([]ports.PaneRef, error)
+}
+
+func (s *targetPanesSwitchCapableSidebarPort) FindSidebarPanes(ctx context.Context, target string) ([]ports.PaneRef, error) {
+	if s.targetPanesFn == nil {
+		return nil, errors.New("test targetPanesSwitchCapableSidebarPort missing targetPanesFn")
+	}
+	return s.targetPanesFn(ctx, target)
 }
 
 func (s *switchCapableSidebarPort) AttachSidebarForClientAndSwitchClient(ctx context.Context, clientID string, sessionName string, paneID string, width string) error {
