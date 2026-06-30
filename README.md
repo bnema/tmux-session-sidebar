@@ -134,7 +134,7 @@ Inside the sidebar:
 
 | Key | Action |
 | --- | --- |
-| `j` / `k`, arrows, mouse wheel | Move selection through categories, sessions, separators, and spacers |
+| `j` / `k`, arrows, mouse wheel | Move selection through categories, sessions, separators, and spacers; the wheel also focuses the sidebar pane |
 | `/` | Start or edit a session filter |
 | `Enter` | Switch to the selected session, or commit the active filter while searching |
 | `Esc` | Leave the current mode, clear an active filter, or close the sidebar |
