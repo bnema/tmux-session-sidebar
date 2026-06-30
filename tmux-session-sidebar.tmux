@@ -51,6 +51,41 @@ install_resurrect_hook() {
   printf 'tmux-session-sidebar: @resurrect-hook-post-save-layout already set; not overwriting user hook\n' >&2
 }
 
+root_binding_for_key() {
+  local key="$1"
+  "$TMUX_BIN" list-keys -T root -F '#{key_string} #{key_command}' 2>/dev/null | "$GREP_BIN" -E "^${key}([[:space:]]|$)" || true
+}
+
+binding_is_sidebar_wheel_focus() {
+  local binding="$1"
+  [ -n "$binding" ] && printf '%s\n' "$binding" | "$GREP_BIN" -Fq "#{@session-sidebar-pane}" && printf '%s\n' "$binding" | "$GREP_BIN" -Fq "select-pane -t ="
+}
+
+binding_is_default_wheel_up() {
+  local binding="$1"
+  [ -n "$binding" ] && printf '%s\n' "$binding" | "$GREP_BIN" -Fq "#{||:#{alternate_on},#{pane_in_mode},#{mouse_any_flag}}" && printf '%s\n' "$binding" | "$GREP_BIN" -Fq "copy-mode -e"
+}
+
+install_sidebar_wheel_binding() {
+  local key="$1" fallback="$2" current guard focus_command
+  current="$(root_binding_for_key "$key")"
+  if [ -n "$current" ] && ! binding_is_sidebar_wheel_focus "$current"; then
+    if [ "$key" != WheelUpPane ] || ! binding_is_default_wheel_up "$current"; then
+      printf 'tmux-session-sidebar: %s already bound; not overwriting user mouse binding\n' "$key" >&2
+      return 0
+    fi
+  fi
+  guard='#{==:#{@session-sidebar-pane},1}'
+  focus_command='select-pane -t = ; send-keys -M'
+  "$TMUX_BIN" bind-key -T root "$key" \
+    if-shell -F -t = "$guard" "$focus_command" "$fallback"
+}
+
+install_sidebar_wheel_bindings() {
+  install_sidebar_wheel_binding WheelUpPane 'if-shell -F "#{||:#{alternate_on},#{pane_in_mode},#{mouse_any_flag}}" "send-keys -M" "copy-mode -e"'
+  install_sidebar_wheel_binding WheelDownPane 'if-shell -F "#{mouse_any_flag}" "send-keys -M"'
+}
+
 install_runtime_hooks() {
   local quoted_runtime="$1"
   "$TMUX_BIN" set-hook -g client-attached[9701] \
@@ -116,6 +151,7 @@ main() {
   "$TMUX_BIN" bind-key -n C-0 \
     run-shell "$quoted_runtime action quick-switch --client #{q:client_name} --slot 10"
 
+  install_sidebar_wheel_bindings
   install_runtime_hooks "$quoted_runtime"
   install_resurrect_hook "$quoted_runtime"
 }

@@ -174,6 +174,122 @@ func TestInstallRuntimeHooksRegistersResizeCommands(t *testing.T) {
 	}
 }
 
+func TestInstallSidebarWheelBindingsWrapsDefaultWheelBehavior(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "tmux.log")
+	fakeTmux := filepath.Join(tmpDir, "tmux")
+	fakeScript := `#!/usr/bin/env bash
+printf '%s\x1f' "$@" >> "$TMUX_LOG"
+printf '\n' >> "$TMUX_LOG"
+if [ "$1" = list-keys ]; then
+  printf 'WheelUpPane if-shell -F "#{||:#{alternate_on},#{pane_in_mode},#{mouse_any_flag}}" { send-keys -M } { copy-mode -e }\n'
+fi
+`
+	if err := os.WriteFile(fakeTmux, []byte(fakeScript), 0o755); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", fakeTmux, err)
+	}
+	scriptPath, err := filepath.Abs(filepath.Join("..", "..", "tmux-session-sidebar.tmux"))
+	if err != nil {
+		t.Fatalf("Abs script path error: %v", err)
+	}
+
+	cmd := exec.Command("bash", "--noprofile", "--norc", "-c", `source "$1"; install_sidebar_wheel_bindings`, "bash", scriptPath)
+	cmd.Env = append(os.Environ(), "PATH="+tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"), "TMUX_LOG="+logPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("install_sidebar_wheel_bindings error: %v\n%s", err, output)
+	}
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v", logPath, err)
+	}
+	log := string(content)
+	wheelUp := bindingLogLine(t, log, "WheelUpPane")
+	wheelDown := bindingLogLine(t, log, "WheelDownPane")
+	for key, line := range map[string]string{"WheelUpPane": wheelUp, "WheelDownPane": wheelDown} {
+		if !strings.Contains(line, "if-shell\x1f-F\x1f-t\x1f=\x1f#{==:#{@session-sidebar-pane},1}") {
+			t.Fatalf("%s guard should evaluate against mouse target pane, line=%q log=%q", key, line, log)
+		}
+		if !strings.Contains(line, "select-pane -t =") || !strings.Contains(line, "send-keys -M") {
+			t.Fatalf("%s should focus mouse pane and forward event, line=%q log=%q", key, line, log)
+		}
+	}
+	if !strings.Contains(wheelUp, "copy-mode -e") {
+		t.Fatalf("WheelUpPane binding should preserve default copy-mode fallback, line=%q log=%q", wheelUp, log)
+	}
+	if !strings.Contains(wheelDown, `if-shell -F "#{mouse_any_flag}" "send-keys -M"`) {
+		t.Fatalf("WheelDownPane binding should preserve mouse forwarding fallback, line=%q log=%q", wheelDown, log)
+	}
+}
+
+func TestInstallSidebarWheelBindingsPreservesCustomUserBinding(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "tmux.log")
+	fakeTmux := filepath.Join(tmpDir, "tmux")
+	fakeScript := `#!/usr/bin/env bash
+printf '%s\x1f' "$@" >> "$TMUX_LOG"
+printf '\n' >> "$TMUX_LOG"
+if [ "$1" = list-keys ]; then
+  printf 'WheelUpPane display-message user-wheel-up\n'
+  printf 'WheelDownPane display-message user-wheel-down\n'
+fi
+`
+	if err := os.WriteFile(fakeTmux, []byte(fakeScript), 0o755); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", fakeTmux, err)
+	}
+	scriptPath, err := filepath.Abs(filepath.Join("..", "..", "tmux-session-sidebar.tmux"))
+	if err != nil {
+		t.Fatalf("Abs script path error: %v", err)
+	}
+
+	cmd := exec.Command("bash", "--noprofile", "--norc", "-c", `source "$1"; install_sidebar_wheel_bindings`, "bash", scriptPath)
+	cmd.Env = append(os.Environ(), "PATH="+tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"), "TMUX_LOG="+logPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("install_sidebar_wheel_bindings error: %v\n%s", err, output)
+	}
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v", logPath, err)
+	}
+	log := string(content)
+	if strings.Contains(log, "bind-key\x1f-T\x1froot\x1fWheelUpPane") || strings.Contains(log, "bind-key\x1f-T\x1froot\x1fWheelDownPane") {
+		t.Fatalf("custom wheel bindings should not be overwritten, log=%q", log)
+	}
+}
+
+func TestInstallSidebarWheelBindingsIgnoresOtherBindingsMentioningWheelKeys(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "tmux.log")
+	fakeTmux := filepath.Join(tmpDir, "tmux")
+	fakeScript := `#!/usr/bin/env bash
+printf '%s\x1f' "$@" >> "$TMUX_LOG"
+printf '\n' >> "$TMUX_LOG"
+if [ "$1" = list-keys ]; then
+  printf 'bind-key  -T root M-x display-message WheelUpPane\n'
+fi
+`
+	if err := os.WriteFile(fakeTmux, []byte(fakeScript), 0o755); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", fakeTmux, err)
+	}
+	scriptPath, err := filepath.Abs(filepath.Join("..", "..", "tmux-session-sidebar.tmux"))
+	if err != nil {
+		t.Fatalf("Abs script path error: %v", err)
+	}
+
+	cmd := exec.Command("bash", "--noprofile", "--norc", "-c", `source "$1"; install_sidebar_wheel_bindings`, "bash", scriptPath)
+	cmd.Env = append(os.Environ(), "PATH="+tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"), "TMUX_LOG="+logPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("install_sidebar_wheel_bindings error: %v\n%s", err, output)
+	}
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v", logPath, err)
+	}
+	log := string(content)
+	if !strings.Contains(log, "bind-key\x1f-T\x1froot\x1fWheelUpPane") {
+		t.Fatalf("unrelated binding mentioning WheelUpPane should not block sidebar wheel binding, log=%q", log)
+	}
+}
+
 func TestMainBootstrapUsesRuntimeDaemonBootstrapWithoutStateDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "tmux.log")
@@ -213,9 +329,24 @@ func TestMainBootstrapUsesRuntimeDaemonBootstrapWithoutStateDir(t *testing.T) {
 	if !strings.Contains(log, "run-shell\x1f-b\x1f"+runtimePath+" daemon bootstrap") {
 		t.Fatalf("daemon bootstrap command not registered, log=%q", log)
 	}
+	if !strings.Contains(log, "bind-key\x1f-T\x1froot\x1fWheelUpPane") || !strings.Contains(log, "bind-key\x1f-T\x1froot\x1fWheelDownPane") {
+		t.Fatalf("bootstrap did not install sidebar wheel focus bindings, log=%q", log)
+	}
 	if strings.Contains(log, stateHome) || strings.Contains(log, "daemon-control.sh") {
 		t.Fatalf("bootstrap leaked shell-computed state dir or daemon-control, log=%q", log)
 	}
+}
+
+func bindingLogLine(t *testing.T, log string, key string) string {
+	t.Helper()
+	prefix := "bind-key\x1f-T\x1froot\x1f" + key + "\x1f"
+	for line := range strings.SplitSeq(strings.TrimSpace(log), "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return line
+		}
+	}
+	t.Fatalf("%s binding not installed, log=%q", key, log)
+	return ""
 }
 
 func copyFile(t *testing.T, src string, dst string, mode os.FileMode) {
