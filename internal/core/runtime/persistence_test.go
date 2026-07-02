@@ -300,11 +300,37 @@ func TestApplyRecentSessionOrderReordersSidebarLayoutCategories(t *testing.T) {
 
 	applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now)
 
+	if len(state.SidebarLayout.Items) != 2 {
+		t.Fatalf("layout item count = %d, want no extra default category", len(state.SidebarLayout.Items))
+	}
 	if got, want := sidebarLayoutSessionNames(state.SidebarLayout.Items[0].Category.Sessions), []string{"beta", "alpha"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("work category sessions = %#v, want %#v", got, want)
 	}
 	if got, want := sidebarLayoutSessionNames(state.SidebarLayout.Items[1].Category.Sessions), []string{"delta", "gamma"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("personal category sessions = %#v, want %#v", got, want)
+	}
+}
+
+func TestApplyRecentSessionOrderAddsMissingSessionsToDefaultLayoutInRecentOrder(t *testing.T) {
+	now := time.Date(2026, 5, 26, 9, 0, 0, 0, time.UTC)
+	state := ports.PersistedState{
+		SessionOrder: []string{"alpha", "123", "beta", "gamma"},
+		SidebarLayout: &ports.SidebarLayout{Items: []ports.SidebarLayoutItem{
+			{ID: "category:default", Kind: "category", Category: &ports.SidebarLayoutCategory{ID: "category:default", Name: "Default", Sessions: []ports.SidebarLayoutSessionRef{{Name: "alpha"}, {Name: "gamma"}}}},
+		}},
+		Heat: encodeHeatStateMap(map[string]heat.State{
+			"alpha": {LastActiveAt: now.Add(-30 * time.Minute)},
+			"123":   {LastActiveAt: now.Add(-3 * time.Minute)},
+			"beta":  {LastActiveAt: now.Add(-5 * time.Minute)},
+			"gamma": {LastActiveAt: now.Add(-10 * time.Minute)},
+		}),
+	}
+	live := []ports.SessionSnapshot{{Name: "alpha"}, {Name: "123"}, {Name: "beta"}, {Name: "gamma"}}
+
+	applyRecentSessionOrder(&state, live, ports.ConfigSnapshot{AutoSortRecentInterval: 24 * time.Hour}, now)
+
+	if got, want := sidebarLayoutSessionNames(state.SidebarLayout.Items[0].Category.Sessions), []string{"beta", "gamma", "alpha"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("default category sessions = %#v, want missing beta inserted in recent order %#v", got, want)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/bnema/tmux-session-sidebar/internal/core/heat"
 	"github.com/bnema/tmux-session-sidebar/internal/core/persisted"
 	"github.com/bnema/tmux-session-sidebar/internal/core/sessions"
+	sidebarlayout "github.com/bnema/tmux-session-sidebar/internal/core/sidebar"
 	"github.com/bnema/tmux-session-sidebar/internal/ports"
 )
 
@@ -374,6 +375,7 @@ func applyRecentSessionOrderAfterCapture(state *ports.PersistedState, live []por
 		return
 	}
 	state.SessionOrder = ordered
+	addMissingSidebarLayoutSessionsToDefault(state.SidebarLayout, state.SessionOrder)
 	reorderSidebarLayoutCategories(state.SidebarLayout, state.SessionOrder, state.PinnedSessions)
 	markRecentSessionOrderRun(state, now)
 }
@@ -402,6 +404,51 @@ func markRecentSessionOrderRun(state *ports.PersistedState, now time.Time) {
 
 func reorderSidebarLayoutCategories(layout *ports.SidebarLayout, order []string, pinned []string) {
 	reorderSidebarLayoutCategoriesWhere(layout, order, pinned, nil)
+}
+
+func addMissingSidebarLayoutSessionsToDefault(layout *ports.SidebarLayout, order []string) {
+	if layout == nil {
+		return
+	}
+	assigned := make(map[string]bool)
+	defaultIndex := -1
+	for i, item := range layout.Items {
+		category := item.Category
+		if category == nil {
+			continue
+		}
+		if item.ID == sidebarlayout.DefaultCategoryID || category.ID == sidebarlayout.DefaultCategoryID {
+			defaultIndex = i
+		}
+		for _, ref := range category.Sessions {
+			assigned[strings.TrimSpace(ref.Name)] = true
+		}
+	}
+	missing := make([]ports.SidebarLayoutSessionRef, 0, len(order))
+	for _, name := range order {
+		name = strings.TrimSpace(name)
+		if assigned[name] || !sessions.IsPersistableName(name) {
+			continue
+		}
+		missing = append(missing, ports.SidebarLayoutSessionRef{Name: name})
+		assigned[name] = true
+	}
+	if len(missing) == 0 {
+		return
+	}
+	if defaultIndex < 0 {
+		layout.Items = append(layout.Items, ports.SidebarLayoutItem{
+			ID:   sidebarlayout.DefaultCategoryID,
+			Kind: string(sidebarlayout.ItemKindCategory),
+			Category: &ports.SidebarLayoutCategory{
+				ID:   sidebarlayout.DefaultCategoryID,
+				Name: sidebarlayout.DefaultCategoryName,
+			},
+		})
+		defaultIndex = len(layout.Items) - 1
+	}
+	category := layout.Items[defaultIndex].Category
+	category.Sessions = append(category.Sessions, missing...)
 }
 
 func reorderCompleteSidebarLayoutCategories(layout *ports.SidebarLayout, order []string, pinned []string, completeSessions map[string]bool) {
